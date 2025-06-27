@@ -64,7 +64,7 @@ The plugin features a modern web-based interface for easy playlist management - 
 ### From Repository
 Add this repository URL to your Jellyfin plugin catalog:
 ```
-https://github.com/jyourstone/jellyfin-smartplaylist-plugin/raw/master/smartplaylist.json
+https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/master/manifest.json
 ```
 
 ### Manual Installation
