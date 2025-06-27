@@ -316,7 +316,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 ListFields = new[]
                 {
                     new { Value = "Genres", Label = "Genres" },
-                    new { Value = "Studios", Label = "Studios" }
+                    new { Value = "Studios", Label = "Studios" },
+                    new { Value = "Tags", Label = "Tags" }
                 },
                 Operators = new[]
                 {

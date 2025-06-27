@@ -21,6 +21,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             DateLastRefreshed = 0;
             DateLastSaved = 0;
             DateModified = 0;
+            Tags = new List<string>();
         }
 
         public float CommunityRating { get; set; }
@@ -39,5 +40,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public double DateLastRefreshed { get; set; }
         public double DateLastSaved { get; set; }
         public double DateModified { get; set; }
+        public List<string> Tags { get; set; }
     }
 }

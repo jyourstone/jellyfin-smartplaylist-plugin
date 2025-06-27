@@ -13,18 +13,17 @@ This plugin allows you to create playlists based on a set of rules, which will a
 ## ✨ Features
 
 - 🚀 **Modern Jellyfin Support** - Built for newer Jellyfin versions with improved compatibility.
-- 🎨 **Modern Web Interface** - A full-featured UI to create, manage, and configure playlists.
+- 🎨 **Modern Web Interface** - A full-featured UI to create, view and delete smart playlists.
 - 👥 **User-Aware Playlists** - Playlists are created for your user by default, with a simple option to make them public for everyone.
-- 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. New `ItemType` field allows for reliably filtering Movies, TV Shows, and Music.
+- 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. 
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled task).
-- ⚙️ **Defaults & Manual Refresh** - Configure default sorting options for new playlists and trigger a manual refresh for all playlists at any time.
-- ⚡ **Real-time Preview** - View (and delete) your playlist rules as you build them
-- 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and complex queries
-- 🎵 **All Media Types** - Works with movies, TV shows, music, and more
+- ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
+- 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
+- 🎵 **All Media Types** - Works with movies, TV shows and music
 
 ## Configuration
 
-SmartPlaylist now features a modern web-based configuration interface! No more manual JSON editing required.
+SmartPlaylist now features a modern web-based configuration interface through the plugin settings page! No more manual JSON editing required.
 
 ### Using the Web Interface
 
@@ -55,6 +54,7 @@ This plugin creates smart playlists that automatically updates based on rules yo
 - **Recently added** TV shows
 - **High-rated** content from certain years
 - **Music** from specific artists or albums
+- **Tagged content** like "Christmas movies", "Kids safe", or "Documentaries"
 - And much more!
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
@@ -114,6 +114,7 @@ The web interface provides access to all available fields for creating playlist 
 #### **Metadata**
 - **Genres** - Content genres
 - **Studios** - Production studios
+- **Tags** - Custom tags assigned to media items
 
 ### Available Operators
 

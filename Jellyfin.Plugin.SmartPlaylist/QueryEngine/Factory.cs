@@ -3,6 +3,7 @@ using System.Linq;
 using Jellyfin.Data.Entities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -22,6 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.ItemType = baseItem.GetType().Name;
             operand.Album = baseItem.Album;
             operand.ProductionYear = baseItem.ProductionYear.GetValueOrDefault();
+            operand.Tags = baseItem.Tags?.ToList() ?? new List<string>();
 
             operand.DateCreated = SafeToUnixTimeSeconds(baseItem.DateCreated);
             operand.DateLastRefreshed = SafeToUnixTimeSeconds(baseItem.DateLastRefreshed);
