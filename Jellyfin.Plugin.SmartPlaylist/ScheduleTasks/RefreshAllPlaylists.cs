@@ -26,6 +26,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         private readonly IUserManager _userManager;
         private readonly ILibraryManager _libraryManager;
         private readonly IPlaylistManager _playlistManager;
+        private readonly IUserDataManager _userDataManager;
         private readonly ILogger<RefreshAllPlaylists> _logger;
         private readonly IServerApplicationPaths _serverApplicationPaths;
 
@@ -33,12 +34,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             IUserManager userManager,
             ILibraryManager libraryManager,
             IPlaylistManager playlistManager,
+            IUserDataManager userDataManager,
             ILogger<RefreshAllPlaylists> logger,
             IServerApplicationPaths serverApplicationPaths)
         {
             _userManager = userManager;
             _libraryManager = libraryManager;
             _playlistManager = playlistManager;
+            _userDataManager = userDataManager;
             _logger = logger;
             _serverApplicationPaths = serverApplicationPaths;
         }
@@ -111,16 +114,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     }
                     
                     var allUserMedia = GetAllUserMedia(user).ToArray();
-                    _logger.LogInformation("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
+                    _logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
                     
-                    // Log first few items to see their MediaType values
-                    foreach (var item in allUserMedia.Take(5))
-                    {
-                        _logger.LogInformation("Sample item: {Name}, Type: {Type}, MediaType: {MediaType}", 
-                            item.Name, item.GetType().Name, item.MediaType.ToString());
-                    }
-                    
-                    var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user).ToArray();
+                    var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, _logger).ToArray();
                     _logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
                         dto.Name, newItems.Length, allUserMedia.Length);
                     

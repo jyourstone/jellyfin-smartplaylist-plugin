@@ -291,29 +291,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             var fields = new
             {
-                StringFields = new[]
+                ContentFields = new[]
                 {
-                    new { Value = "Name", Label = "Name" },
-                    new { Value = "ItemType", Label = "Media Type" },
                     new { Value = "Album", Label = "Album" },
-                    new { Value = "FolderPath", Label = "Folder Path" },
-                    new { Value = "FileName", Label = "File Name" }
+                    new { Value = "ItemType", Label = "Media Type" },
+                    new { Value = "Name", Label = "Name" },
+                    new { Value = "OfficialRating", Label = "Parental Rating" },
+                    new { Value = "ProductionYear", Label = "Production Year" }
                 },
-                BooleanFields = new[]
-                {
-                    new { Value = "IsPlayed", Label = "Is Played" }
-                },
-                NumericFields = new[]
+                RatingsPlaybackFields = new[]
                 {
                     new { Value = "CommunityRating", Label = "Community Rating" },
                     new { Value = "CriticRating", Label = "Critic Rating" },
-                    new { Value = "ProductionYear", Label = "Production Year" },
+                    new { Value = "IsFavorite", Label = "Is Favorite" },
+                    new { Value = "IsPlayed", Label = "Is Played" },
+                    new { Value = "PlayCount", Label = "Play Count" },
+                    new { Value = "RuntimeMinutes", Label = "Runtime (Minutes)" }
+                },
+                DateFields = new[]
+                {
                     new { Value = "DateCreated", Label = "Date Created" },
                     new { Value = "DateLastRefreshed", Label = "Date Last Refreshed" },
                     new { Value = "DateLastSaved", Label = "Date Last Saved" },
                     new { Value = "DateModified", Label = "Date Modified" }
                 },
-                ListFields = new[]
+                FileFields = new[]
+                {
+                    new { Value = "FileName", Label = "File Name" },
+                    new { Value = "FolderPath", Label = "Folder Path" }
+                },
+                CollectionFields = new[]
                 {
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },

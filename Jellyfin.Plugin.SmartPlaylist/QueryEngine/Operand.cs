@@ -22,6 +22,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             DateLastSaved = 0;
             DateModified = 0;
             Tags = new List<string>();
+            RuntimeMinutes = 0;
+            PlayCount = 0;
+            OfficialRating = "";
+            IsFavorite = false;
         }
 
         public float CommunityRating { get; set; }
@@ -41,5 +45,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public double DateLastSaved { get; set; }
         public double DateModified { get; set; }
         public List<string> Tags { get; set; }
+        public int RuntimeMinutes { get; set; }
+        public int PlayCount { get; set; }
+        public string OfficialRating { get; set; }
+        public bool IsFavorite { get; set; }
     }
 }

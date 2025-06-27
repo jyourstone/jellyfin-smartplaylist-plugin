@@ -5,6 +5,7 @@ using Jellyfin.Data.Entities;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
@@ -37,14 +38,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         // Returns the ID's of the items, if order is provided the IDs are sorted.
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user)
+            User user, IUserDataManager userDataManager = null, ILogger logger = null)
         {
             var results = new List<BaseItem>();
 
             var compiledRules = CompileRuleSets();
             foreach (var i in items)
             {
-                var operand = OperandFactory.GetMediaType(libraryManager, i, user);
+                var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger);
 
                 if (compiledRules.Any(set => set.All(rule => rule(operand)))) results.Add(i);
             }

@@ -320,8 +320,8 @@
                 const operatorSelect = newRuleGroup.querySelector('.rule-operator-select');
                 const valueContainer = newRuleGroup.querySelector('.rule-value-container');
 
-                if (availableFields.StringFields) {
-                    populateSelect(fieldSelect, availableFields.StringFields.concat(availableFields.NumericFields, availableFields.BooleanFields, availableFields.ListFields), null, false);
+                if (availableFields.ContentFields) {
+                    populateSelect(fieldSelect, availableFields.ContentFields.concat(availableFields.RatingsPlaybackFields, availableFields.DateFields, availableFields.FileFields, availableFields.CollectionFields), null, false);
                 }
                 if (availableFields.Operators) {
                     populateSelect(operatorSelect, availableFields.Operators, null, false);
@@ -334,9 +334,9 @@
                     let allowedOperators = [];
                     
                     const listFields = ['Genres', 'Studios', 'Tags'];
-                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating'];
+                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
                     const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-                    const booleanFields = ['IsPlayed'];
+                    const booleanFields = ['IsPlayed', 'IsFavorite'];
                     const simpleFields = ['ItemType'];
 
                     if (listFields.includes(fieldValue)) {
@@ -355,16 +355,16 @@
                         option.textContent = opt.Label;
                         operatorSelect.appendChild(option);
                     });
-                    if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed') { operatorSelect.value = 'Equal'; }
+                    if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed' || fieldValue === 'IsFavorite') { operatorSelect.value = 'Equal'; }
                 }
 
                 function setValueInput(fieldValue) {
                     valueContainer.innerHTML = '';
 
                     const listFields = ['Genres', 'Studios', 'Tags'];
-                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating'];
+                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
                     const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-                    const booleanFields = ['IsPlayed'];
+                    const booleanFields = ['IsPlayed', 'IsFavorite'];
                     const simpleFields = ['ItemType'];
 
                     if (simpleFields.includes(fieldValue)) {
@@ -384,7 +384,14 @@
                         select.className = 'emby-select rule-value-input';
                         select.setAttribute('is', 'emby-select');
                         select.style.width = '100%';
-                        const boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
+                        let boolOptions;
+                        if (fieldValue === 'IsPlayed') {
+                            boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
+                        } else if (fieldValue === 'IsFavorite') {
+                            boolOptions = [ { Value: "true", Label: "Yes (Favorite)" }, { Value: "false", Label: "No (Not Favorite)" } ];
+                        } else {
+                            boolOptions = [ { Value: "true", Label: "Yes" }, { Value: "false", Label: "No" } ];
+                        }
                         boolOptions.forEach(opt => {
                             const option = document.createElement('option');
                             option.value = opt.Value;

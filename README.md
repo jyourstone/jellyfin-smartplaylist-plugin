@@ -101,6 +101,12 @@ The web interface provides access to all available fields for creating playlist 
 
 #### **Playback Fields**
 - **Is Played** - Whether the item has been watched/listened to
+- **Is Favorite** - Whether the item is marked as a favorite
+- **Play Count** - Number of times the item has been played
+
+#### **Content Info**
+- **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
+- **Runtime (Minutes)** - Duration of the content in minutes
 
 #### **Ratings & Dates**
 - **Community Rating** - User ratings (0-10)
