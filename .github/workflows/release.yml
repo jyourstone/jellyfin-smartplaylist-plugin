@@ -1,0 +1,144 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # We need to fetch all history and tags for the commit message
+          fetch-depth: 0
+          
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          
+      - name: Setup jq
+        run: sudo apt-get install -y jq
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build plugin
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
+          echo "Building version: $VERSION"
+          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release --no-restore -o ./build_output /p:Version=$VERSION /p:AssemblyVersion=$VERSION.0
+
+      - name: Create Plugin Zip
+        run: |
+          mkdir -p staging
+          cp ./build_output/Jellyfin.Plugin.SmartPlaylist.dll staging/
+          cp images/logo.jpg staging/logo.jpg
+          cd staging
+          zip -X ../Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip *
+          cd ..
+
+      - name: Get Changelog from Commit Message
+        id: get_changelog
+        run: |
+          # Get the latest tag name from the trigger event
+          LATEST_TAG=${{ github.ref_name }}
+
+          # Get the previous tag name. If there's no previous tag, this will be empty.
+          # We use '|| true' to prevent the script from failing if no previous tag is found.
+          PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 | head -n1) 2>/dev/null) || true
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # If this is the first release, get all commits up to the current tag.
+            echo "No previous tag found. Generating changelog for all commits."
+            CHANGELOG_TEXT=$(git log --pretty="format:- %s")
+          else
+            # If there's a previous tag, get all commits between the two tags.
+            echo "Generating changelog from tag $PREVIOUS_TAG to $LATEST_TAG."
+            CHANGELOG_TEXT=$(git log $PREVIOUS_TAG..$LATEST_TAG --pretty="format:- %s")
+          fi
+
+          {
+            echo 'changelog_text<<EOM'
+            echo "$CHANGELOG_TEXT"
+            echo 'EOM'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.get_changelog.outputs.changelog_text }}
+          files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false
+
+      - name: Update External Manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+        run: |
+          # 1. Set up variables
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
+          ASSEMBLY_VERSION="${VERSION}.0"
+          ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
+          CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
+          TARGET_ABI="10.10.7"
+          TIMESTAMP=$(date -u +'%Y-%m-%d')
+          CHANGELOG="${{ steps.get_changelog.outputs.changelog_text }}"
+          MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
+          PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
+
+          # 2. Clone the manifest repository
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${MANIFEST_REPO}.git manifest-repo
+          cd manifest-repo
+          
+          MANIFEST_FILE="manifest.json"
+
+          # 3. Create manifest file if it does not exist
+          if [ ! -f "$MANIFEST_FILE" ]; then
+            echo "Creating new manifest file: $MANIFEST_FILE"
+            echo "[]" > "$MANIFEST_FILE"
+          fi
+
+          # 4. Create the JSON entry for the new version
+          NEW_PACKAGE=$(jq -n \
+            --arg version "$ASSEMBLY_VERSION" \
+            --arg abi "$TARGET_ABI" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg checksum "$CHECKSUM" \
+            --arg changelog "$CHANGELOG" \
+            --arg timestamp "$TIMESTAMP" \
+            '{version: $version, targetAbi: $abi, sourceUrl: $url, checksum: $checksum, changelog: $changelog, timestamp: $timestamp}')
+
+          # 5. Check if the plugin entry exists. If not, create it.
+          if ! jq -e --arg guid "$PLUGIN_GUID" 'any(.[]; .guid == $guid)' "$MANIFEST_FILE" > /dev/null; then
+            echo "Plugin with GUID $PLUGIN_GUID not found in manifest. Creating a new entry."
+            PLUGIN_ENTRY=$(jq -n \
+              --arg name "SmartPlaylist" \
+              --arg guid "$PLUGIN_GUID" \
+              --arg overview "Smart Playlist plugin for Jellyfin." \
+              --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin." \
+              --arg category "General" \
+              --arg owner "jyourstone" \
+              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" \
+              '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
+            jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp_manifest.json && mv tmp_manifest.json "$MANIFEST_FILE"
+          fi
+
+          # 6. Find the plugin by GUID and prepend the new version
+          jq --argjson new_package "$NEW_PACKAGE" --arg guid "$PLUGIN_GUID" \
+            '(.[] | select(.guid == $guid).versions) |= [$new_package] + .' \
+            "$MANIFEST_FILE" > tmp_manifest.json && mv tmp_manifest.json "$MANIFEST_FILE"
+
+          # 7. Commit and push the changes
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add manifest.json
+          git commit -m "Update manifest for SmartPlaylist v${VERSION}"
+          git push 

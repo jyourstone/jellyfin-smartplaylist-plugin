@@ -1,0 +1,8 @@
+{
+  "name": "SmartPlaylist DEV",
+  "guid": "A0A2A7B2-747A-4113-8B39-757A9D267C79",
+  "version": "2.0.0.0",
+  "targetAbi": "10.10.7.0",
+  "sourceUrl": "https://github.com/jyourstone/jellyfin-smartplaylist-plugin",
+  "imagePath": "logo.jpg"
+} 

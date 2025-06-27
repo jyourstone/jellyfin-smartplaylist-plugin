@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Playlist</title>
+    <style>
+        .SmartPlaylistConfigurationPage .readOnly, .SmartPlaylistConfigurationPage .readOnly-multiline {
+            background: #101010;
+        }
+
+        .SmartPlaylistConfigurationPage .ui-tabs-nav.emby-tabs {
+            margin-top: 2em;
+        }
+
+        .playlist-card {
+            border: 1px solid #444;
+            padding: 1em;
+            border-radius: 4px;
+            margin-bottom: 2em;
+        }
+
+        .playlist-title {
+            margin-top: 0;
+        }
+
+        .playlist-rule {
+            font-family: monospace;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+
+        .playlist-actions {
+            margin-top: 1em;
+        }
+
+        .error-message {
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <div data-role="page" class="page type-interior pluginConfigurationPage SmartPlaylistConfigurationPage">
+        <div data-role="content">
+            <div class="content-primary">
+                <h1>SmartPlaylist Configuration</h1>
+                <div id="plugin-notification-area" style="display: none; padding: 1em; margin: 1em 0; border-radius: 4px; text-align: center; font-weight: bold;"></div>
+
+                <div class="emby-tabs">
+                    <div class="emby-tab-button" data-tab="create">
+                        <h3 class="emby-tab-button-title">Create Playlist</h3>
+                    </div>
+                    <div class="emby-tab-button" data-tab="manage">
+                        <h3 class="emby-tab-button-title">Manage Playlists</h3>
+                    </div>
+                     <div class="emby-tab-button" data-tab="settings">
+                        <h3 class="emby-tab-button-title">Settings</h3>
+                    </div>
+                     <div class="emby-tab-button" data-tab="help">
+                        <h3 class="emby-tab-button-title">Help</h3>
+                    </div>
+                </div>
+
+                <h2 class="section-title" id="current-tab-title">Create Playlist</h2>
+
+                <!-- Create Tab -->
+                <div id="create-tab" class="page-content hide" data-tab-content="create">
+                    <form id="playlistForm" style="margin-top:2em;">
+                        <div class="input-container" style="margin-bottom: 1em;">
+                            <label class="input-label" for="playlistName">Playlist Name</label>
+                            <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
+                        </div>
+                        
+                        <div class="input-container">
+                            <label class="input-label">Rules</label>
+                            <div id="rules-container"></div>
+                            <button type="button" is="emby-button" id="addRuleBtn" class="emby-button raised">Add Rule</button>
+                        </div>
+
+                        <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="input-label" for="sortBy">Sort By</label>
+                            <div id="sortBy-container"></div>
+                        </div>
+
+                        <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="input-label" for="sortOrder">Sort Order</label>
+                            <div id="sortOrder-container"></div>
+                        </div>
+
+                        <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" is="emby-checkbox" id="playlistIsPublic" class="emby-checkbox">
+                                <span>Make playlist public</span>
+                            </label>
+                            <div class="field-description">Allow this playlist to be viewed by any logged in user.</div>
+                        </div>
+
+                        <div style="margin-top: 2em;">
+                            <button type="submit" class="button-submit emby-button block">Create Playlist</button>
+                            <button type="button" id="clearFormBtn" class="emby-button raised block">Clear Form</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Manage Tab -->
+                <div id="manage-tab" class="page-content hide" data-tab-content="manage">
+                    <div style="margin-top:2em;">
+                        <div class="input-container">
+                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised">Refresh List</button>
+                        </div>
+                        
+                        <div id="playlist-list-container">
+                            <p>Loading playlists...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="settings-tab" class="page-content hide" data-tab-content="settings">
+                    <div style="margin-top:2em;">
+                        <h3 class="section-title">General Settings</h3>
+                        <div class="input-group" style="display: flex; gap: 2em;">
+                            <div class="input-container flex-grow">
+                                <label class="input-label" for="defaultSortBy">Default Sort By</label>
+                                <select is="emby-select" id="defaultSortBy" class="emby-select"></select>
+                                <div class="field-description">Default sorting method for new smart playlists.</div>
+                            </div>
+                            <div class="input-container flex-grow">
+                                <label class="input-label" for="defaultSortOrder">Default Sort Order</label>
+                                <select is="emby-select" id="defaultSortOrder" class="emby-select"></select>
+                                <div class="field-description">Default sorting direction for new smart playlists.</div>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" is="emby-checkbox" id="defaultMakePublic" class="emby-checkbox">
+                                <span>Make playlists public by default</span>
+                            </label>
+                            <div class="field-description">New smart playlists will be public by default when this is enabled.</div>
+                        </div>
+
+                        <div style="margin-top: 2em;">
+                            <button type="button" is="emby-button" id="saveSettingsBtn" class="button-submit emby-button block">Save Settings</button>
+                            <button type="button" is="emby-button" id="refreshPlaylistsBtn" class="emby-button raised block" style="margin-top: 0.5em;">Refresh All Playlists</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Help Tab -->
+                <div id="help-tab" class="page-content hide" data-tab-content="help">
+                     <div style="margin-top:2em;">
+                        <h3 class="section-title">Need Help?</h3>
+                        <p>For detailed instructions and bug reports, please see the following GitHub repository.</p>
+                        <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin" target="_blank" style="text-decoration: none;">
+                            <button is="emby-button" class="emby-button raised">
+                                <span class="material-icons open_in_new" style="margin-right: 0.5em;"></span>
+                                View on GitHub
+                            </button>
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <script>
+        (function () {
+            'use strict';
+            
+            function getPluginId() {
+                const pluginId = "A0A2A7B2-747A-4113-8B39-757A9D267C79";
+                return pluginId;
+            }
+
+            let ruleCounter = 0;
+            let availableFields = {};
+            let notificationTimeout;
+
+            function showNotification(message, type = 'error') {
+                const notificationArea = document.querySelector('#plugin-notification-area');
+                if (!notificationArea) return;
+
+                notificationArea.textContent = message;
+                notificationArea.style.color = 'white';
+                notificationArea.style.backgroundColor = type === 'success' ? '#3e8e41' : '#d9534f';
+                notificationArea.style.display = 'block';
+
+                clearTimeout(notificationTimeout);
+                notificationTimeout = setTimeout(() => {
+                    notificationArea.style.display = 'none';
+                }, 5000);
+            }
+
+            function getApiClient() {
+                return window.ApiClient;
+            }
+
+            function loadAndPopulateFields(page) {
+                const apiClient = getApiClient();
+                const url = apiClient.getUrl('Plugins/SmartPlaylist/fields');
+                
+                return apiClient.get(url).then(response => {
+                    if (!response.ok) { throw new Error(`Network response was not ok: ${response.statusText}`); }
+                    return response.json();
+                }).then(fields => {
+                    availableFields = fields;
+                    return fields;
+                }).catch(err => {
+                    console.error('Error loading or parsing fields:', err);
+                    throw err;
+                });
+            }
+
+            function populateSelect(selectElement, options, defaultValue = null, forceSelection = true) {
+                if (!selectElement) return;
+                options.forEach((opt, index) => {
+                    const option = document.createElement('option');
+                    option.value = opt.Value;
+                    option.textContent = opt.Label;
+                    selectElement.appendChild(option);
+                    
+                    if ((defaultValue && opt.Value === defaultValue) || (!defaultValue && forceSelection && index === 0)) {
+                        option.selected = true;
+                    }
+                });
+            }
+
+            function populateStaticSelects(page) {
+                 const sortOptions = [
+                    { Value: 'Name', Label: 'Name' },
+                    { Value: 'ProductionYear', Label: 'Production Year' },
+                    { Value: 'CommunityRating', Label: 'Community Rating' },
+                    { Value: 'DateCreated', Label: 'Date Created' },
+                    { Value: 'NoOrder', Label: 'No Order' }
+                ];
+                const orderOptions = [
+                    { Value: 'Ascending', Label: 'Ascending' },
+                    { Value: 'Descending', Label: 'Descending' }
+                ];
+
+                const sortByContainer = page.querySelector('#sortBy-container');
+                const sortOrderContainer = page.querySelector('#sortOrder-container');
+                
+                let sortBySelect = page.querySelector('#sortBy');
+                if (!sortBySelect) {
+                    sortBySelect = document.createElement('select');
+                    sortBySelect.setAttribute('is', 'emby-select');
+                    sortBySelect.className = 'emby-select';
+                    sortBySelect.id = 'sortBy';
+                    sortByContainer.appendChild(sortBySelect);
+                }
+                
+                let sortOrderSelect = page.querySelector('#sortOrder');
+                if (!sortOrderSelect) {
+                    sortOrderSelect = document.createElement('select');
+                    sortOrderSelect.setAttribute('is', 'emby-select');
+                    sortOrderSelect.className = 'emby-select';
+                    sortOrderSelect.id = 'sortOrder';
+                    sortOrderContainer.appendChild(sortOrderSelect);
+                }
+
+                const apiClient = getApiClient();
+                apiClient.getPluginConfiguration(getPluginId()).then(config => {
+                    const defaultSortBy = config.DefaultSortBy || 'Name';
+                    const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
+                    const defaultMakePublic = config.DefaultMakePublic || false;
+                    
+                    if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
+                    if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
+                    page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
+                }).catch(() => {
+                    if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
+                    if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
+                    page.querySelector('#playlistIsPublic').checked = false;
+                });
+                
+                const defaultSortBy = page.querySelector('#defaultSortBy');
+                const defaultSortOrder = page.querySelector('#defaultSortOrder');
+                if (defaultSortBy && defaultSortBy.children.length === 0) { populateSelect(defaultSortBy, sortOptions, 'Name'); }
+                if (defaultSortOrder && defaultSortOrder.children.length === 0) { populateSelect(defaultSortOrder, orderOptions, 'Ascending'); }
+            }
+
+            function addRule(page) {
+                ruleCounter++;
+                const rulesContainer = page.querySelector('#rules-container');
+                
+                if (rulesContainer.children.length > 0) {
+                    const andSeparator = document.createElement('div');
+                    andSeparator.className = 'and-separator';
+                    andSeparator.style.cssText = 'text-align: center; margin: 0.75em 0; font-weight: bold; color: #888; font-size: 0.9em; background: rgba(136, 136, 136, 0.1); padding: 0.25em; border-radius: 4px; display: inline-block; min-width: 40px;';
+                    andSeparator.textContent = 'AND';
+                    rulesContainer.appendChild(andSeparator);
+                }
+                
+                const ruleDiv = document.createElement('div');
+                ruleDiv.className = 'rule-group';
+                ruleDiv.setAttribute('data-rule-id', ruleCounter);
+
+                const fieldsHtml = `
+                    <div class="input-group" style="display: flex; gap: 0.5em; align-items: center; margin-bottom: 1em;">
+                        <select is="emby-select" class="emby-select rule-field-select" style="flex: 0 0 25%;">
+                            <option value="">-- Select Field --</option>
+                        </select>
+                        <select is="emby-select" class="emby-select rule-operator-select" style="flex: 0 0 20%;">
+                            <option value="">-- Select Operator --</option>
+                        </select>
+                        <span class="rule-value-container" style="flex: 1;">
+                            <input type="text" class="emby-input rule-value-input" placeholder="Value" style="width: 100%;">
+                        </span>
+                        <button type="button" is="emby-button" class="emby-button raised icon-button" title="Remove Rule" style="flex: 0 0 auto;">
+                            <span class="material-icons delete_outline"></span>
+                        </button>
+                    </div>`;
+                
+                ruleDiv.innerHTML = fieldsHtml;
+                rulesContainer.appendChild(ruleDiv);
+                
+                const newRuleGroup = rulesContainer.lastElementChild;
+                const fieldSelect = newRuleGroup.querySelector('.rule-field-select');
+                const operatorSelect = newRuleGroup.querySelector('.rule-operator-select');
+                const valueContainer = newRuleGroup.querySelector('.rule-value-container');
+
+                if (availableFields.StringFields) {
+                    populateSelect(fieldSelect, availableFields.StringFields.concat(availableFields.NumericFields, availableFields.BooleanFields, availableFields.ListFields), null, false);
+                }
+                if (availableFields.Operators) {
+                    populateSelect(operatorSelect, availableFields.Operators, null, false);
+                }
+
+                const mediaTypes = [ { Value: "Movie", Label: "Movie" }, { Value: "Episode", Label: "Episode (TV Show)" }, { Value: "Audio", Label: "Audio (Music)" } ];
+
+                function updateOperatorOptions(fieldValue, operatorSelect) {
+                    operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
+                    let allowedOperators = [];
+                    
+                    const listFields = ['Genres', 'Studios'];
+                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating'];
+                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+                    const booleanFields = ['IsPlayed'];
+                    const simpleFields = ['ItemType'];
+
+                    if (listFields.includes(fieldValue)) {
+                        allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                    } else if (numericFields.includes(fieldValue) || dateFields.includes(fieldValue)) {
+                        allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
+                    } else if (booleanFields.includes(fieldValue) || simpleFields.includes(fieldValue)) {
+                        allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
+                    } else { // Default to string fields
+                        allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                    }
+
+                    allowedOperators.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.Value;
+                        option.textContent = opt.Label;
+                        operatorSelect.appendChild(option);
+                    });
+                    if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed') { operatorSelect.value = 'Equal'; }
+                }
+
+                function setValueInput(fieldValue) {
+                    valueContainer.innerHTML = '';
+
+                    const listFields = ['Genres', 'Studios'];
+                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating'];
+                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+                    const booleanFields = ['IsPlayed'];
+                    const simpleFields = ['ItemType'];
+
+                    if (simpleFields.includes(fieldValue)) {
+                        const select = document.createElement('select');
+                        select.className = 'emby-select rule-value-input';
+                        select.setAttribute('is', 'emby-select');
+                        select.style.width = '100%';
+                        mediaTypes.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt.Value;
+                            option.textContent = opt.Label;
+                            select.appendChild(option);
+                        });
+                        valueContainer.appendChild(select);
+                    } else if (booleanFields.includes(fieldValue)) {
+                        const select = document.createElement('select');
+                        select.className = 'emby-select rule-value-input';
+                        select.setAttribute('is', 'emby-select');
+                        select.style.width = '100%';
+                        const boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
+                        boolOptions.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt.Value;
+                            option.textContent = opt.Label;
+                            select.appendChild(option);
+                        });
+                        valueContainer.appendChild(select);
+                    } else if (numericFields.includes(fieldValue)) {
+                        const input = document.createElement('input');
+                        input.type = 'number';
+                        input.className = 'emby-input rule-value-input';
+                        input.placeholder = 'Value';
+                        input.style.width = '100%';
+                        valueContainer.appendChild(input);
+                    } else if (dateFields.includes(fieldValue)) {
+                        const input = document.createElement('input');
+                        input.type = 'date';
+                        input.className = 'emby-input rule-value-input';
+                        input.style.width = '100%';
+                        valueContainer.appendChild(input);
+                    }
+                    else {
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'emby-input rule-value-input';
+                        input.placeholder = 'Value';
+                        input.style.width = '100%';
+                        valueContainer.appendChild(input);
+                    }
+                }
+
+                setValueInput(fieldSelect.value);
+                updateOperatorOptions(fieldSelect.value, operatorSelect);
+                fieldSelect.addEventListener('change', function() {
+                    setValueInput(fieldSelect.value);
+                    updateOperatorOptions(fieldSelect.value, operatorSelect);
+                });
+            }
+            
+            async function createPlaylist(page) {
+                try {
+                    const apiClient = getApiClient();
+                    const playlistName = page.querySelector('#playlistName').value;
+
+                    if (!playlistName) {
+                        showNotification('Playlist name is required.');
+                        return;
+                    }
+
+                    const expressions = [];
+                    page.querySelectorAll('.rule-group').forEach(rule => {
+                        const memberName = rule.querySelector('.rule-field-select').value;
+                        const operator = rule.querySelector('.rule-operator-select').value;
+                        const targetValue = rule.querySelector('.rule-value-input').value;
+                        if (memberName && operator && targetValue) {
+                            expressions.push({ MemberName: memberName, Operator: operator, TargetValue: targetValue });
+                        }
+                    });
+
+                    if (expressions.length === 0) {
+                        showNotification('At least one complete rule (Field, Operator, and Value) is required.');
+                        return;
+                    }
+
+                    const sortByElement = page.querySelector('#sortBy');
+                    const sortOrderElement = page.querySelector('#sortOrder');
+                    const sortByValue = sortByElement?.value || 'Name';
+                    const sortOrderValue = sortOrderElement?.value || 'Ascending';
+                    const orderName = sortByValue + ' ' + sortOrderValue;
+                    const isPublic = page.querySelector('#playlistIsPublic').checked || false;
+
+                    const currentUser = await apiClient.getCurrentUser();
+                    let userName = currentUser?.Name;
+
+                    if (!userName) {
+                        const currentUserId = apiClient.getCurrentUserId();
+                        if (currentUserId) {
+                            try {
+                                const userResult = await apiClient.getUser(currentUserId);
+                                userName = userResult?.Name;
+                            } catch (err) {
+                                console.error('Could not retrieve user by ID:', err);
+                            }
+                        }
+                    }
+
+                    const playlistDto = {
+                        Name: playlistName,
+                        ExpressionSets: [{ Expressions: expressions }],
+                        Order: { Name: orderName },
+                        Public: isPublic,
+                        User: userName
+                    };
+
+                    Dashboard.showLoadingMsg();
+                    apiClient.ajax({
+                        type: "POST",
+                        url: apiClient.getUrl('Plugins/SmartPlaylist'),
+                        data: JSON.stringify(playlistDto),
+                        contentType: 'application/json'
+                    }).then(result => {
+                        Dashboard.hideLoadingMsg();
+                        showNotification('Playlist "' + playlistName + '" created.', 'success');
+                        clearForm(page);
+                    }).catch(err => {
+                        Dashboard.hideLoadingMsg();
+                        if (err && typeof err.text === 'function') {
+                            err.text().then(serverMessage => {
+                                let friendlyMessage = 'An error occurred on the server.';
+                                try {
+                                    friendlyMessage = JSON.parse(serverMessage) || friendlyMessage;
+                                } catch (e) {
+                                    friendlyMessage = serverMessage || friendlyMessage;
+                                }
+                                showNotification(friendlyMessage);
+                            }).catch(() => {
+                                showNotification('Could not read error response from server. Status: ' + (err.status || 'Unknown'));
+                            });
+                        } else {
+                            showNotification((err && err.message) ? err.message : 'An unknown network error occurred.');
+                        }
+                    });
+                } catch (e) {
+                    Dashboard.hideLoadingMsg();
+                    console.error('A synchronous error occurred in createPlaylist:', e);
+                    showNotification('A critical client-side error occurred: ' + e.message);
+                }
+            }
+            
+            function clearForm(page) {
+                page.querySelector('#playlistName').value = '';
+                page.querySelector('#rules-container').innerHTML = '';
+                
+                const apiClient = getApiClient();
+                apiClient.getPluginConfiguration(getPluginId()).then(config => {
+                    page.querySelector('#sortBy').value = config.DefaultSortBy || 'Name';
+                    page.querySelector('#sortOrder').value = config.DefaultSortOrder || 'Ascending';
+                    page.querySelector('#playlistIsPublic').checked = config.DefaultMakePublic || false;
+                }).catch(() => {
+                    page.querySelector('#sortBy').value = 'Name';
+                    page.querySelector('#sortOrder').value = 'Ascending';
+                    page.querySelector('#playlistIsPublic').checked = false;
+                });
+                
+                ruleCounter = 0;
+                addRule(page);
+            }
+
+            function loadPlaylistList(page) {
+                const apiClient = getApiClient();
+                const container = page.querySelector('#playlist-list-container');
+                container.innerHTML = '<p>Loading playlists...</p>';
+                
+                apiClient.ajax({
+                    type: "GET",
+                    url: apiClient.getUrl('Plugins/SmartPlaylist'),
+                    contentType: 'application/json'
+                }).then(response => {
+                    if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
+                    return response.json();
+                }).then(playlists => {
+                    if (playlists && playlists.length > 0) {
+                        let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3></div>';
+                        playlists.forEach(playlist => {
+                            const isPublic = playlist.Public ? 'Public' : 'Private';
+                            const sortName = playlist.Order ? playlist.Order.Name : 'Default';
+                            const userName = playlist.User || 'Unknown';
+                            const playlistId = playlist.Id || 'NO_ID';
+                            
+                            let rulesHtml = '';
+                            if (playlist.ExpressionSets && playlist.ExpressionSets[0] && playlist.ExpressionSets[0].Expressions) {
+                                playlist.ExpressionSets[0].Expressions.forEach(rule => {
+                                    if (rulesHtml) rulesHtml += '<br>';
+                                    let fieldName = rule.MemberName;
+                                    if (fieldName === 'ItemType') fieldName = 'Media Type';
+                                    let operator = rule.Operator;
+                                    switch(operator) {
+                                        case 'Equal': operator = 'equals'; break;
+                                        case 'NotEqual': operator = 'not equals'; break;
+                                        case 'Contains': operator = 'contains'; break;
+                                        case 'NotContains': operator = "not contains"; break;
+                                        case 'GreaterThan': operator = '>'; break;
+                                        case 'LessThan': operator = '<'; break;
+                                        case 'GreaterThanOrEqual': operator = '>='; break;
+                                        case 'LessThanOrEqual': operator = '<='; break;
+                                        case 'MatchRegex': operator = 'matches regex'; break;
+                                    }
+                                    let value = rule.TargetValue;
+                                    if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                                });
+                            } else {
+                                rulesHtml = '<em>No rules defined</em>';
+                            }
+                            
+                            html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px;">' +
+                                '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                                '<div class="field-description">' +
+                                '<strong>File:</strong> ' + playlist.FileName + '<br>' +
+                                '<strong>User:</strong> ' + userName + '<br>' +
+                                '<strong>Rules:</strong><br>' + rulesHtml + '<br><br>' +
+                                '<strong>Sort:</strong> ' + sortName + '<br>' +
+                                '<strong>Visibility:</strong> ' + isPublic +
+                                '</div>' +
+                                '<div style="margin-top: 1em;">' +
+                                '<button type="button" is="emby-button" class="emby-button raised delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                                '</div>' +
+                                '</div>';
+                        });
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = '<div class="input-container"><p>No smart playlists found.</p></div>';
+                    }
+                }).catch(err => {
+                    console.error('Error loading playlists:', err);
+                    let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
+                    container.innerHTML = '<div class="input-container"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+                });
+            }
+
+            function deletePlaylist(page, playlistId, playlistName) {
+                const apiClient = getApiClient();
+                Dashboard.showLoadingMsg();
+                apiClient.ajax({
+                    type: "DELETE",
+                    url: apiClient.getUrl('Plugins/SmartPlaylist/' + playlistId),
+                    contentType: 'application/json'
+                }).then(() => {
+                    Dashboard.hideLoadingMsg();
+                    showNotification('Playlist "' + playlistName + '" deleted successfully.', 'success');
+                    loadPlaylistList(page);
+                }).catch(err => {
+                    Dashboard.hideLoadingMsg();
+                    console.error('Error deleting playlist:', err);
+                    showNotification('Failed to delete playlist "' + playlistName + '". Check console for details.');
+                });
+            }
+
+            function loadConfiguration(page) {
+                Dashboard.showLoadingMsg();
+                getApiClient().getPluginConfiguration(getPluginId()).then(config => {
+                    page.querySelector('#defaultSortBy').value = config.DefaultSortBy || 'Name';
+                    page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
+                    page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
+                    Dashboard.hideLoadingMsg();
+                }).catch(() => {
+                    Dashboard.hideLoadingMsg();
+                    showNotification('Could not load settings from server.');
+                });
+            }
+
+            function saveConfiguration(page) {
+                Dashboard.showLoadingMsg();
+                const apiClient = getApiClient();
+                apiClient.getPluginConfiguration(getPluginId()).then(config => {
+                    config.DefaultSortBy = page.querySelector('#defaultSortBy').value;
+                    config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
+                    config.DefaultMakePublic = page.querySelector('#defaultMakePublic').checked;
+                    apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
+                        Dashboard.hideLoadingMsg();
+                        showNotification('Settings saved.', 'success');
+                    }).catch(() => {
+                        Dashboard.hideLoadingMsg();
+                        showNotification('Failed to save settings.');
+                    });
+                }).catch(() => {
+                    Dashboard.hideLoadingMsg();
+                    showNotification('Could not load configuration from server.');
+                });
+            }
+
+            function refreshAllPlaylists() {
+                Dashboard.showLoadingMsg();
+                getApiClient().ajax({
+                    type: "POST",
+                    url: getApiClient().getUrl('Plugins/SmartPlaylist/refresh'),
+                    contentType: 'application/json'
+                }).then(() => {
+                    Dashboard.hideLoadingMsg();
+                    showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
+                }).catch(() => {
+                    Dashboard.hideLoadingMsg();
+                    showNotification('Failed to trigger playlist refresh. Please check server logs.');
+                });
+            }
+            
+            function initPage(page) {
+                populateStaticSelects(page);
+                loadAndPopulateFields(page).then(() => {
+                    const rulesContainer = page.querySelector('#rules-container');
+                    if (rulesContainer.children.length === 0) {
+                        addRule(page);
+                    }
+                }).catch(() => {
+                    showNotification('Could not load rule options from server.');
+                });
+
+                page.addEventListener('click', function (e) {
+                    const target = e.target;
+                    if (target.closest('#addRuleBtn')) { addRule(page); }
+                    if (target.closest('.icon-button')) {
+                         const ruleGroup = target.closest('.rule-group');
+                         if (ruleGroup) {
+                             const prevSibling = ruleGroup.previousElementSibling;
+                             if (prevSibling && prevSibling.classList.contains('and-separator')) {
+                                 prevSibling.remove();
+                             } else {
+                                 const nextSibling = ruleGroup.nextElementSibling;
+                                 if (nextSibling && nextSibling.classList.contains('and-separator')) {
+                                     nextSibling.remove();
+                                 }
+                             }
+                             ruleGroup.remove();
+                         }
+                    }
+                    if (target.closest('#clearFormBtn')) { clearForm(page); }
+                    if (target.closest('#saveSettingsBtn')) { saveConfiguration(page); }
+                    if (target.closest('#refreshPlaylistsBtn')) { refreshAllPlaylists(); }
+                    if (target.closest('#refreshPlaylistListBtn')) { loadPlaylistList(page); }
+                    if (target.closest('.delete-playlist-btn')) {
+                        const button = target.closest('.delete-playlist-btn');
+                        if (confirm('Are you sure you want to delete the playlist "' + button.getAttribute('data-playlist-name') + '"?')) {
+                            deletePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                        }
+                    }
+                });
+                
+                page.querySelector('#playlistForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    createPlaylist(page);
+                });
+
+                loadConfiguration(page);
+            }
+
+            document.addEventListener('pageshow', function (e) {
+                const page = e.target;
+                if (page.classList.contains('SmartPlaylistConfigurationPage')) {
+                    const tabButtons = page.querySelectorAll('.emby-tab-button');
+                    const tabContents = page.querySelectorAll('[data-tab-content]');
+                    
+                    tabButtons.forEach(button => {
+                        button.addEventListener('click', () => {
+                            const tabId = button.getAttribute('data-tab');
+                            tabButtons.forEach(btn => btn.classList.remove('is-active'));
+                            button.classList.add('is-active');
+                            page.querySelector('#current-tab-title').textContent = button.querySelector('.emby-tab-button-title').textContent;
+                            tabContents.forEach(content => {
+                                content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
+                            });
+                            if (tabId === 'manage') { loadPlaylistList(page); }
+                        });
+                    });
+                    
+                    const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
+                    if (createTab && !createTab.classList.contains('is-active')) {
+                        createTab.click();
+                    }
+                    initPage(page);
+                }
+            });
+        })();
+        </script>
+    </div>
+</body>
+</html> 

@@ -1,0 +1,17 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    user: 1000:1000
+    ports:
+      - "8096:8096" # Map port 8096 on your Mac to port 8096 in the container.
+      - "8920:8920" # HTTPS Web UI (optional)
+      - "7359:7359/udp" # Client discovery (optional)
+      - "1900:1900/udp" # DLNA (optional)
+    volumes:
+      - ./jellyfin-data/config:/config
+      - ./jellyfin-data/cache:/cache
+      - ./media/movies:/movies # You can place some movie files here for testing.
+      - ./media/shows:/shows # You can place some tv/episode files here for testing.
+      - ../build_output:/config/plugins/SmartPlaylist # Mount the build output directly into the plugins directory.
+    restart: "unless-stopped" 

@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+### Development Environment
+
+The local development environment is completely contained within the `/dev` directory.
+
+- This includes the `docker-compose.yml`, the `build-local.sh` script, test media folders, and the `jellyfin-data` directory. The build script is configured to use a separate `meta-dev.json` file and handles all necessary paths for a local build. Do not modify files outside of `/dev` for local testing.
