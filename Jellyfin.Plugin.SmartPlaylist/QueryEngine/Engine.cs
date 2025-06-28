@@ -149,30 +149,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             if (list == null) return false;
             
-            // Debug logging for regex matching on list fields
-            // Note: Using Console.WriteLine since this is a static method without ILogger access
-            // In future versions, this could be refactored to use proper logging
-            var listItems = list.ToArray();
-            Console.WriteLine($"[SmartPlaylist] AnyRegexMatch: pattern='{pattern}', listCount={listItems.Length}");
-            if (listItems.Length > 0 && listItems.Length <= 10) // Only log items if reasonable count
-            {
-                Console.WriteLine($"[SmartPlaylist] List items: [{string.Join(", ", listItems.Select(s => $"'{s}'"))}]");
-            }
-            
             try
             {
                 var regex = new Regex(pattern, RegexOptions.None);
-                var result = list.Any(s => s != null && regex.IsMatch(s));
-                Console.WriteLine($"[SmartPlaylist] Regex match result: {result}");
-                return result;
+                return list.Any(s => s != null && regex.IsMatch(s));
             }
             catch (Exception ex)
             {
                 // If regex pattern is invalid, fall back to basic string contains
-                Console.WriteLine($"[SmartPlaylist] Regex error: {ex.Message}, falling back to contains");
-                var fallbackResult = list.Any(s => s != null && s.Contains(pattern, StringComparison.OrdinalIgnoreCase));
-                Console.WriteLine($"[SmartPlaylist] Fallback result: {fallbackResult}");
-                return fallbackResult;
+                return list.Any(s => s != null && s.Contains(pattern, StringComparison.OrdinalIgnoreCase));
             }
         }
 
