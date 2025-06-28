@@ -105,9 +105,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     
                     // Log the playlist rules
                     _logger.LogInformation("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
-                    foreach (var ruleSet in dto.ExpressionSets)
+
+                    foreach (var set in dto.ExpressionSets)
                     {
-                        foreach (var rule in ruleSet.Expressions)
+                        foreach (var rule in set.Expressions)
                         {
                             _logger.LogInformation("Rule: {MemberName} {Operator} '{TargetValue}'", rule.MemberName, rule.Operator, rule.TargetValue);
                         }
