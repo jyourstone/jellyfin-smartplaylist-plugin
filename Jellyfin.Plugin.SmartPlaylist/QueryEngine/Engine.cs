@@ -4,16 +4,19 @@ using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
     // This is taken entirely from https://stackoverflow.com/questions/6488034/how-to-implement-a-rule-engine
-    public class Engine
+    public static class Engine
     {
-        private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param)
+        private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
         {
-            var left = System.Linq.Expressions.Expression.Property(param, r.MemberName);
+            var left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
             var tProp = left.Type;
+            
+            logger?.LogDebug("SmartPlaylist BuildExpr: Field={Field}, Type={Type}, Operator={Operator}", r.MemberName, tProp.Name, r.Operator);
 
             if (tProp == typeof(string))
             {
@@ -46,35 +49,35 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
 
             // is the operator a known .NET operator?
+            logger?.LogDebug("SmartPlaylist checking if {Operator} is a valid ExpressionType", r.Operator);
             if (Enum.TryParse(r.Operator, out ExpressionType tBinary))
             {
+                logger?.LogDebug("SmartPlaylist {Operator} IS a valid ExpressionType: {ExpressionType}", r.Operator, tBinary);
                 var right = System.Linq.Expressions.Expression.Constant(Convert.ChangeType(r.TargetValue, tProp));
                 // use a binary operation, e.g. 'Equal' -> 'u.Age == 15'
                 return System.Linq.Expressions.Expression.MakeBinary(tBinary, left, right);
             }
+            logger?.LogDebug("SmartPlaylist {Operator} is NOT a valid ExpressionType, continuing", r.Operator);
 
-            if (r.Operator == "MatchRegex" || r.Operator == "NotMatchRegex")
+            if (r.Operator == "MatchRegex" && tProp == typeof(string))
             {
-                var regex = new Regex(r.TargetValue);
+                logger?.LogDebug("SmartPlaylist applying single string MatchRegex to {Field}", r.MemberName);
+                var regex = new Regex(r.TargetValue, RegexOptions.None);
                 var method = typeof(Regex).GetMethod("IsMatch", new[] { typeof(string) });
-                Debug.Assert(method != null, nameof(method) + " != null");
-                var callInstance = System.Linq.Expressions.Expression.Constant(regex);
-
-                var toStringMethod = tProp.GetMethod("ToString", new Type[0]);
-                Debug.Assert(toStringMethod != null, nameof(toStringMethod) + " != null");
-                var methodParam = System.Linq.Expressions.Expression.Call(left, toStringMethod);
-
-                var call = System.Linq.Expressions.Expression.Call(callInstance, method, methodParam);
-                if (r.Operator == "MatchRegex") return call;
+                var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
+                return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
             }
 
             // Handle Contains for IEnumerable
             var ienumerable = tProp.GetInterface("IEnumerable`1");
+            logger?.LogDebug("SmartPlaylist field {Field}: Type={Type}, IEnumerable={IsEnumerable}, Operator={Operator}", 
+                r.MemberName, tProp.Name, ienumerable != null, r.Operator);
+                
             if (ienumerable != null)
             {
-                if (r.Operator == "Contains" || r.Operator == "NotContains")
+                if (ienumerable.GetGenericArguments()[0] == typeof(string))
                 {
-                    if (ienumerable.GetGenericArguments()[0] == typeof(string))
+                    if (r.Operator == "Contains" || r.Operator == "NotContains")
                     {
                         var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
                         var method = typeof(Engine).GetMethod("AnyItemContains", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
@@ -82,7 +85,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         if (r.Operator == "Contains") return containsCall;
                         if (r.Operator == "NotContains") return System.Linq.Expressions.Expression.Not(containsCall);
                     }
-                    else // For other IEnumerable types, use the default Contains
+                    if (r.Operator == "MatchRegex")
+                    {
+                        var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+                        var method = typeof(Engine).GetMethod("AnyRegexMatch", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                        if (method == null)
+                        {
+                            logger?.LogError("SmartPlaylist AnyRegexMatch method not found!");
+                            throw new InvalidOperationException("AnyRegexMatch method not found");
+                        }
+                        logger?.LogDebug("SmartPlaylist building regex expression for field: {Field}, pattern: {Pattern}", r.MemberName, r.TargetValue);
+                        return System.Linq.Expressions.Expression.Call(method, left, right);
+                    }
+                }
+                else // For other IEnumerable types, use the default Contains
+                {
+                    if (r.Operator == "Contains" || r.Operator == "NotContains")
                     {
                         var genericType = ienumerable.GetGenericArguments()[0];
                         var convertedRight = System.Linq.Expressions.Expression.Constant(Convert.ChangeType(r.TargetValue, genericType));
@@ -95,28 +113,30 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         if (r.Operator == "NotContains") return System.Linq.Expressions.Expression.Not(call);
                     }
                 }
-                if (r.Operator == "MatchRegex")
-                {
-                    var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
-                    var method = typeof(Engine).GetMethod("AnyRegexMatch", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                    return System.Linq.Expressions.Expression.Call(method, left, right);
-                }
+            }
+            else 
+            {
+                logger?.LogDebug("SmartPlaylist field {Field} is not IEnumerable, proceeding to fallback", r.MemberName);
             }
 
             // Fallback for other methods - this is still a bit fragile
             // but will work for simple cases.
+            logger?.LogDebug("SmartPlaylist falling back to method: {Operator} on type {Type}", r.Operator, tProp.Name);
             var fallbackMethod = tProp.GetMethod(r.Operator);
+            if (fallbackMethod == null)
+            {
+                logger?.LogError("SmartPlaylist method {Operator} not found on type {Type}", r.Operator, tProp.Name);
+                throw new InvalidOperationException($"Method {r.Operator} not found on type {tProp.Name}");
+            }
             var fallbackConvertedRight = System.Linq.Expressions.Expression.Constant(Convert.ChangeType(r.TargetValue, fallbackMethod.GetParameters()[0].ParameterType));
             return System.Linq.Expressions.Expression.Call(left, fallbackMethod, fallbackConvertedRight);
         }
 
-        public static Func<T, bool> CompileRule<T>(Expression r)
+        public static Func<T, bool> CompileRule<T>(Expression r, ILogger logger = null)
         {
             var paramUser = System.Linq.Expressions.Expression.Parameter(typeof(T));
-            var expr = BuildExpr<T>(r, paramUser);
-            // build a lambda function User->bool and compile it
-            var value = System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(expr, paramUser).Compile(true);
-            return value;
+            var expr = BuildExpr<T>(r, paramUser, logger);
+            return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(expr, paramUser).Compile();
         }
 
         private static bool AnyItemContains(IEnumerable<string> list, string value)
@@ -128,8 +148,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool AnyRegexMatch(IEnumerable<string> list, string pattern)
         {
             if (list == null) return false;
-            var regex = new Regex(pattern, RegexOptions.IgnoreCase);
-            return list.Any(s => s != null && regex.IsMatch(s));
+            
+            // Debug logging for regex matching on list fields
+            // Note: Using Console.WriteLine since this is a static method without ILogger access
+            // In future versions, this could be refactored to use proper logging
+            var listItems = list.ToArray();
+            Console.WriteLine($"[SmartPlaylist] AnyRegexMatch: pattern='{pattern}', listCount={listItems.Length}");
+            if (listItems.Length > 0 && listItems.Length <= 10) // Only log items if reasonable count
+            {
+                Console.WriteLine($"[SmartPlaylist] List items: [{string.Join(", ", listItems.Select(s => $"'{s}'"))}]");
+            }
+            
+            try
+            {
+                var regex = new Regex(pattern, RegexOptions.None);
+                var result = list.Any(s => s != null && regex.IsMatch(s));
+                Console.WriteLine($"[SmartPlaylist] Regex match result: {result}");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                // If regex pattern is invalid, fall back to basic string contains
+                Console.WriteLine($"[SmartPlaylist] Regex error: {ex.Message}, falling back to contains");
+                var fallbackResult = list.Any(s => s != null && s.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+                Console.WriteLine($"[SmartPlaylist] Fallback result: {fallbackResult}");
+                return fallbackResult;
+            }
         }
 
         public static List<ExpressionSet> FixRuleSets(List<ExpressionSet> rulesets)

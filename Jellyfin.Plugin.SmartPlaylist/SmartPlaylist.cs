@@ -28,11 +28,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public Order Order { get; set; }
 
-        private List<List<Func<Operand, bool>>> CompileRuleSets()
+        private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger logger = null)
         {
             var compiledRuleSets = new List<List<Func<Operand, bool>>>();
             foreach (var set in ExpressionSets)
-                compiledRuleSets.Add(set.Expressions.Select(r => Engine.CompileRule<Operand>(r)).ToList());
+                compiledRuleSets.Add(set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList());
             return compiledRuleSets;
         }
 
@@ -42,7 +42,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var results = new List<BaseItem>();
 
-            var compiledRules = CompileRuleSets();
+            var compiledRules = CompileRuleSets(logger);
             foreach (var i in items)
             {
                 var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger);
