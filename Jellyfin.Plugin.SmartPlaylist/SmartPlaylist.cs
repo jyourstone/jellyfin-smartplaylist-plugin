@@ -50,7 +50,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var compiledRules = CompileRuleSets(logger);
             
             // OPTIMIZATION: Check for ItemType rules - apply them first for massive dataset reduction
-            var itemTypeRules = new List<(int setIndex, int exprIndex, Func<Operand, bool> rule, string targetValue)>();
+            var itemTypeRules = new List<(int setIndex, int exprIndex, Func<Operand, bool> rule)>();
             
             for (int setIndex = 0; setIndex < ExpressionSets.Count; setIndex++)
             {
@@ -60,7 +60,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var expr = set.Expressions[exprIndex];
                     if (expr.MemberName == "ItemType")
                     {
-                        itemTypeRules.Add((setIndex, exprIndex, compiledRules[setIndex][exprIndex], expr.TargetValue));
+                        itemTypeRules.Add((setIndex, exprIndex, compiledRules[setIndex][exprIndex]));
                     }
                 }
             }
@@ -73,14 +73,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 foreach (var item in items)
                 {
-                    // Quick ItemType check - very cheap operation
-                    var itemType = item.GetType().Name;
+                    // Create a lightweight operand for ItemType checking
+                    var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false);
                     
-                    // Check if this item matches any ItemType rule
+                    // Check if this item matches any ItemType rule using the compiled rule
                     bool matchesItemType = false;
-                    foreach (var (setIndex, exprIndex, rule, targetValue) in itemTypeRules)
+                    foreach (var (setIndex, exprIndex, rule) in itemTypeRules)
                     {
-                        if (itemType == targetValue)
+                        if (rule(operand))
                         {
                             matchesItemType = true;
                             break;
