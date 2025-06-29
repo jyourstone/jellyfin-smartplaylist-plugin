@@ -194,24 +194,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             {
                 _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
                 
-                // Skip metadata refresh for playlists with no items to avoid NullReferenceException
+                // Skip metadata refresh for playlists with no items to avoid issues
                 if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
                 {
                     _logger.LogDebug("Skipping metadata refresh for empty playlist {PlaylistName}", playlist.Name);
                     return;
                 }
                 
-                // Use the provider manager to refresh metadata - this is the proper way to trigger cover image generation
-                // This approach should properly trigger cover image generation like the manual "Update Metadata" button
-                var refreshOptions = new MetadataRefreshOptions((IDirectoryService)null)
-                {
-                    MetadataRefreshMode = MetadataRefreshMode.Default,
-                    ImageRefreshMode = MetadataRefreshMode.Default,
-                    ReplaceAllMetadata = false,
-                    ReplaceAllImages = false
-                };
+                // Use a simple image update approach that avoids DirectoryService null reference issues
+                // This should trigger cover image generation without the problematic provider manager call
+                await playlist.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
                 
-                await _providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
+                // Note: We're avoiding _providerManager.RefreshSingleItem() because it requires a valid DirectoryService
+                // and causes NullReferenceExceptions in Jellyfin's internal metadata providers.
+                // The UpdateToRepositoryAsync call above should be sufficient to trigger cover image generation.
+                _logger.LogDebug("Image update completed for playlist {PlaylistName}", playlist.Name);
                 
                 _logger.LogDebug("Metadata refresh completed for playlist {PlaylistName}", playlist.Name);
             }
