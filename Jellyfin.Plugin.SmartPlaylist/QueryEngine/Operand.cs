@@ -26,6 +26,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             PlayCount = 0;
             OfficialRating = "";
             IsFavorite = false;
+            AudioLanguages = new List<string>();
         }
 
         public float CommunityRating { get; set; }
@@ -49,5 +50,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public int PlayCount { get; set; }
         public string OfficialRating { get; set; }
         public bool IsFavorite { get; set; }
+        public List<string> AudioLanguages { get; set; }
     }
 }

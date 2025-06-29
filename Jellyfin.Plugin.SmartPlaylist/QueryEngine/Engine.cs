@@ -154,7 +154,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 var regex = new Regex(pattern, RegexOptions.None);
                 return list.Any(s => s != null && regex.IsMatch(s));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // If regex pattern is invalid, fall back to basic string contains
                 return list.Any(s => s != null && s.Contains(pattern, StringComparison.OrdinalIgnoreCase));

@@ -42,29 +42,23 @@ jobs:
           zip -X ../Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip *
           cd ..
 
-      - name: Get Changelog from Commit Message
-        id: get_changelog
+      - name: Get Release Notes
+        id: get_release_notes
         run: |
-          # Get the latest tag name from the trigger event
-          LATEST_TAG=${{ github.ref_name }}
-
-          # Get the previous tag name. If there's no previous tag, this will be empty.
-          # We use '|| true' to prevent the script from failing if no previous tag is found.
-          PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 | head -n1) 2>/dev/null) || true
-
-          if [ -z "$PREVIOUS_TAG" ]; then
-            # If this is the first release, get all commits up to the current tag.
-            echo "No previous tag found. Generating changelog for all commits."
-            CHANGELOG_TEXT=$(git log --pretty="format:- %s")
+          # Try to get the tag annotation message first
+          TAG_MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          
+          if [ -n "$TAG_MESSAGE" ] && [ "$TAG_MESSAGE" != "" ]; then
+            echo "Using tag annotation as release notes"
+            RELEASE_NOTES="$TAG_MESSAGE"
           else
-            # If there's a previous tag, get all commits between the two tags.
-            echo "Generating changelog from tag $PREVIOUS_TAG to $LATEST_TAG."
-            CHANGELOG_TEXT=$(git log $PREVIOUS_TAG..$LATEST_TAG --pretty="format:- %s")
+            echo "No tag annotation found, using default message"
+            RELEASE_NOTES="Release ${{ github.ref_name }} - Please see the commit history for changes in this release."
           fi
 
           {
-            echo 'changelog_text<<EOM'
-            echo "$CHANGELOG_TEXT"
+            echo 'release_notes<<EOM'
+            echo "$RELEASE_NOTES"
             echo 'EOM'
           } >> "$GITHUB_OUTPUT"
 
@@ -73,7 +67,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
-          body: ${{ steps.get_changelog.outputs.changelog_text }}
+          body: ${{ steps.get_release_notes.outputs.release_notes }}
           files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
           draft: false
           prerelease: false
@@ -90,7 +84,7 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
           TARGET_ABI="10.10.7"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
-          CHANGELOG="${{ steps.get_changelog.outputs.changelog_text }}"
+          CHANGELOG="${{ steps.get_release_notes.outputs.release_notes }}"
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
           PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
 

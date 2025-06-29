@@ -294,6 +294,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 ContentFields = new[]
                 {
                     new { Value = "Album", Label = "Album" },
+                    new { Value = "AudioLanguages", Label = "Audio Languages" },
                     new { Value = "ItemType", Label = "Media Type" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
@@ -336,7 +337,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "LessThan", Label = "Less Than" },
                     new { Value = "GreaterThanOrEqual", Label = "Greater Than or Equal" },
                     new { Value = "LessThanOrEqual", Label = "Less Than or Equal" },
-                    new { Value = "MatchRegex", Label = "Matches Regex" }
+                    new { Value = "MatchRegex", Label = "Matches Regex (.NET syntax)" }
                 },
                 OrderOptions = new[]
                 {

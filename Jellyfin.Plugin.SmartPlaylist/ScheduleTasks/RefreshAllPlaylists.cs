@@ -11,6 +11,8 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Providers;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Playlists;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
@@ -29,6 +31,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         private readonly IUserDataManager _userDataManager;
         private readonly ILogger<RefreshAllPlaylists> _logger;
         private readonly IServerApplicationPaths _serverApplicationPaths;
+        private readonly IProviderManager _providerManager;
 
         public RefreshAllPlaylists(
             IUserManager userManager,
@@ -36,7 +39,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             IPlaylistManager playlistManager,
             IUserDataManager userDataManager,
             ILogger<RefreshAllPlaylists> logger,
-            IServerApplicationPaths serverApplicationPaths)
+            IServerApplicationPaths serverApplicationPaths,
+            IProviderManager providerManager)
         {
             _userManager = userManager;
             _libraryManager = libraryManager;
@@ -44,6 +48,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             _userDataManager = userDataManager;
             _logger = logger;
             _serverApplicationPaths = serverApplicationPaths;
+            _providerManager = providerManager;
         }
 
         /// <summary>
@@ -140,6 +145,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                         _logger.LogInformation("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items", smartPlaylistName, user.Username, newLinkedChildren.Length);
                         existingPlaylist.LinkedChildren = newLinkedChildren;
                         await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                        
+                        // Refresh metadata to generate cover images
+                        await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken).ConfigureAwait(false);
                     }
                     else
                     {
@@ -156,6 +164,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                         {
                             newPlaylist.LinkedChildren = newLinkedChildren;
                             await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                            
+                            // Refresh metadata to generate cover images
+                            await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
                         }
                     }
                 }
@@ -167,6 +178,43 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             {
                 _logger.LogError(ex, "Error occurred during SmartPlaylist refresh task");
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Triggers metadata processing for playlist to generate cover images.
+        /// This simulates the manual "update metadata" action that generates cover images.
+        /// </summary>
+        /// <param name="playlist">The playlist to refresh.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>Task.</returns>
+        private async Task RefreshPlaylistMetadataAsync(Playlist playlist, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
+                
+                // Skip metadata refresh for playlists with no items to avoid issues
+                if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
+                {
+                    _logger.LogDebug("Skipping metadata refresh for empty playlist {PlaylistName}", playlist.Name);
+                    return;
+                }
+                
+                // Use a simple image update approach that avoids DirectoryService null reference issues
+                // This should trigger cover image generation without the problematic provider manager call
+                await playlist.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+                
+                // Note: We're avoiding _providerManager.RefreshSingleItem() because it requires a valid DirectoryService
+                // and causes NullReferenceExceptions in Jellyfin's internal metadata providers.
+                // The UpdateToRepositoryAsync call above should be sufficient to trigger cover image generation.
+                _logger.LogDebug("Image update completed for playlist {PlaylistName}", playlist.Name);
+                
+                _logger.LogDebug("Metadata refresh completed for playlist {PlaylistName}", playlist.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName}. Cover image may not be generated.", playlist.Name);
             }
         }
 

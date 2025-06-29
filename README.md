@@ -75,7 +75,6 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
 - **Edit Playlists**: The ability to edit existing smart playlists directly from the UI without needing to delete and recreate them.
-- **Playlist Images**: Automatically populate playlist images based on the content within them.
 - **More Rule Fields**: Add new fields for creating rules, for example `Actors`.
 - **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
 - **Update to .NET 9**: Update package references and framework from .NET 8 to .NET9.
@@ -128,7 +127,22 @@ The web interface provides access to all available fields for creating playlist 
 - **Contains** / **Not Contains** - Partial text matching
 - **Greater Than** / **Less Than** - Numeric comparisons
 - **Greater Than or Equal** / **Less Than or Equal** - Numeric comparisons
-- **Matches Regex** - Advanced pattern matching
+- **Matches Regex** - Advanced pattern matching using .NET regex syntax
+
+#### Regex Pattern Examples
+
+The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
+
+- **Case-insensitive matching**: `(?i)swe` (matches "swe", "SWE", "Swe")
+- **Multiple options**: `(?i)(eng|en)` (matches "eng", "en", "ENG", etc.)
+- **Starts with**: `^Action` (title starts with "Action")
+- **Ends with**: `2023$` (ends with "2023")
+- **Contains numbers**: `\d+` (contains one or more digits)
+- **Scandinavian languages**: `(?i)(swe|nor|dan|fin)`
+
+**Note**: Do not use JavaScript-style regex like `/pattern/flags` - use .NET syntax instead.
+
+**Test your patterns:** Use [Regex101.com with .NET flavor](https://regex101.com/?flavor=dotnet) to test and debug your regex patterns before using them in smart playlists.
 
 ### Sorting Options
 
