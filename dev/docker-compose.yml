@@ -15,4 +15,6 @@ services:
       - ./media/shows:/shows # You can place some tv/episode files here for testing.
       - ./media/music:/music # You can place some music files here for testing.
       - ../build_output:/config/plugins/SmartPlaylist # Mount the build output directly into the plugins directory.
+      # Production media from network drive (read-only for safety):
+      - /Volumes/Media:/prod-media:ro
     restart: "unless-stopped" 
