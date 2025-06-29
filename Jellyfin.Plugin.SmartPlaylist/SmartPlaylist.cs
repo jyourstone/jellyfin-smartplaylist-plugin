@@ -82,18 +82,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // Create a lightweight operand for ItemType checking
                     var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false);
                     
-                    // Check if this item matches any ItemType rule using the compiled rule
-                    bool matchesItemType = false;
-                    foreach (var (setIndex, exprIndex, rule) in itemTypeRules)
+                    // Check if this item matches ALL ItemType rules within AT LEAST ONE rule set
+                    // Group ItemType rules by rule set and check each rule set independently
+                    bool matchesAnyRuleSet = false;
+                    
+                    foreach (var ruleSetIndex in ruleSetsWithItemType)
                     {
-                        if (rule(operand))
+                        // Get all ItemType rules for this specific rule set
+                        var ruleSetItemTypeRules = itemTypeRules.Where(r => r.setIndex == ruleSetIndex);
+                        
+                        // Check if item matches ALL ItemType rules in this rule set
+                        if (ruleSetItemTypeRules.All(r => r.rule(operand)))
                         {
-                            matchesItemType = true;
+                            matchesAnyRuleSet = true;
                             break;
                         }
                     }
                     
-                    if (matchesItemType)
+                    if (matchesAnyRuleSet)
                     {
                         preFilteredItems.Add(item);
                     }
