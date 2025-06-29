@@ -21,6 +21,23 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 {
     /// <summary>
+    /// Basic DirectoryService implementation for playlist metadata refresh.
+    /// Provides empty/safe implementations to avoid NullReferenceExceptions.
+    /// </summary>
+    public class BasicDirectoryService : IDirectoryService
+    {
+        public List<FileSystemMetadata> GetDirectories(string path) => new List<FileSystemMetadata>();
+        public List<FileSystemMetadata> GetFiles(string path) => new List<FileSystemMetadata>();
+        public FileSystemMetadata[] GetFileSystemEntries(string path) => Array.Empty<FileSystemMetadata>();
+        public FileSystemMetadata GetFile(string path) => null;
+        public FileSystemMetadata GetDirectory(string path) => null;
+        public FileSystemMetadata GetFileSystemEntry(string path) => null;
+        public IReadOnlyList<string> GetFilePaths(string path) => Array.Empty<string>();
+        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => Array.Empty<string>();
+        public bool IsAccessible(string path) => false;
+    }
+
+    /// <summary>
     /// Class RefreshAllPlaylists.
     /// </summary>
     public class RefreshAllPlaylists : IScheduledTask
@@ -194,23 +211,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             {
                 _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
                 
-                // Skip metadata refresh for playlists with no items to avoid issues
+                // Only generate cover images for playlists that have content
+                // This avoids NullReferenceExceptions for empty playlists
                 if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
                 {
-                    _logger.LogDebug("Skipping metadata refresh for empty playlist {PlaylistName}", playlist.Name);
+                    _logger.LogDebug("Skipping cover image generation for empty playlist {PlaylistName} - no content to generate image from", playlist.Name);
                     return;
                 }
                 
-                // Use a simple image update approach that avoids DirectoryService null reference issues
-                // This should trigger cover image generation without the problematic provider manager call
-                await playlist.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+                // Use the provider manager to trigger cover image generation
+                // Use a basic DirectoryService implementation to avoid NullReferenceExceptions
+                var directoryService = new BasicDirectoryService();
+                var refreshOptions = new MetadataRefreshOptions(directoryService)
+                {
+                    MetadataRefreshMode = MetadataRefreshMode.Default,
+                    ImageRefreshMode = MetadataRefreshMode.Default,
+                    ReplaceAllMetadata = false,
+                    ReplaceAllImages = false
+                };
                 
-                // Note: We're avoiding _providerManager.RefreshSingleItem() because it requires a valid DirectoryService
-                // and causes NullReferenceExceptions in Jellyfin's internal metadata providers.
-                // The UpdateToRepositoryAsync call above should be sufficient to trigger cover image generation.
-                _logger.LogDebug("Image update completed for playlist {PlaylistName}", playlist.Name);
+                await _providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
-                _logger.LogDebug("Metadata refresh completed for playlist {PlaylistName}", playlist.Name);
+                _logger.LogDebug("Cover image generation completed for playlist {PlaylistName}", playlist.Name);
             }
             catch (Exception ex)
             {
