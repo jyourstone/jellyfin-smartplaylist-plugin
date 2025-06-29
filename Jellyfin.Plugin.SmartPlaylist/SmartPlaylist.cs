@@ -50,7 +50,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var compiledRules = CompileRuleSets(logger);
             
             // OPTIMIZATION: Check for ItemType rules - apply them first for massive dataset reduction
+            // Only apply pre-filtering if ALL rule sets have ItemType constraints to avoid excluding
+            // items that could match rule sets without ItemType constraints
             var itemTypeRules = new List<(int setIndex, int exprIndex, Func<Operand, bool> rule)>();
+            var ruleSetsWithItemType = new HashSet<int>();
             
             for (int setIndex = 0; setIndex < ExpressionSets.Count; setIndex++)
             {
@@ -61,14 +64,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     if (expr.MemberName == "ItemType")
                     {
                         itemTypeRules.Add((setIndex, exprIndex, compiledRules[setIndex][exprIndex]));
+                        ruleSetsWithItemType.Add(setIndex);
                     }
                 }
             }
             
-            // Apply ItemType filtering first if any ItemType rules exist
-            if (itemTypeRules.Count > 0)
+            // Only apply ItemType filtering if ALL rule sets have ItemType constraints
+            bool canApplyItemTypeOptimization = ruleSetsWithItemType.Count == ExpressionSets.Count;
+            
+            if (canApplyItemTypeOptimization && itemTypeRules.Count > 0)
             {
-                logger?.LogDebug("Applying ItemType pre-filtering to reduce dataset");
+                logger?.LogDebug("Applying ItemType pre-filtering to reduce dataset (all rule sets have ItemType constraints)");
                 var preFilteredItems = new List<BaseItem>();
                 
                 foreach (var item in items)
@@ -98,6 +104,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 // Continue with the pre-filtered items
                 items = preFilteredItems;
+            }
+            else if (itemTypeRules.Count > 0)
+            {
+                logger?.LogDebug("Skipping ItemType pre-filtering optimization: {RuleSetsWithItemType} of {TotalRuleSets} rule sets have ItemType constraints", 
+                    ruleSetsWithItemType.Count, ExpressionSets.Count);
             }
             
             if (needsAudioLanguages)
@@ -174,10 +185,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // Phase 1: Extract cheap properties and check non-audio rules
                     var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false);
                     
-                    // Check if item passes all non-audio rules for any rule set
+                    // Check if item passes all non-audio rules for any rule set that has non-audio rules
                     bool passesNonAudioRules = false;
+                    bool hasAudioOnlyRuleSets = false;
+                    
                     for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
                     {
+                        // Check if this rule set has only AudioLanguages rules (no cheap rules)
+                        if (cheapCompiledRules[setIndex].Count == 0)
+                        {
+                            hasAudioOnlyRuleSets = true;
+                            continue; // Can't evaluate audio-only rule sets in cheap phase
+                        }
+                        
+                        // Evaluate cheap rules for this rule set
                         if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
                         {
                             passesNonAudioRules = true;
@@ -185,7 +206,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                     }
                     
-                    if (!passesNonAudioRules) continue; // Skip expensive audio extraction
+                    // Skip expensive audio extraction only if:
+                    // 1. No rule set passed the cheap evaluation AND
+                    // 2. There are no audio-only rule sets that still need to be checked
+                    if (!passesNonAudioRules && !hasAudioOnlyRuleSets)
+                        continue;
                     
                     // Phase 2: Extract audio languages and check complete rules
                     var fullOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, true);
