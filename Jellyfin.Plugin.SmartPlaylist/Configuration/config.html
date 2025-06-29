@@ -423,12 +423,30 @@
                     }
                 }
 
+                // Function to show/hide regex help
+                function updateRegexHelp() {
+                    const existingHelp = newRuleGroup.querySelector('.regex-help');
+                    if (existingHelp) existingHelp.remove();
+                    
+                    if (operatorSelect.value === 'MatchRegex') {
+                        const helpDiv = document.createElement('div');
+                        helpDiv.className = 'regex-help field-description';
+                        helpDiv.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em; font-size: 0.85em; color: #aaa; background: rgba(255,255,255,0.05); padding: 0.5em; border-radius: 3px;';
+                        helpDiv.innerHTML = '<strong>Regex Help:</strong> Use .NET syntax. Examples: <code>(?i)swe</code> (case-insensitive), <code>(?i)(eng|en)</code> (multiple options), <code>^Action</code> (starts with). Do not use JavaScript-style /pattern/flags.<br><strong>Test patterns:</strong> <a href="https://regex101.com/?flavor=dotnet" target="_blank" style="color: #00a4dc;">Regex101.com (.NET flavor)</a>';
+                        newRuleGroup.appendChild(helpDiv);
+                    }
+                }
+
                 setValueInput(fieldSelect.value);
                 updateOperatorOptions(fieldSelect.value, operatorSelect);
+                
                 fieldSelect.addEventListener('change', function() {
                     setValueInput(fieldSelect.value);
                     updateOperatorOptions(fieldSelect.value, operatorSelect);
+                    updateRegexHelp();
                 });
+                
+                operatorSelect.addEventListener('change', updateRegexHelp);
             }
             
             async function createPlaylist(page) {

@@ -146,7 +146,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                         existingPlaylist.LinkedChildren = newLinkedChildren;
                         await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                         
-                        // Trigger metadata refresh to generate cover image
+                        // Refresh metadata to generate cover images
                         await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken).ConfigureAwait(false);
                     }
                     else
@@ -165,7 +165,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                             newPlaylist.LinkedChildren = newLinkedChildren;
                             await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                             
-                            // Trigger metadata refresh to generate cover image
+                            // Refresh metadata to generate cover images
                             await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
                         }
                     }
@@ -194,10 +194,24 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             {
                 _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
                 
-                // Use the playlist's own RefreshMetadata method to trigger image generation
-                // This should trigger the same process as the "Update Metadata" button in the UI
-                var refreshOptions = new MetadataRefreshOptions((IDirectoryService)null);
-                await playlist.RefreshMetadata(refreshOptions, cancellationToken).ConfigureAwait(false);
+                // Skip metadata refresh for playlists with no items to avoid NullReferenceException
+                if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
+                {
+                    _logger.LogDebug("Skipping metadata refresh for empty playlist {PlaylistName}", playlist.Name);
+                    return;
+                }
+                
+                // Use the provider manager to refresh metadata - this is the proper way to trigger cover image generation
+                // This approach should properly trigger cover image generation like the manual "Update Metadata" button
+                var refreshOptions = new MetadataRefreshOptions((IDirectoryService)null)
+                {
+                    MetadataRefreshMode = MetadataRefreshMode.Default,
+                    ImageRefreshMode = MetadataRefreshMode.Default,
+                    ReplaceAllMetadata = false,
+                    ReplaceAllImages = false
+                };
+                
+                await _providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
                 _logger.LogDebug("Metadata refresh completed for playlist {PlaylistName}", playlist.Name);
             }

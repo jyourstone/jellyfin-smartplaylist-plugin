@@ -112,6 +112,164 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
             operand.FolderPath = baseItem.ContainingFolderPath;
             operand.FileName = System.IO.Path.GetFileName(baseItem.Path) ?? "";
+            
+            // Extract audio languages from media streams 
+            operand.AudioLanguages = new List<string>();
+            try
+            {
+                logger?.LogDebug("Extracting audio languages for item {Name} (Type: {ItemType})", baseItem.Name, baseItem.GetType().Name);
+                
+                // List all available properties to see what we can access
+                var allProperties = baseItem.GetType().GetProperties();
+                var propertyNames = string.Join(", ", allProperties.Select(p => p.Name).OrderBy(n => n).Take(20));
+                logger?.LogDebug("Available properties (first 20): {Properties}", propertyNames);
+                
+                // Try multiple approaches to access media stream information
+                var mediaStreams = new List<object>();
+                
+                // Approach 1: Look for MediaStreams property (known to fail, but let's confirm)
+                var mediaStreamsProperty = baseItem.GetType().GetProperty("MediaStreams");
+                logger?.LogDebug("MediaStreams property found: {Found}", mediaStreamsProperty != null);
+                
+                // Approach 2: Try GetMediaStreams method if it exists
+                var getMediaStreamsMethod = baseItem.GetType().GetMethod("GetMediaStreams");
+                logger?.LogDebug("GetMediaStreams method found: {Found}", getMediaStreamsMethod != null);
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                            logger?.LogDebug("Found {Count} streams via GetMediaStreams method", mediaStreams.Count);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Error calling GetMediaStreams method");
+                    }
+                }
+                
+                // Approach 3: Check if it implements IHasMediaSources interface
+                var hasMediaSourcesInterface = baseItem.GetType().GetInterface("IHasMediaSources");
+                logger?.LogDebug("IHasMediaSources interface found: {Found}", hasMediaSourcesInterface != null);
+                
+                // Approach 4: Look for MediaSources property (similar to how RunTimeTicks works)
+                var mediaSourcesProperty = baseItem.GetType().GetProperty("MediaSources");
+                logger?.LogDebug("MediaSources property found: {Found}", mediaSourcesProperty != null);
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    logger?.LogDebug("MediaSources value: {IsNull}, Type: {Type}", 
+                        mediaSources == null, mediaSources?.GetType().Name ?? "null");
+                    
+                    if (mediaSources != null)
+                    {
+                        // Try to access MediaSources as enumerable
+                        if (mediaSources is IEnumerable<object> sourceEnum)
+                        {
+                            foreach (var source in sourceEnum)
+                            {
+                                try
+                                {
+                                    var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                    if (streamsProperty != null)
+                                    {
+                                        var streams = streamsProperty.GetValue(source);
+                                        if (streams is IEnumerable<object> streamList)
+                                        {
+                                            mediaStreams.AddRange(streamList);
+                                            logger?.LogDebug("Found {Count} streams via MediaSources property", streamList.Count());
+                                        }
+                                    }
+                                }
+                                catch (Exception sourceEx)
+                                {
+                                    logger?.LogWarning(sourceEx, "Error processing MediaSource for item {Name}", baseItem.Name);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Process found streams
+                logger?.LogDebug("Total media streams found: {Count}", mediaStreams.Count);
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var streamProperties = stream.GetType().GetProperties();
+                        var streamPropNames = string.Join(", ", streamProperties.Select(p => p.Name).OrderBy(n => n));
+                        logger?.LogDebug("Stream properties: {Properties}", streamPropNames);
+                        
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        var languageProperty = stream.GetType().GetProperty("Language");
+                        var titleProperty = stream.GetType().GetProperty("Title");
+                        var displayTitleProperty = stream.GetType().GetProperty("DisplayTitle");
+                        
+                        if (typeProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            var language = languageProperty?.GetValue(stream) as string;
+                            var title = titleProperty?.GetValue(stream) as string;
+                            var displayTitle = displayTitleProperty?.GetValue(stream) as string;
+                            
+                            logger?.LogDebug("Stream - Type: {Type}, Language: {Language}, Title: {Title}, DisplayTitle: {DisplayTitle}", 
+                                streamType, language ?? "null", title ?? "null", displayTitle ?? "null");
+                            
+                            // Check if it's an audio stream
+                            if (streamType != null && streamType.ToString() == "Audio")
+                            {
+                                // Try multiple sources for language info
+                                var languageToAdd = language;
+                                
+                                // If no language code, try to extract from title or displayTitle
+                                if (string.IsNullOrEmpty(languageToAdd))
+                                {
+                                    if (!string.IsNullOrEmpty(title) && title.ToLowerInvariant().Contains("swedish"))
+                                    {
+                                        languageToAdd = "swe";
+                                    }
+                                    else if (!string.IsNullOrEmpty(displayTitle) && displayTitle.ToLowerInvariant().Contains("swedish"))
+                                    {
+                                        languageToAdd = "swe";
+                                    }
+                                }
+                                
+                                if (!string.IsNullOrEmpty(languageToAdd))
+                                {
+                                    // Normalize language codes
+                                    var normalizedLang = languageToAdd.ToLowerInvariant();
+                                    if (normalizedLang == "sv") normalizedLang = "swe";
+                                    if (normalizedLang == "swedish") normalizedLang = "swe";
+                                    if (normalizedLang == "en") normalizedLang = "eng";
+                                    if (normalizedLang == "english") normalizedLang = "eng";
+                                    
+                                    if (!operand.AudioLanguages.Contains(normalizedLang))
+                                    {
+                                        operand.AudioLanguages.Add(normalizedLang);
+                                        logger?.LogDebug("Added audio language: {Language} (original: {Original})", normalizedLang, languageToAdd);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception streamEx)
+                    {
+                        logger?.LogWarning(streamEx, "Error processing individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                logger?.LogInformation("Item {Name}: Found {AudioLanguageCount} audio languages: {AudioLanguages}", 
+                    baseItem.Name, operand.AudioLanguages.Count, string.Join(", ", operand.AudioLanguages));
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error extracting audio languages for item {Name}", baseItem.Name);
+            }
+            
             return operand;
         }
 
