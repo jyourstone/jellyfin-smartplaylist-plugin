@@ -25,6 +25,12 @@ This plugin allows you to create playlists based on a set of rules, which will a
 
 SmartPlaylist now features a modern web-based configuration interface through the plugin settings page! No more manual JSON editing required.
 
+<div align="center">
+    <p>
+        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="500"/>
+    </p>
+</div>
+
 ### Using the Web Interface
 
 The web interface is organized into three tabs:
