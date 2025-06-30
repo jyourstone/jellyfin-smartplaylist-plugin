@@ -47,13 +47,13 @@ jobs:
         run: |
           echo "Getting release notes for tag: ${{ github.ref_name }}"
           
-          # Try multiple methods to get tag annotation
+          # Try to get tag annotation message (not commit message)
           TAG_MESSAGE=""
           
-          # Method 1: git show for annotated tags
-          echo "Method 1: Trying git show"
-          TAG_MESSAGE=$(git show ${{ github.ref_name }} --format=%B --no-patch 2>/dev/null | head -n -1 || echo "")
-          echo "Result from git show: '$TAG_MESSAGE'"
+          # Method 1: git for-each-ref (most reliable for tag annotations)
+          echo "Method 1: Trying git for-each-ref"
+          TAG_MESSAGE=$(git for-each-ref --format='%(contents)' refs/tags/${{ github.ref_name }} 2>/dev/null || echo "")
+          echo "Result from for-each-ref: '$TAG_MESSAGE'"
           
           # Method 2: git tag with format (for annotated tags)
           if [ -z "$TAG_MESSAGE" ]; then
@@ -62,11 +62,15 @@ jobs:
             echo "Result from git tag format: '$TAG_MESSAGE'"
           fi
           
-          # Method 3: git for-each-ref (works for both lightweight and annotated)
+          # Method 3: Check if it's an annotated tag with git cat-file
           if [ -z "$TAG_MESSAGE" ]; then
-            echo "Method 3: Trying git for-each-ref"
-            TAG_MESSAGE=$(git for-each-ref --format='%(contents)' refs/tags/${{ github.ref_name }} 2>/dev/null || echo "")
-            echo "Result from for-each-ref: '$TAG_MESSAGE'"
+            echo "Method 3: Trying git cat-file"
+            if git cat-file -t ${{ github.ref_name }} 2>/dev/null | grep -q "tag"; then
+              TAG_MESSAGE=$(git cat-file -p ${{ github.ref_name }} | sed '1,/^$/d' 2>/dev/null || echo "")
+              echo "Result from cat-file: '$TAG_MESSAGE'"
+            else
+              echo "Not an annotated tag, skipping cat-file method"
+            fi
           fi
           
           # Clean up whitespace
