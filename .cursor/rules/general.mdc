@@ -8,3 +8,151 @@ alwaysApply: true
 The local development environment is completely contained within the `/dev` directory.
 
 - This includes the `docker-compose.yml`, the `build-local.sh` script, test media folders, and the `jellyfin-data` directory. The build script is configured to use a separate `meta-dev.json` file and handles all necessary paths for a local build. Do not modify files outside of `/dev` for local testing.
+
+### Metadata Extraction Patterns
+
+When adding new fields that require metadata from Jellyfin's BaseItem objects, follow these established patterns:
+
+#### Direct Property Access (Cheap Operations)
+```csharp
+// These work directly and are performant
+operand.Genres = baseItem.Genres.ToList();
+operand.Studios = baseItem.Studios.ToList();
+operand.Tags = baseItem.Tags?.ToList() ?? new List<string>();
+operand.Name = baseItem.Name;
+operand.ProductionYear = baseItem.ProductionYear.GetValueOrDefault();
+```
+
+#### Library Manager Queries (Expensive Operations)
+```csharp
+// Use for related data that requires database queries
+var peopleQuery = new InternalPeopleQuery { ItemId = baseItem.Id };
+var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
+```
+
+#### Reflection-Based Discovery
+When exploring unknown object structures, use this debugging pattern:
+```csharp
+// Discover available properties
+var properties = someObject.GetType().GetProperties().Select(p => p.Name).ToArray();
+logger?.LogDebug("Available properties: [{Properties}]", string.Join(", ", properties));
+
+// Discover available methods
+var methods = someObject.GetType().GetMethods()
+    .Where(m => m.Name.Contains("keyword"))
+    .Select(m => m.Name)
+    .ToArray();
+logger?.LogDebug("Methods containing 'keyword': [{Methods}]", string.Join(", ", methods));
+```
+
+### Debugging and Testing Workflow
+
+#### Local Development Loop
+1. **Make code changes**
+2. **Build**: `./build-local.sh` (from `/dev` directory)
+3. **Wait for container restart** (10-15 seconds)
+4. **Check logs**: `tail -n 100 jellyfin-data/config/log/log_YYYYMMDD.log`
+
+#### Log Analysis Patterns
+```bash
+# Find specific debug messages
+grep -A 10 -B 5 "specific_debug_message" jellyfin-data/config/log/log_*.log
+
+# Monitor real-time logs during testing
+tail -f jellyfin-data/config/log/log_*.log | grep "SmartPlaylist"
+
+# Count log entries for performance analysis
+grep -c "expensive_operation" jellyfin-data/config/log/log_*.log
+```
+
+#### Debugging Unknown Data Structures
+Always add comprehensive logging when exploring new object types:
+```csharp
+if (result != null)
+{
+    logger?.LogDebug("Result type: {Type}", result.GetType().Name);
+    
+    // Log properties
+    var properties = result.GetType().GetProperties().Select(p => p.Name).ToArray();
+    logger?.LogDebug("Properties: [{Props}]", string.Join(", ", properties));
+    
+    // Test if it's enumerable
+    if (result is IEnumerable<object> enumerable)
+    {
+        var items = enumerable.Take(3).ToList();
+        logger?.LogDebug("Enumerable with {Count} items (showing first 3)", items.Count);
+        
+        foreach (var item in items)
+        {
+            var itemProps = item.GetType().GetProperties().Select(p => p.Name).ToArray();
+            logger?.LogDebug("Item properties: [{Props}]", string.Join(", ", itemProps));
+        }
+    }
+}
+```
+
+### Performance Optimization Architecture
+
+The plugin implements a two-phase filtering approach for expensive fields (AudioLanguages, People):
+
+1. **Phase 1 (Cheap)**: Extract basic properties and evaluate non-expensive rules
+2. **Phase 2 (Expensive)**: Only for items that pass Phase 1, extract expensive data and evaluate complete rules
+
+#### Adding New Expensive Fields
+
+1. **Add to Operand class**: Add the new property as `List<string>` or appropriate type
+2. **Modify Factory.cs**:
+   ```csharp
+   public static Operand GetMediaType(..., bool extractExpensiveField = false)
+   {
+       operand.ExpensiveField = new List<string>();
+       if (extractExpensiveField)
+       {
+           try
+           {
+               // Expensive extraction logic here
+           }
+           catch (Exception ex)
+           {
+               logger?.LogWarning(ex, "Error extracting expensive field");
+           }
+       }
+   }
+   ```
+
+3. **Update SmartPlaylist.cs filtering**:
+   ```csharp
+   // Add field detection
+   var needsExpensiveField = ExpressionSets
+       .SelectMany(set => set.Expressions)
+       .Any(expr => expr.MemberName == "ExpensiveField");
+   
+   // Add to expensive field condition
+   if (needsAudioLanguages || needsPeople || needsExpensiveField)
+   {
+       // Add to expensive rule categorization and method calls
+       OperandFactory.GetMediaType(..., needsAudioLanguages, needsPeople, needsExpensiveField);
+   }
+   ```
+
+4. **Add to API**: Include in the appropriate field category in `SmartPlaylistController.cs`
+5. **Update UI**: Add to list fields in `config.html` if it's a collection
+
+### Common Jellyfin Data Patterns
+
+#### BaseItem Properties (Usually Direct Access)
+- `Name`, `ProductionYear`, `OfficialRating`
+- `Genres`, `Studios`, `Tags` (collections)
+- `CommunityRating`, `CriticRating` (may need `.GetValueOrDefault()`)
+- `DateCreated`, `DateModified`, `DateLastRefreshed`
+- `IsPlayed(user)` (user-specific)
+
+#### Requires Library Manager Queries
+- **People/Cast/Crew**: Use `InternalPeopleQuery` with `ItemId`
+- **Audio/Subtitle streams**: Access via `MediaSources` property or `GetMediaStreams()` method
+- **Related items**: Use appropriate query objects
+
+#### User Data (Requires UserDataManager)
+- `PlayCount`, `IsFavorite`, `LastPlayedDate`
+- Always provide fallbacks for when UserDataManager is unavailable

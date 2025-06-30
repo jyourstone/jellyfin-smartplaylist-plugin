@@ -42,10 +42,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var results = new List<BaseItem>();
 
-            // Check if any rules use AudioLanguages field to avoid expensive extraction when not needed
+            // Check if any rules use expensive fields to avoid unnecessary extraction
             var needsAudioLanguages = ExpressionSets
                 .SelectMany(set => set.Expressions)
                 .Any(expr => expr.MemberName == "AudioLanguages");
+            
+            var needsPeople = ExpressionSets
+                .SelectMany(set => set.Expressions)
+                .Any(expr => expr.MemberName == "People");
 
             var compiledRules = CompileRuleSets(logger);
             
@@ -80,7 +84,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 foreach (var item in items)
                 {
                     // Create a lightweight operand for ItemType checking
-                    var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false);
+                    var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false);
                     
                     // Check if this item matches ALL ItemType rules within AT LEAST ONE rule set
                     // Group ItemType rules by rule set and check each rule set independently
@@ -117,29 +121,30 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     ruleSetsWithItemType.Count, ExpressionSets.Count);
             }
             
-            if (needsAudioLanguages)
+            if (needsAudioLanguages || needsPeople)
             {
                 // Optimization: Separate rules into cheap and expensive categories
                 var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
-                var audioLanguagesCompiledRules = new List<List<Func<Operand, bool>>>();
+                var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
                 
-                logger?.LogDebug("Separating rules into cheap and expensive categories");
+                logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded})", 
+                    needsAudioLanguages, needsPeople);
                 
                 for (int setIndex = 0; setIndex < ExpressionSets.Count; setIndex++)
                 {
                     var set = ExpressionSets[setIndex];
                     var cheapRules = new List<Func<Operand, bool>>();
-                    var audioRules = new List<Func<Operand, bool>>();
+                    var expensiveRules = new List<Func<Operand, bool>>();
                     
                     for (int exprIndex = 0; exprIndex < set.Expressions.Count; exprIndex++)
                     {
                         var expr = set.Expressions[exprIndex];
                         var compiledRule = compiledRules[setIndex][exprIndex];
                         
-                        if (expr.MemberName == "AudioLanguages")
+                        if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People")
                         {
-                            audioRules.Add(compiledRule);
-                            logger?.LogDebug("Rule set {SetIndex}: Added AudioLanguages rule: {Field} {Operator} {Value}", 
+                            expensiveRules.Add(compiledRule);
+                            logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
                                 setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
                         }
                         else
@@ -151,28 +156,36 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                     
                     cheapCompiledRules.Add(cheapRules);
-                    audioLanguagesCompiledRules.Add(audioRules);
+                    expensiveCompiledRules.Add(expensiveRules);
                     
-                    logger?.LogDebug("Rule set {SetIndex}: {CheapCount} cheap rules, {AudioCount} audio rules", 
-                        setIndex, cheapRules.Count, audioRules.Count);
+                    logger?.LogDebug("Rule set {SetIndex}: {CheapCount} cheap rules, {ExpensiveCount} expensive rules", 
+                        setIndex, cheapRules.Count, expensiveRules.Count);
                 }
                 
-                // Check if there are ANY non-audio rules across all rule sets
-                bool hasNonAudioRules = cheapCompiledRules.Any(rules => rules.Count > 0);
+                // Check if there are ANY non-expensive rules across all rule sets
+                bool hasNonExpensiveRules = cheapCompiledRules.Any(rules => rules.Count > 0);
                 
-                if (!hasNonAudioRules)
+                if (!hasNonExpensiveRules)
                 {
-                    // No cheap rules to filter with - just extract audio languages for all items
-                    logger?.LogDebug("No non-audio rules found, extracting audio languages for all items");
+                    // No cheap rules to filter with - extract expensive data for all items
+                    logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
                     foreach (var i in items)
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, true);
+                        var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, needsAudioLanguages, needsPeople);
                         
-                        // Debug: Log audio languages found for first few items
+                        // Debug: Log expensive data found for first few items
                         if (results.Count < 5)
                         {
-                            logger?.LogInformation("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                                i.Name, operand.AudioLanguages.Count, string.Join(", ", operand.AudioLanguages));
+                            if (needsAudioLanguages)
+                            {
+                                logger?.LogInformation("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                    i.Name, operand.AudioLanguages.Count, string.Join(", ", operand.AudioLanguages));
+                            }
+                            if (needsPeople)
+                            {
+                                logger?.LogInformation("Item '{Name}': Found {Count} people: [{People}]", 
+                                    i.Name, operand.People.Count, string.Join(", ", operand.People.Take(5)));
+                            }
                         }
                         
                         if (compiledRules.Any(set => set.All(rule => rule(operand))))
@@ -183,49 +196,57 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
-                    // Two-phase filtering: cheap rules first, then expensive audio extraction
-                    logger?.LogDebug("Using two-phase filtering for AudioLanguages optimization");
+                    // Two-phase filtering: cheap rules first, then expensive data extraction
+                    logger?.LogDebug("Using two-phase filtering for expensive field optimization");
                 
                 foreach (var i in items)
                 {
-                    // Phase 1: Extract cheap properties and check non-audio rules
-                    var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false);
+                    // Phase 1: Extract cheap properties and check non-expensive rules
+                    var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
                     
-                    // Check if item passes all non-audio rules for any rule set that has non-audio rules
-                    bool passesNonAudioRules = false;
-                    bool hasAudioOnlyRuleSets = false;
+                    // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
+                    bool passesNonExpensiveRules = false;
+                    bool hasExpensiveOnlyRuleSets = false;
                     
                     for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
                     {
-                        // Check if this rule set has only AudioLanguages rules (no cheap rules)
+                        // Check if this rule set has only expensive rules (no cheap rules)
                         if (cheapCompiledRules[setIndex].Count == 0)
                         {
-                            hasAudioOnlyRuleSets = true;
-                            continue; // Can't evaluate audio-only rule sets in cheap phase
+                            hasExpensiveOnlyRuleSets = true;
+                            continue; // Can't evaluate expensive-only rule sets in cheap phase
                         }
                         
                         // Evaluate cheap rules for this rule set
                         if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
                         {
-                            passesNonAudioRules = true;
+                            passesNonExpensiveRules = true;
                             break;
                         }
                     }
                     
-                    // Skip expensive audio extraction only if:
+                    // Skip expensive data extraction only if:
                     // 1. No rule set passed the cheap evaluation AND
-                    // 2. There are no audio-only rule sets that still need to be checked
-                    if (!passesNonAudioRules && !hasAudioOnlyRuleSets)
+                    // 2. There are no expensive-only rule sets that still need to be checked
+                    if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
                         continue;
                     
-                    // Phase 2: Extract audio languages and check complete rules
-                    var fullOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, true);
+                    // Phase 2: Extract expensive data and check complete rules
+                    var fullOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, needsAudioLanguages, needsPeople);
                     
-                    // Debug: Log audio languages found for first few items
+                    // Debug: Log expensive data found for first few items
                     if (results.Count < 5)
                     {
-                        logger?.LogInformation("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                            i.Name, fullOperand.AudioLanguages.Count, string.Join(", ", fullOperand.AudioLanguages));
+                        if (needsAudioLanguages)
+                        {
+                            logger?.LogInformation("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                i.Name, fullOperand.AudioLanguages.Count, string.Join(", ", fullOperand.AudioLanguages));
+                        }
+                        if (needsPeople)
+                        {
+                            logger?.LogInformation("Item '{Name}': Found {Count} people: [{People}]", 
+                                i.Name, fullOperand.People.Count, string.Join(", ", fullOperand.People.Take(5)));
+                        }
                     }
                     
                     if (compiledRules.Any(set => set.All(rule => rule(fullOperand))))
@@ -237,10 +258,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             else
             {
-                // No audio language rules - use simple single-pass filtering
+                // No expensive field rules - use simple single-pass filtering
                 foreach (var i in items)
                 {
-                    var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false);
+                    var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
 
                     if (compiledRules.Any(set => set.All(rule => rule(operand)))) results.Add(i);
                 }

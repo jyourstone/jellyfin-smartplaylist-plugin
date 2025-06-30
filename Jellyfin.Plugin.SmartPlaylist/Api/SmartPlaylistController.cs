@@ -323,6 +323,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 },
                 CollectionFields = new[]
                 {
+                    new { Value = "People", Label = "People" },
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },
                     new { Value = "Tags", Label = "Tags" }
