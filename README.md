@@ -25,6 +25,12 @@ This plugin allows you to create playlists based on a set of rules, which will a
 
 SmartPlaylist now features a modern web-based configuration interface through the plugin settings page! No more manual JSON editing required.
 
+<div align="center">
+    <p>
+        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="500"/>
+    </p>
+</div>
+
 ### Using the Web Interface
 
 The web interface is organized into three tabs:
@@ -75,7 +81,7 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
 - **Edit Playlists**: The ability to edit existing smart playlists directly from the UI without needing to delete and recreate them.
-- **More Rule Fields**: Add new fields for creating rules, for example `Actors`.
+- **More Rule Fields**: Add additional fields for creating rules, for example `Directors`, `Writers`, etc.
 - **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
 - **Update to .NET 9**: Update package references and framework from .NET 8 to .NET9.
 - **Delete options**: When deleting a smart playlist, choose if you want to delete the created playlist or not.
@@ -95,6 +101,7 @@ The web interface provides access to all available fields for creating playlist 
 #### **Content Fields**
 - **Name** - Title of the media item
 - **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Audio`). This is the most reliable way to filter for movies vs. TV shows.
+- **Audio Languages** - The audio language of the movie/TV show.
 - **Album** - Album name (for music)
 - **Folder Path** - Location in your library
 
@@ -117,6 +124,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Date Modified** - Last file modification
 
 #### **Metadata**
+- **People** - Cast and crew (actors, directors, producers, etc.)
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
@@ -159,7 +167,7 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 
 ### Manual Configuration (Advanced Users)
 
-For advanced users who prefer JSON configuration, playlist files are stored in the `plugins/SmartPlaylist` directory. See `example.playlist.json` for the file format.
+For advanced users who prefer JSON configuration, playlist files are stored in the `data/smartplaylists` directory. See `example.playlist.json` for the file format.
 
 ## Credits
 

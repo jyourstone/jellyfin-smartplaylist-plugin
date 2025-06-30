@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Linq;
 using Jellyfin.Data.Entities;
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
@@ -12,7 +13,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     {
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false)
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
         {
             var operand = new Operand(baseItem.Name);
 
@@ -216,6 +217,50 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 catch (Exception ex)
                 {
                     logger?.LogError(ex, "Error extracting audio languages for item {Name}", baseItem.Name);
+                }
+            }
+            
+            // Extract all people (actors, directors, producers, etc.) - only when needed for performance
+            operand.People = new List<string>();
+            if (extractPeople)
+            {
+                try
+                {
+                    // Cache the GetPeople method lookup for better performance
+                    var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                    if (getPeopleMethod != null)
+                    {
+                        // Use InternalPeopleQuery to get people associated with this item
+                        var peopleQuery = new InternalPeopleQuery
+                        {
+                            ItemId = baseItem.Id
+                        };
+                        
+                        var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
+                        
+                        if (result is IEnumerable<object> peopleEnum)
+                        {
+                            foreach (var person in peopleEnum)
+                            {
+                                if (person != null)
+                                {
+                                    var nameProperty = person.GetType().GetProperty("Name");
+                                    if (nameProperty != null)
+                                    {
+                                        var name = nameProperty.GetValue(person) as string;
+                                        if (!string.IsNullOrEmpty(name) && !operand.People.Contains(name))
+                                        {
+                                            operand.People.Add(name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Error extracting people for item {Name}", baseItem.Name);
                 }
             }
             
