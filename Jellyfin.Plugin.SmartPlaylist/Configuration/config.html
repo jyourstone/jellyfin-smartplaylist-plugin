@@ -175,6 +175,8 @@
             let ruleCounter = 0;
             let availableFields = {};
             let notificationTimeout;
+            let pageInitialized = false;
+            let tabListenersInitialized = false;
 
             function showNotification(message, type = 'error') {
                 const notificationArea = document.querySelector('#plugin-notification-area');
@@ -697,6 +699,12 @@
             }
             
             function initPage(page) {
+                // Only initialize once to prevent duplicate event listeners
+                if (pageInitialized) {
+                    return;
+                }
+                pageInitialized = true;
+                
                 populateStaticSelects(page);
                 loadAndPopulateFields(page).then(() => {
                     const rulesContainer = page.querySelector('#rules-container');
@@ -751,18 +759,22 @@
                     const tabButtons = page.querySelectorAll('.emby-tab-button');
                     const tabContents = page.querySelectorAll('[data-tab-content]');
                     
-                    tabButtons.forEach(button => {
-                        button.addEventListener('click', () => {
-                            const tabId = button.getAttribute('data-tab');
-                            tabButtons.forEach(btn => btn.classList.remove('is-active'));
-                            button.classList.add('is-active');
-                            page.querySelector('#current-tab-title').textContent = button.querySelector('.emby-tab-button-title').textContent;
-                            tabContents.forEach(content => {
-                                content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
+                    // Only add tab listeners once to prevent duplicates
+                    if (!tabListenersInitialized) {
+                        tabListenersInitialized = true;
+                        tabButtons.forEach(button => {
+                            button.addEventListener('click', () => {
+                                const tabId = button.getAttribute('data-tab');
+                                tabButtons.forEach(btn => btn.classList.remove('is-active'));
+                                button.classList.add('is-active');
+                                page.querySelector('#current-tab-title').textContent = button.querySelector('.emby-tab-button-title').textContent;
+                                tabContents.forEach(content => {
+                                    content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
+                                });
+                                if (tabId === 'manage') { loadPlaylistList(page); }
                             });
-                            if (tabId === 'manage') { loadPlaylistList(page); }
                         });
-                    });
+                    }
                     
                     const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
                     if (createTab && !createTab.classList.contains('is-active')) {
