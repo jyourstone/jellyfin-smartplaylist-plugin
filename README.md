@@ -27,7 +27,7 @@ SmartPlaylist now features a modern web-based configuration interface through th
 
 <div align="center">
     <p>
-        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="500"/>
+        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="500"/>
     </p>
 </div>
 
@@ -101,6 +101,7 @@ The web interface provides access to all available fields for creating playlist 
 #### **Content Fields**
 - **Name** - Title of the media item
 - **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Audio`). This is the most reliable way to filter for movies vs. TV shows.
+- **Audio Languages** - The audio language of the movie/TV show.
 - **Album** - Album name (for music)
 - **Folder Path** - Location in your library
 
@@ -165,7 +166,7 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 
 ### Manual Configuration (Advanced Users)
 
-For advanced users who prefer JSON configuration, playlist files are stored in the `plugins/SmartPlaylist` directory. See `example.playlist.json` for the file format.
+For advanced users who prefer JSON configuration, playlist files are stored in the `data/smartplaylists` directory. See `example.playlist.json` for the file format.
 
 ## Credits
 
