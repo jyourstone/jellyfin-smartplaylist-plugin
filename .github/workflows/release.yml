@@ -45,44 +45,43 @@ jobs:
       - name: Get Release Notes
         id: get_release_notes
         run: |
-          echo "Generating automatic release notes for tag: ${{ github.ref_name }}"
+          echo "Getting release notes for tag: ${{ github.ref_name }}"
           
-          # Get the previous tag to compare against
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "${{ github.ref_name }}" | head -n 1)
-          echo "Previous tag: $PREVIOUS_TAG"
+          # Try multiple methods to get tag annotation
+          TAG_MESSAGE=""
           
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Getting PR merge commits since $PREVIOUS_TAG"
-            # Get only merge commit messages (these contain PR titles)
-            MERGE_COMMITS=$(git log --pretty=format:"- %s" ${PREVIOUS_TAG}..${{ github.ref_name }} --merges | sed 's/Merge pull request #[0-9]* from [^/]*\///g' | sed 's/Merge branch.*//g' | grep -v '^- $' | grep -v '^-[[:space:]]*$')
-            
-            echo "PR merge commits found:"
-            echo "$MERGE_COMMITS"
-            
-            if [ -n "$MERGE_COMMITS" ]; then
-              RELEASE_NOTES="## Changes in ${{ github.ref_name }}"$'\n\n'"$MERGE_COMMITS"
-            else
-              # Fallback: if no PR merges found, get recent commit titles
-              echo "No PR merges found, using recent commit messages as fallback"
-              RECENT_COMMITS=$(git log --pretty=format:"- %s" ${PREVIOUS_TAG}..${{ github.ref_name }} --no-merges --max-count=5)
-              if [ -n "$RECENT_COMMITS" ]; then
-                RELEASE_NOTES="## Changes in ${{ github.ref_name }}"$'\n\n'"$RECENT_COMMITS"
-              else
-                RELEASE_NOTES="Release ${{ github.ref_name }} - No specific changes detected since $PREVIOUS_TAG"
-              fi
-            fi
-          else
-            echo "No previous tag found, this might be the first release"
-            # For first release, try to get PR merges from recent history
-            RECENT_MERGES=$(git log --pretty=format:"- %s" --max-count=10 --merges | sed 's/Merge pull request #[0-9]* from [^/]*\///g' | sed 's/Merge branch.*//g' | grep -v '^- $' | grep -v '^-[[:space:]]*$')
-            if [ -n "$RECENT_MERGES" ]; then
-              RELEASE_NOTES="## Initial Release ${{ github.ref_name }}"$'\n\n'"Recent changes:"$'\n'"$RECENT_MERGES"
-            else
-              RELEASE_NOTES="Initial Release ${{ github.ref_name }}"
-            fi
+          # Method 1: git show for annotated tags
+          echo "Method 1: Trying git show"
+          TAG_MESSAGE=$(git show ${{ github.ref_name }} --format=%B --no-patch 2>/dev/null | head -n -1 || echo "")
+          echo "Result from git show: '$TAG_MESSAGE'"
+          
+          # Method 2: git tag with format (for annotated tags)
+          if [ -z "$TAG_MESSAGE" ]; then
+            echo "Method 2: Trying git tag -l --format"
+            TAG_MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }} 2>/dev/null || echo "")
+            echo "Result from git tag format: '$TAG_MESSAGE'"
           fi
           
-          echo "Generated release notes:"
+          # Method 3: git for-each-ref (works for both lightweight and annotated)
+          if [ -z "$TAG_MESSAGE" ]; then
+            echo "Method 3: Trying git for-each-ref"
+            TAG_MESSAGE=$(git for-each-ref --format='%(contents)' refs/tags/${{ github.ref_name }} 2>/dev/null || echo "")
+            echo "Result from for-each-ref: '$TAG_MESSAGE'"
+          fi
+          
+          # Clean up whitespace
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          echo "Final cleaned tag message: '$TAG_MESSAGE'"
+          
+          if [ -n "$TAG_MESSAGE" ]; then
+            echo "Using tag annotation as release notes"
+            RELEASE_NOTES="$TAG_MESSAGE"
+          else
+            echo "No tag annotation found, using default message"
+            RELEASE_NOTES="Release ${{ github.ref_name }} - Please see the commit history for changes in this release."
+          fi
+          
+          echo "Final release notes:"
           echo "$RELEASE_NOTES"
 
           {
