@@ -178,12 +178,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             if (needsAudioLanguages)
                             {
-                                logger?.LogInformation("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
                                     i.Name, operand.AudioLanguages.Count, string.Join(", ", operand.AudioLanguages));
                             }
                             if (needsPeople)
                             {
-                                logger?.LogInformation("Item '{Name}': Found {Count} people: [{People}]", 
+                                logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
                                     i.Name, operand.People.Count, string.Join(", ", operand.People.Take(5)));
                             }
                         }
@@ -239,12 +239,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         if (needsAudioLanguages)
                         {
-                            logger?.LogInformation("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                            logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
                                 i.Name, fullOperand.AudioLanguages.Count, string.Join(", ", fullOperand.AudioLanguages));
                         }
                         if (needsPeople)
                         {
-                            logger?.LogInformation("Item '{Name}': Found {Count} people: [{People}]", 
+                            logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
                                 i.Name, fullOperand.People.Count, string.Join(", ", fullOperand.People.Take(5)));
                         }
                     }
