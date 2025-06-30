@@ -81,7 +81,7 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
 - **Edit Playlists**: The ability to edit existing smart playlists directly from the UI without needing to delete and recreate them.
-- **More Rule Fields**: Add additional fields for creating rules, for example `Directors`, `Writers`, etc.
+- **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
 - **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
 - **Update to .NET 9**: Update package references and framework from .NET 8 to .NET9.
 - **Delete options**: When deleting a smart playlist, choose if you want to delete the created playlist or not.
