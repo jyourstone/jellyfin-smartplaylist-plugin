@@ -45,16 +45,45 @@ jobs:
       - name: Get Release Notes
         id: get_release_notes
         run: |
-          # Try to get the tag annotation message first
-          TAG_MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          echo "Generating automatic release notes for tag: ${{ github.ref_name }}"
           
-          if [ -n "$TAG_MESSAGE" ] && [ "$TAG_MESSAGE" != "" ]; then
-            echo "Using tag annotation as release notes"
-            RELEASE_NOTES="$TAG_MESSAGE"
+          # Get the previous tag to compare against
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "${{ github.ref_name }}" | head -n 1)
+          echo "Previous tag: $PREVIOUS_TAG"
+          
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Getting PR merge commits since $PREVIOUS_TAG"
+            # Get only merge commit messages (these contain PR titles)
+            MERGE_COMMITS=$(git log --pretty=format:"- %s" ${PREVIOUS_TAG}..${{ github.ref_name }} --merges | sed 's/Merge pull request #[0-9]* from [^/]*\///g' | sed 's/Merge branch.*//g' | grep -v '^- $' | grep -v '^-[[:space:]]*$')
+            
+            echo "PR merge commits found:"
+            echo "$MERGE_COMMITS"
+            
+            if [ -n "$MERGE_COMMITS" ]; then
+              RELEASE_NOTES="## Changes in ${{ github.ref_name }}"$'\n\n'"$MERGE_COMMITS"
+            else
+              # Fallback: if no PR merges found, get recent commit titles
+              echo "No PR merges found, using recent commit messages as fallback"
+              RECENT_COMMITS=$(git log --pretty=format:"- %s" ${PREVIOUS_TAG}..${{ github.ref_name }} --no-merges --max-count=5)
+              if [ -n "$RECENT_COMMITS" ]; then
+                RELEASE_NOTES="## Changes in ${{ github.ref_name }}"$'\n\n'"$RECENT_COMMITS"
+              else
+                RELEASE_NOTES="Release ${{ github.ref_name }} - No specific changes detected since $PREVIOUS_TAG"
+              fi
+            fi
           else
-            echo "No tag annotation found, using default message"
-            RELEASE_NOTES="Release ${{ github.ref_name }} - Please see the commit history for changes in this release."
+            echo "No previous tag found, this might be the first release"
+            # For first release, try to get PR merges from recent history
+            RECENT_MERGES=$(git log --pretty=format:"- %s" --max-count=10 --merges | sed 's/Merge pull request #[0-9]* from [^/]*\///g' | sed 's/Merge branch.*//g' | grep -v '^- $' | grep -v '^-[[:space:]]*$')
+            if [ -n "$RECENT_MERGES" ]; then
+              RELEASE_NOTES="## Initial Release ${{ github.ref_name }}"$'\n\n'"Recent changes:"$'\n'"$RECENT_MERGES"
+            else
+              RELEASE_NOTES="Initial Release ${{ github.ref_name }}"
+            fi
           fi
+          
+          echo "Generated release notes:"
+          echo "$RELEASE_NOTES"
 
           {
             echo 'release_notes<<EOM'
@@ -71,6 +100,7 @@ jobs:
           files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
           draft: false
           prerelease: false
+          generate_release_notes: false
 
       - name: Update External Manifest
         env:
