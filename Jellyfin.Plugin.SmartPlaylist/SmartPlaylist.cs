@@ -16,7 +16,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             Id = dto.Id;
             Name = dto.Name;
             FileName = dto.FileName;
-            User = dto.User;
+            UserId = dto.UserId;
             ExpressionSets = Engine.FixRuleSets(dto.ExpressionSets);
             Order = OrderFactory.CreateOrder(dto.Order.Name);
         }
@@ -24,7 +24,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public string Id { get; set; }
         public string Name { get; set; }
         public string FileName { get; set; }
-        public string User { get; set; }
+        public Guid UserId { get; set; }
         public List<ExpressionSet> ExpressionSets { get; set; }
         public Order Order { get; set; }
 
@@ -272,7 +272,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private static void Validate()
         {
-            //Todo create validation for constructor
+            // Future enhancement: Add validation for constructor input
         }
     }
 

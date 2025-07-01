@@ -36,6 +36,63 @@
         .error-message {
             color: #ff6b6b;
         }
+
+        /* Custom Modal Styles */
+        body .SmartPlaylistConfigurationPage .custom-modal {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: rgba(0,0,0,0.75) !important;
+            z-index: 10000 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        body .SmartPlaylistConfigurationPage .custom-modal.hide {
+            display: none !important;
+        }
+        body .SmartPlaylistConfigurationPage #delete-confirm-modal .custom-modal-container {
+            background-color: #2a2a2a !important;
+            color: #eee !important;
+            border: 1px solid #555 !important;
+            border-radius: 8px !important;
+            padding: 1.5em !important;
+            width: 90% !important;
+            max-width: 400px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8) !important;
+            z-index: 10001 !important;
+            position: relative !important;
+        }
+        .custom-modal-header .custom-modal-title {
+            margin: 0;
+            font-size: 1.25em;
+        }
+        .custom-modal-body {
+            margin: 1em 0;
+        }
+        .custom-modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1em;
+        }
+        .custom-modal-footer .button-submit {
+            background-color: #d9534f;
+        }
+        
+        .and-separator {
+            text-align: center;
+            margin: 0.75em 0;
+            font-weight: bold;
+            color: #888;
+            font-size: 0.9em;
+            background: rgba(136, 136, 136, 0.1);
+            padding: 0.25em;
+            border-radius: 4px;
+            display: inline-block;
+            min-width: 40px;
+        }
     </style>
 </head>
 <body>
@@ -61,6 +118,10 @@
                 </div>
 
                 <h2 class="section-title" id="current-tab-title">Create Playlist</h2>
+                <div id="edit-mode-indicator" style="display: none; color: #ffa500; font-weight: bold; margin: 0.5em 0;">
+                    <span>✏️ Editing Mode - Modifying existing playlist</span>
+                    <button type="button" id="cancelEditBtn" class="emby-button raised" style="margin-left: 1em; font-size: 0.8em;">Cancel Edit</button>
+                </div>
 
                 <!-- Create Tab -->
                 <div id="create-tab" class="page-content hide" data-tab-content="create">
@@ -68,6 +129,14 @@
                         <div class="input-container" style="margin-bottom: 1em;">
                             <label class="input-label" for="playlistName">Playlist Name</label>
                             <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
+                        </div>
+
+                        <div class="input-container" style="margin-bottom: 1em;">
+                            <label class="input-label" for="playlistUser">Playlist Owner</label>
+                            <select is="emby-select" id="playlistUser" class="emby-select" required>
+                                <option value="">Loading users...</option>
+                            </select>
+                            <div class="field-description">The user who this playlist belongs to.</div>
                         </div>
                         
                         <div class="input-container">
@@ -95,7 +164,7 @@
                         </div>
 
                         <div style="margin-top: 2em;">
-                            <button type="submit" class="button-submit emby-button block">Create Playlist</button>
+                            <button type="submit" id="submitBtn" class="button-submit emby-button block">Create Playlist</button>
                             <button type="button" id="clearFormBtn" class="emby-button raised block">Clear Form</button>
                         </div>
                     </form>
@@ -163,20 +232,47 @@
             </div>
         </div>
 
+        <div id="delete-confirm-modal" class="custom-modal hide">
+            <div class="custom-modal-container">
+                <div class="modal-content">
+                    <div class="custom-modal-header">
+                        <h3 class="custom-modal-title">Confirm Deletion</h3>
+                    </div>
+                    <div class="custom-modal-body">
+                        <p id="delete-confirm-text"></p>
+                    </div>
+                    <div class="custom-modal-footer">
+                        <button type="button" is="emby-button" class="emby-button raised" id="delete-cancel-btn">Cancel</button>
+                        <button type="button" is="emby-button" class="emby-button raised button-submit" id="delete-confirm-btn">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script>
         (function () {
             'use strict';
             
+            // Constants
+            const PLUGIN_ID = "A0A2A7B2-747A-4113-8B39-757A9D267C79";
+            const ENDPOINTS = {
+                fields: 'Plugins/SmartPlaylist/fields',
+                base: 'Plugins/SmartPlaylist',
+                users: 'Plugins/SmartPlaylist/users',
+                refresh: 'Plugins/SmartPlaylist/refresh'
+            };
+            
             function getPluginId() {
-                const pluginId = "A0A2A7B2-747A-4113-8B39-757A9D267C79";
-                return pluginId;
+                return PLUGIN_ID;
             }
 
-            let ruleCounter = 0;
             let availableFields = {};
             let notificationTimeout;
             let pageInitialized = false;
             let tabListenersInitialized = false;
+            let editMode = false;
+            let editingPlaylistId = null;
+            const mediaTypes = [ { Value: "Movie", Label: "Movie" }, { Value: "Episode", Label: "Episode (TV Show)" }, { Value: "Audio", Label: "Audio (Music)" } ];
 
             function showNotification(message, type = 'error') {
                 const notificationArea = document.querySelector('#plugin-notification-area');
@@ -184,7 +280,9 @@
 
                 notificationArea.textContent = message;
                 notificationArea.style.color = 'white';
-                notificationArea.style.backgroundColor = type === 'success' ? '#3e8e41' : '#d9534f';
+                notificationArea.style.backgroundColor = 
+                    type === 'success' ? '#3e8e41' : 
+                    type === 'warning' ? '#ff9800' : '#d9534f';
                 notificationArea.style.display = 'block';
 
                 clearTimeout(notificationTimeout);
@@ -199,7 +297,7 @@
 
             function loadAndPopulateFields(page) {
                 const apiClient = getApiClient();
-                const url = apiClient.getUrl('Plugins/SmartPlaylist/fields');
+                const url = apiClient.getUrl(ENDPOINTS.fields);
                 
                 return apiClient.get(url).then(response => {
                     if (!response.ok) { throw new Error(`Network response was not ok: ${response.statusText}`); }
@@ -282,21 +380,126 @@
                 if (defaultSortOrder && defaultSortOrder.children.length === 0) { populateSelect(defaultSortOrder, orderOptions, 'Ascending'); }
             }
 
+            function updateOperatorOptions(fieldValue, operatorSelect) {
+                operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
+                let allowedOperators = [];
+                
+                const listFields = ['People', 'Genres', 'Studios', 'Tags'];
+                const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
+                const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+                const booleanFields = ['IsPlayed', 'IsFavorite'];
+                const simpleFields = ['ItemType'];
+
+                if (listFields.includes(fieldValue)) {
+                    allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                } else if (numericFields.includes(fieldValue) || dateFields.includes(fieldValue)) {
+                    allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
+                } else if (booleanFields.includes(fieldValue) || simpleFields.includes(fieldValue)) {
+                    allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
+                } else { // Default to string fields
+                    allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                }
+
+                allowedOperators.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.Value;
+                    option.textContent = opt.Label;
+                    operatorSelect.appendChild(option);
+                });
+                if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed' || fieldValue === 'IsFavorite') { operatorSelect.value = 'Equal'; }
+            }
+
+            function setValueInput(fieldValue, valueContainer) {
+                valueContainer.innerHTML = '';
+
+                const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
+                const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+                const booleanFields = ['IsPlayed', 'IsFavorite'];
+                const simpleFields = ['ItemType'];
+
+                if (simpleFields.includes(fieldValue)) {
+                    const select = document.createElement('select');
+                    select.className = 'emby-select rule-value-input';
+                    select.setAttribute('is', 'emby-select');
+                    select.style.width = '100%';
+                    mediaTypes.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.Value;
+                        option.textContent = opt.Label;
+                        select.appendChild(option);
+                    });
+                    valueContainer.appendChild(select);
+                } else if (booleanFields.includes(fieldValue)) {
+                    const select = document.createElement('select');
+                    select.className = 'emby-select rule-value-input';
+                    select.setAttribute('is', 'emby-select');
+                    select.style.width = '100%';
+                    let boolOptions;
+                    if (fieldValue === 'IsPlayed') {
+                        boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
+                    } else if (fieldValue === 'IsFavorite') {
+                        boolOptions = [ { Value: "true", Label: "Yes (Favorite)" }, { Value: "false", Label: "No (Not Favorite)" } ];
+                    } else {
+                        boolOptions = [ { Value: "true", Label: "Yes" }, { Value: "false", Label: "No" } ];
+                    }
+                    boolOptions.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.Value;
+                        option.textContent = opt.Label;
+                        select.appendChild(option);
+                    });
+                    valueContainer.appendChild(select);
+                } else if (numericFields.includes(fieldValue)) {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'emby-input rule-value-input';
+                    input.placeholder = 'Value';
+                    input.style.width = '100%';
+                    valueContainer.appendChild(input);
+                } else if (dateFields.includes(fieldValue)) {
+                    const input = document.createElement('input');
+                    input.type = 'date';
+                    input.className = 'emby-input rule-value-input';
+                    input.style.width = '100%';
+                    valueContainer.appendChild(input);
+                }
+                else {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'emby-input rule-value-input';
+                    input.placeholder = 'Value';
+                    input.style.width = '100%';
+                    valueContainer.appendChild(input);
+                }
+            }
+            
+            function updateRegexHelp(ruleGroup) {
+                const operatorSelect = ruleGroup.querySelector('.rule-operator-select');
+                const existingHelp = ruleGroup.querySelector('.regex-help');
+                if (existingHelp) existingHelp.remove();
+                
+                if (operatorSelect && operatorSelect.value === 'MatchRegex') {
+                    const helpDiv = document.createElement('div');
+                    helpDiv.className = 'regex-help field-description';
+                    helpDiv.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em; font-size: 0.85em; color: #aaa; background: rgba(255,255,255,0.05); padding: 0.5em; border-radius: 3px;';
+                    helpDiv.innerHTML = '<strong>Regex Help:</strong> Use .NET syntax. Examples: <code>(?i)swe</code> (case-insensitive), <code>(?i)(eng|en)</code> (multiple options), <code>^Action</code> (starts with). Do not use JavaScript-style /pattern/flags.<br><strong>Test patterns:</strong> <a href="https://regex101.com/?flavor=dotnet" target="_blank" style="color: #00a4dc;">Regex101.com (.NET flavor)</a>';
+                    ruleGroup.appendChild(helpDiv);
+                }
+            }
+
             function addRule(page) {
-                ruleCounter++;
                 const rulesContainer = page.querySelector('#rules-container');
                 
                 if (rulesContainer.children.length > 0) {
                     const andSeparator = document.createElement('div');
                     andSeparator.className = 'and-separator';
-                    andSeparator.style.cssText = 'text-align: center; margin: 0.75em 0; font-weight: bold; color: #888; font-size: 0.9em; background: rgba(136, 136, 136, 0.1); padding: 0.25em; border-radius: 4px; display: inline-block; min-width: 40px;';
                     andSeparator.textContent = 'AND';
                     rulesContainer.appendChild(andSeparator);
                 }
                 
                 const ruleDiv = document.createElement('div');
                 ruleDiv.className = 'rule-group';
-                ruleDiv.setAttribute('data-rule-id', ruleCounter);
+                ruleDiv.setAttribute('data-rule-id', 'rule-' + Date.now());
 
                 const fieldsHtml = `
                     <div class="input-group" style="display: flex; gap: 0.5em; align-items: center; margin-bottom: 1em;">
@@ -329,126 +532,18 @@
                     populateSelect(operatorSelect, availableFields.Operators, null, false);
                 }
 
-                const mediaTypes = [ { Value: "Movie", Label: "Movie" }, { Value: "Episode", Label: "Episode (TV Show)" }, { Value: "Audio", Label: "Audio (Music)" } ];
-
-                function updateOperatorOptions(fieldValue, operatorSelect) {
-                    operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
-                    let allowedOperators = [];
-                    
-                    const listFields = ['People', 'Genres', 'Studios', 'Tags'];
-                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
-                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-                    const booleanFields = ['IsPlayed', 'IsFavorite'];
-                    const simpleFields = ['ItemType'];
-
-                    if (listFields.includes(fieldValue)) {
-                        allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
-                    } else if (numericFields.includes(fieldValue) || dateFields.includes(fieldValue)) {
-                        allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
-                    } else if (booleanFields.includes(fieldValue) || simpleFields.includes(fieldValue)) {
-                        allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
-                    } else { // Default to string fields
-                        allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
-                    }
-
-                    allowedOperators.forEach(opt => {
-                        const option = document.createElement('option');
-                        option.value = opt.Value;
-                        option.textContent = opt.Label;
-                        operatorSelect.appendChild(option);
-                    });
-                    if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed' || fieldValue === 'IsFavorite') { operatorSelect.value = 'Equal'; }
-                }
-
-                function setValueInput(fieldValue) {
-                    valueContainer.innerHTML = '';
-
-                    const listFields = ['People', 'Genres', 'Studios', 'Tags'];
-                    const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
-                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-                    const booleanFields = ['IsPlayed', 'IsFavorite'];
-                    const simpleFields = ['ItemType'];
-
-                    if (simpleFields.includes(fieldValue)) {
-                        const select = document.createElement('select');
-                        select.className = 'emby-select rule-value-input';
-                        select.setAttribute('is', 'emby-select');
-                        select.style.width = '100%';
-                        mediaTypes.forEach(opt => {
-                            const option = document.createElement('option');
-                            option.value = opt.Value;
-                            option.textContent = opt.Label;
-                            select.appendChild(option);
-                        });
-                        valueContainer.appendChild(select);
-                    } else if (booleanFields.includes(fieldValue)) {
-                        const select = document.createElement('select');
-                        select.className = 'emby-select rule-value-input';
-                        select.setAttribute('is', 'emby-select');
-                        select.style.width = '100%';
-                        let boolOptions;
-                        if (fieldValue === 'IsPlayed') {
-                            boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
-                        } else if (fieldValue === 'IsFavorite') {
-                            boolOptions = [ { Value: "true", Label: "Yes (Favorite)" }, { Value: "false", Label: "No (Not Favorite)" } ];
-                        } else {
-                            boolOptions = [ { Value: "true", Label: "Yes" }, { Value: "false", Label: "No" } ];
-                        }
-                        boolOptions.forEach(opt => {
-                            const option = document.createElement('option');
-                            option.value = opt.Value;
-                            option.textContent = opt.Label;
-                            select.appendChild(option);
-                        });
-                        valueContainer.appendChild(select);
-                    } else if (numericFields.includes(fieldValue)) {
-                        const input = document.createElement('input');
-                        input.type = 'number';
-                        input.className = 'emby-input rule-value-input';
-                        input.placeholder = 'Value';
-                        input.style.width = '100%';
-                        valueContainer.appendChild(input);
-                    } else if (dateFields.includes(fieldValue)) {
-                        const input = document.createElement('input');
-                        input.type = 'date';
-                        input.className = 'emby-input rule-value-input';
-                        input.style.width = '100%';
-                        valueContainer.appendChild(input);
-                    }
-                    else {
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'emby-input rule-value-input';
-                        input.placeholder = 'Value';
-                        input.style.width = '100%';
-                        valueContainer.appendChild(input);
-                    }
-                }
-
-                // Function to show/hide regex help
-                function updateRegexHelp() {
-                    const existingHelp = newRuleGroup.querySelector('.regex-help');
-                    if (existingHelp) existingHelp.remove();
-                    
-                    if (operatorSelect.value === 'MatchRegex') {
-                        const helpDiv = document.createElement('div');
-                        helpDiv.className = 'regex-help field-description';
-                        helpDiv.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em; font-size: 0.85em; color: #aaa; background: rgba(255,255,255,0.05); padding: 0.5em; border-radius: 3px;';
-                        helpDiv.innerHTML = '<strong>Regex Help:</strong> Use .NET syntax. Examples: <code>(?i)swe</code> (case-insensitive), <code>(?i)(eng|en)</code> (multiple options), <code>^Action</code> (starts with). Do not use JavaScript-style /pattern/flags.<br><strong>Test patterns:</strong> <a href="https://regex101.com/?flavor=dotnet" target="_blank" style="color: #00a4dc;">Regex101.com (.NET flavor)</a>';
-                        newRuleGroup.appendChild(helpDiv);
-                    }
-                }
-
-                setValueInput(fieldSelect.value);
+                setValueInput(fieldSelect.value, valueContainer);
                 updateOperatorOptions(fieldSelect.value, operatorSelect);
                 
                 fieldSelect.addEventListener('change', function() {
-                    setValueInput(fieldSelect.value);
+                    setValueInput(fieldSelect.value, valueContainer);
                     updateOperatorOptions(fieldSelect.value, operatorSelect);
-                    updateRegexHelp();
+                    updateRegexHelp(newRuleGroup);
                 });
                 
-                operatorSelect.addEventListener('change', updateRegexHelp);
+                operatorSelect.addEventListener('change', function() {
+                    updateRegexHelp(newRuleGroup);
+                });
             }
             
             async function createPlaylist(page) {
@@ -483,19 +578,12 @@
                     const orderName = sortByValue + ' ' + sortOrderValue;
                     const isPublic = page.querySelector('#playlistIsPublic').checked || false;
 
-                    const currentUser = await apiClient.getCurrentUser();
-                    let userName = currentUser?.Name;
-
-                    if (!userName) {
-                        const currentUserId = apiClient.getCurrentUserId();
-                        if (currentUserId) {
-                            try {
-                                const userResult = await apiClient.getUser(currentUserId);
-                                userName = userResult?.Name;
-                            } catch (err) {
-                                console.error('Could not retrieve user by ID:', err);
-                            }
-                        }
+                    // Get selected user ID from dropdown
+                    const userId = page.querySelector('#playlistUser').value;
+                    
+                    if (!userId) {
+                        showNotification('Please select a playlist owner.');
+                        return;
                     }
 
                     const playlistDto = {
@@ -503,18 +591,52 @@
                         ExpressionSets: [{ Expressions: expressions }],
                         Order: { Name: orderName },
                         Public: isPublic,
-                        User: userName
+                        UserId: userId
                     };
 
+                    // Add ID if in edit mode
+                    if (editMode && editingPlaylistId) {
+                        playlistDto.Id = editingPlaylistId;
+                    }
+
                     Dashboard.showLoadingMsg();
+                    
+                    const requestType = editMode ? "PUT" : "POST";
+                    const url = editMode ? 
+                        apiClient.getUrl(ENDPOINTS.base + '/' + editingPlaylistId) : 
+                        apiClient.getUrl(ENDPOINTS.base);
+                    
                     apiClient.ajax({
-                        type: "POST",
-                        url: apiClient.getUrl('Plugins/SmartPlaylist'),
+                        type: requestType,
+                        url: url,
                         data: JSON.stringify(playlistDto),
                         contentType: 'application/json'
                     }).then(result => {
                         Dashboard.hideLoadingMsg();
-                        showNotification('Playlist "' + playlistName + '" created.', 'success');
+                        const action = editMode ? 'updated' : 'created';
+                        const actionPast = editMode ? 'updated' : 'created';
+                        const actionFuture = editMode ? 'updated' : 'generated';
+                        showNotification('Playlist "' + playlistName + '" ' + actionPast + '. The playlist will be ' + actionFuture + ' shortly.', 'success');
+                        
+                        // Trigger refresh to regenerate the actual Jellyfin playlist (silently)
+                        silentRefreshAllPlaylists();
+                        
+                        // Exit edit mode and clear form
+                        if (editMode) {
+                            // Exit edit mode silently without showing cancellation message
+                            editMode = false;
+                            editingPlaylistId = null;
+                            const editIndicator = page.querySelector('#edit-mode-indicator');
+                            editIndicator.style.display = 'none';
+                            page.querySelector('#current-tab-title').textContent = 'Create Playlist';
+                            page.querySelector('#submitBtn').textContent = 'Create Playlist';
+                            
+                            // Restore tab button text
+                            const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                            if (createTabButton) {
+                                createTabButton.textContent = 'Create Playlist';
+                            }
+                        }
                         clearForm(page);
                     }).catch(err => {
                         Dashboard.hideLoadingMsg();
@@ -542,6 +664,8 @@
             }
             
             function clearForm(page) {
+                // Only handle form clearing - edit mode management should be done by caller
+                
                 page.querySelector('#playlistName').value = '';
                 page.querySelector('#rules-container').innerHTML = '';
                 
@@ -556,8 +680,77 @@
                     page.querySelector('#playlistIsPublic').checked = false;
                 });
                 
-                ruleCounter = 0;
                 addRule(page);
+            }
+
+            async function loadUsers(page) {
+                const apiClient = getApiClient();
+                const userSelect = page.querySelector('#playlistUser');
+                
+                try {
+                    const response = await apiClient.ajax({
+                        type: "GET",
+                        url: apiClient.getUrl(ENDPOINTS.users),
+                        contentType: 'application/json'
+                    });
+                    
+                    const users = await response.json();
+                    
+                    // Clear existing options
+                    userSelect.innerHTML = '';
+                    
+                    // Add user options
+                    users.forEach(user => {
+                        const option = document.createElement('option');
+                        option.value = user.Id;
+                        option.textContent = user.Name;
+                        userSelect.appendChild(option);
+                    });
+                    
+                    // Set current user as default
+                    await setCurrentUserAsDefault(page);
+                    
+                } catch (err) {
+                    console.error('Error loading users:', err);
+                    userSelect.innerHTML = '<option value="">Error loading users</option>';
+                    showNotification('Failed to load users. Using fallback.');
+                }
+            }
+            
+            async function setCurrentUserAsDefault(page) {
+                const apiClient = getApiClient();
+                const userSelect = page.querySelector('#playlistUser');
+                
+                try {
+                    // Use client-side method to get current user
+                    let userId = apiClient.getCurrentUserId();
+                    if (!userId) {
+                        const user = await apiClient.getCurrentUser();
+                        userId = user?.Id;
+                    }
+                    if (userId) {
+                        userSelect.value = userId;
+                    }
+                } catch (err) {
+                    console.error('Error setting current user as default:', err);
+                }
+            }
+
+            async function resolveUsername(apiClient, playlist) {
+                // Handle both old User field and new UserId field
+                if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
+                    try {
+                        const user = await apiClient.getUser(playlist.UserId);
+                        return user?.Name || 'Unknown User';
+                    } catch (err) {
+                        console.error('Error resolving user ID ' + playlist.UserId + ':', err);
+                        return 'Unknown User';
+                    }
+                } else if (playlist.User) {
+                    // Legacy format - username is directly stored
+                    return playlist.User;
+                }
+                return 'Unknown User';
             }
 
             function loadPlaylistList(page) {
@@ -567,18 +760,20 @@
                 
                 apiClient.ajax({
                     type: "GET",
-                    url: apiClient.getUrl('Plugins/SmartPlaylist'),
+                    url: apiClient.getUrl(ENDPOINTS.base),
                     contentType: 'application/json'
                 }).then(response => {
                     if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
                     return response.json();
-                }).then(playlists => {
+                }).then(async playlists => {
                     if (playlists && playlists.length > 0) {
                         let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3></div>';
-                        playlists.forEach(playlist => {
+                        
+                        // Process playlists sequentially to resolve usernames
+                        for (const playlist of playlists) {
                             const isPublic = playlist.Public ? 'Public' : 'Private';
                             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
-                            const userName = playlist.User || 'Unknown';
+                            const userName = await resolveUsername(apiClient, playlist);
                             const playlistId = playlist.Id || 'NO_ID';
                             
                             let rulesHtml = '';
@@ -617,10 +812,11 @@
                                 '<strong>Visibility:</strong> ' + isPublic +
                                 '</div>' +
                                 '<div style="margin-top: 1em;">' +
+                                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
                                 '<button type="button" is="emby-button" class="emby-button raised delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
                                 '</div>' +
                                 '</div>';
-                        });
+                        }
                         container.innerHTML = html;
                     } else {
                         container.innerHTML = '<div class="input-container"><p>No smart playlists found.</p></div>';
@@ -637,7 +833,7 @@
                 Dashboard.showLoadingMsg();
                 apiClient.ajax({
                     type: "DELETE",
-                    url: apiClient.getUrl('Plugins/SmartPlaylist/' + playlistId),
+                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId),
                     contentType: 'application/json'
                 }).then(() => {
                     Dashboard.hideLoadingMsg();
@@ -648,6 +844,219 @@
                     console.error('Error deleting playlist:', err);
                     showNotification('Failed to delete playlist "' + playlistName + '". Check console for details.');
                 });
+            }
+
+            function showDeleteConfirm(page, playlistId, playlistName, buttonElement) {
+                const modal = page.querySelector('#delete-confirm-modal');
+                if (!modal) return;
+                
+                const modalContainer = modal.querySelector('.custom-modal-container');
+                const confirmText = modal.querySelector('#delete-confirm-text');
+                const confirmBtn = modal.querySelector('#delete-confirm-btn');
+                const cancelBtn = modal.querySelector('#delete-cancel-btn');
+
+                // Force positioning with JavaScript since CSS isn't working reliably
+                modalContainer.style.position = 'fixed';
+                modalContainer.style.top = '50%';
+                modalContainer.style.left = '50%';
+                modalContainer.style.transform = 'translate(-50%, -50%)';
+                modalContainer.style.zIndex = '10001';
+                modalContainer.style.backgroundColor = '#2a2a2a';
+                modalContainer.style.border = '1px solid #555';
+                modalContainer.style.borderRadius = '8px';
+                modalContainer.style.padding = '1.5em';
+                modalContainer.style.width = '90%';
+                modalContainer.style.maxWidth = '400px';
+                modalContainer.style.boxShadow = '0 8px 32px rgba(0,0,0,0.8)';
+
+                // Style the modal backdrop
+                modal.style.position = 'fixed';
+                modal.style.top = '0';
+                modal.style.left = '0';
+                modal.style.width = '100%';
+                modal.style.height = '100%';
+                modal.style.backgroundColor = 'rgba(0,0,0,0.75)';
+                modal.style.zIndex = '10000';
+
+                confirmText.textContent = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
+                
+                // Show the modal
+                modal.classList.remove('hide');
+                
+                const handleConfirm = () => {
+                    deletePlaylist(page, playlistId, playlistName);
+                    modal.classList.add('hide');
+                };
+
+                const handleCancel = () => {
+                    modal.classList.add('hide');
+                };
+                
+                const handleBackdropClick = (e) => {
+                    if (e.target === modal) {
+                        modal.classList.add('hide');
+                    }
+                };
+
+                // Use { once: true } to prevent memory leaks
+                confirmBtn.addEventListener('click', handleConfirm, { once: true });
+                cancelBtn.addEventListener('click', handleCancel, { once: true });
+                modal.addEventListener('click', handleBackdropClick, { once: true });
+            }
+
+            async function editPlaylist(page, playlistId) {
+                const apiClient = getApiClient();
+                Dashboard.showLoadingMsg();
+                
+                apiClient.ajax({
+                    type: "GET",
+                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId),
+                    contentType: 'application/json'
+                }).then(response => {
+                    if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
+                    return response.json();
+                }).then(playlist => {
+                    Dashboard.hideLoadingMsg();
+                    
+                    // Debug logging to see what we received
+                    // console.log('Playlist data received:', playlist);
+                    // console.log('Playlist name:', playlist ? playlist.Name : 'playlist is null/undefined');
+                    // console.log('Playlist keys:', playlist ? Object.keys(playlist) : 'no keys');
+                    
+                    if (!playlist) {
+                        showNotification('No playlist data received from server.');
+                        return;
+                    }
+                    
+                    // Enter edit mode
+                    editMode = true;
+                    editingPlaylistId = playlistId;
+                    
+                    // Update UI to show edit mode
+                    const editIndicator = page.querySelector('#edit-mode-indicator');
+                    editIndicator.style.display = 'block';
+                    editIndicator.querySelector('span').textContent = '✏️ Editing Mode - Modifying existing playlist "' + playlist.Name + '"';
+                    page.querySelector('#current-tab-title').textContent = 'Edit Playlist';
+                    page.querySelector('#submitBtn').textContent = 'Update Playlist';
+                    
+                    // Update tab button text
+                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                    if (createTabButton) {
+                        createTabButton.textContent = 'Edit Playlist';
+                    }
+                    
+                    // Switch to create tab (which becomes edit tab)
+                    const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
+                    createTab.click();
+                    
+                    // Populate form with playlist data
+                    page.querySelector('#playlistName').value = playlist.Name || '';
+                    page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
+                    
+                    // Set the playlist owner
+                    if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
+                        page.querySelector('#playlistUser').value = playlist.UserId;
+                    } else if (playlist.User) {
+                        // Legacy support: try to find user by username (simplified)
+                        // Since this is legacy, just warn the user and use current user as fallback
+                        console.warn('Legacy playlist detected with username:', playlist.User);
+                        showNotification('Legacy playlist detected. Please verify the owner is correct.', 'warning');
+                        setCurrentUserAsDefault(page);
+                    }
+                    
+                    // Set sort options
+                    const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
+                    const parts = orderName.split(' ');
+                    const sortBy = parts.slice(0, -1).join(' ') || 'Name';
+                    const sortOrder = parts[parts.length - 1] || 'Ascending';
+                    
+                    page.querySelector('#sortBy').value = sortBy;
+                    page.querySelector('#sortOrder').value = sortOrder;
+                    
+                    // Clear existing rules
+                    const rulesContainer = page.querySelector('#rules-container');
+                    rulesContainer.innerHTML = '';
+                    
+                    // Populate rules
+                    if (playlist.ExpressionSets && playlist.ExpressionSets[0] && playlist.ExpressionSets[0].Expressions) {
+                        playlist.ExpressionSets[0].Expressions.forEach(expression => {
+                            addRule(page);
+                            const ruleGroups = rulesContainer.querySelectorAll('.rule-group');
+                            const currentRule = ruleGroups[ruleGroups.length - 1];
+                            
+                            const fieldSelect = currentRule.querySelector('.rule-field-select');
+                            const operatorSelect = currentRule.querySelector('.rule-operator-select');
+                            const valueContainer = currentRule.querySelector('.rule-value-container');
+                            
+                            fieldSelect.value = expression.MemberName;
+                            
+                            // Update UI elements based on the loaded rule data
+                            setValueInput(expression.MemberName, valueContainer);
+                            updateOperatorOptions(expression.MemberName, operatorSelect);
+                            
+                            // Set operator and value
+                            const valueInput = currentRule.querySelector('.rule-value-input');
+                            operatorSelect.value = expression.Operator;
+                            if (valueInput) {
+                                valueInput.value = expression.TargetValue;
+                            }
+                            
+                            updateRegexHelp(currentRule);
+                        });
+                    } else {
+                        // Add one empty rule if no rules exist
+                        addRule(page);
+                    }
+                    
+                    showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
+                }).catch(err => {
+                    Dashboard.hideLoadingMsg();
+                    console.error('Error loading playlist for edit:', err);
+                    console.error('Error details:', err.status, err.statusText, err.message);
+                    
+                    if (err && typeof err.text === 'function') {
+                        err.text().then(serverMessage => {
+                            console.error('Server error message:', serverMessage);
+                            let friendlyMessage = 'Failed to load playlist for editing.';
+                            try {
+                                friendlyMessage = JSON.parse(serverMessage) || friendlyMessage;
+                            } catch (e) {
+                                friendlyMessage = serverMessage || friendlyMessage;
+                            }
+                            showNotification(friendlyMessage);
+                        }).catch(() => {
+                            showNotification('Failed to load playlist for editing. HTTP ' + (err.status || 'Unknown'));
+                        });
+                    } else {
+                        let errorMessage = 'Failed to load playlist for editing.';
+                        if (err && err.message) {
+                            errorMessage = errorMessage + ' Error: ' + err.message;
+                        }
+                        showNotification(errorMessage);
+                    }
+                });
+            }
+
+            function cancelEdit(page) {
+                editMode = false;
+                editingPlaylistId = null;
+                
+                // Update UI to show create mode
+                const editIndicator = page.querySelector('#edit-mode-indicator');
+                editIndicator.style.display = 'none';
+                page.querySelector('#current-tab-title').textContent = 'Create Playlist';
+                page.querySelector('#submitBtn').textContent = 'Create Playlist';
+                
+                // Restore tab button text
+                const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                if (createTabButton) {
+                    createTabButton.textContent = 'Create Playlist';
+                }
+                
+                // Clear form
+                clearForm(page);
+                
+                showNotification('Edit mode cancelled.', 'success');
             }
 
             function loadConfiguration(page) {
@@ -683,19 +1092,32 @@
                 });
             }
 
-            function refreshAllPlaylists() {
-                Dashboard.showLoadingMsg();
+            function refreshAllPlaylists(options = {}) {
+                const { silent = false } = options;
+                
+                if (!silent) {
+                    Dashboard.showLoadingMsg();
+                }
+                
                 getApiClient().ajax({
                     type: "POST",
-                    url: getApiClient().getUrl('Plugins/SmartPlaylist/refresh'),
+                    url: getApiClient().getUrl(ENDPOINTS.refresh),
                     contentType: 'application/json'
                 }).then(() => {
-                    Dashboard.hideLoadingMsg();
-                    showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
+                    if (!silent) {
+                        Dashboard.hideLoadingMsg();
+                        showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
+                    }
                 }).catch(() => {
-                    Dashboard.hideLoadingMsg();
+                    if (!silent) {
+                        Dashboard.hideLoadingMsg();
+                    }
                     showNotification('Failed to trigger playlist refresh. Please check server logs.');
                 });
+            }
+
+            function silentRefreshAllPlaylists() {
+                refreshAllPlaylists({ silent: true });
             }
             
             function initPage(page) {
@@ -706,6 +1128,7 @@
                 pageInitialized = true;
                 
                 populateStaticSelects(page);
+                loadUsers(page);
                 loadAndPopulateFields(page).then(() => {
                     const rulesContainer = page.querySelector('#rules-container');
                     if (rulesContainer.children.length === 0) {
@@ -739,9 +1162,14 @@
                     if (target.closest('#refreshPlaylistListBtn')) { loadPlaylistList(page); }
                     if (target.closest('.delete-playlist-btn')) {
                         const button = target.closest('.delete-playlist-btn');
-                        if (confirm('Are you sure you want to delete the playlist "' + button.getAttribute('data-playlist-name') + '"?')) {
-                            deletePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
-                        }
+                        showDeleteConfirm(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'), button);
+                    }
+                    if (target.closest('.edit-playlist-btn')) {
+                        const button = target.closest('.edit-playlist-btn');
+                        editPlaylist(page, button.getAttribute('data-playlist-id'));
+                    }
+                    if (target.closest('#cancelEditBtn')) {
+                        cancelEdit(page);
                     }
                 });
                 
@@ -765,6 +1193,13 @@
                         tabButtons.forEach(button => {
                             button.addEventListener('click', () => {
                                 const tabId = button.getAttribute('data-tab');
+                                
+                                // Hide any open modals when switching tabs
+                                const modal = page.querySelector('#delete-confirm-modal');
+                                if (modal && !modal.classList.contains('hide')) {
+                                    modal.classList.add('hide');
+                                }
+                                
                                 tabButtons.forEach(btn => btn.classList.remove('is-active'));
                                 button.classList.add('is-active');
                                 page.querySelector('#current-tab-title').textContent = button.querySelector('.emby-tab-button-title').textContent;

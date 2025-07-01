@@ -10,6 +10,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Tasks;
@@ -34,6 +35,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         private readonly IUserManager _userManager;
         private readonly ILibraryManager _libraryManager;
         private readonly ITaskManager _taskManager;
+        private readonly IPlaylistManager _playlistManager;
+        private readonly IUserDataManager _userDataManager;
+        private readonly IProviderManager _providerManager;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SmartPlaylistController"/> class.
@@ -46,13 +50,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             IServerApplicationPaths applicationPaths,
             IUserManager userManager,
             ILibraryManager libraryManager,
-            ITaskManager taskManager)
+            ITaskManager taskManager,
+            IPlaylistManager playlistManager,
+            IUserDataManager userDataManager,
+            IProviderManager providerManager)
         {
             _logger = logger;
             _applicationPaths = applicationPaths;
             _userManager = userManager;
             _libraryManager = libraryManager;
             _taskManager = taskManager;
+            _playlistManager = playlistManager;
+            _userDataManager = userDataManager;
+            _providerManager = providerManager;
         }
 
         private ISmartPlaylistStore GetPlaylistStore()
@@ -61,14 +71,30 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             return new SmartPlaylistStore(fileSystem, _userManager);
         }
 
-        private void DeleteJellyfinPlaylist(string playlistName, string userName)
+        private IPlaylistService GetPlaylistService()
         {
             try
             {
-                var user = _userManager.GetUserByName(userName);
+                // Use the same logger pattern as the rest of the controller
+                var loggerFactory = new LoggerFactory();
+                var logger = loggerFactory.CreateLogger<PlaylistService>();
+                return new PlaylistService(_userManager, _libraryManager, _playlistManager, _userDataManager, logger, _providerManager);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create PlaylistService");
+                throw;
+            }
+        }
+
+        private void DeleteJellyfinPlaylist(string playlistName, Guid userId)
+        {
+            try
+            {
+                var user = _userManager.GetUserById(userId);
                 if (user == null)
                 {
-                    _logger.LogWarning("User '{UserName}' not found when trying to delete Jellyfin playlist '{PlaylistName}'", userName, playlistName);
+                    _logger.LogWarning("User with ID '{UserId}' not found when trying to delete Jellyfin playlist '{PlaylistName}'", userId, playlistName);
                     return;
                 }
 
@@ -82,17 +108,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 var existingPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
                 if (existingPlaylist != null)
                 {
-                    _logger.LogInformation("Deleting Jellyfin playlist '{PlaylistName}' for user '{UserName}'", playlistName, userName);
+                    _logger.LogInformation("Deleting Jellyfin playlist '{PlaylistName}' for user '{UserName}' ({UserId})", playlistName, user.Username, userId);
                     _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
                 }
                 else
                 {
-                    _logger.LogInformation("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", playlistName, userName);
+                    _logger.LogInformation("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}' ({UserId})", playlistName, user.Username, userId);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting Jellyfin playlist '{PlaylistName}' for user '{UserName}'", playlistName, userName);
+                _logger.LogError(ex, "Error deleting Jellyfin playlist '{PlaylistName}' for user ID '{UserId}'", playlistName, userId);
             }
         }
 
@@ -115,6 +141,56 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             {
                 _logger.LogError(ex, "Error triggering smart playlist refresh task");
             }
+        }
+
+        /// <summary>
+        /// Gets the user ID for a playlist, handling migration from old User field to new UserId field.
+        /// </summary>
+        /// <param name="playlist">The playlist.</param>
+        /// <returns>The user ID, or Guid.Empty if not found.</returns>
+        private async Task<Guid> GetPlaylistUserIdAsync(SmartPlaylistDto playlist)
+        {
+            // If new UserId field is set and not empty, use it
+            if (playlist.UserId != Guid.Empty)
+            {
+                return playlist.UserId;
+            }
+
+            // Legacy migration: if old User field is set, try to find the user and migrate
+#pragma warning disable CS0618 // Type or member is obsolete
+            if (!string.IsNullOrEmpty(playlist.User))
+            {
+                var user = _userManager.GetUserByName(playlist.User);
+                if (user != null)
+                {
+                    _logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
+                        playlist.Name, playlist.User, user.Id);
+                    
+                    // Update the playlist with the User ID and save it
+                    playlist.UserId = user.Id;
+                    playlist.User = null; // Clear the old field
+                    
+                    try
+                    {
+                        var playlistStore = GetPlaylistStore();
+                        await playlistStore.SaveAsync(playlist);
+                        _logger.LogInformation("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to save migrated playlist '{PlaylistName}', but will continue with operation", playlist.Name);
+                    }
+                    
+                    return user.Id;
+                }
+                else
+                {
+                    _logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
+                }
+            }
+#pragma warning restore CS0618 // Type or member is obsolete
+
+            return Guid.Empty;
         }
 
         /// <summary>
@@ -200,8 +276,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
                 
-                // Trigger the refresh task to immediately create the Jellyfin playlist
-                TriggerPlaylistRefresh();
+                // Immediately create the Jellyfin playlist using the single playlist service
+                var playlistService = GetPlaylistService();
+                await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
             }
@@ -223,12 +300,43 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             try
             {
-                playlist.Id = id;
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    return BadRequest("Invalid playlist ID format");
+                }
+
                 var playlistStore = GetPlaylistStore();
-                await playlistStore.SaveAsync(playlist);
+                var existingPlaylist = await playlistStore.GetSmartPlaylistAsync(guidId);
+                if (existingPlaylist == null)
+                {
+                    return NotFound("Smart playlist not found");
+                }
+
+                // Check if ownership is changing
+                var originalUserId = await GetPlaylistUserIdAsync(existingPlaylist);
+                var newUserId = playlist.UserId;
+                
+                bool ownershipChanging = originalUserId != Guid.Empty && newUserId != originalUserId;
+                
+                if (ownershipChanging)
+                {
+                    _logger.LogInformation("Playlist ownership changing from user {OldUserId} to {NewUserId} for playlist '{PlaylistName}'", 
+                        originalUserId, newUserId, existingPlaylist.Name);
+                    
+                    // Delete the old playlist from the original user
+                    var oldPlaylistName = existingPlaylist.Name + " [Smart]";
+                    DeleteJellyfinPlaylist(oldPlaylistName, originalUserId);
+                }
+
+                playlist.Id = id;
+                var updatedPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Updated smart playlist: {PlaylistName}", playlist.Name);
                 
-                return Ok(playlist);
+                // Immediately update the Jellyfin playlist using the single playlist service
+                var playlistService = GetPlaylistService();
+                await playlistService.RefreshSinglePlaylistAsync(updatedPlaylist);
+                
+                return Ok(updatedPlaylist);
             }
             catch (Exception ex)
             {
@@ -261,13 +369,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
                 
-                // Delete the corresponding Jellyfin playlist first
-                if (!string.IsNullOrEmpty(playlist.User) && !string.IsNullOrEmpty(playlist.Name))
-                {
-                    // Use the same naming convention as creation: add [Smart] suffix
-                    var smartPlaylistName = playlist.Name + " [Smart]";
-                    DeleteJellyfinPlaylist(smartPlaylistName, playlist.User);
-                }
+                // Delete the corresponding Jellyfin playlist using the service
+                var playlistService = GetPlaylistService();
+                await playlistService.DeletePlaylistAsync(playlist);
                 
                 // Then delete the smart playlist configuration
                 playlistStore.Delete(Guid.Empty, id);
@@ -349,6 +453,68 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             };
 
             return Ok(fields);
+        }
+
+        /// <summary>
+        /// Get all users for the user selection dropdown.
+        /// </summary>
+        /// <returns>List of users.</returns>
+        [HttpGet("users")]
+        public ActionResult<object> GetUsers()
+        {
+            try
+            {
+                var users = _userManager.Users
+                    .Where(u => !u.HasPermission(Jellyfin.Data.Enums.PermissionKind.IsDisabled))
+                    .Select(u => new { 
+                        Id = u.Id, 
+                        Name = u.Username
+                    })
+                    .OrderBy(u => u.Name)
+                    .ToList();
+
+                return Ok(users);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving users");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving users");
+            }
+        }
+
+        /// <summary>
+        /// Get the current user's information.
+        /// </summary>
+        /// <returns>Current user info.</returns>
+        [HttpGet("currentuser")]
+        public ActionResult<object> GetCurrentUser()
+        {
+            try
+            {
+                // Try to get the current user ID from the request context
+                var userIdClaim = User.FindFirst("UserId")?.Value ?? User.FindFirst("sub")?.Value;
+                
+                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+                {
+                    return BadRequest("Unable to determine current user");
+                }
+
+                var user = _userManager.GetUserById(userId);
+                if (user == null)
+                {
+                    return NotFound("Current user not found");
+                }
+
+                return Ok(new { 
+                    Id = user.Id, 
+                    Name = user.Username
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting current user");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error getting current user");
+            }
         }
 
         /// <summary>
