@@ -58,7 +58,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
 
-            return allPlaylists.Where(p => p.User == user.Username).ToArray();
+            return allPlaylists.Where(p => 
+                // Check new UserId field first
+                (p.UserId != Guid.Empty && p.UserId == userId) ||
+                // Fallback to legacy User field for migration
+#pragma warning disable CS0618 // Type or member is obsolete
+                (!string.IsNullOrEmpty(p.User) && p.User == user.Username)
+#pragma warning restore CS0618 // Type or member is obsolete
+            ).ToArray();
         }
 
         public async Task<SmartPlaylistDto[]> GetAllSmartPlaylistsAsync()

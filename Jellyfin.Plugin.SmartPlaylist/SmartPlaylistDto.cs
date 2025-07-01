@@ -10,10 +10,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public string Id { get; set; }
         public string Name { get; set; }
         public string FileName { get; set; }
-        public string User { get; set; }
+        public Guid UserId { get; set; }
         public List<ExpressionSet> ExpressionSets { get; set; }
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
+        
+        // Legacy support - for migration from old User field
+        [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
+        public string User { get; set; }
     }
 
     public class ExpressionSet

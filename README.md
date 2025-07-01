@@ -13,8 +13,9 @@ This plugin allows you to create playlists based on a set of rules, which will a
 ## ✨ Features
 
 - 🚀 **Modern Jellyfin Support** - Built for newer Jellyfin versions with improved compatibility.
-- 🎨 **Modern Web Interface** - A full-featured UI to create, view and delete smart playlists.
-- 👥 **User-Aware Playlists** - Playlists are created for your user by default, with a simple option to make them public for everyone.
+- 🎨 **Modern Web Interface** - A full-featured UI to create, edit, view and delete smart playlists.
+- ✏️ **Edit Playlists** - Modify existing smart playlists directly from the UI.
+- 👥 **User Selection** - Choose which user should own a playlist with an intuitive dropdown, making it easy to create playlists for different family members.
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. 
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled task).
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
@@ -38,9 +39,11 @@ The web interface is organized into three tabs:
 1.  **Create Playlist**: This is where you build new playlists.
     -   Define the rules for including items.
     -   Choose the sort order.
-    -   Decide if the playlist should be public or private to your user.
-2.  **Manage Playlists**: View all of your existing smart playlists.
+    -   Select which user should own the playlist.
+    -   Decide if the playlist should be public or private.
+2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
+    -   Edit existing playlists to modify rules, ownership, or settings.
     -   Delete playlists you no longer need.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
@@ -80,7 +83,6 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
-- **Edit Playlists**: The ability to edit existing smart playlists directly from the UI without needing to delete and recreate them.
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
 - **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
 - **Update to .NET 9**: Update package references and framework from .NET 8 to .NET9.
