@@ -11,12 +11,9 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
-using MediaBrowser.Model.Providers;
-using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Playlists;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 {
@@ -26,47 +23,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
     /// </summary>
     public class BasicDirectoryService : IDirectoryService
     {
-        public List<FileSystemMetadata> GetDirectories(string path) => new List<FileSystemMetadata>();
-        public List<FileSystemMetadata> GetFiles(string path) => new List<FileSystemMetadata>();
-        public FileSystemMetadata[] GetFileSystemEntries(string path) => Array.Empty<FileSystemMetadata>();
+        public List<FileSystemMetadata> GetDirectories(string path) => [];
+        public List<FileSystemMetadata> GetFiles(string path) => [];
+        public FileSystemMetadata[] GetFileSystemEntries(string path) => [];
         public FileSystemMetadata GetFile(string path) => null;
         public FileSystemMetadata GetDirectory(string path) => null;
         public FileSystemMetadata GetFileSystemEntry(string path) => null;
-        public IReadOnlyList<string> GetFilePaths(string path) => Array.Empty<string>();
-        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => Array.Empty<string>();
+        public IReadOnlyList<string> GetFilePaths(string path) => [];
+        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => [];
         public bool IsAccessible(string path) => false;
     }
 
     /// <summary>
     /// Class RefreshAllPlaylists.
     /// </summary>
-    public class RefreshAllPlaylists : IScheduledTask
+    public class RefreshAllPlaylists(
+        IUserManager userManager,
+        ILibraryManager libraryManager,
+        IPlaylistManager playlistManager,
+        IUserDataManager userDataManager,
+        ILogger<RefreshAllPlaylists> logger,
+        IServerApplicationPaths serverApplicationPaths,
+        IProviderManager providerManager) : IScheduledTask
     {
-        private readonly IUserManager _userManager;
-        private readonly ILibraryManager _libraryManager;
-        private readonly IPlaylistManager _playlistManager;
-        private readonly IUserDataManager _userDataManager;
-        private readonly ILogger<RefreshAllPlaylists> _logger;
-        private readonly IServerApplicationPaths _serverApplicationPaths;
-        private readonly IProviderManager _providerManager;
-
-        public RefreshAllPlaylists(
-            IUserManager userManager,
-            ILibraryManager libraryManager,
-            IPlaylistManager playlistManager,
-            IUserDataManager userDataManager,
-            ILogger<RefreshAllPlaylists> logger,
-            IServerApplicationPaths serverApplicationPaths,
-            IProviderManager providerManager)
-        {
-            _userManager = userManager;
-            _libraryManager = libraryManager;
-            _playlistManager = playlistManager;
-            _userDataManager = userDataManager;
-            _logger = logger;
-            _serverApplicationPaths = serverApplicationPaths;
-            _providerManager = providerManager;
-        }
+        private readonly IUserManager _userManager = userManager;
+        private readonly ILibraryManager _libraryManager = libraryManager;
+        private readonly IPlaylistManager _playlistManager = playlistManager;
+        private readonly IUserDataManager _userDataManager = userDataManager;
+        private readonly ILogger<RefreshAllPlaylists> _logger = logger;
+        private readonly IServerApplicationPaths _serverApplicationPaths = serverApplicationPaths;
+        private readonly IProviderManager _providerManager = providerManager;
 
         /// <summary>
         /// Gets the name of the task.
@@ -96,6 +82,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>Task.</returns>
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
+            _logger.LogInformation("[DEBUG] RefreshAllPlaylists.ExecuteAsync called");
             try
             {
                 _logger.LogInformation("Starting SmartPlaylist refresh task");
@@ -281,14 +268,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>IEnumerable{TaskTriggerInfo}.</returns>
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            return new[]
-            {
+            return [
                 new TaskTriggerInfo
                 {
                     Type = TaskTriggerInfo.TriggerInterval,
                     IntervalTicks = TimeSpan.FromMinutes(30).Ticks
                 }
-            };
+            ];
         }
 
         private async Task UpdatePlaylistPublicStatusAsync(Playlist playlist, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
@@ -316,14 +302,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     var ownerId = playlist.OwnerUserId;
                     var newShare = new MediaBrowser.Model.Entities.PlaylistUserPermissions(ownerId, false);
                     
-                    var sharesList = playlist.Shares.ToList();
-                    sharesList.Add(newShare);
-                    playlist.Shares = sharesList.ToArray();
+                    playlist.Shares = [.. playlist.Shares, newShare];
                 }
                 else if (!isPublic && playlist.Shares.Any())
                 {
                     _logger.LogDebug("Making playlist {PlaylistName} private by clearing shares", playlist.Name);
-                    playlist.Shares = Array.Empty<MediaBrowser.Model.Entities.PlaylistUserPermissions>();
+                    playlist.Shares = [];
                 }
             }
             
@@ -344,7 +328,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = new[] { BaseItemKind.Playlist },
+                IncludeItemTypes = [BaseItemKind.Playlist],
                 Recursive = true,
                 Name = name
             };
@@ -356,7 +340,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode },
+                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode],
                 Recursive = true
             };
 

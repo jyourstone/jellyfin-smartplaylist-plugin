@@ -1,5 +1,4 @@
 using MediaBrowser.Model.Plugins;
-using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.SmartPlaylist.Configuration
 {

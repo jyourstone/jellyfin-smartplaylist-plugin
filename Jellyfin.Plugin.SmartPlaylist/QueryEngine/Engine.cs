@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using System.Linq;
@@ -26,17 +25,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 switch (r.Operator)
                 {
                     case "Equal":
-                        var equalsMethod = typeof(string).GetMethod("Equals", new[] { typeof(string), typeof(StringComparison) });
+                        var equalsMethod = typeof(string).GetMethod("Equals", [typeof(string), typeof(StringComparison)]);
                         return System.Linq.Expressions.Expression.Call(left, equalsMethod, right, comparison);
                     case "NotEqual":
-                        var notEqualsMethod = typeof(string).GetMethod("Equals", new[] { typeof(string), typeof(StringComparison) });
+                        var notEqualsMethod = typeof(string).GetMethod("Equals", [typeof(string), typeof(StringComparison)]);
                         var equalsCall = System.Linq.Expressions.Expression.Call(left, notEqualsMethod, right, comparison);
                         return System.Linq.Expressions.Expression.Not(equalsCall);
                     case "Contains":
-                        var containsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string), typeof(StringComparison) });
+                        var containsMethod = typeof(string).GetMethod("Contains", [typeof(string), typeof(StringComparison)]);
                         return System.Linq.Expressions.Expression.Call(left, containsMethod, right, comparison);
                     case "NotContains":
-                        var notContainsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string), typeof(StringComparison) });
+                        var notContainsMethod = typeof(string).GetMethod("Contains", [typeof(string), typeof(StringComparison)]);
                         var containsCall = System.Linq.Expressions.Expression.Call(left, notContainsMethod, right, comparison);
                         return System.Linq.Expressions.Expression.Not(containsCall);
                 }
@@ -63,7 +62,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 logger?.LogDebug("SmartPlaylist applying single string MatchRegex to {Field}", r.MemberName);
                 var regex = new Regex(r.TargetValue, RegexOptions.None);
-                var method = typeof(Regex).GetMethod("IsMatch", new[] { typeof(string) });
+                var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
                 var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
                 return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
             }
@@ -139,12 +138,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(expr, paramUser).Compile();
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used via reflection")]
         private static bool AnyItemContains(IEnumerable<string> list, string value)
         {
             if (list == null) return false;
             return list.Any(s => s != null && s.Contains(value, StringComparison.OrdinalIgnoreCase));
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used via reflection")]
         private static bool AnyRegexMatch(IEnumerable<string> list, string pattern)
         {
             if (list == null) return false;

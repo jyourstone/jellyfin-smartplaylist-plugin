@@ -16,16 +16,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
         void Delete(Guid userId, string smartPlaylistId);
     }
 
-    public class SmartPlaylistStore : ISmartPlaylistStore
+    public class SmartPlaylistStore(ISmartPlaylistFileSystem fileSystem, IUserManager userManager) : ISmartPlaylistStore
     {
-        private readonly ISmartPlaylistFileSystem _fileSystem;
-        private readonly IUserManager _userManager;
-
-        public SmartPlaylistStore(ISmartPlaylistFileSystem fileSystem, IUserManager userManager)
-        {
-            _fileSystem = fileSystem;
-            _userManager = userManager;
-        }
+        private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
 
         public async Task<SmartPlaylistDto> GetSmartPlaylistAsync(Guid smartPlaylistId)
@@ -40,7 +33,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             
             // Fallback to file path lookup
-            var fileName = _fileSystem.GetSmartPlaylistFilePath(smartPlaylistId.ToString());
+            var fileName = fileSystem.GetSmartPlaylistFilePath(smartPlaylistId.ToString());
             if (fileName == null)
             {
                 return null;
@@ -50,31 +43,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task<SmartPlaylistDto[]> LoadPlaylistsAsync(Guid userId)
         {
-            var user = _userManager.GetUserById(userId);
+            var user = userManager.GetUserById(userId);
             if (user == null)
             {
-                return Array.Empty<SmartPlaylistDto>();
+                return [];
             }
 
             var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
 
-            return allPlaylists.Where(p => 
-                // Check new UserId field first
-                (p.UserId != Guid.Empty && p.UserId == userId) ||
-                // Fallback to legacy User field for migration
-#pragma warning disable CS0618 // Type or member is obsolete
-                (!string.IsNullOrEmpty(p.User) && p.User == user.Username)
-#pragma warning restore CS0618 // Type or member is obsolete
-            ).ToArray();
+            return [.. allPlaylists.Where(p => p.UserId == userId)];
         }
 
         public async Task<SmartPlaylistDto[]> GetAllSmartPlaylistsAsync()
         {
-            var deserializeTasks = _fileSystem.GetAllSmartPlaylistFilePaths().Select(LoadPlaylistAsync).ToArray();
+            var deserializeTasks = fileSystem.GetAllSmartPlaylistFilePaths().Select(LoadPlaylistAsync).ToArray();
 
             await Task.WhenAll(deserializeTasks).ConfigureAwait(false);
 
-            return deserializeTasks.Select(x => x.Result).ToArray();
+            return [.. deserializeTasks.Select(x => x.Result)];
         }
 
         public async Task<SmartPlaylistDto> SaveAsync(SmartPlaylistDto smartPlaylist)
@@ -82,9 +68,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var fileName = smartPlaylist.Id;
             smartPlaylist.FileName = $"{fileName}.json";
 
-            var filePath = _fileSystem.GetSmartPlaylistPath(fileName);
+            var filePath = fileSystem.GetSmartPlaylistPath(fileName);
             await using var writer = File.Create(filePath);
-            await JsonSerializer.SerializeAsync(writer, smartPlaylist, new JsonSerializerOptions { WriteIndented = true }).ConfigureAwait(false);
+            await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
             return smartPlaylist;
         }
 
@@ -98,7 +84,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 // Use the actual filename to construct the path
                 var fileName = Path.GetFileNameWithoutExtension(playlist.FileName);
-                var filePath = _fileSystem.GetSmartPlaylistPath(fileName);
+                var filePath = fileSystem.GetSmartPlaylistPath(fileName);
                 if (File.Exists(filePath)) 
                 {
                     File.Delete(filePath);

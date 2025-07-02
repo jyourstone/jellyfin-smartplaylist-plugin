@@ -617,10 +617,7 @@
                         const action = editMode ? 'updated' : 'created';
                         const actionPast = editMode ? 'updated' : 'created';
                         const actionFuture = editMode ? 'updated' : 'generated';
-                        showNotification('Playlist "' + playlistName + '" ' + actionPast + '. The playlist will be ' + actionFuture + ' shortly.', 'success');
-                        
-                        // Trigger refresh to regenerate the actual Jellyfin playlist (silently)
-                        silentRefreshAllPlaylists();
+                        showNotification('Playlist "' + playlistName + '" ' + actionPast + '. The playlist has been ' + actionFuture + '.', 'success');
                         
                         // Exit edit mode and clear form
                         if (editMode) {
@@ -1115,32 +1112,20 @@
                 });
             }
 
-            function refreshAllPlaylists(options = {}) {
-                const { silent = false } = options;
-                
-                if (!silent) {
-                    Dashboard.showLoadingMsg();
-                }
+            function refreshAllPlaylists() {
+                Dashboard.showLoadingMsg();
                 
                 getApiClient().ajax({
                     type: "POST",
                     url: getApiClient().getUrl(ENDPOINTS.refresh),
                     contentType: 'application/json'
                 }).then(() => {
-                    if (!silent) {
-                        Dashboard.hideLoadingMsg();
-                        showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
-                    }
+                    Dashboard.hideLoadingMsg();
+                    showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
                 }).catch(() => {
-                    if (!silent) {
-                        Dashboard.hideLoadingMsg();
-                    }
+                    Dashboard.hideLoadingMsg();
                     showNotification('Failed to trigger playlist refresh. Please check server logs.');
                 });
-            }
-
-            function silentRefreshAllPlaylists() {
-                refreshAllPlaylists({ silent: true });
             }
             
             function initPage(page) {

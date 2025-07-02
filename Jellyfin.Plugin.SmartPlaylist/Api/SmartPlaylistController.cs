@@ -1,18 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
-using MediaBrowser.Controller.Providers;
-using MediaBrowser.Model.IO;
-using MediaBrowser.Model.Querying;
+using MediaBrowser.Controller.Providers;    
 using MediaBrowser.Model.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -28,50 +24,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
     [Authorize(Policy = "RequiresElevation")]
     [Route("Plugins/SmartPlaylist")]
     [Produces("application/json")]
-    public class SmartPlaylistController : ControllerBase
+    public class SmartPlaylistController(
+        ILogger<SmartPlaylistController> logger, 
+        IServerApplicationPaths applicationPaths,
+        IUserManager userManager,
+        ILibraryManager libraryManager,
+        ITaskManager taskManager,
+        IPlaylistManager playlistManager,
+        IUserDataManager userDataManager,
+        IProviderManager providerManager) : ControllerBase
     {
-        private readonly ILogger<SmartPlaylistController> _logger;
-        private readonly IServerApplicationPaths _applicationPaths;
-        private readonly IUserManager _userManager;
-        private readonly ILibraryManager _libraryManager;
-        private readonly ITaskManager _taskManager;
-        private readonly IPlaylistManager _playlistManager;
-        private readonly IUserDataManager _userDataManager;
-        private readonly IProviderManager _providerManager;
+        private readonly ILogger<SmartPlaylistController> _logger = logger;
+        private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
+        private readonly IUserManager _userManager = userManager;
+        private readonly ILibraryManager _libraryManager = libraryManager;
+        private readonly ITaskManager _taskManager = taskManager;
+        private readonly IPlaylistManager _playlistManager = playlistManager;
+        private readonly IUserDataManager _userDataManager = userDataManager;
+        private readonly IProviderManager _providerManager = providerManager;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SmartPlaylistController"/> class.
-        /// </summary>
-        /// <param name="logger">Instance of the <see cref="ILogger{SmartPlaylistController}"/> interface.</param>
-        /// <param name="applicationPaths">Instance of the <see cref="IServerApplicationPaths"/> interface.</param>
-        /// <param name="userManager">Instance of the <see cref="IUserManager"/> interface.</param>
-        public SmartPlaylistController(
-            ILogger<SmartPlaylistController> logger, 
-            IServerApplicationPaths applicationPaths,
-            IUserManager userManager,
-            ILibraryManager libraryManager,
-            ITaskManager taskManager,
-            IPlaylistManager playlistManager,
-            IUserDataManager userDataManager,
-            IProviderManager providerManager)
-        {
-            _logger = logger;
-            _applicationPaths = applicationPaths;
-            _userManager = userManager;
-            _libraryManager = libraryManager;
-            _taskManager = taskManager;
-            _playlistManager = playlistManager;
-            _userDataManager = userDataManager;
-            _providerManager = providerManager;
-        }
-
-        private ISmartPlaylistStore GetPlaylistStore()
+        private SmartPlaylistStore GetPlaylistStore()
         {
             var fileSystem = new SmartPlaylistFileSystem(_applicationPaths);
             return new SmartPlaylistStore(fileSystem, _userManager);
         }
 
-        private IPlaylistService GetPlaylistService()
+        private PlaylistService GetPlaylistService()
         {
             try
             {
@@ -100,7 +78,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 var query = new InternalItemsQuery(user)
                 {
-                    IncludeItemTypes = new[] { BaseItemKind.Playlist },
+                    IncludeItemTypes = [BaseItemKind.Playlist],
                     Recursive = true,
                     Name = playlistName
                 };
@@ -251,6 +229,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         [HttpPost]
         public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody, Required] SmartPlaylistDto playlist)
         {
+            _logger.LogInformation("[DEBUG] CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
             try
             {
                 if (string.IsNullOrEmpty(playlist.Id))
@@ -275,10 +254,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
-                
-                // Immediately create the Jellyfin playlist using the single playlist service
+                _logger.LogInformation("[DEBUG] Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
+                _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
             }
@@ -312,11 +291,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
 
+                // Check for duplicate names (excluding the current playlist being updated)
+                var allPlaylists = await playlistStore.GetAllSmartPlaylistsAsync();
+                var duplicateName = allPlaylists.FirstOrDefault(p => 
+                    p.Id != id && 
+                    p.Name.Equals(playlist.Name, StringComparison.OrdinalIgnoreCase));
+                
+                if (duplicateName != null)
+                {
+                    return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
+                }
+
                 // Check if ownership is changing
                 var originalUserId = await GetPlaylistUserIdAsync(existingPlaylist);
                 var newUserId = playlist.UserId;
                 
                 bool ownershipChanging = originalUserId != Guid.Empty && newUserId != originalUserId;
+                bool nameChanging = !string.Equals(existingPlaylist.Name, playlist.Name, StringComparison.OrdinalIgnoreCase);
                 
                 if (ownershipChanging)
                 {
@@ -324,7 +315,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                         originalUserId, newUserId, existingPlaylist.Name);
                     
                     // Delete the old playlist from the original user
-                    var oldPlaylistName = existingPlaylist.Name + " [Smart]";
+                    var oldPlaylistName = $"{existingPlaylist.Name} [Smart]";
+                    DeleteJellyfinPlaylist(oldPlaylistName, originalUserId);
+                }
+                else if (nameChanging)
+                {
+                    _logger.LogInformation("Playlist name changing from '{OldName}' to '{NewName}' for user {UserId}", 
+                        existingPlaylist.Name, playlist.Name, originalUserId);
+                    
+                    // Delete the old playlist with the old name
+                    var oldPlaylistName = $"{existingPlaylist.Name} [Smart]";
                     DeleteJellyfinPlaylist(oldPlaylistName, originalUserId);
                 }
 
@@ -465,9 +465,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             try
             {
                 var users = _userManager.Users
-                    .Where(u => !u.HasPermission(Jellyfin.Data.Enums.PermissionKind.IsDisabled))
+                    .Where(u => !u.HasPermission(PermissionKind.IsDisabled))
                     .Select(u => new { 
-                        Id = u.Id, 
+                        u.Id, 
                         Name = u.Username
                     })
                     .OrderBy(u => u.Name)
@@ -506,7 +506,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
 
                 return Ok(new { 
-                    Id = user.Id, 
+                    user.Id, 
                     Name = user.Username
                 });
             }

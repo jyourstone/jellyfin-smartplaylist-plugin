@@ -1,7 +1,5 @@
 using System;
-using System.Linq;
 using Jellyfin.Data.Entities;
-using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
@@ -15,22 +13,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
         {
-            var operand = new Operand(baseItem.Name);
-
-            operand.Genres = baseItem.Genres.ToList();
-            operand.IsPlayed = baseItem.IsPlayed(user);
-            operand.Studios = baseItem.Studios.ToList();
-            operand.CommunityRating = baseItem.CommunityRating.GetValueOrDefault();
-            operand.CriticRating = baseItem.CriticRating.GetValueOrDefault();
-            operand.MediaType = baseItem.MediaType.ToString();
-            operand.ItemType = baseItem.GetType().Name;
-            operand.Album = baseItem.Album;
-            operand.ProductionYear = baseItem.ProductionYear.GetValueOrDefault();
-            operand.Tags = baseItem.Tags?.ToList() ?? new List<string>();
-
-            // New fields
-            operand.RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? 
-                (int)TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0;
+            var operand = new Operand(baseItem.Name)
+            {
+                Genres = [.. baseItem.Genres],
+                IsPlayed = baseItem.IsPlayed(user),
+                Studios = [.. baseItem.Studios],
+                CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
+                CriticRating = baseItem.CriticRating.GetValueOrDefault(),
+                MediaType = baseItem.MediaType.ToString(),
+                ItemType = baseItem.GetType().Name,
+                Album = baseItem.Album,
+                ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
+                Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
+                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? 
+                    (int)TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0
+            };
             
             // Try to access user data properly
             try
@@ -90,17 +87,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
-
             operand.DateCreated = SafeToUnixTimeSeconds(baseItem.DateCreated);
             operand.DateLastRefreshed = SafeToUnixTimeSeconds(baseItem.DateLastRefreshed);
             operand.DateLastSaved = SafeToUnixTimeSeconds(baseItem.DateLastSaved);
             operand.DateModified = SafeToUnixTimeSeconds(baseItem.DateModified);
-
             operand.FolderPath = baseItem.ContainingFolderPath;
             operand.FileName = System.IO.Path.GetFileName(baseItem.Path) ?? "";
             
             // Extract audio languages from media streams - only when needed for performance
-            operand.AudioLanguages = new List<string>();
+            operand.AudioLanguages = [];
             if (extractAudioLanguages)
             {
                 try
@@ -175,35 +170,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 // Check if it's an audio stream
                                 if (streamType != null && streamType.ToString() == "Audio")
                                 {
-                                    // Try multiple sources for language info
-                                    var languageToAdd = language;
-                                    
-                                    // If no language code, try to extract from title or displayTitle
-                                    if (string.IsNullOrEmpty(languageToAdd))
+                                    if (!string.IsNullOrEmpty(language) && !operand.AudioLanguages.Contains(language))
                                     {
-                                        if (!string.IsNullOrEmpty(title) && title.ToLowerInvariant().Contains("swedish"))
-                                        {
-                                            languageToAdd = "swe";
-                                        }
-                                        else if (!string.IsNullOrEmpty(displayTitle) && displayTitle.ToLowerInvariant().Contains("swedish"))
-                                        {
-                                            languageToAdd = "swe";
-                                        }
-                                    }
-                                    
-                                    if (!string.IsNullOrEmpty(languageToAdd))
-                                    {
-                                        // Normalize language codes
-                                        var normalizedLang = languageToAdd.ToLowerInvariant();
-                                        if (normalizedLang == "sv") normalizedLang = "swe";
-                                        if (normalizedLang == "swedish") normalizedLang = "swe";
-                                        if (normalizedLang == "en") normalizedLang = "eng";
-                                        if (normalizedLang == "english") normalizedLang = "eng";
-                                        
-                                        if (!operand.AudioLanguages.Contains(normalizedLang))
-                                        {
-                                            operand.AudioLanguages.Add(normalizedLang);
-                                        }
+                                        operand.AudioLanguages.Add(language);
                                     }
                                 }
                             }
@@ -221,13 +190,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             // Extract all people (actors, directors, producers, etc.) - only when needed for performance
-            operand.People = new List<string>();
+            operand.People = [];
             if (extractPeople)
             {
                 try
                 {
                     // Cache the GetPeople method lookup for better performance
-                    var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                    var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
                     if (getPeopleMethod != null)
                     {
                         // Use InternalPeopleQuery to get people associated with this item
@@ -236,7 +205,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             ItemId = baseItem.Id
                         };
                         
-                        var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
+                        var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
                         
                         if (result is IEnumerable<object> peopleEnum)
                         {
