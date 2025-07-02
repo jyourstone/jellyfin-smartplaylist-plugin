@@ -104,6 +104,7 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: false
+          token: ${{ secrets.PAT }}
 
       - name: Update External Manifest
         env:
