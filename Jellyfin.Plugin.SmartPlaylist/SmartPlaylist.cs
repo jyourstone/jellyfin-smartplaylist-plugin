@@ -9,31 +9,19 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
-    public class SmartPlaylist
+    public class SmartPlaylist(SmartPlaylistDto dto)
     {
-        public SmartPlaylist(SmartPlaylistDto dto)
-        {
-            Id = dto.Id;
-            Name = dto.Name;
-            FileName = dto.FileName;
-            UserId = dto.UserId;
-            ExpressionSets = Engine.FixRuleSets(dto.ExpressionSets);
-            Order = OrderFactory.CreateOrder(dto.Order.Name);
-        }
-
-        public string Id { get; set; }
-        public string Name { get; set; }
-        public string FileName { get; set; }
-        public Guid UserId { get; set; }
-        public List<ExpressionSet> ExpressionSets { get; set; }
-        public Order Order { get; set; }
+        public string Id { get; set; } = dto.Id;
+        public string Name { get; set; } = dto.Name;
+        public string FileName { get; set; } = dto.FileName;
+        public Guid UserId { get; set; } = dto.UserId;
+        public List<ExpressionSet> ExpressionSets { get; set; } = Engine.FixRuleSets(dto.ExpressionSets);
+        public Order Order { get; set; } = OrderFactory.CreateOrder(dto.Order.Name);
 
         private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger logger = null)
         {
-            var compiledRuleSets = new List<List<Func<Operand, bool>>>();
-            foreach (var set in ExpressionSets)
-                compiledRuleSets.Add(set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList());
-            return compiledRuleSets;
+            return [.. ExpressionSets.Select(set => 
+                set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList())];
         }
 
         // Returns the ID's of the items, if order is provided the IDs are sorted.
@@ -270,10 +258,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return Order.OrderBy(results).Select(x => x.Id);
         }
 
-        private static void Validate()
-        {
-            // Future enhancement: Add validation for constructor input
-        }
+        // private static void Validate()
+        // {
+        //     // Future enhancement: Add validation for constructor input
+        // }
     }
 
     public static class OrderFactory

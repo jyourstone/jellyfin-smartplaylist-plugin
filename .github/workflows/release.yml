@@ -44,50 +44,101 @@ jobs:
 
       - name: Get Release Notes
         id: get_release_notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           echo "Getting release notes for tag: ${{ github.ref_name }}"
           
-          # Try to get tag annotation message (not commit message)
+          # Ensure we have the complete tag information
+          echo "=== Debug: Git repository state ==="
+          git remote -v
+          git branch -a
+          git tag -l | head -10
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Tag ${{ github.ref_name }} points to: $(git rev-parse ${{ github.ref_name }} 2>/dev/null || echo 'NOT FOUND')"
+          
+          # Explicitly fetch all tags with annotations
+          echo "=== Fetching tags explicitly ==="
+          git fetch --tags --force
+          
+          # Re-check tag information after explicit fetch
+          echo "=== Debug: After explicit tag fetch ==="
+          git tag -l | grep "${{ github.ref_name }}" || echo "Tag not found in local tags"
+          
+          # Check if tag exists and what type it is
+          if git rev-parse --verify "${{ github.ref_name }}" >/dev/null 2>&1; then
+            TAG_OBJECT_TYPE=$(git cat-file -t "${{ github.ref_name }}" 2>/dev/null || echo "unknown")
+            echo "Tag ${{ github.ref_name }} exists, object type: $TAG_OBJECT_TYPE"
+          else
+            echo "ERROR: Tag ${{ github.ref_name }} not found after fetch"
+            exit 1
+          fi
+          
+          # Try to get tag annotation message
           TAG_MESSAGE=""
           
-          # Method 1: git for-each-ref (most reliable for tag annotations)
-          echo "Method 1: Trying git for-each-ref"
-          TAG_MESSAGE=$(git for-each-ref --format='%(contents)' refs/tags/${{ github.ref_name }} 2>/dev/null || echo "")
-          echo "Result from for-each-ref: '$TAG_MESSAGE'"
+          # Method 1: If it's an annotated tag, use cat-file
+          if [ "$TAG_OBJECT_TYPE" = "tag" ]; then
+            echo "=== Method 1: Getting annotated tag message with cat-file ==="
+            TAG_MESSAGE=$(git cat-file -p "${{ github.ref_name }}" | sed '1,/^$/d' | sed '/^-----BEGIN PGP SIGNATURE-----/,$d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            echo "Result from cat-file: '$TAG_MESSAGE'"
+          fi
           
-          # Method 2: git tag with format (for annotated tags)
+          # Method 2: Try git tag -l --format (works for both annotated and lightweight)
           if [ -z "$TAG_MESSAGE" ]; then
-            echo "Method 2: Trying git tag -l --format"
-            TAG_MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }} 2>/dev/null || echo "")
+            echo "=== Method 2: Using git tag -l --format ==="
+            TAG_MESSAGE=$(git tag -l --format='%(contents)' "${{ github.ref_name }}" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             echo "Result from git tag format: '$TAG_MESSAGE'"
           fi
           
-          # Method 3: Check if it's an annotated tag with git cat-file
+          # Method 3: Try git for-each-ref
           if [ -z "$TAG_MESSAGE" ]; then
-            echo "Method 3: Trying git cat-file"
-            if git cat-file -t ${{ github.ref_name }} 2>/dev/null | grep -q "tag"; then
-              TAG_MESSAGE=$(git cat-file -p ${{ github.ref_name }} | sed '1,/^$/d' 2>/dev/null || echo "")
-              echo "Result from cat-file: '$TAG_MESSAGE'"
-            else
-              echo "Not an annotated tag, skipping cat-file method"
+            echo "=== Method 3: Using git for-each-ref ==="
+            TAG_MESSAGE=$(git for-each-ref --format='%(contents)' "refs/tags/${{ github.ref_name }}" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            echo "Result from for-each-ref: '$TAG_MESSAGE'"
+          fi
+          
+          # Method 4: Use GitHub API as fallback
+          if [ -z "$TAG_MESSAGE" ]; then
+            echo "=== Method 4: Using GitHub API as fallback ==="
+            API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/git/tags/$(git rev-parse ${{ github.ref_name }})" 2>/dev/null || echo "")
+            
+            if [ -n "$API_RESPONSE" ]; then
+              TAG_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.message // empty' 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              echo "Result from GitHub API: '$TAG_MESSAGE'"
             fi
           fi
           
-          # Clean up whitespace
+          # Clean up and validate the message
           TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          echo "Final cleaned tag message: '$TAG_MESSAGE'"
+          echo "=== Final cleaned tag message: '$TAG_MESSAGE' ==="
           
-          if [ -n "$TAG_MESSAGE" ]; then
-            echo "Using tag annotation as release notes"
+          # Set the release notes
+          if [ -n "$TAG_MESSAGE" ] && [ "$TAG_MESSAGE" != "null" ]; then
+            echo "✅ Using tag annotation as release notes"
             RELEASE_NOTES="$TAG_MESSAGE"
           else
-            echo "No tag annotation found, using default message"
-            RELEASE_NOTES="Release ${{ github.ref_name }} - Please see the commit history for changes in this release."
+            echo "⚠️  No tag annotation found, using default message"
+            
+            # Try to get the commit message as ultimate fallback
+            COMMIT_MESSAGE=$(git log -1 --pretty=%B "${{ github.ref_name }}" 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$COMMIT_MESSAGE" ]; then
+              RELEASE_NOTES="Release ${{ github.ref_name }}"
+              RELEASE_NOTES="$RELEASE_NOTES"$'\n\n'"Changes in this release:"
+              RELEASE_NOTES="$RELEASE_NOTES"$'\n'"- $COMMIT_MESSAGE"
+              RELEASE_NOTES="$RELEASE_NOTES"$'\n\n'"For detailed changes, please see the commit history."
+            else
+              RELEASE_NOTES="Release ${{ github.ref_name }} - Please see the commit history for changes in this release."
+            fi
           fi
           
-          echo "Final release notes:"
+          echo "=== Final release notes ==="
           echo "$RELEASE_NOTES"
+          echo "=========================="
 
+          # Set the output using the multiline format
           {
             echo 'release_notes<<EOM'
             echo "$RELEASE_NOTES"

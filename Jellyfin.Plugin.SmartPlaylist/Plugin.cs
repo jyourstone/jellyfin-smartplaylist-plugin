@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using Jellyfin.Plugin.SmartPlaylist.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -32,14 +31,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <returns>The web pages.</returns>
         public IEnumerable<PluginPageInfo> GetPages()
         {
-            return new[]
-            {
+            return [
                 new PluginPageInfo
                 {
                     Name = Name,
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.config.html"
                 }
-            };
+            ];
         }
     }
 }
