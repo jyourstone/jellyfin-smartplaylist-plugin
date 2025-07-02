@@ -130,15 +130,7 @@
                             <label class="input-label" for="playlistName">Playlist Name</label>
                             <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
                         </div>
-
-                        <div class="input-container" style="margin-bottom: 1em;">
-                            <label class="input-label" for="playlistUser">Playlist Owner</label>
-                            <select is="emby-select" id="playlistUser" class="emby-select" required>
-                                <option value="">Loading users...</option>
-                            </select>
-                            <div class="field-description">The user who this playlist belongs to.</div>
-                        </div>
-                        
+                       
                         <div class="input-container">
                             <label class="input-label">Rules</label>
                             <div id="rules-container"></div>
@@ -153,6 +145,14 @@
                         <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="input-label" for="sortOrder">Sort Order</label>
                             <div id="sortOrder-container"></div>
+                        </div>
+
+                        <div class="input-container" style="margin-bottom: 1em;">
+                            <label class="input-label" for="playlistUser">Playlist Owner</label>
+                            <select is="emby-select" id="playlistUser" class="emby-select" required>
+                                <option value="">Loading users...</option>
+                            </select>
+                            <div class="field-description">The user who this playlist belongs to.</div>
                         </div>
 
                         <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
@@ -272,6 +272,7 @@
             let tabListenersInitialized = false;
             let editMode = false;
             let editingPlaylistId = null;
+            let currentModalBackdropHandler = null; // Track the current modal backdrop handler
             const mediaTypes = [ { Value: "Movie", Label: "Movie" }, { Value: "Episode", Label: "Episode (TV Show)" }, { Value: "Audio", Label: "Audio (Music)" } ];
 
             function showNotification(message, type = 'error') {
@@ -855,6 +856,12 @@
                 const confirmBtn = modal.querySelector('#delete-confirm-btn');
                 const cancelBtn = modal.querySelector('#delete-cancel-btn');
 
+                // Remove any existing backdrop listener to prevent accumulation
+                if (currentModalBackdropHandler) {
+                    modal.removeEventListener('click', currentModalBackdropHandler);
+                    currentModalBackdropHandler = null;
+                }
+
                 // Force positioning with JavaScript since CSS isn't working reliably
                 modalContainer.style.position = 'fixed';
                 modalContainer.style.top = '50%';
@@ -883,25 +890,41 @@
                 // Show the modal
                 modal.classList.remove('hide');
                 
+                // Remove any existing event listeners by cloning and replacing the elements
+                const newConfirmBtn = confirmBtn.cloneNode(true);
+                const newCancelBtn = cancelBtn.cloneNode(true);
+                confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+                cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+                
+                // Clean up function to close modal and remove backdrop listener
+                const cleanupAndClose = () => {
+                    modal.classList.add('hide');
+                    if (currentModalBackdropHandler) {
+                        modal.removeEventListener('click', currentModalBackdropHandler);
+                        currentModalBackdropHandler = null;
+                    }
+                };
+                
                 const handleConfirm = () => {
                     deletePlaylist(page, playlistId, playlistName);
-                    modal.classList.add('hide');
+                    cleanupAndClose();
                 };
 
                 const handleCancel = () => {
-                    modal.classList.add('hide');
+                    cleanupAndClose();
                 };
                 
                 const handleBackdropClick = (e) => {
                     if (e.target === modal) {
-                        modal.classList.add('hide');
+                        cleanupAndClose();
                     }
                 };
 
-                // Use { once: true } to prevent memory leaks
-                confirmBtn.addEventListener('click', handleConfirm, { once: true });
-                cancelBtn.addEventListener('click', handleCancel, { once: true });
-                modal.addEventListener('click', handleBackdropClick, { once: true });
+                // Store reference to current handler and add fresh event listeners
+                currentModalBackdropHandler = handleBackdropClick;
+                newConfirmBtn.addEventListener('click', handleConfirm);
+                newCancelBtn.addEventListener('click', handleCancel);
+                modal.addEventListener('click', handleBackdropClick);
             }
 
             async function editPlaylist(page, playlistId) {
@@ -1194,10 +1217,15 @@
                             button.addEventListener('click', () => {
                                 const tabId = button.getAttribute('data-tab');
                                 
-                                // Hide any open modals when switching tabs
+                                // Hide any open modals when switching tabs and clean up backdrop listener
                                 const modal = page.querySelector('#delete-confirm-modal');
                                 if (modal && !modal.classList.contains('hide')) {
                                     modal.classList.add('hide');
+                                    // Clean up backdrop listener to prevent memory leak
+                                    if (currentModalBackdropHandler) {
+                                        modal.removeEventListener('click', currentModalBackdropHandler);
+                                        currentModalBackdropHandler = null;
+                                    }
                                 }
                                 
                                 tabButtons.forEach(btn => btn.classList.remove('is-active'));
