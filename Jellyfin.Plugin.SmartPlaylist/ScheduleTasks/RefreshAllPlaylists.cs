@@ -46,13 +46,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         IServerApplicationPaths serverApplicationPaths,
         IProviderManager providerManager) : IScheduledTask
     {
-        private readonly IUserManager _userManager = userManager;
-        private readonly ILibraryManager _libraryManager = libraryManager;
-        private readonly IPlaylistManager _playlistManager = playlistManager;
-        private readonly IUserDataManager _userDataManager = userDataManager;
-        private readonly ILogger<RefreshAllPlaylists> _logger = logger;
-        private readonly IServerApplicationPaths _serverApplicationPaths = serverApplicationPaths;
-        private readonly IProviderManager _providerManager = providerManager;
 
         /// <summary>
         /// Gets the name of the task.
@@ -82,19 +75,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>Task.</returns>
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("[DEBUG] RefreshAllPlaylists.ExecuteAsync called");
             try
             {
-                _logger.LogInformation("Starting SmartPlaylist refresh task");
+                logger.LogInformation("Starting SmartPlaylist refresh task");
 
                 // Create playlist store
-                var fileSystem = new SmartPlaylistFileSystem(_serverApplicationPaths);
-                var plStore = new SmartPlaylistStore(fileSystem, _userManager);
+                var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
+                var plStore = new SmartPlaylistStore(fileSystem, userManager);
 
                 var dtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-                _logger.LogInformation("Found {Count} smart playlists to process", dtos.Length);
+                logger.LogInformation("Found {Count} smart playlists to process", dtos.Length);
                 
-                var allUsers = _userManager.Users;
+                var allUsers = userManager.Users;
 
                 for (int i = 0; i < dtos.Length; i++)
                 {
@@ -107,25 +99,25 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     var user = await GetPlaylistUserAsync(dto);
                     if (user == null)
                     {
-                        _logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
+                        logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
                         continue;
                     }
                     
                     var smartPlaylist = new SmartPlaylist(dto);
                     
                     // Log the playlist processing
-                    _logger.LogInformation("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
+                    logger.LogInformation("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
                     
                     var allUserMedia = GetAllUserMedia(user).ToArray();
-                    _logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
+                    logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
                     
-                    var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, _logger).ToArray();
-                    _logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
+                    var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, libraryManager, user, userDataManager, logger).ToArray();
+                    logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
                         dto.Name, newItems.Length, allUserMedia.Length);
                     
                     var newLinkedChildren = newItems.Select(itemId => 
                     {
-                        var item = _libraryManager.GetItemById(itemId);
+                        var item = libraryManager.GetItemById(itemId);
                         return new LinkedChild 
                         { 
                             ItemId = itemId,
@@ -154,12 +146,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                         }
                         bool shouldBePublic = dto.Public;
                         
-                        _logger.LogDebug("Playlist {PlaylistName} status check: currently public = {CurrentlyPublic} (OpenAccess), should be public = {ShouldBePublic}, shares count = {SharesCount}", 
+                        logger.LogDebug("Playlist {PlaylistName} status check: currently public = {CurrentlyPublic} (OpenAccess), should be public = {ShouldBePublic}, shares count = {SharesCount}", 
                             smartPlaylistName, isCurrentlyPublic, shouldBePublic, existingPlaylist.Shares?.Count ?? 0);
                         
                         if (isCurrentlyPublic != shouldBePublic)
                         {
-                            _logger.LogInformation("Public status changed for playlist {PlaylistName}. Updating playlist directly (was {OldStatus}, now {NewStatus})", 
+                            logger.LogInformation("Public status changed for playlist {PlaylistName}. Updating playlist directly (was {OldStatus}, now {NewStatus})", 
                                 smartPlaylistName, isCurrentlyPublic ? "public" : "private", shouldBePublic ? "public" : "private");
                             
                             // Update the existing playlist directly using Jellyfin's playlist update API
@@ -168,13 +160,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                         else
                         {
                             // Public status hasn't changed, just update the items
-                            _logger.LogInformation("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
+                            logger.LogInformation("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
                                 smartPlaylistName, user.Username, newLinkedChildren.Length, shouldBePublic ? "public" : "private");
                             
                             existingPlaylist.LinkedChildren = newLinkedChildren;
                             await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                             
-                            _logger.LogDebug("After item update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
+                            logger.LogDebug("After item update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
                                 existingPlaylist.Name, existingPlaylist.Shares?.Count ?? 0, existingPlaylist.Shares.Any());
                             
                             // Refresh metadata to generate cover images
@@ -183,25 +175,25 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     }
                     else
                     {
-                        _logger.LogInformation("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
+                        logger.LogInformation("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
                             smartPlaylistName, user.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
                         
-                        var result = await _playlistManager.CreatePlaylist(new PlaylistCreationRequest
+                        var result = await playlistManager.CreatePlaylist(new PlaylistCreationRequest
                         {
                             Name = smartPlaylistName,
                             UserId = user.Id,
                             Public = dto.Public
                         }).ConfigureAwait(false);
 
-                        if (_libraryManager.GetItemById(result.Id) is Playlist newPlaylist)
+                        if (libraryManager.GetItemById(result.Id) is Playlist newPlaylist)
                         {
-                            _logger.LogDebug("New playlist created: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
+                            logger.LogDebug("New playlist created: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
                                 newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
                             
                             newPlaylist.LinkedChildren = newLinkedChildren;
                             await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                             
-                            _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
+                            logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
                                 newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
                             
                             // Refresh metadata to generate cover images
@@ -211,11 +203,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 }
 
                 progress?.Report(100);
-                _logger.LogInformation("SmartPlaylist refresh task completed successfully");
+                logger.LogInformation("SmartPlaylist refresh task completed successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during SmartPlaylist refresh task");
+                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task");
                 throw;
             }
         }
@@ -231,13 +223,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         {
             try
             {
-                _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
+                logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
                 
                 // Only generate cover images for playlists that have content
                 // This avoids NullReferenceExceptions for empty playlists
                 if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
                 {
-                    _logger.LogDebug("Skipping cover image generation for empty playlist {PlaylistName} - no content to generate image from", playlist.Name);
+                    logger.LogDebug("Skipping cover image generation for empty playlist {PlaylistName} - no content to generate image from", playlist.Name);
                     return;
                 }
                 
@@ -252,13 +244,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     ReplaceAllImages = false
                 };
                 
-                await _providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
+                await providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
-                _logger.LogDebug("Cover image generation completed for playlist {PlaylistName}", playlist.Name);
+                logger.LogDebug("Cover image generation completed for playlist {PlaylistName}", playlist.Name);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName}. Cover image may not be generated.", playlist.Name);
+                logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName}. Cover image may not be generated.", playlist.Name);
             }
         }
 
@@ -268,7 +260,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>IEnumerable{TaskTriggerInfo}.</returns>
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            return [
+            return
+            [
                 new TaskTriggerInfo
                 {
                     Type = TaskTriggerInfo.TriggerInterval,
@@ -279,7 +272,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
         private async Task UpdatePlaylistPublicStatusAsync(Playlist playlist, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Updating playlist {PlaylistName} public status to {PublicStatus} and items to {ItemCount}", 
+            logger.LogInformation("Updating playlist {PlaylistName} public status to {PublicStatus} and items to {ItemCount}", 
                 playlist.Name, isPublic ? "public" : "private", linkedChildren.Length);
             
             // Update the playlist items
@@ -289,24 +282,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             var openAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             if (openAccessProperty != null && openAccessProperty.CanWrite)
             {
-                _logger.LogDebug("Setting playlist {PlaylistName} OpenAccess property to {IsPublic}", playlist.Name, isPublic);
+                logger.LogDebug("Setting playlist {PlaylistName} OpenAccess property to {IsPublic}", playlist.Name, isPublic);
                 openAccessProperty.SetValue(playlist, isPublic);
             }
             else
             {
                 // Fallback to share manipulation if OpenAccess property is not available
-                _logger.LogWarning("OpenAccess property not found or not writable, falling back to share manipulation");
+                logger.LogWarning("OpenAccess property not found or not writable, falling back to share manipulation");
                 if (isPublic && !playlist.Shares.Any())
                 {
-                    _logger.LogDebug("Making playlist {PlaylistName} public by adding share", playlist.Name);
+                    logger.LogDebug("Making playlist {PlaylistName} public by adding share", playlist.Name);
                     var ownerId = playlist.OwnerUserId;
                     var newShare = new MediaBrowser.Model.Entities.PlaylistUserPermissions(ownerId, false);
                     
-                    playlist.Shares = [.. playlist.Shares, newShare];
+                    var sharesList = playlist.Shares.ToList();
+                    sharesList.Add(newShare);
+                    playlist.Shares = [.. sharesList];
                 }
                 else if (!isPublic && playlist.Shares.Any())
                 {
-                    _logger.LogDebug("Making playlist {PlaylistName} private by clearing shares", playlist.Name);
+                    logger.LogDebug("Making playlist {PlaylistName} private by clearing shares", playlist.Name);
                     playlist.Shares = [];
                 }
             }
@@ -317,7 +312,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : playlist.Shares.Any();
-            _logger.LogInformation("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
+            logger.LogInformation("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
                 playlist.Name, isFinallyPublic, playlist.Shares?.Count ?? 0);
             
             // Refresh metadata to generate cover images
@@ -333,7 +328,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 Name = name
             };
             
-            return _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+            return libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
         }
 
         private IEnumerable<BaseItem> GetAllUserMedia(User user)
@@ -344,7 +339,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 Recursive = true
             };
 
-            return _libraryManager.GetItemsResult(query).Items;
+            return libraryManager.GetItemsResult(query).Items;
         }
 
         /// <summary>
@@ -357,17 +352,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             // If new UserId field is set and not empty, use it
             if (playlist.UserId != Guid.Empty)
             {
-                return _userManager.GetUserById(playlist.UserId);
+                return userManager.GetUserById(playlist.UserId);
             }
 
             // Legacy migration: if old User field is set, try to find the user and migrate
 #pragma warning disable CS0618 // Type or member is obsolete
             if (!string.IsNullOrEmpty(playlist.User))
             {
-                var user = _userManager.GetUserByName(playlist.User);
+                var user = userManager.GetUserByName(playlist.User);
                 if (user != null)
                 {
-                    _logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
+                    logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
                         playlist.Name, playlist.User, user.Id);
                     
                     // Update the playlist with the User ID and save it
@@ -376,21 +371,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     
                     try
                     {
-                        var fileSystem = new SmartPlaylistFileSystem(_serverApplicationPaths);
-                        var playlistStore = new SmartPlaylistStore(fileSystem, _userManager);
+                        var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
+                        var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
                         await playlistStore.SaveAsync(playlist);
-                        _logger.LogInformation("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                        logger.LogInformation("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to save migrated playlist '{PlaylistName}', but will continue with operation", playlist.Name);
+                        logger.LogWarning(ex, "Failed to save migrated playlist '{PlaylistName}', but will continue with operation", playlist.Name);
                     }
                     
                     return user;
                 }
                 else
                 {
-                    _logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
+                    logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
                 }
             }
 #pragma warning restore CS0618 // Type or member is obsolete

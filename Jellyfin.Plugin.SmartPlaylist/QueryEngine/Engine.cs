@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
-    // This is taken entirely from https://stackoverflow.com/questions/6488034/how-to-implement-a-rule-engine
+    // This is based on https://stackoverflow.com/questions/6488034/how-to-implement-a-rule-engine
     public static class Engine
     {
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
@@ -138,15 +138,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(expr, paramUser).Compile();
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used via reflection")]
-        private static bool AnyItemContains(IEnumerable<string> list, string value)
+        internal static bool AnyItemContains(IEnumerable<string> list, string value)
         {
             if (list == null) return false;
             return list.Any(s => s != null && s.Contains(value, StringComparison.OrdinalIgnoreCase));
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used via reflection")]
-        private static bool AnyRegexMatch(IEnumerable<string> list, string pattern)
+        internal static bool AnyRegexMatch(IEnumerable<string> list, string pattern)
         {
             if (list == null) return false;
             
