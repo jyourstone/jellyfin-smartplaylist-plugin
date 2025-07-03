@@ -350,4 +350,3 @@ dev/media/
 
 # Mac
 .DS_Store
-dev/docker-compose.yml
