@@ -8,7 +8,9 @@
 
 A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin.
 
-This plugin allows you to create playlists based on a set of rules, which will automatically update as your library changes.
+This plugin allows you to create playlists based on a set of rules, which will automatically update as your library changes. 
+
+It has been tested and works with Jellyfin version `10.10.7`, which means it will most likely work with all 10.10.x versions.
 
 ## ✨ Features
 
@@ -102,7 +104,7 @@ The web interface provides access to all available fields for creating playlist 
 
 #### **Content Fields**
 - **Name** - Title of the media item
-- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Audio`). This is the most reliable way to filter for movies vs. TV shows.
+- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Audio`). It's recommended to always use this filter for best performance.
 - **Audio Languages** - The audio language of the movie/TV show.
 - **Album** - Album name (for music)
 - **Folder Path** - Location in your library
