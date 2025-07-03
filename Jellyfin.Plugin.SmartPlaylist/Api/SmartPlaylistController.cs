@@ -465,7 +465,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             try
             {
                 var users = _userManager.Users
-                    .Where(u => !u.HasPermission(PermissionKind.IsDisabled))
                     .Select(u => new { 
                         u.Id, 
                         Name = u.Username

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Data.Entities;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
@@ -264,7 +264,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             [
                 new TaskTriggerInfo
                 {
-                    Type = TaskTriggerInfo.TriggerInterval,
+                    Type = TaskTriggerInfoType.IntervalTrigger,
                     IntervalTicks = TimeSpan.FromMinutes(30).Ticks
                 }
             ];
