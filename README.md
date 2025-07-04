@@ -30,7 +30,7 @@ SmartPlaylist now features a modern web-based configuration interface through th
 
 <div align="center">
     <p>
-        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="500"/>
+        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="600"/>
     </p>
 </div>
 
@@ -46,10 +46,19 @@ The web interface is organized into three tabs:
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
-    -   Delete playlists you no longer need.
+    -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
     -   Manually trigger a refresh for all smart playlists.
+
+#### Flexible Deletion Options
+
+When deleting a smart playlist, you can choose whether to also delete the corresponding Jellyfin playlist:
+
+- **Delete both (default)**: Removes both the smart playlist configuration and the Jellyfin playlist
+- **Delete configuration only**: Keeps the Jellyfin playlist and removes the "[Smart]" suffix, making it a regular manually managed playlist
+
+This is useful when you for example want to populate a playlist automatically once, then manage it manually.
 
 ### Automatic Updates
 
@@ -86,8 +95,7 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
-- **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
-- **Delete options**: When deleting a smart playlist, choose if you want to delete the created playlist or not.
+- **Mix AND/OR Logic**: Add a way to mix `AND`/`OR` conditions between rule groups in the web interface.
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 
 ## Development

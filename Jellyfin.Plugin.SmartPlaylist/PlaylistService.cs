@@ -22,6 +22,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     {
         Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
     }
 
     public class PlaylistService(
@@ -44,6 +45,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
             try
             {
                 _logger.LogInformation("Refreshing single smart playlist: {PlaylistName}", dto.Name);
+                _logger.LogDebug("[DEBUG] PlaylistService.RefreshSinglePlaylistAsync called with: Name={Name}, UserId={UserId}, Public={Public}, RuleLogic={RuleLogic}, MediaTypes={MediaTypes}", 
+                    dto.Name, dto.UserId, dto.Public, dto.RuleLogic, 
+                    dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None");
 
                 // Get the user for this playlist
                 var user = GetPlaylistUser(dto);
@@ -162,6 +166,45 @@ namespace Jellyfin.Plugin.SmartPlaylist
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting smart playlist {PlaylistName}", dto.Name);
+                throw;
+            }
+        }
+
+        public async Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var user = GetPlaylistUser(dto);
+                if (user == null)
+                {
+                    _logger.LogWarning("No user found for playlist '{PlaylistName}'. Cannot remove smart suffix.", dto.Name);
+                    return;
+                }
+
+                var smartPlaylistName = dto.Name + " [Smart]";
+                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                
+                if (existingPlaylist != null)
+                {
+                    _logger.LogInformation("Removing '[Smart]' suffix from playlist '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    
+                    // Rename the playlist by removing the [Smart] suffix
+                    existingPlaylist.Name = dto.Name;
+                    
+                    // Save the changes
+                    await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    
+                    _logger.LogInformation("Successfully renamed playlist from '{OldName}' to '{NewName}' for user '{UserName}'", 
+                        smartPlaylistName, dto.Name, user.Username);
+                }
+                else
+                {
+                    _logger.LogInformation("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error removing smart suffix from playlist {PlaylistName}", dto.Name);
                 throw;
             }
         }

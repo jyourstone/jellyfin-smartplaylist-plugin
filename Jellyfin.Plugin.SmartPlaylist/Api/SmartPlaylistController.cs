@@ -229,12 +229,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         [HttpPost]
         public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody, Required] SmartPlaylistDto playlist)
         {
-            _logger.LogInformation("[DEBUG] CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
+            _logger.LogInformation("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
+            _logger.LogDebug("[DEBUG] Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, RuleLogic={RuleLogic}, MediaTypes={MediaTypes}", 
+                playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.RuleLogic, 
+                playlist?.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
+            
+            if (playlist?.ExpressionSets != null)
+            {
+                _logger.LogDebug("[DEBUG] ExpressionSets count: {Count}", playlist.ExpressionSets.Count);
+                for (int i = 0; i < playlist.ExpressionSets.Count; i++)
+                {
+                    var set = playlist.ExpressionSets[i];
+                    _logger.LogDebug("[DEBUG] ExpressionSet {Index}: {ExpressionCount} expressions", i, set?.Expressions?.Count ?? 0);
+                    if (set?.Expressions != null)
+                    {
+                        for (int j = 0; j < set.Expressions.Count; j++)
+                        {
+                            var expr = set.Expressions[j];
+                            _logger.LogDebug("[DEBUG] Expression {SetIndex}.{ExprIndex}: {MemberName} {Operator} '{TargetValue}'", 
+                                i, j, expr?.MemberName, expr?.Operator, expr?.TargetValue);
+                        }
+                    }
+                }
+            }
+            
             try
             {
                 if (string.IsNullOrEmpty(playlist.Id))
                 {
                     playlist.Id = Guid.NewGuid().ToString();
+                    _logger.LogDebug("[DEBUG] Generated new playlist ID: {Id}", playlist.Id);
                 }
                 
                 if (string.IsNullOrEmpty(playlist.FileName))
@@ -349,9 +373,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         /// Delete a smart playlist.
         /// </summary>
         /// <param name="id">The playlist ID.</param>
+        /// <param name="deleteJellyfinPlaylist">Whether to also delete the corresponding Jellyfin playlist. Defaults to true for backward compatibility.</param>
         /// <returns>No content.</returns>
         [HttpDelete("{id}")]
-        public async Task<ActionResult> DeleteSmartPlaylist([FromRoute, Required] string id)
+        public async Task<ActionResult> DeleteSmartPlaylist([FromRoute, Required] string id, [FromQuery] bool deleteJellyfinPlaylist = true)
         {
             try
             {
@@ -369,13 +394,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
                 
-                // Delete the corresponding Jellyfin playlist using the service
+                // Handle the Jellyfin playlist based on user choice
                 var playlistService = GetPlaylistService();
-                await playlistService.DeletePlaylistAsync(playlist);
+                if (deleteJellyfinPlaylist)
+                {
+                    await playlistService.DeletePlaylistAsync(playlist);
+                    _logger.LogInformation("Deleted smart playlist and corresponding Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                }
+                else
+                {
+                    // Remove the [Smart] suffix from the playlist name
+                    await playlistService.RemoveSmartSuffixAsync(playlist);
+                    _logger.LogInformation("Deleted smart playlist configuration and removed [Smart] suffix from Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                }
                 
                 // Then delete the smart playlist configuration
                 playlistStore.Delete(Guid.Empty, id);
-                _logger.LogInformation("Deleted smart playlist and corresponding Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
                 
                 return NoContent();
             }
@@ -399,7 +433,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 {
                     new { Value = "Album", Label = "Album" },
                     new { Value = "AudioLanguages", Label = "Audio Languages" },
-                    new { Value = "ItemType", Label = "Media Type" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
                     new { Value = "ProductionYear", Label = "Production Year" }

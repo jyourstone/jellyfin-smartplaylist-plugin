@@ -81,7 +81,7 @@
             background-color: #d9534f;
         }
         
-        .and-separator {
+        .logic-separator {
             text-align: center;
             margin: 0.75em 0;
             font-weight: bold;
@@ -92,6 +92,13 @@
             border-radius: 4px;
             display: inline-block;
             min-width: 40px;
+        }
+
+        .media-type-flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5em;
+            align-items: center;
         }
     </style>
 </head>
@@ -131,6 +138,34 @@
                             <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
                         </div>
                        
+                        <div class="input-container" style="margin-bottom: 1em;">
+                            <label class="input-label">Media Types</label>
+                            <div class="media-type-flex">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeMovie" class="emby-checkbox media-type-checkbox" value="Movie">
+                                    <span>Movies</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeEpisode" class="emby-checkbox media-type-checkbox" value="Episode">
+                                    <span>TV Shows</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeAudio" class="emby-checkbox media-type-checkbox" value="Audio">
+                                    <span>Music</span>
+                                </label>
+                            </div>
+                            <div class="field-description">Select one or more media types to include. This filter is always applied first.</div>
+                        </div>
+
+                        <div class="input-container" style="margin-bottom: 1em;">
+                            <label class="input-label" for="ruleLogic">Rule Logic</label>
+                            <select is="emby-select" id="ruleLogic" class="emby-select" required>
+                                <option value="And">All rules must be true (AND)</option>
+                                <option value="Or">Any rule can be true (OR)</option>
+                            </select>
+                            <div class="field-description">Choose how multiple rules should be combined.</div>
+                        </div>
+
                         <div class="input-container">
                             <label class="input-label">Rules</label>
                             <div id="rules-container"></div>
@@ -240,6 +275,16 @@
                     </div>
                     <div class="custom-modal-body">
                         <p id="delete-confirm-text"></p>
+                        <div style="margin-top: 1em; padding: 0.5em; background-color: #3a3a3a; border-radius: 4px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="delete-jellyfin-playlist-checkbox" checked style="margin-right: 0.5em;">
+                                <span>Also delete the Jellyfin playlist</span>
+                            </label>
+                            <div style="font-size: 0.9em; color: #aaa; margin-top: 0.5em;">
+                                <strong>Unchecked:</strong> Only delete the smart playlist configuration. The Jellyfin playlist will remain and can be managed manually.<br><br>
+                                <strong>Checked:</strong> Delete both the smart playlist configuration and the Jellyfin playlist.
+                            </div>
+                        </div>
                     </div>
                     <div class="custom-modal-footer">
                         <button type="button" is="emby-button" class="emby-button raised" id="delete-cancel-btn">Cancel</button>
@@ -488,14 +533,29 @@
                 }
             }
 
+            function updateRuleSeparators(page) {
+                const rulesContainer = page.querySelector('#rules-container');
+                const ruleLogicSelect = page.querySelector('#ruleLogic');
+                const currentLogic = ruleLogicSelect ? ruleLogicSelect.value : 'And';
+                
+                // Update all existing separators
+                const separators = rulesContainer.querySelectorAll('.logic-separator');
+                separators.forEach(separator => {
+                    separator.textContent = currentLogic.toUpperCase();
+                });
+            }
+
             function addRule(page) {
                 const rulesContainer = page.querySelector('#rules-container');
                 
                 if (rulesContainer.children.length > 0) {
-                    const andSeparator = document.createElement('div');
-                    andSeparator.className = 'and-separator';
-                    andSeparator.textContent = 'AND';
-                    rulesContainer.appendChild(andSeparator);
+                    const logicSeparator = document.createElement('div');
+                    logicSeparator.className = 'logic-separator';
+                    // Get the current rule logic setting
+                    const ruleLogicSelect = page.querySelector('#ruleLogic');
+                    const currentLogic = ruleLogicSelect ? ruleLogicSelect.value : 'And';
+                    logicSeparator.textContent = currentLogic.toUpperCase();
+                    rulesContainer.appendChild(logicSeparator);
                 }
                 
                 const ruleDiv = document.createElement('div');
@@ -545,6 +605,14 @@
                 operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(newRuleGroup);
                 });
+
+                // Add event listener for rule logic changes
+                const ruleLogicSelect = page.querySelector('#ruleLogic');
+                if (ruleLogicSelect) {
+                    ruleLogicSelect.addEventListener('change', function() {
+                        updateRuleSeparators(page);
+                    });
+                }
             }
             
             async function createPlaylist(page) {
@@ -553,6 +621,7 @@
                     const playlistName = page.querySelector('#playlistName').value;
 
                     if (!playlistName) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                         showNotification('Playlist name is required.');
                         return;
                     }
@@ -567,8 +636,16 @@
                         }
                     });
 
-                    if (expressions.length === 0) {
-                        showNotification('At least one complete rule (Field, Operator, and Value) is required.');
+                    const selectedMediaTypes = [];
+                    const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
+                    mediaTypesSelect.forEach(checkbox => {
+                        if (checkbox.checked) {
+                            selectedMediaTypes.push(checkbox.value);
+                        }
+                    });
+                    if (selectedMediaTypes.length === 0) {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        showNotification('At least one media type must be selected.');
                         return;
                     }
 
@@ -578,6 +655,7 @@
                     const sortOrderValue = sortOrderElement?.value || 'Ascending';
                     const orderName = sortByValue + ' ' + sortOrderValue;
                     const isPublic = page.querySelector('#playlistIsPublic').checked || false;
+                    const ruleLogic = page.querySelector('#ruleLogic').value || 'And';
 
                     // Get selected user ID from dropdown
                     const userId = page.querySelector('#playlistUser').value;
@@ -592,7 +670,9 @@
                         ExpressionSets: [{ Expressions: expressions }],
                         Order: { Name: orderName },
                         Public: isPublic,
-                        UserId: userId
+                        UserId: userId,
+                        RuleLogic: ruleLogic,
+                        MediaTypes: selectedMediaTypes
                     };
 
                     // Add ID if in edit mode
@@ -666,6 +746,13 @@
                 
                 page.querySelector('#playlistName').value = '';
                 page.querySelector('#rules-container').innerHTML = '';
+                page.querySelector('#ruleLogic').value = 'And';
+                
+                // Clear media type selections
+                const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
+                mediaTypesSelect.forEach(checkbox => {
+                    checkbox.checked = false;
+                });
                 
                 const apiClient = getApiClient();
                 apiClient.getPluginConfiguration(getPluginId()).then(config => {
@@ -773,6 +860,9 @@
                             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                             const userName = await resolveUsername(apiClient, playlist);
                             const playlistId = playlist.Id || 'NO_ID';
+                            const ruleLogic = playlist.RuleLogic || 'And';
+                            const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
+                                playlist.MediaTypes.join(', ') : 'All Types';
                             
                             let rulesHtml = '';
                             if (playlist.ExpressionSets && playlist.ExpressionSets[0] && playlist.ExpressionSets[0].Expressions) {
@@ -805,6 +895,8 @@
                                 '<div class="field-description">' +
                                 '<strong>File:</strong> ' + playlist.FileName + '<br>' +
                                 '<strong>User:</strong> ' + userName + '<br>' +
+                                '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                                '<strong>Logic:</strong> ' + ruleLogic.toUpperCase() + '<br>' +
                                 '<strong>Rules:</strong><br>' + rulesHtml + '<br><br>' +
                                 '<strong>Sort:</strong> ' + sortName + '<br>' +
                                 '<strong>Visibility:</strong> ' + isPublic +
@@ -828,14 +920,17 @@
 
             function deletePlaylist(page, playlistId, playlistName) {
                 const apiClient = getApiClient();
+                const deleteJellyfinPlaylist = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+                
                 Dashboard.showLoadingMsg();
                 apiClient.ajax({
                     type: "DELETE",
-                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId),
+                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '?deleteJellyfinPlaylist=' + deleteJellyfinPlaylist),
                     contentType: 'application/json'
                 }).then(() => {
                     Dashboard.hideLoadingMsg();
-                    showNotification('Playlist "' + playlistName + '" deleted successfully.', 'success');
+                    const action = deleteJellyfinPlaylist ? 'deleted' : 'configuration deleted and [Smart] suffix removed';
+                    showNotification('Playlist "' + playlistName + '" ' + action + ' successfully.', 'success');
                     loadPlaylistList(page);
                 }).catch(err => {
                     Dashboard.hideLoadingMsg();
@@ -883,6 +978,12 @@
                 modal.style.zIndex = '10000';
 
                 confirmText.textContent = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
+                
+                // Reset checkbox to checked by default
+                const checkbox = modal.querySelector('#delete-jellyfin-playlist-checkbox');
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
                 
                 // Show the modal
                 modal.classList.remove('hide');
@@ -972,6 +1073,16 @@
                     // Populate form with playlist data
                     page.querySelector('#playlistName').value = playlist.Name || '';
                     page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
+                    page.querySelector('#ruleLogic').value = playlist.RuleLogic || 'And';
+                    
+                    // Set media types
+                    const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
+                    playlist.MediaTypes.forEach(type => {
+                        const checkbox = mediaTypesSelect.find(checkbox => checkbox.value === type);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
                     
                     // Set the playlist owner
                     if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
@@ -1153,11 +1264,11 @@
                          const ruleGroup = target.closest('.rule-group');
                          if (ruleGroup) {
                              const prevSibling = ruleGroup.previousElementSibling;
-                             if (prevSibling && prevSibling.classList.contains('and-separator')) {
+                             if (prevSibling && prevSibling.classList.contains('logic-separator')) {
                                  prevSibling.remove();
                              } else {
                                  const nextSibling = ruleGroup.nextElementSibling;
-                                 if (nextSibling && nextSibling.classList.contains('and-separator')) {
+                                 if (nextSibling && nextSibling.classList.contains('logic-separator')) {
                                      nextSibling.remove();
                                  }
                              }

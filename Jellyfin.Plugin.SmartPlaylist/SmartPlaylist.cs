@@ -17,6 +17,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public Guid UserId { get; set; } = dto.UserId;
         public List<ExpressionSet> ExpressionSets { get; set; } = Engine.FixRuleSets(dto.ExpressionSets);
         public Order Order { get; set; } = OrderFactory.CreateOrder(dto.Order.Name);
+        public RuleLogic RuleLogic { get; set; } = dto.RuleLogic;
+        public List<string> MediaTypes { get; set; } = dto.MediaTypes ?? new List<string>();
 
         private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger logger = null)
         {
@@ -28,6 +30,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager = null, ILogger logger = null)
         {
+            logger?.LogDebug("[DEBUG] FilterPlaylistItems called with {ItemCount} items, RuleLogic={RuleLogic}, MediaTypes={MediaTypes}", 
+                items.Count(), RuleLogic, string.Join(",", MediaTypes));
+            
+            // Apply media type pre-filtering first for performance
+            if (MediaTypes != null && MediaTypes.Count > 0)
+            {
+                var originalCount = items.Count();
+                items = items.Where(item => MediaTypes.Contains(item.GetType().Name));
+                logger?.LogDebug("[DEBUG] Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount}", 
+                    originalCount, items.Count());
+            }
+            
             var results = new List<BaseItem>();
 
             // Check if any rules use expensive fields to avoid unnecessary extraction
@@ -40,6 +54,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 .Any(expr => expr.MemberName == "People");
 
             var compiledRules = CompileRuleSets(logger);
+            bool hasAnyRules = compiledRules.Any(set => set.Count > 0);
             
             // OPTIMIZATION: Check for ItemType rules - apply them first for massive dataset reduction
             // Only apply pre-filtering if ALL rule sets have ItemType constraints to avoid excluding
@@ -150,10 +165,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         setIndex, cheapRules.Count, expensiveRules.Count);
                 }
                 
-                // Check if there are ANY non-expensive rules across all rule sets
-                bool hasNonExpensiveRules = cheapCompiledRules.Any(rules => rules.Count > 0);
-                
-                if (!hasNonExpensiveRules)
+                if (!hasAnyRules)
                 {
                     // No cheap rules to filter with - extract expensive data for all items
                     logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
@@ -176,10 +188,19 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             }
                         }
                         
-                        if (compiledRules.Any(set => set.All(rule => rule(operand))))
-                        {
-                            results.Add(i);
+                        bool matches = false;
+                        if (!hasAnyRules) {
+                            matches = true;
+                        } else {
+                            matches = RuleLogic == RuleLogic.Or 
+                                ? compiledRules.Any(set => set.Any(rule => rule(operand)))
+                                : compiledRules.Any(set => set.All(rule => rule(operand)));
                         }
+                    
+                    if (matches)
+                    {
+                        results.Add(i);
+                    }
                     }
                 }
                 else
@@ -237,7 +258,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                     }
                     
-                    if (compiledRules.Any(set => set.All(rule => rule(fullOperand))))
+                    bool matches = false;
+                    if (!hasAnyRules) {
+                        matches = true;
+                    } else {
+                        matches = RuleLogic == RuleLogic.Or 
+                            ? compiledRules.Any(set => set.Any(rule => rule(fullOperand)))
+                            : compiledRules.Any(set => set.All(rule => rule(fullOperand)));
+                    }
+                    
+                    if (matches)
                     {
                         results.Add(i);
                     }
@@ -251,7 +281,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
 
-                    if (compiledRules.Any(set => set.All(rule => rule(operand)))) results.Add(i);
+                    bool matches = false;
+                    if (!hasAnyRules) {
+                        matches = true;
+                    } else {
+                        matches = RuleLogic == RuleLogic.Or 
+                            ? compiledRules.Any(set => set.Any(rule => rule(operand)))
+                            : compiledRules.Any(set => set.All(rule => rule(operand)));
+                    }
+                    
+                    if (matches) results.Add(i);
                 }
             }
 
