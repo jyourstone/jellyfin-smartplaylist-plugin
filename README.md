@@ -87,7 +87,6 @@ Here are some of the planned features for future updates. Feel free to contribut
 
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
 - **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
-- **Update to .NET 9**: Update package references and framework from .NET 8 to .NET9.
 - **Delete options**: When deleting a smart playlist, choose if you want to delete the created playlist or not.
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 
