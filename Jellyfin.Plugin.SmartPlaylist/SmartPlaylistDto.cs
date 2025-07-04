@@ -22,13 +22,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
-        public RuleLogic RuleLogic { get; set; } = RuleLogic.And; // Default to AND logic for backward compatibility
         public List<string> MediaTypes { get; set; } = new List<string>(); // Pre-filter media types
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string User { get; set; }
+        
+        // Legacy support - for migration from old RuleLogic field
+        [Obsolete("Use ExpressionSet.Logic instead. This property is for backward compatibility only.")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public RuleLogic? RuleLogic { get; set; }
     }
 
     public class ExpressionSet

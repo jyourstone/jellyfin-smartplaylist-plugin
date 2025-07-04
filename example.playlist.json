@@ -28,7 +28,6 @@
     "Name": "ProductionYear Ascending"
   },
   "Public": false,
-  "RuleLogic": "And",
   "MediaTypes": [
     "Movie"
   ]

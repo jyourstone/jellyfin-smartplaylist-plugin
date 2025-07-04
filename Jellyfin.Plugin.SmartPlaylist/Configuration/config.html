@@ -93,6 +93,95 @@
             display: inline-block;
             min-width: 40px;
         }
+        
+        .SmartPlaylistConfigurationPage .logic-group {
+            border: 2px solid #00a4dc !important;
+            border-radius: 8px !important;
+            padding: 1.5em !important;
+            margin-bottom: 2em !important;
+            background: rgba(0, 164, 220, 0.08) !important;
+            box-shadow: 0 2px 8px rgba(0, 164, 220, 0.15) !important;
+            position: relative !important;
+        }
+        
+        .SmartPlaylistConfigurationPage .logic-group::before {
+            content: 'AND Group' !important;
+            position: absolute !important;
+            top: -0.6em !important;
+            left: 1em !important;
+            background: #1a1a1a !important;
+            color: #00a4dc !important;
+            padding: 0.2em 0.8em !important;
+            border-radius: 4px !important;
+            font-size: 0.75em !important;
+            font-weight: bold !important;
+            border: 1px solid #00a4dc !important;
+        }
+        
+        .SmartPlaylistConfigurationPage .logic-group-separator {
+            text-align: center !important;
+            margin: 2.5em 0 !important;
+            position: relative !important;
+        }
+        
+        .SmartPlaylistConfigurationPage .logic-group-separator::before {
+            content: '' !important;
+            position: absolute !important;
+            top: 50% !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 2px !important;
+            background: linear-gradient(to right, transparent, #ff6b6b, transparent) !important;
+            z-index: 1 !important;
+        }
+        
+        .SmartPlaylistConfigurationPage .logic-group-separator-text {
+            background: #1a1a1a !important;
+            color: #ff6b6b !important;
+            padding: 0.8em 1.5em !important;
+            border-radius: 6px !important;
+            font-weight: bold !important;
+            font-size: 1em !important;
+            position: relative !important;
+            z-index: 2 !important;
+            display: inline-block !important;
+            border: 2px solid #ff6b6b !important;
+            box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3) !important;
+        }
+        
+        .rule-actions {
+            display: flex;
+            gap: 0.5em;
+            align-items: center;
+            margin-left: 0.5em;
+        }
+        
+        .rule-action-btn.hidden {
+            display: none !important;
+        }
+        
+        .SmartPlaylistConfigurationPage .rule-within-group-separator {
+            text-align: center !important;
+            margin: 0.8em 0 !important;
+            color: #00a4dc !important;
+            font-size: 0.8em !important;
+            font-weight: bold !important;
+            position: relative !important;
+            padding: 0.3em 0 !important;
+        }
+        
+        .SmartPlaylistConfigurationPage .rule-within-group-separator::before {
+            content: '' !important;
+            position: absolute !important;
+            top: 50% !important;
+            left: 20% !important;
+            right: 20% !important;
+            height: 1px !important;
+            background: rgba(0, 164, 220, 0.3) !important;
+            z-index: 1 !important;
+        }
+        
+
 
         .media-type-flex {
             display: flex;
@@ -140,7 +229,8 @@
                        
                         <div class="input-container" style="margin-bottom: 1em;">
                             <label class="input-label">Media Types</label>
-                            <div class="media-type-flex">
+                            <div class="field-description">Select one or more media types to include. This filter is always applied first.</div>
+                            <div class="media-type-flex" style="margin-top: 0.5em;">
                                 <label class="checkbox-label">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeMovie" class="emby-checkbox media-type-checkbox" value="Movie">
                                     <span>Movies</span>
@@ -154,22 +244,12 @@
                                     <span>Music</span>
                                 </label>
                             </div>
-                            <div class="field-description">Select one or more media types to include. This filter is always applied first.</div>
-                        </div>
-
-                        <div class="input-container" style="margin-bottom: 1em;">
-                            <label class="input-label" for="ruleLogic">Rule Logic</label>
-                            <select is="emby-select" id="ruleLogic" class="emby-select" required>
-                                <option value="And">All rules must be true (AND)</option>
-                                <option value="Or">Any rule can be true (OR)</option>
-                            </select>
-                            <div class="field-description">Choose how multiple rules should be combined.</div>
                         </div>
 
                         <div class="input-container">
                             <label class="input-label">Rules</label>
+                            <div class="field-description" style="margin-bottom: 1em;">Build your rules using logical groups. Rules within a group are combined with AND, groups are combined with OR.</div>
                             <div id="rules-container"></div>
-                            <button type="button" is="emby-button" id="addRuleBtn" class="emby-button raised">Add Rule</button>
                         </div>
 
                         <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
@@ -533,33 +613,69 @@
                 }
             }
 
-            function updateRuleSeparators(page) {
+            function createInitialLogicGroup(page) {
                 const rulesContainer = page.querySelector('#rules-container');
-                const ruleLogicSelect = page.querySelector('#ruleLogic');
-                const currentLogic = ruleLogicSelect ? ruleLogicSelect.value : 'And';
+                const logicGroupId = 'logic-group-' + Date.now();
                 
-                // Update all existing separators
-                const separators = rulesContainer.querySelectorAll('.logic-separator');
-                separators.forEach(separator => {
-                    separator.textContent = currentLogic.toUpperCase();
-                });
+                const logicGroupDiv = document.createElement('div');
+                logicGroupDiv.className = 'logic-group';
+                logicGroupDiv.setAttribute('data-group-id', logicGroupId);
+                
+                // Apply styles directly via JavaScript to bypass CSS specificity issues
+                logicGroupDiv.style.cssText = `
+                    border: 2px solid #666 !important;
+                    border-radius: 8px !important;
+                    padding: 1.5em 1.5em 0.5em 1.5em !important;
+                    margin-bottom: 1em !important;
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+                    position: relative !important;
+                `;
+                
+                rulesContainer.appendChild(logicGroupDiv);
+                
+                // Add the first rule to this group
+                addRuleToGroup(page, logicGroupDiv);
+                
+                return logicGroupDiv;
             }
 
-            function addRule(page) {
-                const rulesContainer = page.querySelector('#rules-container');
+            function addRuleToGroup(page, logicGroup) {
+                const existingRules = logicGroup.querySelectorAll('.rule-row');
                 
-                if (rulesContainer.children.length > 0) {
-                    const logicSeparator = document.createElement('div');
-                    logicSeparator.className = 'logic-separator';
-                    // Get the current rule logic setting
-                    const ruleLogicSelect = page.querySelector('#ruleLogic');
-                    const currentLogic = ruleLogicSelect ? ruleLogicSelect.value : 'And';
-                    logicSeparator.textContent = currentLogic.toUpperCase();
-                    rulesContainer.appendChild(logicSeparator);
+                // Add AND separator if this isn't the first rule in the group
+                if (existingRules.length > 0) {
+                    const andSeparator = document.createElement('div');
+                    andSeparator.className = 'rule-within-group-separator';
+                    andSeparator.style.cssText = `
+                        text-align: center !important;
+                        margin: 0.8em 0 !important;
+                        color: #888 !important;
+                        font-size: 0.8em !important;
+                        font-weight: bold !important;
+                        position: relative !important;
+                        padding: 0.3em 0 !important;
+                    `;
+                    andSeparator.textContent = 'AND';
+                    
+                    // Add subtle line behind AND text
+                    const line = document.createElement('div');
+                    line.style.cssText = `
+                        position: absolute !important;
+                        top: 50% !important;
+                        left: 20% !important;
+                        right: 20% !important;
+                        height: 1px !important;
+                        background: rgba(136, 136, 136, 0.3) !important;
+                        z-index: 1 !important;
+                    `;
+                    andSeparator.appendChild(line);
+                    
+                    logicGroup.appendChild(andSeparator);
                 }
                 
                 const ruleDiv = document.createElement('div');
-                ruleDiv.className = 'rule-group';
+                ruleDiv.className = 'rule-row';
                 ruleDiv.setAttribute('data-rule-id', 'rule-' + Date.now());
 
                 const fieldsHtml = `
@@ -573,18 +689,20 @@
                         <span class="rule-value-container" style="flex: 1;">
                             <input type="text" class="emby-input rule-value-input" placeholder="Value" style="width: 100%;">
                         </span>
-                        <button type="button" is="emby-button" class="emby-button raised icon-button" title="Remove Rule" style="flex: 0 0 auto;">
-                            <span class="material-icons delete_outline"></span>
-                        </button>
+                        <div class="rule-actions">
+                            <button type="button" class="rule-action-btn and-btn" title="Add AND rule">And</button>
+                            <button type="button" class="rule-action-btn or-btn" title="Add OR group">Or</button>
+                            <button type="button" class="rule-action-btn delete-btn" title="Remove rule">×</button>
+                        </div>
                     </div>`;
                 
                 ruleDiv.innerHTML = fieldsHtml;
-                rulesContainer.appendChild(ruleDiv);
+                logicGroup.appendChild(ruleDiv);
                 
-                const newRuleGroup = rulesContainer.lastElementChild;
-                const fieldSelect = newRuleGroup.querySelector('.rule-field-select');
-                const operatorSelect = newRuleGroup.querySelector('.rule-operator-select');
-                const valueContainer = newRuleGroup.querySelector('.rule-value-container');
+                const newRuleRow = logicGroup.lastElementChild;
+                const fieldSelect = newRuleRow.querySelector('.rule-field-select');
+                const operatorSelect = newRuleRow.querySelector('.rule-operator-select');
+                const valueContainer = newRuleRow.querySelector('.rule-value-container');
 
                 if (availableFields.ContentFields) {
                     populateSelect(fieldSelect, availableFields.ContentFields.concat(availableFields.RatingsPlaybackFields, availableFields.DateFields, availableFields.FileFields, availableFields.CollectionFields), null, false);
@@ -599,20 +717,230 @@
                 fieldSelect.addEventListener('change', function() {
                     setValueInput(fieldSelect.value, valueContainer);
                     updateOperatorOptions(fieldSelect.value, operatorSelect);
-                    updateRegexHelp(newRuleGroup);
+                    updateRegexHelp(newRuleRow);
                 });
                 
                 operatorSelect.addEventListener('change', function() {
-                    updateRegexHelp(newRuleGroup);
+                    updateRegexHelp(newRuleRow);
                 });
 
-                // Add event listener for rule logic changes
-                const ruleLogicSelect = page.querySelector('#ruleLogic');
-                if (ruleLogicSelect) {
-                    ruleLogicSelect.addEventListener('change', function() {
-                        updateRuleSeparators(page);
+                // Style the action buttons
+                const actionButtons = newRuleRow.querySelectorAll('.rule-action-btn');
+                actionButtons.forEach(button => {
+                    if (button.classList.contains('and-btn')) {
+                        button.style.cssText = `
+                            padding: 0.3em 0.8em !important;
+                            font-size: 0.8em !important;
+                            border: 1px solid #666 !important;
+                            background: rgba(255, 255, 255, 0.1) !important;
+                            color: #aaa !important;
+                            border-radius: 4px !important;
+                            cursor: pointer !important;
+                            font-weight: 500 !important;
+                        `;
+                    } else if (button.classList.contains('or-btn')) {
+                        button.style.cssText = `
+                            padding: 0.3em 0.8em !important;
+                            font-size: 0.8em !important;
+                            border: 1px solid #777 !important;
+                            background: rgba(255, 255, 255, 0.15) !important;
+                            color: #bbb !important;
+                            border-radius: 4px !important;
+                            cursor: pointer !important;
+                            font-weight: 500 !important;
+                        `;
+                    } else if (button.classList.contains('delete-btn')) {
+                        button.style.cssText = `
+                            padding: 0.3em 0.8em !important;
+                            font-size: 0.8em !important;
+                            border: 1px solid #888 !important;
+                            background: rgba(255, 255, 255, 0.08) !important;
+                            color: #999 !important;
+                            border-radius: 4px !important;
+                            cursor: pointer !important;
+                            font-weight: 600 !important;
+                            line-height: 1.2 !important;
+                            display: inline-flex !important;
+                            align-items: center !important;
+                            justify-content: center !important;
+                        `;
+                    }
+                    
+                    // Add hover effects
+                    button.addEventListener('mouseenter', function() {
+                        if (this.classList.contains('delete-btn')) {
+                            this.style.background = 'rgba(255, 100, 100, 0.2) !important';
+                            this.style.borderColor = '#ff6464 !important';
+                            this.style.color = '#ff6464 !important';
+                        } else {
+                            this.style.background = 'rgba(255, 255, 255, 0.25) !important';
+                            this.style.borderColor = '#aaa !important';
+                        }
                     });
+                    
+                    button.addEventListener('mouseleave', function() {
+                        if (this.classList.contains('and-btn')) {
+                            this.style.background = 'rgba(255, 255, 255, 0.1) !important';
+                            this.style.borderColor = '#666 !important';
+                            this.style.color = '#aaa !important';
+                        } else if (this.classList.contains('or-btn')) {
+                            this.style.background = 'rgba(255, 255, 255, 0.15) !important';
+                            this.style.borderColor = '#777 !important';
+                            this.style.color = '#bbb !important';
+                        } else if (this.classList.contains('delete-btn')) {
+                            this.style.background = 'rgba(255, 255, 255, 0.08) !important';
+                            this.style.borderColor = '#888 !important';
+                            this.style.color = '#999 !important';
+                        }
+                    });
+                });
+
+                // Update button visibility for all rules in all groups
+                updateRuleButtonVisibility(page);
+            }
+
+            function addNewLogicGroup(page) {
+                const rulesContainer = page.querySelector('#rules-container');
+                
+                // Add OR separator between groups
+                const orSeparator = document.createElement('div');
+                orSeparator.className = 'logic-group-separator';
+                orSeparator.style.cssText = `
+                    text-align: center !important;
+                    margin: 1em 0 !important;
+                    position: relative !important;
+                `;
+                
+                // Create OR text with styling
+                const orText = document.createElement('span');
+                orText.style.cssText = `
+                    background: #1a1a1a !important;
+                    color: #bbb !important;
+                    padding: 0.4em !important;
+                    border-radius: 4px !important;
+                    font-weight: bold !important;
+                    font-size: 0.9em !important;
+                    position: relative !important;
+                    z-index: 2 !important;
+                    display: inline-block !important;
+                    border: 1px solid #777 !important;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+                `;
+                orText.textContent = 'OR';
+                orSeparator.appendChild(orText);
+                
+                // Add gradient line behind OR text
+                const gradientLine = document.createElement('div');
+                gradientLine.style.cssText = `
+                    position: absolute !important;
+                    top: 50% !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    height: 2px !important;
+                    background: linear-gradient(to right, transparent, #777, transparent) !important;
+                    z-index: 1 !important;
+                `;
+                orSeparator.appendChild(gradientLine);
+                
+                rulesContainer.appendChild(orSeparator);
+                
+                // Create new logic group
+                const logicGroupId = 'logic-group-' + Date.now();
+                const logicGroupDiv = document.createElement('div');
+                logicGroupDiv.className = 'logic-group';
+                logicGroupDiv.setAttribute('data-group-id', logicGroupId);
+                
+                // Apply styles directly via JavaScript to bypass CSS specificity issues
+                logicGroupDiv.style.cssText = `
+                    border: 2px solid #666 !important;
+                    border-radius: 8px !important;
+                    padding: 1.5em 1.5em 0.5em 1.5em !important;
+                    margin-bottom: 1em !important;
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+                    position: relative !important;
+                `;
+                
+                rulesContainer.appendChild(logicGroupDiv);
+                
+                // Add the first rule to this group
+                addRuleToGroup(page, logicGroupDiv);
+                
+                return logicGroupDiv;
+            }
+
+            function removeRule(page, ruleElement) {
+                const logicGroup = ruleElement.closest('.logic-group');
+                const rulesInGroup = logicGroup.querySelectorAll('.rule-row');
+                
+                if (rulesInGroup.length === 1) {
+                    // This is the last rule in the group, remove the entire group
+                    removeLogicGroup(page, logicGroup);
+                } else {
+                    // Remove the rule and any adjacent separator
+                    const nextSibling = ruleElement.nextElementSibling;
+                    const prevSibling = ruleElement.previousElementSibling;
+                    
+                    if (nextSibling && nextSibling.classList.contains('rule-within-group-separator')) {
+                        nextSibling.remove();
+                    } else if (prevSibling && prevSibling.classList.contains('rule-within-group-separator')) {
+                        prevSibling.remove();
+                    }
+                    
+                    ruleElement.remove();
+                    updateRuleButtonVisibility(page);
                 }
+            }
+
+            function removeLogicGroup(page, logicGroup) {
+                const rulesContainer = page.querySelector('#rules-container');
+                const allGroups = rulesContainer.querySelectorAll('.logic-group');
+                
+                if (allGroups.length === 1) {
+                    // This is the last group, clear it and add a new rule
+                    logicGroup.innerHTML = '';
+                    addRuleToGroup(page, logicGroup);
+                } else {
+                    // Remove the group and any adjacent separator
+                    const nextSibling = logicGroup.nextElementSibling;
+                    const prevSibling = logicGroup.previousElementSibling;
+                    
+                    if (prevSibling && prevSibling.classList.contains('logic-group-separator')) {
+                        prevSibling.remove();
+                    } else if (nextSibling && nextSibling.classList.contains('logic-group-separator')) {
+                        nextSibling.remove();
+                    }
+                    
+                    logicGroup.remove();
+                    updateRuleButtonVisibility(page);
+                }
+            }
+
+            function updateRuleButtonVisibility(page) {
+                const rulesContainer = page.querySelector('#rules-container');
+                const allLogicGroups = rulesContainer.querySelectorAll('.logic-group');
+                
+                allLogicGroups.forEach(group => {
+                    const rulesInGroup = group.querySelectorAll('.rule-row');
+                    
+                    rulesInGroup.forEach((rule, index) => {
+                        const andBtn = rule.querySelector('.and-btn');
+                        const orBtn = rule.querySelector('.or-btn');
+                        const deleteBtn = rule.querySelector('.delete-btn');
+                        
+                        // Hide AND and OR buttons if this is not the last rule in the group
+                        if (index < rulesInGroup.length - 1) {
+                            andBtn.style.display = 'none';
+                            orBtn.style.display = 'none';
+                        } else {
+                            andBtn.style.display = 'inline-flex';
+                            orBtn.style.display = 'inline-flex';
+                        }
+                        
+                        // Always show DELETE button
+                        deleteBtn.style.display = 'inline-flex';
+                    });
+                });
             }
             
             async function createPlaylist(page) {
@@ -626,13 +954,19 @@
                         return;
                     }
 
-                    const expressions = [];
-                    page.querySelectorAll('.rule-group').forEach(rule => {
-                        const memberName = rule.querySelector('.rule-field-select').value;
-                        const operator = rule.querySelector('.rule-operator-select').value;
-                        const targetValue = rule.querySelector('.rule-value-input').value;
-                        if (memberName && operator && targetValue) {
-                            expressions.push({ MemberName: memberName, Operator: operator, TargetValue: targetValue });
+                    const expressionSets = [];
+                    page.querySelectorAll('.logic-group').forEach(logicGroup => {
+                        const expressions = [];
+                        logicGroup.querySelectorAll('.rule-row').forEach(rule => {
+                            const memberName = rule.querySelector('.rule-field-select').value;
+                            const operator = rule.querySelector('.rule-operator-select').value;
+                            const targetValue = rule.querySelector('.rule-value-input').value;
+                            if (memberName && operator && targetValue) {
+                                expressions.push({ MemberName: memberName, Operator: operator, TargetValue: targetValue });
+                            }
+                        });
+                        if (expressions.length > 0) {
+                            expressionSets.push({ Expressions: expressions });
                         }
                     });
 
@@ -655,7 +989,6 @@
                     const sortOrderValue = sortOrderElement?.value || 'Ascending';
                     const orderName = sortByValue + ' ' + sortOrderValue;
                     const isPublic = page.querySelector('#playlistIsPublic').checked || false;
-                    const ruleLogic = page.querySelector('#ruleLogic').value || 'And';
 
                     // Get selected user ID from dropdown
                     const userId = page.querySelector('#playlistUser').value;
@@ -667,11 +1000,10 @@
 
                     const playlistDto = {
                         Name: playlistName,
-                        ExpressionSets: [{ Expressions: expressions }],
+                        ExpressionSets: expressionSets,
                         Order: { Name: orderName },
                         Public: isPublic,
                         UserId: userId,
-                        RuleLogic: ruleLogic,
                         MediaTypes: selectedMediaTypes
                     };
 
@@ -746,7 +1078,6 @@
                 
                 page.querySelector('#playlistName').value = '';
                 page.querySelector('#rules-container').innerHTML = '';
-                page.querySelector('#ruleLogic').value = 'And';
                 
                 // Clear media type selections
                 const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
@@ -765,7 +1096,11 @@
                     page.querySelector('#playlistIsPublic').checked = false;
                 });
                 
-                addRule(page);
+                // Create initial logic group with one rule
+                createInitialLogicGroup(page);
+                
+                // Update button visibility after initial group is created
+                updateRuleButtonVisibility(page);
             }
 
             async function loadUsers(page) {
@@ -860,44 +1195,57 @@
                             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                             const userName = await resolveUsername(apiClient, playlist);
                             const playlistId = playlist.Id || 'NO_ID';
-                            const ruleLogic = playlist.RuleLogic || 'And';
                             const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
                                 playlist.MediaTypes.join(', ') : 'All Types';
                             
                             let rulesHtml = '';
-                            if (playlist.ExpressionSets && playlist.ExpressionSets[0] && playlist.ExpressionSets[0].Expressions) {
-                                playlist.ExpressionSets[0].Expressions.forEach(rule => {
-                                    if (rulesHtml) rulesHtml += '<br>';
-                                    let fieldName = rule.MemberName;
-                                    if (fieldName === 'ItemType') fieldName = 'Media Type';
-                                    let operator = rule.Operator;
-                                    switch(operator) {
-                                        case 'Equal': operator = 'equals'; break;
-                                        case 'NotEqual': operator = 'not equals'; break;
-                                        case 'Contains': operator = 'contains'; break;
-                                        case 'NotContains': operator = "not contains"; break;
-                                        case 'GreaterThan': operator = '>'; break;
-                                        case 'LessThan': operator = '<'; break;
-                                        case 'GreaterThanOrEqual': operator = '>='; break;
-                                        case 'LessThanOrEqual': operator = '<='; break;
-                                        case 'MatchRegex': operator = 'matches regex'; break;
+                            if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+                                playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
+                                    if (groupIndex > 0) {
+                                        rulesHtml += '<strong style="color: #888;">OR</strong><br>';
                                     }
-                                    let value = rule.TargetValue;
-                                    if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                                    
+                                    if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 3px; background: rgba(255,255,255,0.02);">';
+                                        
+                                        expressionSet.Expressions.forEach((rule, ruleIndex) => {
+                                            if (ruleIndex > 0) {
+                                                rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
+                                            }
+                                            
+                                            let fieldName = rule.MemberName;
+                                            if (fieldName === 'ItemType') fieldName = 'Media Type';
+                                            let operator = rule.Operator;
+                                            switch(operator) {
+                                                case 'Equal': operator = 'equals'; break;
+                                                case 'NotEqual': operator = 'not equals'; break;
+                                                case 'Contains': operator = 'contains'; break;
+                                                case 'NotContains': operator = "not contains"; break;
+                                                case 'GreaterThan': operator = '>'; break;
+                                                case 'LessThan': operator = '<'; break;
+                                                case 'GreaterThanOrEqual': operator = '>='; break;
+                                                case 'LessThanOrEqual': operator = '<='; break;
+                                                case 'MatchRegex': operator = 'matches regex'; break;
+                                            }
+                                            let value = rule.TargetValue;
+                                            if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                                        });
+                                        
+                                        rulesHtml += '</div>';
+                                    }
                                 });
                             } else {
                                 rulesHtml = '<em>No rules defined</em>';
                             }
                             
-                            html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px;">' +
+                            html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px; margin-bottom: 1.5em;">' +
                                 '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                                 '<div class="field-description">' +
                                 '<strong>File:</strong> ' + playlist.FileName + '<br>' +
                                 '<strong>User:</strong> ' + userName + '<br>' +
                                 '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
-                                '<strong>Logic:</strong> ' + ruleLogic.toUpperCase() + '<br>' +
-                                '<strong>Rules:</strong><br>' + rulesHtml + '<br><br>' +
+                                '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
                                 '<strong>Sort:</strong> ' + sortName + '<br>' +
                                 '<strong>Visibility:</strong> ' + isPublic +
                                 '</div>' +
@@ -1049,97 +1397,131 @@
                         return;
                     }
                     
-                    // Enter edit mode
-                    editMode = true;
-                    editingPlaylistId = playlistId;
-                    
-                    // Update UI to show edit mode
-                    const editIndicator = page.querySelector('#edit-mode-indicator');
-                    editIndicator.style.display = 'block';
-                    editIndicator.querySelector('span').textContent = '✏️ Editing Mode - Modifying existing playlist "' + playlist.Name + '"';
-                    page.querySelector('#current-tab-title').textContent = 'Edit Playlist';
-                    page.querySelector('#submitBtn').textContent = 'Update Playlist';
-                    
-                    // Update tab button text
-                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
-                    if (createTabButton) {
-                        createTabButton.textContent = 'Edit Playlist';
-                    }
-                    
-                    // Switch to create tab (which becomes edit tab)
-                    const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
-                    createTab.click();
-                    
-                    // Populate form with playlist data
-                    page.querySelector('#playlistName').value = playlist.Name || '';
-                    page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
-                    page.querySelector('#ruleLogic').value = playlist.RuleLogic || 'And';
-                    
-                    // Set media types
-                    const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
-                    playlist.MediaTypes.forEach(type => {
-                        const checkbox = mediaTypesSelect.find(checkbox => checkbox.value === type);
-                        if (checkbox) {
-                            checkbox.checked = true;
+                    try {
+                        // Populate form with playlist data
+                        page.querySelector('#playlistName').value = playlist.Name || '';
+                        page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
+                        
+                        // Set media types
+                        const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
+                        if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
+                            playlist.MediaTypes.forEach(type => {
+                                const checkbox = mediaTypesSelect.find(checkbox => checkbox.value === type);
+                                if (checkbox) {
+                                    checkbox.checked = true;
+                                }
+                            });
                         }
-                    });
-                    
-                    // Set the playlist owner
-                    if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
-                        page.querySelector('#playlistUser').value = playlist.UserId;
-                    } else if (playlist.User) {
-                        // Legacy support: try to find user by username (simplified)
-                        // Since this is legacy, just warn the user and use current user as fallback
-                        console.warn('Legacy playlist detected with username:', playlist.User);
-                        showNotification('Legacy playlist detected. Please verify the owner is correct.', 'warning');
-                        setCurrentUserAsDefault(page);
-                    }
-                    
-                    // Set sort options
-                    const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
-                    const parts = orderName.split(' ');
-                    const sortBy = parts.slice(0, -1).join(' ') || 'Name';
-                    const sortOrder = parts[parts.length - 1] || 'Ascending';
-                    
-                    page.querySelector('#sortBy').value = sortBy;
-                    page.querySelector('#sortOrder').value = sortOrder;
-                    
-                    // Clear existing rules
-                    const rulesContainer = page.querySelector('#rules-container');
-                    rulesContainer.innerHTML = '';
-                    
-                    // Populate rules
-                    if (playlist.ExpressionSets && playlist.ExpressionSets[0] && playlist.ExpressionSets[0].Expressions) {
-                        playlist.ExpressionSets[0].Expressions.forEach(expression => {
-                            addRule(page);
-                            const ruleGroups = rulesContainer.querySelectorAll('.rule-group');
-                            const currentRule = ruleGroups[ruleGroups.length - 1];
-                            
-                            const fieldSelect = currentRule.querySelector('.rule-field-select');
-                            const operatorSelect = currentRule.querySelector('.rule-operator-select');
-                            const valueContainer = currentRule.querySelector('.rule-value-container');
-                            
-                            fieldSelect.value = expression.MemberName;
-                            
-                            // Update UI elements based on the loaded rule data
-                            setValueInput(expression.MemberName, valueContainer);
-                            updateOperatorOptions(expression.MemberName, operatorSelect);
-                            
-                            // Set operator and value
-                            const valueInput = currentRule.querySelector('.rule-value-input');
-                            operatorSelect.value = expression.Operator;
-                            if (valueInput) {
-                                valueInput.value = expression.TargetValue;
-                            }
-                            
-                            updateRegexHelp(currentRule);
-                        });
-                    } else {
-                        // Add one empty rule if no rules exist
-                        addRule(page);
-                    }
+                        
+                        // Set the playlist owner
+                        if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
+                            page.querySelector('#playlistUser').value = playlist.UserId;
+                        } else if (playlist.User) {
+                            // Legacy support: try to find user by username (simplified)
+                            // Since this is legacy, just warn the user and use current user as fallback
+                            console.warn('Legacy playlist detected with username:', playlist.User);
+                            showNotification('Legacy playlist detected. Please verify the owner is correct.', 'warning');
+                            setCurrentUserAsDefault(page);
+                        }
+                        
+                        // Set sort options
+                        const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
+                        const parts = orderName.split(' ');
+                        const sortBy = parts.slice(0, -1).join(' ') || 'Name';
+                        const sortOrder = parts[parts.length - 1] || 'Ascending';
+                        
+                        page.querySelector('#sortBy').value = sortBy;
+                        page.querySelector('#sortOrder').value = sortOrder;
+                        
+                        // Clear existing rules
+                        const rulesContainer = page.querySelector('#rules-container');
+                        rulesContainer.innerHTML = '';
+                        
+                        // Populate logic groups and rules
+                        if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+                            playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
+                                let logicGroup;
+                                
+                                if (groupIndex === 0) {
+                                    // Create first logic group
+                                    logicGroup = createInitialLogicGroup(page);
+                                    // Remove only the rules, preserve the label
+                                    const rulesToRemove = logicGroup.querySelectorAll('.rule-row, .rule-within-group-separator');
+                                    rulesToRemove.forEach(rule => rule.remove());
+                                } else {
+                                    // Add subsequent logic groups
+                                    logicGroup = addNewLogicGroup(page);
+                                    // Remove only the rules, preserve the label
+                                    const rulesToRemove = logicGroup.querySelectorAll('.rule-row, .rule-within-group-separator');
+                                    rulesToRemove.forEach(rule => rule.remove());
+                                }
+                                
+                                // Add rules to this logic group
+                                if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                                    expressionSet.Expressions.forEach(expression => {
+                                        addRuleToGroup(page, logicGroup);
+                                        const ruleRows = logicGroup.querySelectorAll('.rule-row');
+                                        const currentRule = ruleRows[ruleRows.length - 1];
+                                        
+                                        const fieldSelect = currentRule.querySelector('.rule-field-select');
+                                        const operatorSelect = currentRule.querySelector('.rule-operator-select');
+                                        const valueContainer = currentRule.querySelector('.rule-value-container');
+                                        
+                                        fieldSelect.value = expression.MemberName;
+                                        
+                                        // Update UI elements based on the loaded rule data
+                                        setValueInput(expression.MemberName, valueContainer);
+                                        updateOperatorOptions(expression.MemberName, operatorSelect);
+                                        
+                                        // Set operator and value
+                                        const valueInput = currentRule.querySelector('.rule-value-input');
+                                        operatorSelect.value = expression.Operator;
+                                        if (valueInput) {
+                                            valueInput.value = expression.TargetValue;
+                                        }
+                                        
+                                        updateRegexHelp(currentRule);
+                                    });
+                                } else {
+                                    // Add one empty rule if no expressions exist in this group
+                                    addRuleToGroup(page, logicGroup);
+                                }
+                            });
+                        } else {
+                            // Add one empty logic group with one rule if no expression sets exist
+                            createInitialLogicGroup(page);
+                        }
+                        
+                                                // If we get here, form population was successful - now enter edit mode
+                        editMode = true;
+                        editingPlaylistId = playlistId;
+                        
+                        // Update UI to show edit mode
+                        const editIndicator = page.querySelector('#edit-mode-indicator');
+                        editIndicator.style.display = 'block';
+                        editIndicator.querySelector('span').textContent = '✏️ Editing Mode - Modifying existing playlist "' + playlist.Name + '"';
+                        page.querySelector('#current-tab-title').textContent = 'Edit Playlist';
+                        page.querySelector('#submitBtn').textContent = 'Update Playlist';
+                        
+                        // Update tab button text
+                        const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                        if (createTabButton) {
+                            createTabButton.textContent = 'Edit Playlist';
+                        }
+                        
+                        // Switch to create tab (which becomes edit tab)
+                        const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
+                        createTab.click();
+                        
+                        // Update button visibility after editing form is populated
+                        updateRuleButtonVisibility(page);
                     
                     showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
+                        
+                    } catch (formError) {
+                        console.error('Error populating form:', formError);
+                        showNotification('Error loading playlist data: ' + formError.message);
+                    }
                 }).catch(err => {
                     Dashboard.hideLoadingMsg();
                     console.error('Error loading playlist for edit:', err);
@@ -1251,7 +1633,7 @@
                 loadAndPopulateFields(page).then(() => {
                     const rulesContainer = page.querySelector('#rules-container');
                     if (rulesContainer.children.length === 0) {
-                        addRule(page);
+                        createInitialLogicGroup(page);
                     }
                 }).catch(() => {
                     showNotification('Could not load rule options from server.');
@@ -1259,22 +1641,22 @@
 
                 page.addEventListener('click', function (e) {
                     const target = e.target;
-                    if (target.closest('#addRuleBtn')) { addRule(page); }
-                    if (target.closest('.icon-button')) {
-                         const ruleGroup = target.closest('.rule-group');
-                         if (ruleGroup) {
-                             const prevSibling = ruleGroup.previousElementSibling;
-                             if (prevSibling && prevSibling.classList.contains('logic-separator')) {
-                                 prevSibling.remove();
-                             } else {
-                                 const nextSibling = ruleGroup.nextElementSibling;
-                                 if (nextSibling && nextSibling.classList.contains('logic-separator')) {
-                                     nextSibling.remove();
-                                 }
-                             }
-                             ruleGroup.remove();
-                         }
+                    
+                    // Handle rule action buttons
+                    if (target.classList.contains('and-btn')) {
+                        const ruleRow = target.closest('.rule-row');
+                        const logicGroup = ruleRow.closest('.logic-group');
+                        addRuleToGroup(page, logicGroup);
                     }
+                    if (target.classList.contains('or-btn')) {
+                        addNewLogicGroup(page);
+                    }
+                    if (target.classList.contains('delete-btn')) {
+                        const ruleRow = target.closest('.rule-row');
+                        removeRule(page, ruleRow);
+                    }
+                    
+                    // Handle other buttons
                     if (target.closest('#clearFormBtn')) { clearForm(page); }
                     if (target.closest('#saveSettingsBtn')) { saveConfiguration(page); }
                     if (target.closest('#refreshPlaylistsBtn')) { refreshAllPlaylists(); }

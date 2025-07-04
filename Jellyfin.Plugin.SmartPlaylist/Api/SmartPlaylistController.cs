@@ -230,8 +230,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody, Required] SmartPlaylistDto playlist)
         {
             _logger.LogInformation("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
-            _logger.LogDebug("[DEBUG] Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, RuleLogic={RuleLogic}, MediaTypes={MediaTypes}", 
-                playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.RuleLogic, 
+            _logger.LogDebug("[DEBUG] Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+                playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.ExpressionSets?.Count ?? 0, 
                 playlist?.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
             
             if (playlist?.ExpressionSets != null)

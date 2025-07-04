@@ -95,7 +95,6 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
-- **Mix AND/OR Logic**: Add a way to mix `AND`/`OR` conditions between rule groups in the web interface.
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 
 ## Development

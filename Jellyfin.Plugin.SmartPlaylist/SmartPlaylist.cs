@@ -9,16 +9,34 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
-    public class SmartPlaylist(SmartPlaylistDto dto)
+    public class SmartPlaylist
     {
-        public string Id { get; set; } = dto.Id;
-        public string Name { get; set; } = dto.Name;
-        public string FileName { get; set; } = dto.FileName;
-        public Guid UserId { get; set; } = dto.UserId;
-        public List<ExpressionSet> ExpressionSets { get; set; } = Engine.FixRuleSets(dto.ExpressionSets);
-        public Order Order { get; set; } = OrderFactory.CreateOrder(dto.Order.Name);
-        public RuleLogic RuleLogic { get; set; } = dto.RuleLogic;
-        public List<string> MediaTypes { get; set; } = dto.MediaTypes ?? new List<string>();
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string FileName { get; set; }
+        public Guid UserId { get; set; }
+        public Order Order { get; set; }
+        public List<string> MediaTypes { get; set; }
+        public List<ExpressionSet> ExpressionSets { get; set; }
+
+        public SmartPlaylist(SmartPlaylistDto dto)
+        {
+            Id = dto.Id;
+            Name = dto.Name;
+            FileName = dto.FileName;
+            UserId = dto.UserId;
+            Order = OrderFactory.CreateOrder(dto.Order.Name);
+            MediaTypes = dto.MediaTypes ?? new List<string>();
+
+            if (dto.ExpressionSets != null && dto.ExpressionSets.Count > 0)
+            {
+                ExpressionSets = Engine.FixRuleSets(dto.ExpressionSets);
+            }
+            else
+            {
+                ExpressionSets = new List<ExpressionSet>();
+            }
+        }
 
         private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger logger = null)
         {
@@ -26,12 +44,32 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList())];
         }
 
+        private bool EvaluateLogicGroups(List<List<Func<Operand, bool>>> compiledRules, Operand operand, ILogger logger = null)
+        {
+            // Each ExpressionSet is a logic group
+            // Groups are combined with OR logic (any group can match)
+            // Rules within each group always use AND logic
+            for (int groupIndex = 0; groupIndex < ExpressionSets.Count; groupIndex++)
+            {
+                var group = ExpressionSets[groupIndex];
+                var groupRules = compiledRules[groupIndex];
+                if (groupRules.Count == 0) continue; // Skip empty groups
+                bool groupMatches = groupRules.All(rule => rule(operand)); // Always AND logic
+                if (groupMatches)
+                {
+                    logger?.LogDebug("Item matches logic group {GroupIndex}", groupIndex);
+                    return true; // This group matches, so the item matches overall
+                }
+            }
+            return false; // No groups matched
+        }
+
         // Returns the ID's of the items, if order is provided the IDs are sorted.
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager = null, ILogger logger = null)
         {
-            logger?.LogDebug("[DEBUG] FilterPlaylistItems called with {ItemCount} items, RuleLogic={RuleLogic}, MediaTypes={MediaTypes}", 
-                items.Count(), RuleLogic, string.Join(",", MediaTypes));
+            logger?.LogDebug("[DEBUG] FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+                items.Count(), ExpressionSets.Count, string.Join(",", MediaTypes));
             
             // Apply media type pre-filtering first for performance
             if (MediaTypes != null && MediaTypes.Count > 0)
@@ -192,9 +230,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         if (!hasAnyRules) {
                             matches = true;
                         } else {
-                            matches = RuleLogic == RuleLogic.Or 
-                                ? compiledRules.Any(set => set.Any(rule => rule(operand)))
-                                : compiledRules.Any(set => set.All(rule => rule(operand)));
+                            matches = EvaluateLogicGroups(compiledRules, operand, logger);
                         }
                     
                     if (matches)
@@ -262,9 +298,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     if (!hasAnyRules) {
                         matches = true;
                     } else {
-                        matches = RuleLogic == RuleLogic.Or 
-                            ? compiledRules.Any(set => set.Any(rule => rule(fullOperand)))
-                            : compiledRules.Any(set => set.All(rule => rule(fullOperand)));
+                        matches = EvaluateLogicGroups(compiledRules, fullOperand, logger);
                     }
                     
                     if (matches)
@@ -285,9 +319,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     if (!hasAnyRules) {
                         matches = true;
                     } else {
-                        matches = RuleLogic == RuleLogic.Or 
-                            ? compiledRules.Any(set => set.Any(rule => rule(operand)))
-                            : compiledRules.Any(set => set.All(rule => rule(operand)));
+                        matches = EvaluateLogicGroups(compiledRules, operand, logger);
                     }
                     
                     if (matches) results.Add(i);
