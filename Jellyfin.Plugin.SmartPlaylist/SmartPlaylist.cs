@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
@@ -68,6 +69,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager = null, ILogger logger = null)
         {
+            var stopwatch = Stopwatch.StartNew();
             logger?.LogDebug("[DEBUG] FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                 items.Count(), ExpressionSets.Count, string.Join(",", MediaTypes));
             
@@ -76,8 +78,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 var originalCount = items.Count();
                 items = items.Where(item => MediaTypes.Contains(item.GetType().Name));
-                logger?.LogDebug("[DEBUG] Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount}", 
-                    originalCount, items.Count());
+                logger?.LogDebug("[DEBUG] Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount} (filtering for: {MediaTypes})", 
+                    originalCount, items.Count(), string.Join(", ", MediaTypes));
+            }
+            else
+            {
+                logger?.LogDebug("[DEBUG] No media type pre-filtering applied (no MediaTypes specified)");
             }
             
             var results = new List<BaseItem>();
@@ -310,11 +316,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             else
             {
-                // No expensive field rules - use simple single-pass filtering
+                // No expensive fields needed - use simple filtering
+                logger?.LogDebug("No expensive fields required, using simple filtering");
+                
                 foreach (var i in items)
                 {
                     var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
-
+                    
                     bool matches = false;
                     if (!hasAnyRules) {
                         matches = true;
@@ -322,10 +330,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         matches = EvaluateLogicGroups(compiledRules, operand, logger);
                     }
                     
-                    if (matches) results.Add(i);
+                    if (matches)
+                    {
+                        results.Add(i);
+                    }
                 }
             }
 
+            stopwatch.Stop();
+            logger?.LogInformation("Playlist filtering completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
+                stopwatch.ElapsedMilliseconds, items.Count(), results.Count);
+            
             return Order.OrderBy(results).Select(x => x.Id);
         }
 

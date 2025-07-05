@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Jellyfin.Plugin.SmartPlaylist.Api
 {
@@ -229,6 +230,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         [HttpPost]
         public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody, Required] SmartPlaylistDto playlist)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
             _logger.LogDebug("[DEBUG] Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                 playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.ExpressionSets?.Count ?? 0, 
@@ -281,13 +283,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _logger.LogInformation("[DEBUG] Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
-                _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
+                stopwatch.Stop();
+                _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating smart playlist");
+                stopwatch.Stop();
+                _logger.LogError(ex, "Error creating smart playlist after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error creating smart playlist");
             }
         }
@@ -301,6 +305,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         [HttpPut("{id}")]
         public async Task<ActionResult<SmartPlaylistDto>> UpdateSmartPlaylist([FromRoute, Required] string id, [FromBody, Required] SmartPlaylistDto playlist)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
@@ -359,12 +364,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 // Immediately update the Jellyfin playlist using the single playlist service
                 var playlistService = GetPlaylistService();
                 await playlistService.RefreshSinglePlaylistAsync(updatedPlaylist);
+                stopwatch.Stop();
+                _logger.LogInformation("Updated smart playlist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return Ok(updatedPlaylist);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating smart playlist {PlaylistId}", id);
+                stopwatch.Stop();
+                _logger.LogError(ex, "Error updating smart playlist {PlaylistId} after {ElapsedTime}ms", id, stopwatch.ElapsedMilliseconds);
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error updating smart playlist");
             }
         }

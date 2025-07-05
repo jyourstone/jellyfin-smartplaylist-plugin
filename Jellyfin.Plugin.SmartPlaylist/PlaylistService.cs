@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,6 +43,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 _logger.LogInformation("Refreshing single smart playlist: {PlaylistName}", dto.Name);
@@ -128,11 +130,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, cancellationToken);
                 }
 
-                _logger.LogInformation("Successfully refreshed smart playlist: {PlaylistName}", dto.Name);
+                stopwatch.Stop();
+                _logger.LogInformation("Successfully refreshed smart playlist: {PlaylistName} in {ElapsedTime}ms", dto.Name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error refreshing smart playlist {PlaylistName}", dto.Name);
+                stopwatch.Stop();
+                _logger.LogError(ex, "Error refreshing smart playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, stopwatch.ElapsedMilliseconds);
                 throw;
             }
         }
@@ -344,6 +348,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private async Task RefreshPlaylistMetadataAsync(Playlist playlist, CancellationToken cancellationToken)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
@@ -366,11 +371,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 await _providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
-                _logger.LogDebug("Cover image generation completed for playlist {PlaylistName}", playlist.Name);
+                stopwatch.Stop();
+                _logger.LogDebug("Cover image generation completed for playlist {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName}. Cover image may not be generated.", playlist.Name);
+                stopwatch.Stop();
+                _logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName} after {ElapsedTime}ms. Cover image may not be generated.", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
         }
     }

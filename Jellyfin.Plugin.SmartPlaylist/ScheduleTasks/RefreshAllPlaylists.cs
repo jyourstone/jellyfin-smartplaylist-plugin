@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -75,6 +76,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>Task.</returns>
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 logger.LogInformation("Starting SmartPlaylist refresh task");
@@ -90,6 +92,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
                 for (int i = 0; i < dtos.Length; i++)
                 {
+                    var playlistStopwatch = Stopwatch.StartNew();
                     var dto = dtos[i];
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -200,14 +203,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                             await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
                         }
                     }
+                    
+                    playlistStopwatch.Stop();
+                    logger.LogInformation("Playlist {PlaylistName} processed in {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
                 }
 
                 progress?.Report(100);
-                logger.LogInformation("SmartPlaylist refresh task completed successfully");
+                stopwatch.Stop();
+                logger.LogInformation("SmartPlaylist refresh task completed successfully in {TotalTime}ms", stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task");
+                stopwatch.Stop();
+                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
                 throw;
             }
         }
@@ -221,6 +229,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>Task.</returns>
         private async Task RefreshPlaylistMetadataAsync(Playlist playlist, CancellationToken cancellationToken)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
@@ -246,11 +255,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 
                 await providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
-                logger.LogDebug("Cover image generation completed for playlist {PlaylistName}", playlist.Name);
+                stopwatch.Stop();
+                logger.LogDebug("Cover image generation completed for playlist {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName}. Cover image may not be generated.", playlist.Name);
+                stopwatch.Stop();
+                logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName} after {ElapsedTime}ms. Cover image may not be generated.", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
         }
 
