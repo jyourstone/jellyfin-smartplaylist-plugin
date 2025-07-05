@@ -22,7 +22,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
-        public List<string> MediaTypes { get; set; } = new List<string>(); // Pre-filter media types
+        public List<string> MediaTypes { get; set; } = []; // Pre-filter media types
         public bool Enabled { get; set; } = true; // Default to enabled
         
         // Legacy support - for migration from old User field

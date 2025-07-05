@@ -44,7 +44,7 @@
         return window.ApiClient;
     }
 
-    function loadAndPopulateFields(page) {
+    function loadAndPopulateFields() {
         const apiClient = getApiClient();
         const url = apiClient.getUrl(ENDPOINTS.fields);
         
@@ -649,9 +649,8 @@
                 url: url,
                 data: JSON.stringify(playlistDto),
                 contentType: 'application/json'
-            }).then(result => {
+            }).then(() => {
                 Dashboard.hideLoadingMsg();
-                const action = editMode ? 'updated' : 'created';
                 const actionPast = editMode ? 'updated' : 'created';
                 const actionFuture = editMode ? 'updated' : 'generated';
                 showNotification('Playlist "' + playlistName + '" ' + actionPast + '. The playlist has been ' + actionFuture + '.', 'success');
@@ -966,7 +965,7 @@
         });
     }
 
-    function showDeleteConfirm(page, playlistId, playlistName, buttonElement) {
+    function showDeleteConfirm(page, playlistId, playlistName) {
         const modal = page.querySelector('#delete-confirm-modal');
         if (!modal) return;
         
@@ -1310,7 +1309,7 @@
         
         populateStaticSelects(page);
         loadUsers(page);
-        loadAndPopulateFields(page).then(() => {
+        loadAndPopulateFields().then(() => {
             const rulesContainer = page.querySelector('#rules-container');
             if (rulesContainer.children.length === 0) {
                 createInitialLogicGroup(page);
@@ -1343,7 +1342,7 @@
             if (target.closest('#refreshPlaylistListBtn')) { loadPlaylistList(page); }
             if (target.closest('.delete-playlist-btn')) {
                 const button = target.closest('.delete-playlist-btn');
-                showDeleteConfirm(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'), button);
+                showDeleteConfirm(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
             }
             if (target.closest('.edit-playlist-btn')) {
                 const button = target.closest('.edit-playlist-btn');

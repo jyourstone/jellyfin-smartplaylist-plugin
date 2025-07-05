@@ -27,7 +27,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             FileName = dto.FileName;
             UserId = dto.UserId;
             Order = OrderFactory.CreateOrder(dto.Order.Name);
-            MediaTypes = dto.MediaTypes ?? new List<string>();
+            MediaTypes = dto.MediaTypes ?? [];
 
             if (dto.ExpressionSets != null && dto.ExpressionSets.Count > 0)
             {
@@ -35,7 +35,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             else
             {
-                ExpressionSets = new List<ExpressionSet>();
+                ExpressionSets = [];
             }
         }
 
