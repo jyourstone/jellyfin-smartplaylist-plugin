@@ -43,9 +43,11 @@ The web interface is organized into three tabs:
     -   Choose the sort order.
     -   Select which user should own the playlist.
     -   Decide if the playlist should be public or private.
+    -   Choose whether or not to enable the playlist.
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
+    -   Enable or disable playlists to show or hide them in Jellyfin.
     -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.

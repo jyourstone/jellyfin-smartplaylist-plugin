@@ -278,6 +278,14 @@
                             <div class="field-description">Allow this playlist to be viewed by any logged in user.</div>
                         </div>
 
+                        <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" is="emby-checkbox" id="playlistIsEnabled" class="emby-checkbox" checked>
+                                <span>Enable playlist</span>
+                            </label>
+                            <div class="field-description">When enabled, the playlist will be created and updated automatically. When disabled, the playlist will be removed from Jellyfin.</div>
+                        </div>
+
                         <div style="margin-top: 2em;">
                             <button type="submit" id="submitBtn" class="button-submit emby-button block">Create Playlist</button>
                             <button type="button" id="clearFormBtn" class="emby-button raised block">Clear Form</button>

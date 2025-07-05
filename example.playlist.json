@@ -30,5 +30,6 @@
   "Public": false,
   "MediaTypes": [
     "Movie"
-  ]
+  ],
+  "Enabled": true
 }

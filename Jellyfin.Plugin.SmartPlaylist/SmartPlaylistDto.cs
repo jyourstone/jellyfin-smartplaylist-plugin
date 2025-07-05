@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
         public List<string> MediaTypes { get; set; } = new List<string>(); // Pre-filter media types
+        public bool Enabled { get; set; } = true; // Default to enabled
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]

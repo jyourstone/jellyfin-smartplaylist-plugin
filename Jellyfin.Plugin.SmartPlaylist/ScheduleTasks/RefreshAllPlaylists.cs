@@ -98,6 +98,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
                     progress?.Report((double)i / dtos.Length * 100);
 
+                    // Skip disabled playlists
+                    if (!dto.Enabled)
+                    {
+                        logger.LogDebug("Skipping disabled playlist '{PlaylistName}'", dto.Name);
+                        continue;
+                    }
+
                     // Handle migration from old User field to new UserId field
                     var user = await GetPlaylistUserAsync(dto);
                     if (user == null)

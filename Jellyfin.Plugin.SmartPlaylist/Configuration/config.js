@@ -612,6 +612,7 @@
             const sortOrderValue = sortOrderElement?.value || 'Ascending';
             const orderName = sortByValue + ' ' + sortOrderValue;
             const isPublic = page.querySelector('#playlistIsPublic').checked || false;
+            const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
 
             // Get selected user ID from dropdown
             const userId = page.querySelector('#playlistUser').value;
@@ -626,6 +627,7 @@
                 ExpressionSets: expressionSets,
                 Order: { Name: orderName },
                 Public: isPublic,
+                Enabled: isEnabled,
                 UserId: userId,
                 MediaTypes: selectedMediaTypes
             };
@@ -713,10 +715,12 @@
             page.querySelector('#sortBy').value = config.DefaultSortBy || 'Name';
             page.querySelector('#sortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#playlistIsPublic').checked = config.DefaultMakePublic || false;
+            page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
             page.querySelector('#sortOrder').value = 'Ascending';
             page.querySelector('#playlistIsPublic').checked = false;
+            page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
         });
         
         // Create initial logic group with one rule
@@ -815,6 +819,9 @@
                 // Process playlists sequentially to resolve usernames
                 for (const playlist of playlists) {
                     const isPublic = playlist.Public ? 'Public' : 'Private';
+                    const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
+                    const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
+                    const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
                     const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                     const userName = await resolveUsername(apiClient, playlist);
                     const playlistId = playlist.Id || 'NO_ID';
@@ -870,10 +877,15 @@
                         '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
                         '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
                         '<strong>Sort:</strong> ' + sortName + '<br>' +
-                        '<strong>Visibility:</strong> ' + isPublic +
+                        '<strong>Visibility:</strong> ' + isPublic + '<br>' +
+                        '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
                         '<div style="margin-top: 1em;">' +
                         '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                        (isEnabled ? 
+                            '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
+                            '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                        ) +
                         '<button type="button" is="emby-button" class="emby-button raised delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
                         '</div>' +
                         '</div>';
@@ -907,6 +919,50 @@
             Dashboard.hideLoadingMsg();
             console.error('Error deleting playlist:', err);
             showNotification('Failed to delete playlist "' + playlistName + '". Check console for details.');
+        });
+    }
+
+    function enablePlaylist(page, playlistId, playlistName) {
+        const apiClient = getApiClient();
+        
+        Dashboard.showLoadingMsg();
+        apiClient.ajax({
+            type: "POST",
+            url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '/enable'),
+            contentType: 'application/json'
+        }).then(response => {
+            if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
+            return response.json();
+        }).then(result => {
+            Dashboard.hideLoadingMsg();
+            showNotification(result.message || 'Playlist "' + playlistName + '" has been enabled.', 'success');
+            loadPlaylistList(page);
+        }).catch(err => {
+            Dashboard.hideLoadingMsg();
+            console.error('Error enabling playlist:', err);
+            showNotification('Failed to enable playlist "' + playlistName + '". Check console for details.');
+        });
+    }
+
+    function disablePlaylist(page, playlistId, playlistName) {
+        const apiClient = getApiClient();
+        
+        Dashboard.showLoadingMsg();
+        apiClient.ajax({
+            type: "POST",
+            url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '/disable'),
+            contentType: 'application/json'
+        }).then(response => {
+            if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
+            return response.json();
+        }).then(result => {
+            Dashboard.hideLoadingMsg();
+            showNotification(result.message || 'Playlist "' + playlistName + '" has been disabled.', 'success');
+            loadPlaylistList(page);
+        }).catch(err => {
+            Dashboard.hideLoadingMsg();
+            console.error('Error disabling playlist:', err);
+            showNotification('Failed to disable playlist "' + playlistName + '". Check console for details.');
         });
     }
 
@@ -1024,6 +1080,7 @@
                 // Populate form with playlist data
                 page.querySelector('#playlistName').value = playlist.Name || '';
                 page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
+                page.querySelector('#playlistIsEnabled').checked = playlist.Enabled !== false; // Default to true for backward compatibility
                 
                 // Set media types
                 const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
@@ -1291,6 +1348,14 @@
             if (target.closest('.edit-playlist-btn')) {
                 const button = target.closest('.edit-playlist-btn');
                 editPlaylist(page, button.getAttribute('data-playlist-id'));
+            }
+            if (target.closest('.enable-playlist-btn')) {
+                const button = target.closest('.enable-playlist-btn');
+                enablePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+            }
+            if (target.closest('.disable-playlist-btn')) {
+                const button = target.closest('.disable-playlist-btn');
+                disablePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
             }
             if (target.closest('#cancelEditBtn')) {
                 cancelEdit(page);

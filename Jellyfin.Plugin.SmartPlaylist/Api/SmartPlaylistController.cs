@@ -622,6 +622,86 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
+        /// Enable a smart playlist.
+        /// </summary>
+        /// <param name="id">The playlist ID.</param>
+        /// <returns>Success message.</returns>
+        [HttpPost("{id}/enable")]
+        public async Task<ActionResult> EnableSmartPlaylist([FromRoute, Required] string id)
+        {
+            try
+            {
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    return BadRequest("Invalid playlist ID format");
+                }
+                
+                var playlistStore = GetPlaylistStore();
+                var playlist = await playlistStore.GetSmartPlaylistAsync(guidId);
+                if (playlist == null)
+                {
+                    return NotFound("Smart playlist not found");
+                }
+                
+                // Enable the playlist
+                playlist.Enabled = true;
+                await playlistStore.SaveAsync(playlist);
+                
+                // Create/update the Jellyfin playlist
+                var playlistService = GetPlaylistService();
+                await playlistService.EnablePlaylistAsync(playlist);
+                
+                _logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enabling smart playlist {PlaylistId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error enabling smart playlist");
+            }
+        }
+
+        /// <summary>
+        /// Disable a smart playlist.
+        /// </summary>
+        /// <param name="id">The playlist ID.</param>
+        /// <returns>Success message.</returns>
+        [HttpPost("{id}/disable")]
+        public async Task<ActionResult> DisableSmartPlaylist([FromRoute, Required] string id)
+        {
+            try
+            {
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    return BadRequest("Invalid playlist ID format");
+                }
+                
+                var playlistStore = GetPlaylistStore();
+                var playlist = await playlistStore.GetSmartPlaylistAsync(guidId);
+                if (playlist == null)
+                {
+                    return NotFound("Smart playlist not found");
+                }
+                
+                // Disable the playlist
+                playlist.Enabled = false;
+                await playlistStore.SaveAsync(playlist);
+                
+                // Remove the Jellyfin playlist
+                var playlistService = GetPlaylistService();
+                await playlistService.DisablePlaylistAsync(playlist);
+                
+                _logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disabling smart playlist {PlaylistId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error disabling smart playlist");
+            }
+        }
+
+        /// <summary>
         /// Trigger a refresh of all smart playlists.
         /// </summary>
         /// <returns>Success message.</returns>

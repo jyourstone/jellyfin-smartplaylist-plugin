@@ -24,6 +24,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
     }
 
     public class PlaylistService(
@@ -47,9 +49,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             try
             {
                 _logger.LogInformation("Refreshing single smart playlist: {PlaylistName}", dto.Name);
-                _logger.LogDebug("[DEBUG] PlaylistService.RefreshSinglePlaylistAsync called with: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
-                    dto.Name, dto.UserId, dto.Public, dto.ExpressionSets?.Count ?? 0, 
+                _logger.LogDebug("[DEBUG] PlaylistService.RefreshSinglePlaylistAsync called with: Name={Name}, UserId={UserId}, Public={Public}, Enabled={Enabled}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+                    dto.Name, dto.UserId, dto.Public, dto.Enabled, dto.ExpressionSets?.Count ?? 0, 
                     dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None");
+
+                // Check if playlist is enabled
+                if (!dto.Enabled)
+                {
+                    _logger.LogInformation("Smart playlist '{PlaylistName}' is disabled. Skipping refresh.", dto.Name);
+                    return;
+                }
 
                 // Get the user for this playlist
                 var user = GetPlaylistUser(dto);
@@ -209,6 +218,42 @@ namespace Jellyfin.Plugin.SmartPlaylist
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error removing smart suffix from playlist {PlaylistName}", dto.Name);
+                throw;
+            }
+        }
+
+        public async Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Enabling smart playlist: {PlaylistName}", dto.Name);
+                
+                // Refresh the playlist to create/update the Jellyfin playlist
+                await RefreshSinglePlaylistAsync(dto, cancellationToken);
+                
+                _logger.LogInformation("Successfully enabled smart playlist: {PlaylistName}", dto.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enabling smart playlist {PlaylistName}", dto.Name);
+                throw;
+            }
+        }
+
+        public async Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Disabling smart playlist: {PlaylistName}", dto.Name);
+                
+                // Delete the Jellyfin playlist
+                await DeletePlaylistAsync(dto, cancellationToken);
+                
+                _logger.LogInformation("Successfully disabled smart playlist: {PlaylistName}", dto.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disabling smart playlist {PlaylistName}", dto.Name);
                 throw;
             }
         }
