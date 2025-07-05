@@ -278,6 +278,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
                 }
 
+                // Validate regex patterns before saving
+                if (playlist.ExpressionSets != null)
+                {
+                    foreach (var expressionSet in playlist.ExpressionSets)
+                    {
+                        if (expressionSet.Expressions != null)
+                        {
+                            foreach (var expression in expressionSet.Expressions)
+                            {
+                                if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
+                                {
+                                    try
+                                    {
+                                        var regex = new System.Text.RegularExpressions.Regex(expression.TargetValue, System.Text.RegularExpressions.RegexOptions.None);
+                                    }
+                                    catch (ArgumentException ex)
+                                    {
+                                        _logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}'");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
                 _logger.LogInformation("[DEBUG] Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
@@ -287,6 +313,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Unexpected regex validation error in smart playlist creation after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return BadRequest(ex.Message);
             }
             catch (Exception ex)
             {
@@ -331,6 +363,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
                 }
 
+                // Validate regex patterns before saving
+                if (playlist.ExpressionSets != null)
+                {
+                    foreach (var expressionSet in playlist.ExpressionSets)
+                    {
+                        if (expressionSet.Expressions != null)
+                        {
+                            foreach (var expression in expressionSet.Expressions)
+                            {
+                                if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
+                                {
+                                    try
+                                    {
+                                        var regex = new System.Text.RegularExpressions.Regex(expression.TargetValue, System.Text.RegularExpressions.RegexOptions.None);
+                                    }
+                                    catch (ArgumentException ex)
+                                    {
+                                        _logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}': {ex.Message}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Check if ownership is changing
                 var originalUserId = await GetPlaylistUserIdAsync(existingPlaylist);
                 var newUserId = playlist.UserId;
@@ -368,6 +426,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _logger.LogInformation("Updated smart playlist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return Ok(updatedPlaylist);
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Unexpected regex validation error in smart playlist update after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return BadRequest(ex.Message);
             }
             catch (Exception ex)
             {
