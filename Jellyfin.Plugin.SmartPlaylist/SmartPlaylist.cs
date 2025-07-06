@@ -134,6 +134,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var compiledRules = CompileRuleSets(logger);
             bool hasAnyRules = compiledRules.Any(set => set.Count > 0);
             
+            // Check if there are any non-expensive rules for two-phase filtering optimization
+            bool hasNonExpensiveRules = ExpressionSets
+                .SelectMany(set => set.Expressions)
+                .Any(expr => expr.MemberName != "AudioLanguages" && expr.MemberName != "People");
+            
             // OPTIMIZATION: Check for ItemType rules - apply them first for massive dataset reduction
             // Only apply pre-filtering if ALL rule sets have ItemType constraints to avoid excluding
             // items that could match rule sets without ItemType constraints
@@ -224,7 +229,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 
                 var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                    needsAudioLanguages, needsPeople, compiledRules, hasAnyRules);
+                    needsAudioLanguages, needsPeople, compiledRules, hasAnyRules, hasNonExpensiveRules);
                 results.AddRange(chunkResults);
                 
                 // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -244,7 +249,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
-            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
             
@@ -277,7 +282,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         else
                         {
                             cheapRules.Add(compiledRule);
-                            logger?.LogDebug("Rule set {SetIndex}: Added cheap rule: {Field} {Operator} {Value}", 
+                            logger?.LogDebug("Rule set {SetIndex}: Added non-expensive rule: {Field} {Operator} {Value}", 
                                 setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
                         }
                     }
@@ -285,13 +290,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     cheapCompiledRules.Add(cheapRules);
                     expensiveCompiledRules.Add(expensiveRules);
                     
-                    logger?.LogDebug("Rule set {SetIndex}: {CheapCount} cheap rules, {ExpensiveCount} expensive rules", 
+                    logger?.LogDebug("Rule set {SetIndex}: {NonExpensiveCount} non-expensive rules, {ExpensiveCount} expensive rules", 
                         setIndex, cheapRules.Count, expensiveRules.Count);
                 }
                 
-                if (!hasAnyRules)
+                if (!hasNonExpensiveRules)
                 {
-                    // No cheap rules to filter with - extract expensive data for all items
+                    // No non-expensive rules - extract expensive data for all items that have expensive rules
                     logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
                     foreach (var i in items)
                     {
@@ -327,12 +332,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
-                    // Two-phase filtering: cheap rules first, then expensive data extraction
+                    // Two-phase filtering: non-expensive rules first, then expensive data extraction
                     logger?.LogDebug("Using two-phase filtering for expensive field optimization");
                 
                     foreach (var i in items)
                     {
-                        // Phase 1: Extract cheap properties and check non-expensive rules
+                        // Phase 1: Extract non-expensive properties and check non-expensive rules
                         var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
                         
                         // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
@@ -341,14 +346,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         
                         for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
                         {
-                            // Check if this rule set has only expensive rules (no cheap rules)
+                            // Check if this rule set has only expensive rules (no non-expensive rules)
                             if (cheapCompiledRules[setIndex].Count == 0)
                             {
                                 hasExpensiveOnlyRuleSets = true;
-                                continue; // Can't evaluate expensive-only rule sets in cheap phase
+                                continue; // Can't evaluate expensive-only rule sets in non-expensive phase
                             }
                             
-                            // Evaluate cheap rules for this rule set
+                            // Evaluate non-expensive rules for this rule set
                             if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
                             {
                                 passesNonExpensiveRules = true;
@@ -357,7 +362,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         // Skip expensive data extraction only if:
-                        // 1. No rule set passed the cheap evaluation AND
+                        // 1. No rule set passed the non-expensive evaluation AND
                         // 2. There are no expensive-only rule sets that still need to be checked
                         if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
                             continue;
