@@ -24,9 +24,10 @@ cp meta-dev.json $OUTPUT_DIR/meta.json
 # Copy the logo image for local plugin display
 cp ../images/logo.jpg $OUTPUT_DIR/logo.jpg
 
-# Create the Configuration directory and copy the HTML file, which is required for the UI
+# Create the Configuration directory and copy the HTML and JS files, which is required for the UI
 mkdir -p $OUTPUT_DIR/Configuration
 cp ../Jellyfin.Plugin.SmartPlaylist/Configuration/config.html $OUTPUT_DIR/Configuration/
+cp ../Jellyfin.Plugin.SmartPlaylist/Configuration/config.js $OUTPUT_DIR/Configuration/
 
 echo ""
 echo "Build complete."

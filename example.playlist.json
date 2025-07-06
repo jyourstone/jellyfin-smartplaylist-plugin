@@ -2,15 +2,10 @@
   "Id": "df62a8cc-c65c-4f47-9d8b-9b0a7ce9b337",
   "Name": "90s Action Movies",
   "FileName": "90s_Action_Movies.json",
-  "User": "user",
+  "UserId": "e8be2e45-65a8-4529-a416-a14d1bf6b7d1",
   "ExpressionSets": [
     {
       "Expressions": [
-        {
-          "MemberName": "ItemType",
-          "Operator": "Equal",
-          "TargetValue": "Movie"
-        },
         {
           "MemberName": "Genres",
           "Operator": "Contains",
@@ -32,5 +27,9 @@
   "Order": {
     "Name": "ProductionYear Ascending"
   },
-  "Public": false
+  "Public": false,
+  "MediaTypes": [
+    "Movie"
+  ],
+  "Enabled": true
 }

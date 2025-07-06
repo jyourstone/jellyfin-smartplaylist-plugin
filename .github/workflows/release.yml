@@ -19,7 +19,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '9.0.x'
           
       - name: Setup jq
         run: sudo apt-get install -y jq
@@ -31,7 +31,7 @@ jobs:
         run: |
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
           echo "Building version: $VERSION"
-          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release --no-restore -o ./build_output /p:Version=$VERSION /p:AssemblyVersion=$VERSION.0
+          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release --no-restore -o ./build_output /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
       - name: Create Plugin Zip
         run: |
@@ -163,11 +163,11 @@ jobs:
         run: |
           # 1. Set up variables
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
-          ASSEMBLY_VERSION="${VERSION}.0"
+          ASSEMBLY_VERSION="${VERSION}"
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
-          TARGET_ABI="10.10.7"
+          TARGET_ABI="10.11.0"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
           CHANGELOG="${{ steps.get_release_notes.outputs.release_notes }}"
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"

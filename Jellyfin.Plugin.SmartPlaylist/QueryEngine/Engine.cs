@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
-    // This is taken entirely from https://stackoverflow.com/questions/6488034/how-to-implement-a-rule-engine
+    // This is based on https://stackoverflow.com/questions/6488034/how-to-implement-a-rule-engine
     public static class Engine
     {
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
@@ -61,10 +61,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (r.Operator == "MatchRegex" && tProp == typeof(string))
             {
                 logger?.LogDebug("SmartPlaylist applying single string MatchRegex to {Field}", r.MemberName);
-                var regex = new Regex(r.TargetValue, RegexOptions.None);
-                var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
-                var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
-                return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
+                try
+                {
+                    var regex = new Regex(r.TargetValue, RegexOptions.None);
+                    var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
+                    var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
+                    return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
+                }
+                catch (ArgumentException ex)
+                {
+                    logger?.LogError(ex, "Invalid regex pattern '{Pattern}' for field '{Field}': {Message}", r.TargetValue, r.MemberName, ex.Message);
+                    throw new ArgumentException($"Invalid regex pattern '{r.TargetValue}' for field '{r.MemberName}': {ex.Message}");
+                }
             }
 
             // Handle Contains for IEnumerable
@@ -138,15 +146,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(expr, paramUser).Compile();
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used via reflection")]
-        private static bool AnyItemContains(IEnumerable<string> list, string value)
+        internal static bool AnyItemContains(IEnumerable<string> list, string value)
         {
             if (list == null) return false;
             return list.Any(s => s != null && s.Contains(value, StringComparison.OrdinalIgnoreCase));
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used via reflection")]
-        private static bool AnyRegexMatch(IEnumerable<string> list, string pattern)
+        internal static bool AnyRegexMatch(IEnumerable<string> list, string pattern)
         {
             if (list == null) return false;
             
@@ -155,10 +161,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 var regex = new Regex(pattern, RegexOptions.None);
                 return list.Any(s => s != null && regex.IsMatch(s));
             }
+            catch (ArgumentException)
+            {
+                // Re-throw with more specific error message
+                throw new ArgumentException($"Invalid regex pattern '{pattern}'");
+            }
             catch (Exception)
             {
-                // If regex pattern is invalid, fall back to basic string contains
-                return list.Any(s => s != null && s.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+                // For other unexpected errors, still throw but with generic message
+                throw new ArgumentException($"Regex pattern '{pattern}' caused an error");
             }
         }
 
