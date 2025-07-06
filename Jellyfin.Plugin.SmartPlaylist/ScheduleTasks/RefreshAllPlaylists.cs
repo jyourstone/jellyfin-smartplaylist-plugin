@@ -88,6 +88,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 var dtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
                 logger.LogInformation("Found {Count} smart playlists to process", dtos.Length);
                 
+                // Log disabled playlists for informational purposes
+                var disabledPlaylists = dtos.Where(dto => !dto.Enabled).ToList();
+                if (disabledPlaylists.Any())
+                {
+                    var disabledNames = string.Join(", ", disabledPlaylists.Select(p => $"'{p.Name}'"));
+                    logger.LogDebug("Skipping {DisabledCount} disabled playlists: {DisabledNames}", disabledPlaylists.Count, disabledNames);
+                }
+                
                 // OPTIMIZATION: Cache media per user to avoid repeated fetching
                 var userMediaCache = new Dictionary<Guid, BaseItem[]>();
                 var userCacheStats = new Dictionary<Guid, (int MediaCount, int PlaylistCount)>();
@@ -341,7 +349,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 await providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
                 stopwatch.Stop();
-                logger.LogDebug("[DEBUG] Cover image generation completed for playlist {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
+                logger.LogDebug("Cover image generation completed for playlist {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {

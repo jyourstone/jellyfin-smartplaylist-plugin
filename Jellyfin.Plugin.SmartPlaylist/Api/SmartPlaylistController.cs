@@ -232,23 +232,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
-            _logger.LogDebug("[DEBUG] Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+            _logger.LogDebug("Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                 playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.ExpressionSets?.Count ?? 0, 
                 playlist?.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
             
             if (playlist?.ExpressionSets != null)
             {
-                _logger.LogDebug("[DEBUG] ExpressionSets count: {Count}", playlist.ExpressionSets.Count);
+                _logger.LogDebug("ExpressionSets count: {Count}", playlist.ExpressionSets.Count);
                 for (int i = 0; i < playlist.ExpressionSets.Count; i++)
                 {
                     var set = playlist.ExpressionSets[i];
-                    _logger.LogDebug("[DEBUG] ExpressionSet {Index}: {ExpressionCount} expressions", i, set?.Expressions?.Count ?? 0);
+                    _logger.LogDebug("ExpressionSet {Index}: {ExpressionCount} expressions", i, set?.Expressions?.Count ?? 0);
                     if (set?.Expressions != null)
                     {
                         for (int j = 0; j < set.Expressions.Count; j++)
                         {
                             var expr = set.Expressions[j];
-                            _logger.LogDebug("[DEBUG] Expression {SetIndex}.{ExprIndex}: {MemberName} {Operator} '{TargetValue}'", 
+                            _logger.LogDebug("Expression {SetIndex}.{ExprIndex}: {MemberName} {Operator} '{TargetValue}'", 
                                 i, j, expr?.MemberName, expr?.Operator, expr?.TargetValue);
                         }
                     }
@@ -260,7 +260,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 if (string.IsNullOrEmpty(playlist.Id))
                 {
                     playlist.Id = Guid.NewGuid().ToString();
-                    _logger.LogDebug("[DEBUG] Generated new playlist ID: {Id}", playlist.Id);
+                    _logger.LogDebug("Generated new playlist ID: {Id}", playlist.Id);
                 }
                 
                 if (string.IsNullOrEmpty(playlist.FileName))
@@ -306,11 +306,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
-                _logger.LogInformation("[DEBUG] Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
+                _logger.LogDebug("Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
                 stopwatch.Stop();
-                _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
+                _logger.LogDebug("Finished RefreshSinglePlaylistAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
             }
@@ -395,6 +395,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 bool ownershipChanging = originalUserId != Guid.Empty && newUserId != originalUserId;
                 bool nameChanging = !string.Equals(existingPlaylist.Name, playlist.Name, StringComparison.OrdinalIgnoreCase);
+                bool enabledStatusChanging = existingPlaylist.Enabled != playlist.Enabled;
+                
+                // Log enabled status changes
+                if (enabledStatusChanging)
+                {
+                    _logger.LogInformation("Playlist enabled status changing from {OldStatus} to {NewStatus} for playlist '{PlaylistName}'", 
+                        existingPlaylist.Enabled ? "enabled" : "disabled", 
+                        playlist.Enabled ? "enabled" : "disabled", 
+                        existingPlaylist.Name);
+                }
                 
                 if (ownershipChanging)
                 {

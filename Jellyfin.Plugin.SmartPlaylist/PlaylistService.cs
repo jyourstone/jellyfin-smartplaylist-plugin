@@ -49,7 +49,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             try
             {
                 _logger.LogInformation("Refreshing single smart playlist: {PlaylistName}", dto.Name);
-                _logger.LogDebug("[DEBUG] PlaylistService.RefreshSinglePlaylistAsync called with: Name={Name}, UserId={UserId}, Public={Public}, Enabled={Enabled}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+                _logger.LogDebug("PlaylistService.RefreshSinglePlaylistAsync called with: Name={Name}, UserId={UserId}, Public={Public}, Enabled={Enabled}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                     dto.Name, dto.UserId, dto.Public, dto.Enabled, dto.ExpressionSets?.Count ?? 0, 
                     dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None");
 

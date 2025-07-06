@@ -104,7 +104,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             User user, IUserDataManager userDataManager = null, ILogger logger = null)
         {
             var stopwatch = Stopwatch.StartNew();
-            logger?.LogDebug("[DEBUG] FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+            logger?.LogDebug("FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                 items.Count(), ExpressionSets.Count, string.Join(",", MediaTypes));
             
             // Apply media type pre-filtering first for performance
@@ -112,12 +112,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 var originalCount = items.Count();
                 items = items.Where(item => MediaTypes.Contains(item.GetType().Name));
-                logger?.LogDebug("[DEBUG] Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount} (filtering for: {MediaTypes})", 
+                logger?.LogDebug("Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount} (filtering for: {MediaTypes})", 
                     originalCount, items.Count(), string.Join(", ", MediaTypes));
             }
             else
             {
-                logger?.LogDebug("[DEBUG] No media type pre-filtering applied (no MediaTypes specified)");
+                logger?.LogDebug("No media type pre-filtering applied (no MediaTypes specified)");
             }
             
             var results = new List<BaseItem>();
