@@ -61,10 +61,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (r.Operator == "MatchRegex" && tProp == typeof(string))
             {
                 logger?.LogDebug("SmartPlaylist applying single string MatchRegex to {Field}", r.MemberName);
-                var regex = new Regex(r.TargetValue, RegexOptions.None);
-                var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
-                var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
-                return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
+                try
+                {
+                    var regex = new Regex(r.TargetValue, RegexOptions.None);
+                    var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
+                    var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
+                    return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
+                }
+                catch (ArgumentException ex)
+                {
+                    logger?.LogError(ex, "Invalid regex pattern '{Pattern}' for field '{Field}': {Message}", r.TargetValue, r.MemberName, ex.Message);
+                    throw new ArgumentException($"Invalid regex pattern '{r.TargetValue}' for field '{r.MemberName}': {ex.Message}");
+                }
             }
 
             // Handle Contains for IEnumerable
@@ -153,10 +161,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 var regex = new Regex(pattern, RegexOptions.None);
                 return list.Any(s => s != null && regex.IsMatch(s));
             }
+            catch (ArgumentException)
+            {
+                // Re-throw with more specific error message
+                throw new ArgumentException($"Invalid regex pattern '{pattern}'");
+            }
             catch (Exception)
             {
-                // If regex pattern is invalid, fall back to basic string contains
-                return list.Any(s => s != null && s.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+                // For other unexpected errors, still throw but with generic message
+                throw new ArgumentException($"Regex pattern '{pattern}' caused an error");
             }
         }
 

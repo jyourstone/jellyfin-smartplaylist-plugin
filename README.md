@@ -10,7 +10,7 @@ A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfi
 
 This plugin allows you to create playlists based on a set of rules, which will automatically update as your library changes. 
 
-It has been tested and works with Jellyfin version `10.10.7`, which means it will most likely work with all 10.10.x versions.
+Tested and works with Jellyfin version `10.11.0-rc2`.
 
 ## ✨ Features
 
@@ -30,7 +30,7 @@ SmartPlaylist now features a modern web-based configuration interface through th
 
 <div align="center">
     <p>
-        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="500"/>
+        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="800"/>
     </p>
 </div>
 
@@ -43,13 +43,24 @@ The web interface is organized into three tabs:
     -   Choose the sort order.
     -   Select which user should own the playlist.
     -   Decide if the playlist should be public or private.
+    -   Choose whether or not to enable the playlist.
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
-    -   Delete playlists you no longer need.
+    -   Enable or disable playlists to show or hide them in Jellyfin.
+    -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
     -   Manually trigger a refresh for all smart playlists.
+
+#### Flexible Deletion Options
+
+When deleting a smart playlist, you can choose whether to also delete the corresponding Jellyfin playlist:
+
+- **Delete both (default)**: Removes both the smart playlist configuration and the Jellyfin playlist
+- **Delete configuration only**: Keeps the Jellyfin playlist and removes the "[Smart]" suffix, making it a regular manually managed playlist
+
+This is useful when you for example want to populate a playlist automatically once, then manage it manually.
 
 ### Automatic Updates
 
@@ -86,10 +97,8 @@ Download the latest release from the [Releases page](https://github.com/jyoursto
 Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
 
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
-- **UI for OR Logic**: Add a way to create `OR` conditions between rule groups in the web interface.
-- **Update to .NET 9**: Update package references and framework from .NET 8 to .NET9.
-- **Delete options**: When deleting a smart playlist, choose if you want to delete the created playlist or not.
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
+- **Caching**: Look into a cache solution to increase performance.
 
 ## Development
 

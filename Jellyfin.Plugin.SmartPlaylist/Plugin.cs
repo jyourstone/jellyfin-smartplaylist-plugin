@@ -36,6 +36,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     Name = Name,
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.config.html"
+                },
+                new PluginPageInfo
+                {
+                    Name = "config.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config.js"
                 }
             ];
         }

@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Jellyfin.Plugin.SmartPlaylist.Api
 {
@@ -229,12 +230,37 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         [HttpPost]
         public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody, Required] SmartPlaylistDto playlist)
         {
-            _logger.LogInformation("[DEBUG] CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
+            _logger.LogDebug("[DEBUG] Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+                playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.ExpressionSets?.Count ?? 0, 
+                playlist?.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
+            
+            if (playlist?.ExpressionSets != null)
+            {
+                _logger.LogDebug("[DEBUG] ExpressionSets count: {Count}", playlist.ExpressionSets.Count);
+                for (int i = 0; i < playlist.ExpressionSets.Count; i++)
+                {
+                    var set = playlist.ExpressionSets[i];
+                    _logger.LogDebug("[DEBUG] ExpressionSet {Index}: {ExpressionCount} expressions", i, set?.Expressions?.Count ?? 0);
+                    if (set?.Expressions != null)
+                    {
+                        for (int j = 0; j < set.Expressions.Count; j++)
+                        {
+                            var expr = set.Expressions[j];
+                            _logger.LogDebug("[DEBUG] Expression {SetIndex}.{ExprIndex}: {MemberName} {Operator} '{TargetValue}'", 
+                                i, j, expr?.MemberName, expr?.Operator, expr?.TargetValue);
+                        }
+                    }
+                }
+            }
+            
             try
             {
                 if (string.IsNullOrEmpty(playlist.Id))
                 {
                     playlist.Id = Guid.NewGuid().ToString();
+                    _logger.LogDebug("[DEBUG] Generated new playlist ID: {Id}", playlist.Id);
                 }
                 
                 if (string.IsNullOrEmpty(playlist.FileName))
@@ -252,18 +278,52 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
                 }
 
+                // Validate regex patterns before saving
+                if (playlist.ExpressionSets != null)
+                {
+                    foreach (var expressionSet in playlist.ExpressionSets)
+                    {
+                        if (expressionSet.Expressions != null)
+                        {
+                            foreach (var expression in expressionSet.Expressions)
+                            {
+                                if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
+                                {
+                                    try
+                                    {
+                                        var regex = new System.Text.RegularExpressions.Regex(expression.TargetValue, System.Text.RegularExpressions.RegexOptions.None);
+                                    }
+                                    catch (ArgumentException ex)
+                                    {
+                                        _logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}'");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
                 _logger.LogInformation("[DEBUG] Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
-                _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
+                stopwatch.Stop();
+                _logger.LogInformation("[DEBUG] Finished RefreshSinglePlaylistAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
             }
+            catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Unexpected regex validation error in smart playlist creation after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return BadRequest(ex.Message);
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating smart playlist");
+                stopwatch.Stop();
+                _logger.LogError(ex, "Error creating smart playlist after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error creating smart playlist");
             }
         }
@@ -277,6 +337,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         [HttpPut("{id}")]
         public async Task<ActionResult<SmartPlaylistDto>> UpdateSmartPlaylist([FromRoute, Required] string id, [FromBody, Required] SmartPlaylistDto playlist)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
@@ -300,6 +361,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 if (duplicateName != null)
                 {
                     return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
+                }
+
+                // Validate regex patterns before saving
+                if (playlist.ExpressionSets != null)
+                {
+                    foreach (var expressionSet in playlist.ExpressionSets)
+                    {
+                        if (expressionSet.Expressions != null)
+                        {
+                            foreach (var expression in expressionSet.Expressions)
+                            {
+                                if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
+                                {
+                                    try
+                                    {
+                                        var regex = new System.Text.RegularExpressions.Regex(expression.TargetValue, System.Text.RegularExpressions.RegexOptions.None);
+                                    }
+                                    catch (ArgumentException ex)
+                                    {
+                                        _logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}': {ex.Message}");
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Check if ownership is changing
@@ -335,12 +422,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 // Immediately update the Jellyfin playlist using the single playlist service
                 var playlistService = GetPlaylistService();
                 await playlistService.RefreshSinglePlaylistAsync(updatedPlaylist);
+                stopwatch.Stop();
+                _logger.LogInformation("Updated smart playlist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return Ok(updatedPlaylist);
             }
+            catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Unexpected regex validation error in smart playlist update after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return BadRequest(ex.Message);
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating smart playlist {PlaylistId}", id);
+                stopwatch.Stop();
+                _logger.LogError(ex, "Error updating smart playlist {PlaylistId} after {ElapsedTime}ms", id, stopwatch.ElapsedMilliseconds);
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error updating smart playlist");
             }
         }
@@ -349,9 +445,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         /// Delete a smart playlist.
         /// </summary>
         /// <param name="id">The playlist ID.</param>
+        /// <param name="deleteJellyfinPlaylist">Whether to also delete the corresponding Jellyfin playlist. Defaults to true for backward compatibility.</param>
         /// <returns>No content.</returns>
         [HttpDelete("{id}")]
-        public async Task<ActionResult> DeleteSmartPlaylist([FromRoute, Required] string id)
+        public async Task<ActionResult> DeleteSmartPlaylist([FromRoute, Required] string id, [FromQuery] bool deleteJellyfinPlaylist = true)
         {
             try
             {
@@ -369,13 +466,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
                 
-                // Delete the corresponding Jellyfin playlist using the service
+                // Handle the Jellyfin playlist based on user choice
                 var playlistService = GetPlaylistService();
-                await playlistService.DeletePlaylistAsync(playlist);
+                if (deleteJellyfinPlaylist)
+                {
+                    await playlistService.DeletePlaylistAsync(playlist);
+                    _logger.LogInformation("Deleted smart playlist and corresponding Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                }
+                else
+                {
+                    // Remove the [Smart] suffix from the playlist name
+                    await playlistService.RemoveSmartSuffixAsync(playlist);
+                    _logger.LogInformation("Deleted smart playlist configuration and removed [Smart] suffix from Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                }
                 
                 // Then delete the smart playlist configuration
                 playlistStore.Delete(Guid.Empty, id);
-                _logger.LogInformation("Deleted smart playlist and corresponding Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
                 
                 return NoContent();
             }
@@ -399,7 +505,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 {
                     new { Value = "Album", Label = "Album" },
                     new { Value = "AudioLanguages", Label = "Audio Languages" },
-                    new { Value = "ItemType", Label = "Media Type" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
                     new { Value = "ProductionYear", Label = "Production Year" }
@@ -465,7 +570,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             try
             {
                 var users = _userManager.Users
-                    .Where(u => !u.HasPermission(PermissionKind.IsDisabled))
                     .Select(u => new { 
                         u.Id, 
                         Name = u.Username
@@ -514,6 +618,86 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             {
                 _logger.LogError(ex, "Error getting current user");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error getting current user");
+            }
+        }
+
+        /// <summary>
+        /// Enable a smart playlist.
+        /// </summary>
+        /// <param name="id">The playlist ID.</param>
+        /// <returns>Success message.</returns>
+        [HttpPost("{id}/enable")]
+        public async Task<ActionResult> EnableSmartPlaylist([FromRoute, Required] string id)
+        {
+            try
+            {
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    return BadRequest("Invalid playlist ID format");
+                }
+                
+                var playlistStore = GetPlaylistStore();
+                var playlist = await playlistStore.GetSmartPlaylistAsync(guidId);
+                if (playlist == null)
+                {
+                    return NotFound("Smart playlist not found");
+                }
+                
+                // Enable the playlist
+                playlist.Enabled = true;
+                await playlistStore.SaveAsync(playlist);
+                
+                // Create/update the Jellyfin playlist
+                var playlistService = GetPlaylistService();
+                await playlistService.EnablePlaylistAsync(playlist);
+                
+                _logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enabling smart playlist {PlaylistId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error enabling smart playlist");
+            }
+        }
+
+        /// <summary>
+        /// Disable a smart playlist.
+        /// </summary>
+        /// <param name="id">The playlist ID.</param>
+        /// <returns>Success message.</returns>
+        [HttpPost("{id}/disable")]
+        public async Task<ActionResult> DisableSmartPlaylist([FromRoute, Required] string id)
+        {
+            try
+            {
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    return BadRequest("Invalid playlist ID format");
+                }
+                
+                var playlistStore = GetPlaylistStore();
+                var playlist = await playlistStore.GetSmartPlaylistAsync(guidId);
+                if (playlist == null)
+                {
+                    return NotFound("Smart playlist not found");
+                }
+                
+                // Disable the playlist
+                playlist.Enabled = false;
+                await playlistStore.SaveAsync(playlist);
+                
+                // Remove the Jellyfin playlist
+                var playlistService = GetPlaylistService();
+                await playlistService.DisablePlaylistAsync(playlist);
+                
+                _logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disabling smart playlist {PlaylistId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error disabling smart playlist");
             }
         }
 

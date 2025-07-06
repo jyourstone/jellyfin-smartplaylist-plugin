@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Data.Entities;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
@@ -75,6 +76,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>Task.</returns>
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 logger.LogInformation("Starting SmartPlaylist refresh task");
@@ -86,128 +88,219 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 var dtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
                 logger.LogInformation("Found {Count} smart playlists to process", dtos.Length);
                 
-                var allUsers = userManager.Users;
-
-                for (int i = 0; i < dtos.Length; i++)
+                // OPTIMIZATION: Cache media per user to avoid repeated fetching
+                var userMediaCache = new Dictionary<Guid, BaseItem[]>();
+                var userCacheStats = new Dictionary<Guid, (int MediaCount, int PlaylistCount)>();
+                
+                // Pre-process to group playlists by user and count media fetches needed
+                var playlistsByUser = dtos
+                    .Where(dto => dto.Enabled)
+                    .GroupBy(dto => dto.UserId)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+                
+                logger.LogInformation("Grouped {UserCount} users with {TotalPlaylists} enabled playlists", 
+                    playlistsByUser.Count, playlistsByUser.Values.Sum(p => p.Count));
+                
+                // Fetch media for each user once
+                foreach (var (userId, userPlaylists) in playlistsByUser)
                 {
-                    var dto = dtos[i];
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    progress?.Report((double)i / dtos.Length * 100);
-
-                    // Handle migration from old User field to new UserId field
-                    var user = await GetPlaylistUserAsync(dto);
+                    var user = userManager.GetUserById(userId);
                     if (user == null)
                     {
-                        logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
+                        logger.LogWarning("User with ID '{UserId}' not found, skipping {PlaylistCount} playlists", 
+                            userId, userPlaylists.Count);
                         continue;
                     }
                     
-                    var smartPlaylist = new SmartPlaylist(dto);
-                    
-                    // Log the playlist processing
-                    logger.LogInformation("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
-                    
+                    var mediaFetchStopwatch = Stopwatch.StartNew();
                     var allUserMedia = GetAllUserMedia(user).ToArray();
-                    logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
+                    mediaFetchStopwatch.Stop();
                     
-                    var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, libraryManager, user, userDataManager, logger).ToArray();
-                    logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
-                        dto.Name, newItems.Length, allUserMedia.Length);
+                    userMediaCache[userId] = allUserMedia;
+                    userCacheStats[userId] = (allUserMedia.Length, userPlaylists.Count);
                     
-                    var newLinkedChildren = newItems.Select(itemId => 
+                    logger.LogInformation("Cached {MediaCount} media items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
+                        allUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylists.Count);
+                }
+                
+                // Process playlists using cached media
+                var processedCount = 0;
+                var totalPlaylists = dtos.Count(dto => dto.Enabled);
+                
+                // OPTIMIZATION: Process playlists in parallel batches for better performance
+                var maxConcurrency = Environment.ProcessorCount; // Use available CPU cores
+                logger.LogDebug("Using parallel processing with max concurrency of {MaxConcurrency} (CPU cores)", maxConcurrency);
+                
+                foreach (var (userId, userPlaylists) in playlistsByUser)
+                {
+                    var user = userManager.GetUserById(userId);
+                    if (user == null || !userMediaCache.ContainsKey(userId))
                     {
-                        var item = libraryManager.GetItemById(itemId);
-                        return new LinkedChild 
-                        { 
-                            ItemId = itemId,
-                            Path = item?.Path  // Set the Path property to prevent cleanup task from removing items
-                        };
-                    }).ToArray();
-
-                    // Add [Smart] suffix to distinguish from regular playlists
-                    var smartPlaylistName = dto.Name + " [Smart]";
-                    var existingPlaylist = GetPlaylist(user, smartPlaylistName);
-                    
-                    if (existingPlaylist != null)
-                    {
-                        // Check if we need to update the playlist due to public/private setting change
-                        // Use OpenAccess property instead of Shares.Any() as revealed by debugging
-                        var openAccessProperty = existingPlaylist.GetType().GetProperty("OpenAccess");
-                        bool isCurrentlyPublic = false;
-                        if (openAccessProperty != null)
-                        {
-                            isCurrentlyPublic = (bool)(openAccessProperty.GetValue(existingPlaylist) ?? false);
-                        }
-                        else
-                        {
-                            // Fallback to shares if OpenAccess property is not available
-                            isCurrentlyPublic = existingPlaylist.Shares.Any();
-                        }
-                        bool shouldBePublic = dto.Public;
-                        
-                        logger.LogDebug("Playlist {PlaylistName} status check: currently public = {CurrentlyPublic} (OpenAccess), should be public = {ShouldBePublic}, shares count = {SharesCount}", 
-                            smartPlaylistName, isCurrentlyPublic, shouldBePublic, existingPlaylist.Shares?.Count ?? 0);
-                        
-                        if (isCurrentlyPublic != shouldBePublic)
-                        {
-                            logger.LogInformation("Public status changed for playlist {PlaylistName}. Updating playlist directly (was {OldStatus}, now {NewStatus})", 
-                                smartPlaylistName, isCurrentlyPublic ? "public" : "private", shouldBePublic ? "public" : "private");
-                            
-                            // Update the existing playlist directly using Jellyfin's playlist update API
-                            await UpdatePlaylistPublicStatusAsync(existingPlaylist, dto.Public, newLinkedChildren, cancellationToken);
-                        }
-                        else
-                        {
-                            // Public status hasn't changed, just update the items
-                            logger.LogInformation("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
-                                smartPlaylistName, user.Username, newLinkedChildren.Length, shouldBePublic ? "public" : "private");
-                            
-                            existingPlaylist.LinkedChildren = newLinkedChildren;
-                            await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-                            
-                            logger.LogDebug("After item update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
-                                existingPlaylist.Name, existingPlaylist.Shares?.Count ?? 0, existingPlaylist.Shares.Any());
-                            
-                            // Refresh metadata to generate cover images
-                            await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken).ConfigureAwait(false);
-                        }
+                        continue;
                     }
-                    else
+                    
+                    var allUserMedia = userMediaCache[userId];
+                    logger.LogInformation("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
+                        userPlaylists.Count, user.Username, allUserMedia.Length);
+                    
+                    // Process playlists in parallel batches
+                    var batchSize = Math.Max(1, maxConcurrency);
+                    for (int i = 0; i < userPlaylists.Count; i += batchSize)
                     {
-                        logger.LogInformation("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
-                            smartPlaylistName, user.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
+                        var batch = userPlaylists.Skip(i).Take(batchSize).ToList();
+                        logger.LogDebug("Processing batch {BatchNumber} with {BatchSize} playlists for user '{Username}'", 
+                            (i / batchSize) + 1, batch.Count, user.Username);
                         
-                        var result = await playlistManager.CreatePlaylist(new PlaylistCreationRequest
+                        var tasks = batch.Select(async dto =>
                         {
-                            Name = smartPlaylistName,
-                            UserId = user.Id,
-                            Public = dto.Public
-                        }).ConfigureAwait(false);
+                            var playlistStopwatch = Stopwatch.StartNew();
+                            try
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                
+                                // Handle migration from old User field to new UserId field
+                                var playlistUser = await GetPlaylistUserAsync(dto);
+                                if (playlistUser == null)
+                                {
+                                    logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
+                                    return;
+                                }
+                                
+                                var smartPlaylist = new SmartPlaylist(dto);
+                                
+                                // Log the playlist processing
+                                logger.LogInformation("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
+                                
+                                // OPTIMIZATION: Use cached media instead of fetching again
+                                logger.LogDebug("Using cached media for playlist {PlaylistName}: {MediaCount} items", dto.Name, allUserMedia.Length);
+                                
+                                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, libraryManager, user, userDataManager, logger).ToArray();
+                                logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
+                                    dto.Name, newItems.Length, allUserMedia.Length);
+                                
+                                var newLinkedChildren = newItems.Select(itemId => 
+                                {
+                                    var item = libraryManager.GetItemById(itemId);
+                                    return new LinkedChild 
+                                    { 
+                                        ItemId = itemId,
+                                        Path = item?.Path  // Set the Path property to prevent cleanup task from removing items
+                                    };
+                                }).ToArray();
 
-                        if (libraryManager.GetItemById(result.Id) is Playlist newPlaylist)
-                        {
-                            logger.LogDebug("New playlist created: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
-                                newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
-                            
-                            newPlaylist.LinkedChildren = newLinkedChildren;
-                            await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-                            
-                            logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
-                                newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
-                            
-                            // Refresh metadata to generate cover images
-                            await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
-                        }
+                                // Add [Smart] suffix to distinguish from regular playlists
+                                var smartPlaylistName = dto.Name + " [Smart]";
+                                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                                
+                                if (existingPlaylist != null)
+                                {
+                                    // Check if we need to update the playlist due to public/private setting change
+                                    // Use OpenAccess property instead of Shares.Any() as revealed by debugging
+                                    var openAccessProperty = existingPlaylist.GetType().GetProperty("OpenAccess");
+                                    bool isCurrentlyPublic = false;
+                                    if (openAccessProperty != null)
+                                    {
+                                        isCurrentlyPublic = (bool)(openAccessProperty.GetValue(existingPlaylist) ?? false);
+                                    }
+                                    else
+                                    {
+                                        // Fallback to shares if OpenAccess property is not available
+                                        isCurrentlyPublic = existingPlaylist.Shares.Any();
+                                    }
+                                    bool shouldBePublic = dto.Public;
+                                    
+                                    logger.LogDebug("Playlist {PlaylistName} status check: currently public = {CurrentlyPublic} (OpenAccess), should be public = {ShouldBePublic}, shares count = {SharesCount}", 
+                                        smartPlaylistName, isCurrentlyPublic, shouldBePublic, existingPlaylist.Shares?.Count ?? 0);
+                                    
+                                    if (isCurrentlyPublic != shouldBePublic)
+                                    {
+                                        logger.LogInformation("Public status changed for playlist {PlaylistName}. Updating playlist directly (was {OldStatus}, now {NewStatus})", 
+                                            smartPlaylistName, isCurrentlyPublic ? "public" : "private", shouldBePublic ? "public" : "private");
+                                        
+                                        // Update the existing playlist directly using Jellyfin's playlist update API
+                                        await UpdatePlaylistPublicStatusAsync(existingPlaylist, dto.Public, newLinkedChildren, cancellationToken);
+                                    }
+                                    else
+                                    {
+                                        // Public status hasn't changed, just update the items
+                                        logger.LogInformation("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
+                                            smartPlaylistName, user.Username, newLinkedChildren.Length, shouldBePublic ? "public" : "private");
+                                        
+                                        existingPlaylist.LinkedChildren = newLinkedChildren;
+                                        await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                                        
+                                        logger.LogDebug("After item update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
+                                            existingPlaylist.Name, existingPlaylist.Shares?.Count ?? 0, existingPlaylist.Shares.Any());
+                                        
+                                        // Refresh metadata to generate cover images
+                                        await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken).ConfigureAwait(false);
+                                    }
+                                }
+                                else
+                                {
+                                    logger.LogInformation("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
+                                        smartPlaylistName, user.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
+                                    
+                                    var result = await playlistManager.CreatePlaylist(new PlaylistCreationRequest
+                                    {
+                                        Name = smartPlaylistName,
+                                        UserId = user.Id,
+                                        Public = dto.Public
+                                    }).ConfigureAwait(false);
+
+                                    if (libraryManager.GetItemById(result.Id) is Playlist newPlaylist)
+                                    {
+                                        logger.LogDebug("New playlist created: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
+                                            newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                                        
+                                        newPlaylist.LinkedChildren = newLinkedChildren;
+                                        await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                                        
+                                        logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
+                                            newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                                        
+                                        // Refresh metadata to generate cover images
+                                        await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
+                                    }
+                                }
+                                
+                                playlistStopwatch.Stop();
+                                logger.LogInformation("Playlist {PlaylistName} processed in {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
+                            }
+                            catch (Exception ex)
+                            {
+                                playlistStopwatch.Stop();
+                                logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
+                                throw;
+                            }
+                        });
+                        
+                        // Wait for all tasks in this batch to complete
+                        await Task.WhenAll(tasks);
+                        
+                        // Update progress after each batch
+                        processedCount += batch.Count;
+                        progress?.Report((double)processedCount / totalPlaylists * 100);
                     }
                 }
 
+                // Log optimization summary
+                var totalMediaFetches = userCacheStats.Count;
+                var totalMediaItems = userCacheStats.Values.Sum(s => s.MediaCount);
+                var totalPlaylistsProcessed = userCacheStats.Values.Sum(s => s.PlaylistCount);
+                var estimatedSavings = totalPlaylistsProcessed - totalMediaFetches;
+                
+                logger.LogDebug("BATCH PROCESSING SUMMARY: Fetched media {FetchCount} times for {UserCount} users, processed {PlaylistCount} playlists. Estimated {Savings} fewer media fetches than sequential processing.", 
+                    totalMediaFetches, userCacheStats.Count, totalPlaylistsProcessed, estimatedSavings);
+
                 progress?.Report(100);
-                logger.LogInformation("SmartPlaylist refresh task completed successfully");
+                stopwatch.Stop();
+                logger.LogInformation("SmartPlaylist refresh task completed successfully in {TotalTime}ms", stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task");
+                stopwatch.Stop();
+                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
                 throw;
             }
         }
@@ -221,6 +314,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// <returns>Task.</returns>
         private async Task RefreshPlaylistMetadataAsync(Playlist playlist, CancellationToken cancellationToken)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
@@ -246,11 +340,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 
                 await providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
                 
-                logger.LogDebug("Cover image generation completed for playlist {PlaylistName}", playlist.Name);
+                stopwatch.Stop();
+                logger.LogDebug("[DEBUG] Cover image generation completed for playlist {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName}. Cover image may not be generated.", playlist.Name);
+                stopwatch.Stop();
+                logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName} after {ElapsedTime}ms. Cover image may not be generated.", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
         }
 
@@ -264,7 +360,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             [
                 new TaskTriggerInfo
                 {
-                    Type = TaskTriggerInfo.TriggerInterval,
+                    Type = TaskTriggerInfoType.IntervalTrigger,
                     IntervalTicks = TimeSpan.FromMinutes(30).Ticks
                 }
             ];

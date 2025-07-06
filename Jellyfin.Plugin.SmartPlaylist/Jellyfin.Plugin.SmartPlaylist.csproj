@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <!-- Version will be set dynamically during build from git tag -->
     <Version Condition="'$(Version)' == ''">0.0.0</Version>
     <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(Version).0</AssemblyVersion>
@@ -10,11 +10,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\config.html" />
+    <EmbeddedResource Include="Configuration\config.js" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="10.10.*" />
-    <PackageReference Include="Jellyfin.Model" Version="10.10.*" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.*-*" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.*-*" />
   </ItemGroup>
 
 </Project>
