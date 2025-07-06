@@ -93,7 +93,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 bool groupMatches = groupRules.All(rule => rule(operand)); // Always AND logic
                 if (groupMatches)
                 {
-                    logger?.LogDebug("Item matches logic group {GroupIndex}", groupIndex);
                     return true; // This group matches, so the item matches overall
                 }
             }
