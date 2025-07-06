@@ -31,7 +31,7 @@ jobs:
         run: |
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
           echo "Building version: $VERSION"
-          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release --no-restore -o ./build_output /p:Version=$VERSION /p:AssemblyVersion=$VERSION.0
+          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release --no-restore -o ./build_output /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
       - name: Create Plugin Zip
         run: |
@@ -163,7 +163,7 @@ jobs:
         run: |
           # 1. Set up variables
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
-          ASSEMBLY_VERSION="${VERSION}.0"
+          ASSEMBLY_VERSION="${VERSION}"
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
