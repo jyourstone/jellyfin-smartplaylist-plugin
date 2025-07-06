@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -19,6 +20,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public Order Order { get; set; }
         public List<string> MediaTypes { get; set; }
         public List<ExpressionSet> ExpressionSets { get; set; }
+
+        // OPTIMIZATION: Static cache for compiled rules to avoid recompilation
+        private static readonly ConcurrentDictionary<string, List<List<Func<Operand, bool>>>> _ruleCache = new();
 
         public SmartPlaylist(SmartPlaylistDto dto)
         {
@@ -41,8 +45,39 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger logger = null)
         {
-            return [.. ExpressionSets.Select(set => 
-                set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList())];
+            // OPTIMIZATION: Generate a cache key based on the rule set content
+            var ruleSetHash = GenerateRuleSetHash();
+            
+            return _ruleCache.GetOrAdd(ruleSetHash, _ =>
+            {
+                logger?.LogDebug("Compiling rules for playlist {PlaylistName} (cache miss)", Name);
+                return [.. ExpressionSets.Select(set => 
+                    set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList())];
+            });
+        }
+
+        private string GenerateRuleSetHash()
+        {
+            // Create a hash based on the rule set structure and content
+            var hashParts = new List<string>
+            {
+                Id ?? "",
+                ExpressionSets.Count.ToString()
+            };
+            
+            for (int i = 0; i < ExpressionSets.Count; i++)
+            {
+                var set = ExpressionSets[i];
+                hashParts.Add($"set{i}:{set.Expressions.Count}");
+                
+                for (int j = 0; j < set.Expressions.Count; j++)
+                {
+                    var expr = set.Expressions[j];
+                    hashParts.Add($"expr{i}_{j}:{expr.MemberName}:{expr.Operator}:{expr.TargetValue}");
+                }
+            }
+            
+            return string.Join("|", hashParts);
         }
 
         private bool EvaluateLogicGroups(List<List<Func<Operand, bool>>> compiledRules, Operand operand, ILogger logger = null)
@@ -168,6 +203,52 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     ruleSetsWithItemType.Count, ExpressionSets.Count);
             }
             
+            // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
+            const int chunkSize = 1000; // Process 1000 items at a time
+            var itemsArray = items.ToArray();
+            var totalItems = itemsArray.Length;
+            
+            if (totalItems > chunkSize)
+            {
+                logger?.LogDebug("Processing large library ({TotalItems} items) in chunks of {ChunkSize}", totalItems, chunkSize);
+            }
+            
+            for (int chunkStart = 0; chunkStart < totalItems; chunkStart += chunkSize)
+            {
+                var chunkEnd = Math.Min(chunkStart + chunkSize, totalItems);
+                var chunk = itemsArray.Skip(chunkStart).Take(chunkEnd - chunkStart);
+                
+                if (totalItems > chunkSize)
+                {
+                    logger?.LogDebug("Processing chunk {ChunkNumber}/{TotalChunks} (items {Start}-{End})", 
+                        (chunkStart / chunkSize) + 1, (totalItems + chunkSize - 1) / chunkSize, chunkStart + 1, chunkEnd);
+                }
+                
+                var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
+                    needsAudioLanguages, needsPeople, compiledRules, hasAnyRules);
+                results.AddRange(chunkResults);
+                
+                // OPTIMIZATION: Allow other operations to run between chunks for large libraries
+                if (totalItems > chunkSize * 2)
+                {
+                    // Yield control briefly to prevent blocking
+                    System.Threading.Thread.Sleep(1);
+                }
+            }
+
+            stopwatch.Stop();
+            logger?.LogInformation("Playlist filtering completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
+                stopwatch.ElapsedMilliseconds, totalItems, results.Count);
+            
+            return Order.OrderBy(results).Select(x => x.Id);
+        }
+
+        private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
+            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+        {
+            var results = new List<BaseItem>();
+            
             if (needsAudioLanguages || needsPeople)
             {
                 // Optimization: Separate rules into cheap and expensive categories
@@ -239,10 +320,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             matches = EvaluateLogicGroups(compiledRules, operand, logger);
                         }
                     
-                    if (matches)
-                    {
-                        results.Add(i);
-                    }
+                        if (matches)
+                        {
+                            results.Add(i);
+                        }
                     }
                 }
                 else
@@ -250,68 +331,68 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // Two-phase filtering: cheap rules first, then expensive data extraction
                     logger?.LogDebug("Using two-phase filtering for expensive field optimization");
                 
-                foreach (var i in items)
-                {
-                    // Phase 1: Extract cheap properties and check non-expensive rules
-                    var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
-                    
-                    // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
-                    bool passesNonExpensiveRules = false;
-                    bool hasExpensiveOnlyRuleSets = false;
-                    
-                    for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
+                    foreach (var i in items)
                     {
-                        // Check if this rule set has only expensive rules (no cheap rules)
-                        if (cheapCompiledRules[setIndex].Count == 0)
+                        // Phase 1: Extract cheap properties and check non-expensive rules
+                        var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
+                        
+                        // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
+                        bool passesNonExpensiveRules = false;
+                        bool hasExpensiveOnlyRuleSets = false;
+                        
+                        for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
                         {
-                            hasExpensiveOnlyRuleSets = true;
-                            continue; // Can't evaluate expensive-only rule sets in cheap phase
+                            // Check if this rule set has only expensive rules (no cheap rules)
+                            if (cheapCompiledRules[setIndex].Count == 0)
+                            {
+                                hasExpensiveOnlyRuleSets = true;
+                                continue; // Can't evaluate expensive-only rule sets in cheap phase
+                            }
+                            
+                            // Evaluate cheap rules for this rule set
+                            if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
+                            {
+                                passesNonExpensiveRules = true;
+                                break;
+                            }
                         }
                         
-                        // Evaluate cheap rules for this rule set
-                        if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
+                        // Skip expensive data extraction only if:
+                        // 1. No rule set passed the cheap evaluation AND
+                        // 2. There are no expensive-only rule sets that still need to be checked
+                        if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
+                            continue;
+                        
+                        // Phase 2: Extract expensive data and check complete rules
+                        var fullOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, needsAudioLanguages, needsPeople);
+                        
+                        // Debug: Log expensive data found for first few items
+                        if (results.Count < 5)
                         {
-                            passesNonExpensiveRules = true;
-                            break;
+                            if (needsAudioLanguages)
+                            {
+                                logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                    i.Name, fullOperand.AudioLanguages.Count, string.Join(", ", fullOperand.AudioLanguages));
+                            }
+                            if (needsPeople)
+                            {
+                                logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
+                                    i.Name, fullOperand.People.Count, string.Join(", ", fullOperand.People.Take(5)));
+                            }
+                        }
+                        
+                        bool matches = false;
+                        if (!hasAnyRules) {
+                            matches = true;
+                        } else {
+                            matches = EvaluateLogicGroups(compiledRules, fullOperand, logger);
+                        }
+                        
+                        if (matches)
+                        {
+                            results.Add(i);
                         }
                     }
-                    
-                    // Skip expensive data extraction only if:
-                    // 1. No rule set passed the cheap evaluation AND
-                    // 2. There are no expensive-only rule sets that still need to be checked
-                    if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
-                        continue;
-                    
-                    // Phase 2: Extract expensive data and check complete rules
-                    var fullOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, needsAudioLanguages, needsPeople);
-                    
-                    // Debug: Log expensive data found for first few items
-                    if (results.Count < 5)
-                    {
-                        if (needsAudioLanguages)
-                        {
-                            logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                                i.Name, fullOperand.AudioLanguages.Count, string.Join(", ", fullOperand.AudioLanguages));
-                        }
-                        if (needsPeople)
-                        {
-                            logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
-                                i.Name, fullOperand.People.Count, string.Join(", ", fullOperand.People.Take(5)));
-                        }
-                    }
-                    
-                    bool matches = false;
-                    if (!hasAnyRules) {
-                        matches = true;
-                    } else {
-                        matches = EvaluateLogicGroups(compiledRules, fullOperand, logger);
-                    }
-                    
-                    if (matches)
-                    {
-                        results.Add(i);
-                    }
-                }
                 }
             }
             else
@@ -336,12 +417,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                 }
             }
-
-            stopwatch.Stop();
-            logger?.LogInformation("Playlist filtering completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
-                stopwatch.ElapsedMilliseconds, items.Count(), results.Count);
             
-            return Order.OrderBy(results).Select(x => x.Id);
+            return results;
         }
 
         // private static void Validate()
