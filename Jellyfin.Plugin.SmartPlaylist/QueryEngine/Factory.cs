@@ -1,9 +1,9 @@
 using System;
-using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
+using Jellyfin.Data.Entities;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {

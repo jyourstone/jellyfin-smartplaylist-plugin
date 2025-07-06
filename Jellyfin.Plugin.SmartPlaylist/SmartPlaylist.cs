@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Data.Entities;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
