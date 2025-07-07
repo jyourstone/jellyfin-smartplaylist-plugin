@@ -2,7 +2,7 @@
 
 <div align="center">
     <p>
-        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="300"/>
+        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="350"/>
     </p>
 </div>
 
@@ -10,7 +10,7 @@ A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfi
 
 This plugin allows you to create playlists based on a set of rules, which will automatically update as your library changes. 
 
-Tested and should work with Jellyfin versions `10.10.x.x`.
+Tested and works with Jellyfin version `10.10.0` and newer.
 
 ## ✨ Features
 
