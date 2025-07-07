@@ -6,7 +6,7 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # Set the version for the build. For local testing, this can be a static string.
-VERSION="2.0.0"
+VERSION="10.10.0.0"
 OUTPUT_DIR="../build_output"
 
 echo "Building SmartPlaylist plugin version $DEV_VERSION for local development..."
@@ -16,7 +16,7 @@ rm -rf $OUTPUT_DIR
 mkdir -p $OUTPUT_DIR
 
 # Build the project
-dotnet build ../Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION.0
+dotnet build ../Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
 # Copy the dev meta.json file, as it's required by Jellyfin to load the plugin
 cp meta-dev.json $OUTPUT_DIR/meta.json
