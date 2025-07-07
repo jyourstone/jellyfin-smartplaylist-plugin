@@ -148,7 +148,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     }
                     
                     var allUserMedia = userMediaCache[userId];
-                    logger.LogInformation("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
+                    logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
                         userPlaylists.Count, user.Username, allUserMedia.Length);
                     
                     // Process playlists in parallel batches
@@ -177,7 +177,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 var smartPlaylist = new SmartPlaylist(dto);
                                 
                                 // Log the playlist processing
-                                logger.LogInformation("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
+                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
                                 
                                 // OPTIMIZATION: Use cached media instead of fetching again
                                 logger.LogDebug("Using cached media for playlist {PlaylistName}: {MediaCount} items", dto.Name, allUserMedia.Length);
@@ -222,7 +222,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                     
                                     if (isCurrentlyPublic != shouldBePublic)
                                     {
-                                        logger.LogInformation("Public status changed for playlist {PlaylistName}. Updating playlist directly (was {OldStatus}, now {NewStatus})", 
+                                        logger.LogDebug("Public status changed for playlist {PlaylistName}. Updating playlist directly (was {OldStatus}, now {NewStatus})", 
                                             smartPlaylistName, isCurrentlyPublic ? "public" : "private", shouldBePublic ? "public" : "private");
                                         
                                         // Update the existing playlist directly using Jellyfin's playlist update API
@@ -244,10 +244,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                         await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken).ConfigureAwait(false);
                                     }
                                 }
-                                else
-                                {
-                                    logger.LogInformation("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
-                                        smartPlaylistName, user.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
+                                                                    else
+                                    {
+                                        logger.LogDebug("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
+                                            smartPlaylistName, user.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
                                     
                                     var result = await playlistManager.CreatePlaylist(new PlaylistCreationRequest
                                     {
@@ -273,7 +273,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 }
                                 
                                 playlistStopwatch.Stop();
-                                logger.LogInformation("Playlist {PlaylistName} processed in {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
+                                logger.LogDebug("Playlist {PlaylistName} processed in {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
                             }
                             catch (Exception ex)
                             {
@@ -375,7 +375,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
         private async Task UpdatePlaylistPublicStatusAsync(Playlist playlist, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
         {
-            logger.LogInformation("Updating playlist {PlaylistName} public status to {PublicStatus} and items to {ItemCount}", 
+            logger.LogDebug("Updating playlist {PlaylistName} public status to {PublicStatus} and items to {ItemCount}", 
                 playlist.Name, isPublic ? "public" : "private", linkedChildren.Length);
             
             // Update the playlist items
@@ -415,7 +415,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : playlist.Shares.Any();
-            logger.LogInformation("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
+            logger.LogDebug("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
                 playlist.Name, isFinallyPublic, playlist.Shares?.Count ?? 0);
             
             // Refresh metadata to generate cover images
@@ -465,7 +465,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 var user = userManager.GetUserByName(playlist.User);
                 if (user != null)
                 {
-                    logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
+                    logger.LogDebug("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
                         playlist.Name, playlist.User, user.Id);
                     
                     // Update the playlist with the User ID and save it
@@ -477,7 +477,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                         var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
                         var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
                         await playlistStore.SaveAsync(playlist);
-                        logger.LogInformation("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                        logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
                     }
                     catch (Exception ex)
                     {

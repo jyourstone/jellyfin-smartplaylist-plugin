@@ -142,7 +142,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 var user = _userManager.GetUserByName(playlist.User);
                 if (user != null)
                 {
-                    _logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
+                                        _logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'",
                         playlist.Name, playlist.User, user.Id);
                     
                     // Update the playlist with the User ID and save it
@@ -153,7 +153,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     {
                         var playlistStore = GetPlaylistStore();
                         await playlistStore.SaveAsync(playlist);
-                        _logger.LogInformation("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                        _logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
                     }
                     catch (Exception ex)
                     {
@@ -231,7 +231,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody, Required] SmartPlaylistDto playlist)
         {
             var stopwatch = Stopwatch.StartNew();
-            _logger.LogInformation("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
+            _logger.LogDebug("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist?.Name);
             _logger.LogDebug("Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                 playlist?.Name, playlist?.UserId, playlist?.Public, playlist?.ExpressionSets?.Count ?? 0, 
                 playlist?.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
@@ -400,7 +400,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 // Log enabled status changes
                 if (enabledStatusChanging)
                 {
-                    _logger.LogInformation("Playlist enabled status changing from {OldStatus} to {NewStatus} for playlist '{PlaylistName}'", 
+                    _logger.LogDebug("Playlist enabled status changing from {OldStatus} to {NewStatus} for playlist '{PlaylistName}'", 
                         existingPlaylist.Enabled ? "enabled" : "disabled", 
                         playlist.Enabled ? "enabled" : "disabled", 
                         existingPlaylist.Name);
@@ -408,7 +408,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 if (ownershipChanging)
                 {
-                    _logger.LogInformation("Playlist ownership changing from user {OldUserId} to {NewUserId} for playlist '{PlaylistName}'", 
+                    _logger.LogDebug("Playlist ownership changing from user {OldUserId} to {NewUserId} for playlist '{PlaylistName}'", 
                         originalUserId, newUserId, existingPlaylist.Name);
                     
                     // Delete the old playlist from the original user
@@ -417,7 +417,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
                 else if (nameChanging)
                 {
-                    _logger.LogInformation("Playlist name changing from '{OldName}' to '{NewName}' for user {UserId}", 
+                    _logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}' for user {UserId}", 
                         existingPlaylist.Name, playlist.Name, originalUserId);
                     
                     // Delete the old playlist with the old name
@@ -480,13 +480,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 if (deleteJellyfinPlaylist)
                 {
                     await playlistService.DeletePlaylistAsync(playlist);
-                    _logger.LogInformation("Deleted smart playlist and corresponding Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    _logger.LogInformation("Deleted smart playlist: {PlaylistName}", playlist.Name);
                 }
                 else
                 {
                     // Remove the [Smart] suffix from the playlist name
                     await playlistService.RemoveSmartSuffixAsync(playlist);
-                    _logger.LogInformation("Deleted smart playlist configuration and removed [Smart] suffix from Jellyfin playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    _logger.LogInformation("Deleted smart playlist configuration: {PlaylistName}", playlist.Name);
                 }
                 
                 // Then delete the smart playlist configuration
