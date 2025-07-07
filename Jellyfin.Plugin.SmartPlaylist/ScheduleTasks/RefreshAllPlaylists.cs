@@ -106,7 +106,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     .GroupBy(dto => dto.UserId)
                     .ToDictionary(g => g.Key, g => g.ToList());
                 
-                logger.LogInformation("Grouped {UserCount} users with {TotalPlaylists} enabled playlists", 
+                logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} enabled playlists", 
                     playlistsByUser.Count, playlistsByUser.Values.Sum(p => p.Count));
                 
                 // Fetch media for each user once
@@ -127,7 +127,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     userMediaCache[userId] = allUserMedia;
                     userCacheStats[userId] = (allUserMedia.Length, userPlaylists.Count);
                     
-                    logger.LogInformation("Cached {MediaCount} media items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
+                    logger.LogDebug("Cached {MediaCount} media items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
                         allUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylists.Count);
                 }
                 
@@ -183,7 +183,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 logger.LogDebug("Using cached media for playlist {PlaylistName}: {MediaCount} items", dto.Name, allUserMedia.Length);
                                 
                                 var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, libraryManager, user, userDataManager, logger).ToArray();
-                                logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
+                                logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
                                     dto.Name, newItems.Length, allUserMedia.Length);
                                 
                                 var newLinkedChildren = newItems.Select(itemId => 
@@ -231,7 +231,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                     else
                                     {
                                         // Public status hasn't changed, just update the items
-                                        logger.LogInformation("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
+                                        logger.LogDebug("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
                                             smartPlaylistName, user.Username, newLinkedChildren.Length, shouldBePublic ? "public" : "private");
                                         
                                         existingPlaylist.LinkedChildren = newLinkedChildren;
@@ -325,7 +325,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
+                logger.LogDebug("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
                 
                 // Only generate cover images for playlists that have content
                 // This avoids NullReferenceExceptions for empty playlists

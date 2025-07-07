@@ -77,7 +77,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
                 
                 var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, _logger).ToArray();
-                _logger.LogInformation("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
+                _logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
                     dto.Name, newItems.Length, allUserMedia.Length);
                 
                 var newLinkedChildren = newItems.Select(itemId => 
@@ -171,7 +171,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
-                    _logger.LogInformation("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
                 }
                 
                 return Task.CompletedTask;
@@ -212,7 +212,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
-                    _logger.LogInformation("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
                 }
             }
             catch (Exception ex)
@@ -226,7 +226,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             try
             {
-                _logger.LogInformation("Enabling smart playlist: {PlaylistName}", dto.Name);
+                _logger.LogDebug("Enabling smart playlist: {PlaylistName}", dto.Name);
                 
                 // Refresh the playlist to create/update the Jellyfin playlist
                 await RefreshSinglePlaylistAsync(dto, cancellationToken);
@@ -244,7 +244,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             try
             {
-                _logger.LogInformation("Disabling smart playlist: {PlaylistName}", dto.Name);
+                _logger.LogDebug("Disabling smart playlist: {PlaylistName}", dto.Name);
                 
                 // Delete the Jellyfin playlist
                 await DeletePlaylistAsync(dto, cancellationToken);
@@ -396,7 +396,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                _logger.LogInformation("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
+                _logger.LogDebug("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
                 
                 // Only generate cover images for playlists that have content
                 if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)

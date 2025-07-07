@@ -92,7 +92,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
                 else
                 {
-                    _logger.LogInformation("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}' ({UserId})", playlistName, user.Username, userId);
+                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}' ({UserId})", playlistName, user.Username, userId);
                 }
             }
             catch (Exception ex)
@@ -427,7 +427,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 playlist.Id = id;
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
-                _logger.LogInformation("Updated smart playlist: {PlaylistName}", playlist.Name);
                 
                 // Immediately update the Jellyfin playlist using the single playlist service
                 var playlistService = GetPlaylistService();
