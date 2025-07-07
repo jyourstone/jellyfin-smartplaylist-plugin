@@ -342,8 +342,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 {
                     MetadataRefreshMode = MetadataRefreshMode.Default,
                     ImageRefreshMode = MetadataRefreshMode.Default,
-                    ReplaceAllMetadata = false,
-                    ReplaceAllImages = false
+                    ReplaceAllMetadata = true  // Force regeneration of playlist metadata and cover images
                 };
                 
                 await providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);
