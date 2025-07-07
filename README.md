@@ -10,7 +10,7 @@ A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfi
 
 This plugin allows you to create playlists based on a set of rules, which will automatically update as your library changes. 
 
-Tested and works with Jellyfin version `10.11.0-rc2`.
+Tested and should work with all Jellyfin versions `10.10.x.x`.
 
 ## ✨ Features
 
@@ -188,4 +188,4 @@ This project is a fork of the original Smart Playlist plugin created by **[anken
 
 ## Disclaimer
 
-The vast majority of the recent features, including the entire web interface and the underlying API changes in this fork, were developed by an AI assistant. The repository owner is essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware. If you find a bug, it was probably the AI's fault. If you like a feature, the AI will begrudgingly accept your praise. Use at your own risk!
+The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware. If you find a bug, it was probably the AI's fault. If you like a feature, the AI will begrudgingly accept your praise. Use at your own risk!
