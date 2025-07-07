@@ -90,7 +90,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 
                 // Log disabled playlists for informational purposes
                 var disabledPlaylists = dtos.Where(dto => !dto.Enabled).ToList();
-                if (disabledPlaylists.Any())
+                if (disabledPlaylists.Count > 0)
                 {
                     var disabledNames = string.Join(", ", disabledPlaylists.Select(p => $"'{p.Name}'"));
                     logger.LogDebug("Skipping {DisabledCount} disabled playlists: {DisabledNames}", disabledPlaylists.Count, disabledNames);

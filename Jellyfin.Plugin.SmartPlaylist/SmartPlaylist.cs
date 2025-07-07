@@ -80,7 +80,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return string.Join("|", hashParts);
         }
 
-        private bool EvaluateLogicGroups(List<List<Func<Operand, bool>>> compiledRules, Operand operand, ILogger logger = null)
+        private bool EvaluateLogicGroups(List<List<Func<Operand, bool>>> compiledRules, Operand operand)
         {
             // Each ExpressionSet is a logic group
             // Groups are combined with OR logic (any group can match)
@@ -321,7 +321,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         if (!hasAnyRules) {
                             matches = true;
                         } else {
-                            matches = EvaluateLogicGroups(compiledRules, operand, logger);
+                            matches = EvaluateLogicGroups(compiledRules, operand);
                         }
                     
                         if (matches)
@@ -389,7 +389,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         if (!hasAnyRules) {
                             matches = true;
                         } else {
-                            matches = EvaluateLogicGroups(compiledRules, fullOperand, logger);
+                            matches = EvaluateLogicGroups(compiledRules, fullOperand);
                         }
                         
                         if (matches)
@@ -412,7 +412,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     if (!hasAnyRules) {
                         matches = true;
                     } else {
-                        matches = EvaluateLogicGroups(compiledRules, operand, logger);
+                        matches = EvaluateLogicGroups(compiledRules, operand);
                     }
                     
                     if (matches)

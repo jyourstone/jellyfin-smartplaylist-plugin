@@ -184,7 +184,7 @@ For advanced users who prefer JSON configuration, playlist files are stored in t
 
 ## Credits
 
-This project is a fork of the original Smart Playlist plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
+This project is a fork of the original SmartPlaylist plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
 
 ## Disclaimer
 
