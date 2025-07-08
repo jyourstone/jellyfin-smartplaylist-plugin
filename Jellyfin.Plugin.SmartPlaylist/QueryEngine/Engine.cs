@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
@@ -10,6 +11,33 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     // This is based on https://stackoverflow.com/questions/6488034/how-to-implement-a-rule-engine
     public static class Engine
     {
+        // Cache for compiled regex patterns to avoid recompilation
+        private static readonly ConcurrentDictionary<string, Regex> _regexCache = new();
+        
+        /// <summary>
+        /// Gets or creates a compiled regex pattern from the cache.
+        /// </summary>
+        /// <param name="pattern">The regex pattern</param>
+        /// <param name="logger">Optional logger for error reporting</param>
+        /// <returns>The compiled regex</returns>
+        /// <exception cref="ArgumentException">Thrown when the regex pattern is invalid</exception>
+        private static Regex GetOrCreateRegex(string pattern, ILogger logger = null)
+        {
+            return _regexCache.GetOrAdd(pattern, key =>
+            {
+                try
+                {
+                    logger?.LogDebug("SmartPlaylist compiling new regex pattern: {Pattern}", key);
+                    return new Regex(key, RegexOptions.Compiled | RegexOptions.None);
+                }
+                catch (ArgumentException ex)
+                {
+                    logger?.LogError(ex, "Invalid regex pattern '{Pattern}': {Message}", key, ex.Message);
+                    throw new ArgumentException($"Invalid regex pattern '{key}': {ex.Message}");
+                }
+            });
+        }
+        
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
         {
             var left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
@@ -43,7 +71,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
             if (tProp == typeof(bool) && r.Operator == "Equal")
             {
-                var right = System.Linq.Expressions.Expression.Constant(bool.Parse(r.TargetValue));
+                // Validate and parse boolean value safely
+                if (string.IsNullOrWhiteSpace(r.TargetValue))
+                {
+                    logger?.LogError("SmartPlaylist boolean comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                    throw new ArgumentException($"Boolean comparison requires a valid true/false value for field '{r.MemberName}', but got: '{r.TargetValue}'");
+                }
+                
+                if (!bool.TryParse(r.TargetValue, out bool boolValue))
+                {
+                    logger?.LogError("SmartPlaylist boolean comparison failed: Invalid boolean value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                    throw new ArgumentException($"Invalid boolean value '{r.TargetValue}' for field '{r.MemberName}'. Expected 'true' or 'false'.");
+                }
+                
+                var right = System.Linq.Expressions.Expression.Constant(boolValue);
                 return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, left, right);
             }
 
@@ -61,18 +102,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (r.Operator == "MatchRegex" && tProp == typeof(string))
             {
                 logger?.LogDebug("SmartPlaylist applying single string MatchRegex to {Field}", r.MemberName);
-                try
-                {
-                    var regex = new Regex(r.TargetValue, RegexOptions.None);
-                    var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
-                    var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
-                    return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
-                }
-                catch (ArgumentException ex)
-                {
-                    logger?.LogError(ex, "Invalid regex pattern '{Pattern}' for field '{Field}': {Message}", r.TargetValue, r.MemberName, ex.Message);
-                    throw new ArgumentException($"Invalid regex pattern '{r.TargetValue}' for field '{r.MemberName}': {ex.Message}");
-                }
+                var regex = GetOrCreateRegex(r.TargetValue, logger);
+                var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
+                var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
+                return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
             }
 
             // Handle Contains for IEnumerable
@@ -123,20 +156,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             else 
             {
-                logger?.LogDebug("SmartPlaylist field {Field} is not IEnumerable, proceeding to fallback", r.MemberName);
+                logger?.LogDebug("SmartPlaylist field {Field} is not IEnumerable", r.MemberName);
             }
 
-            // Fallback for other methods - this is still a bit fragile
-            // but will work for simple cases.
-            logger?.LogDebug("SmartPlaylist falling back to method: {Operator} on type {Type}", r.Operator, tProp.Name);
-            var fallbackMethod = tProp.GetMethod(r.Operator);
-            if (fallbackMethod == null)
-            {
-                logger?.LogError("SmartPlaylist method {Operator} not found on type {Type}", r.Operator, tProp.Name);
-                throw new InvalidOperationException($"Method {r.Operator} not found on type {tProp.Name}");
-            }
-            var fallbackConvertedRight = System.Linq.Expressions.Expression.Constant(Convert.ChangeType(r.TargetValue, fallbackMethod.GetParameters()[0].ParameterType));
-            return System.Linq.Expressions.Expression.Call(left, fallbackMethod, fallbackConvertedRight);
+            // All supported operators have been handled explicitly above
+            // If we reach here, the operator is not supported for this field type
+            logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for field '{Field}' of type '{Type}'", r.Operator, r.MemberName, tProp.Name);
+            throw new ArgumentException($"Operator '{r.Operator}' is not supported for field '{r.MemberName}' of type '{tProp.Name}'. Supported operators depend on the field type.");
         }
 
         public static Func<T, bool> CompileRule<T>(Expression r, ILogger logger = null)
@@ -158,18 +184,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             try
             {
-                var regex = new Regex(pattern, RegexOptions.None);
+                var regex = GetOrCreateRegex(pattern);
                 return list.Any(s => s != null && regex.IsMatch(s));
             }
-            catch (ArgumentException)
+            catch (ArgumentException ex)
             {
-                // Re-throw with more specific error message
-                throw new ArgumentException($"Invalid regex pattern '{pattern}'");
+                // Preserve the original error details while providing context
+                throw new ArgumentException($"Invalid regex pattern '{pattern}': {ex.Message}", ex);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // For other unexpected errors, still throw but with generic message
-                throw new ArgumentException($"Regex pattern '{pattern}' caused an error");
+                // For other unexpected errors, preserve the original exception details
+                throw new ArgumentException($"Regex pattern '{pattern}' caused an error: {ex.Message}", ex);
             }
         }
 
