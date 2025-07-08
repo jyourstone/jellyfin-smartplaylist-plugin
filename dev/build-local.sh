@@ -28,6 +28,7 @@ cp ../images/logo.jpg $OUTPUT_DIR/logo.jpg
 mkdir -p $OUTPUT_DIR/Configuration
 cp ../Jellyfin.Plugin.SmartPlaylist/Configuration/config.html $OUTPUT_DIR/Configuration/
 cp ../Jellyfin.Plugin.SmartPlaylist/Configuration/config.js $OUTPUT_DIR/Configuration/
+cp logging.json jellyfin-data/config/config/logging.json
 
 echo ""
 echo "Build complete."

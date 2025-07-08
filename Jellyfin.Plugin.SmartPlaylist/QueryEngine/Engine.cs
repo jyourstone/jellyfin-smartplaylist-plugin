@@ -89,15 +89,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
 
             // is the operator a known .NET operator?
-            logger?.LogDebug("SmartPlaylist checking if {Operator} is a valid ExpressionType", r.Operator);
+            logger?.LogDebug("SmartPlaylist checking if {Operator} is a built-in .NET ExpressionType", r.Operator);
             if (Enum.TryParse(r.Operator, out ExpressionType tBinary))
             {
-                logger?.LogDebug("SmartPlaylist {Operator} IS a valid ExpressionType: {ExpressionType}", r.Operator, tBinary);
+                logger?.LogDebug("SmartPlaylist {Operator} IS a built-in ExpressionType: {ExpressionType}", r.Operator, tBinary);
                 var right = System.Linq.Expressions.Expression.Constant(Convert.ChangeType(r.TargetValue, tProp));
                 // use a binary operation, e.g. 'Equal' -> 'u.Age == 15'
                 return System.Linq.Expressions.Expression.MakeBinary(tBinary, left, right);
             }
-            logger?.LogDebug("SmartPlaylist {Operator} is NOT a valid ExpressionType, continuing", r.Operator);
+            logger?.LogDebug("SmartPlaylist {Operator} is not a built-in ExpressionType, trying custom handlers", r.Operator);
 
             if (r.Operator == "MatchRegex" && tProp == typeof(string))
             {

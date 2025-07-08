@@ -10,10 +10,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     internal class OperandFactory
     {
         // Cache reflection method lookups for better performance
-        private static readonly Dictionary<Type, System.Reflection.MethodInfo> _getMediaStreamsMethodCache = new();
-        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _mediaSourcesPropertyCache = new();
+        private static readonly Dictionary<Type, System.Reflection.MethodInfo> _getMediaStreamsMethodCache = [];
+        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _mediaSourcesPropertyCache = [];
         private static System.Reflection.MethodInfo _getPeopleMethodCache = null;
-        private static readonly object _getPeopleMethodLock = new object();
+        private static readonly object _getPeopleMethodLock = new();
 
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
@@ -21,7 +21,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             // Cache the IsPlayed result to avoid multiple expensive calls
             var isPlayed = baseItem.IsPlayed(user);
-            
+
             var operand = new Operand(baseItem.Name)
             {
                 Genres = [.. baseItem.Genres],
@@ -34,14 +34,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
-                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? 
-                    (int)TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0
+                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ?
+                    (int)TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0,
+                // Initialize user data properties with fallback values
+                PlayCount = isPlayed ? 1 : 0,
+                IsFavorite = false
             };
-            
-            // Initialize user data properties with fallback values
-            operand.PlayCount = isPlayed ? 1 : 0;
-            operand.IsFavorite = false;
-            
+
             // Try to access user data properly
             try
             {
@@ -112,7 +111,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 try
                 {
                     // Try multiple approaches to access media stream information
-                    var mediaStreams = new List<object>();
+                    List<object> mediaStreams = [];
                     
                     // Approach 1: Try GetMediaStreams method if it exists (with caching)
                     var baseItemType = baseItem.GetType();

@@ -47,6 +47,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         IServerApplicationPaths serverApplicationPaths,
         IProviderManager providerManager) : IScheduledTask
     {
+        // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
+        private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
 
         /// <summary>
         /// Gets the name of the task.
@@ -77,6 +79,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
+            
+            // Declare cache variables outside try block so they're accessible in finally
+            Dictionary<Guid, BaseItem[]> userMediaCache = [];
+            Dictionary<Guid, (int MediaCount, int PlaylistCount)> userCacheStats = [];
+            
             try
             {
                 logger.LogInformation("Starting SmartPlaylist refresh task");
@@ -97,57 +104,66 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 }
                 
                 // OPTIMIZATION: Cache media per user to avoid repeated fetching
-                var userMediaCache = new Dictionary<Guid, BaseItem[]>();
-                var userCacheStats = new Dictionary<Guid, (int MediaCount, int PlaylistCount)>();
+                // Variables moved outside try block for cleanup in finally
                 
-                // Pre-process to group playlists by user and count media fetches needed
-                var playlistsByUser = dtos
-                    .Where(dto => dto.Enabled)
-                    .GroupBy(dto => dto.UserId)
+                // Pre-process to resolve users and group playlists by actual user (not dto.UserId)
+                // This ensures cache keys match the users that will actually be used during processing
+                var resolvedPlaylists = new List<(SmartPlaylistDto dto, User user)>();
+                var enabledPlaylists = dtos.Where(dto => dto.Enabled).ToList();
+                
+                logger.LogDebug("Resolving users for {PlaylistCount} enabled playlists", enabledPlaylists.Count);
+                
+                foreach (var dto in enabledPlaylists)
+                {
+                    var user = await GetPlaylistUserAsync(dto);
+                    if (user != null)
+                    {
+                        resolvedPlaylists.Add((dto, user));
+                    }
+                    else
+                    {
+                        logger.LogWarning("User not found for playlist '{PlaylistName}'. Skipping.", dto.Name);
+                    }
+                }
+                
+                // Group by actual resolved user ID
+                var playlistsByUser = resolvedPlaylists
+                    .GroupBy(p => p.user.Id)
                     .ToDictionary(g => g.Key, g => g.ToList());
                 
-                logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} enabled playlists", 
-                    playlistsByUser.Count, playlistsByUser.Values.Sum(p => p.Count));
+                logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} playlists after user resolution", 
+                    playlistsByUser.Count, resolvedPlaylists.Count);
                 
                 // Fetch media for each user once
-                foreach (var (userId, userPlaylists) in playlistsByUser)
+                foreach (var (userId, userPlaylistPairs) in playlistsByUser)
                 {
-                    var user = userManager.GetUserById(userId);
-                    if (user == null)
-                    {
-                        logger.LogWarning("User with ID '{UserId}' not found, skipping {PlaylistCount} playlists", 
-                            userId, userPlaylists.Count);
-                        continue;
-                    }
+                    var user = userPlaylistPairs.First().user; // All pairs have the same user
                     
                     var mediaFetchStopwatch = Stopwatch.StartNew();
                     var allUserMedia = GetAllUserMedia(user).ToArray();
                     mediaFetchStopwatch.Stop();
                     
                     userMediaCache[userId] = allUserMedia;
-                    userCacheStats[userId] = (allUserMedia.Length, userPlaylists.Count);
+                    userCacheStats[userId] = (allUserMedia.Length, userPlaylistPairs.Count);
                     
                     logger.LogDebug("Cached {MediaCount} media items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
-                        allUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylists.Count);
+                        allUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylistPairs.Count);
                 }
                 
                 // Process playlists using cached media
                 var processedCount = 0;
-                var totalPlaylists = dtos.Count(dto => dto.Enabled);
+                var totalPlaylists = resolvedPlaylists.Count;
                 
                 // OPTIMIZATION: Process playlists in parallel batches for better performance
                 var maxConcurrency = Environment.ProcessorCount; // Use available CPU cores
                 logger.LogDebug("Using parallel processing with max concurrency of {MaxConcurrency} (CPU cores)", maxConcurrency);
                 
-                foreach (var (userId, userPlaylists) in playlistsByUser)
+                foreach (var (userId, userPlaylistPairs) in playlistsByUser)
                 {
-                    var user = userManager.GetUserById(userId);
-                    if (user == null || !userMediaCache.ContainsKey(userId))
-                    {
-                        continue;
-                    }
+                    var user = userPlaylistPairs.First().user; // All pairs have the same user
+                    var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
                     
-                    var allUserMedia = userMediaCache[userId];
+                    var allUserMedia = userMediaCache[userId]; // Guaranteed to exist
                     logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
                         userPlaylists.Count, user.Username, allUserMedia.Length);
                     
@@ -166,12 +182,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
                                 
-                                // Handle migration from old User field to new UserId field
-                                var playlistUser = await GetPlaylistUserAsync(dto);
-                                if (playlistUser == null)
+                                // User is already resolved - use the cached user instead of re-resolving
+                                var playlistUser = user;
+                                
+                                // Validate that the playlist user is valid
+                                if (playlistUser.Id == Guid.Empty)
                                 {
-                                    logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
-                                    return;
+                                    logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
+                                    return false; // Return failure status
                                 }
                                 
                                 var smartPlaylist = new SmartPlaylist(dto);
@@ -179,12 +197,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 // Log the playlist processing
                                 logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
                                 
-                                // OPTIMIZATION: Use cached media instead of fetching again
-                                logger.LogDebug("Using cached media for playlist {PlaylistName}: {MediaCount} items", dto.Name, allUserMedia.Length);
+                                // Use cached media (guaranteed to exist for this user)
+                                var playlistUserMedia = allUserMedia;
+                                logger.LogDebug("Using cached media for playlist {PlaylistName}: {MediaCount} items", dto.Name, playlistUserMedia.Length);
                                 
-                                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, libraryManager, user, userDataManager, logger).ToArray();
+                                var newItems = smartPlaylist.FilterPlaylistItems(playlistUserMedia, libraryManager, playlistUser, userDataManager, logger).ToArray();
                                 logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
-                                    dto.Name, newItems.Length, allUserMedia.Length);
+                                    dto.Name, newItems.Length, playlistUserMedia.Length);
                                 
                                 var newLinkedChildren = newItems.Select(itemId => 
                                 {
@@ -198,7 +217,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
                                 // Add [Smart] suffix to distinguish from regular playlists
                                 var smartPlaylistName = dto.Name + " [Smart]";
-                                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                                var existingPlaylist = GetPlaylist(playlistUser, smartPlaylistName);
                                 
                                 if (existingPlaylist != null)
                                 {
@@ -232,7 +251,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                     {
                                         // Public status hasn't changed, just update the items
                                         logger.LogDebug("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items (status remains {PublicStatus})", 
-                                            smartPlaylistName, user.Username, newLinkedChildren.Length, shouldBePublic ? "public" : "private");
+                                            smartPlaylistName, playlistUser.Username, newLinkedChildren.Length, shouldBePublic ? "public" : "private");
                                         
                                         existingPlaylist.LinkedChildren = newLinkedChildren;
                                         await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
@@ -247,12 +266,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                                                     else
                                     {
                                         logger.LogDebug("Creating new smart playlist {PlaylistName} for user {User} with {ItemCount} items and {PublicStatus} status", 
-                                            smartPlaylistName, user.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
+                                            smartPlaylistName, playlistUser.Username, newLinkedChildren.Length, dto.Public ? "public" : "private");
                                     
                                     var result = await playlistManager.CreatePlaylist(new PlaylistCreationRequest
                                     {
                                         Name = smartPlaylistName,
-                                        UserId = user.Id,
+                                        UserId = playlistUser.Id,
                                         Public = dto.Public
                                     }).ConfigureAwait(false);
 
@@ -274,17 +293,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 
                                 playlistStopwatch.Stop();
                                 logger.LogDebug("Playlist {PlaylistName} processed in {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
+                                return true; // Return success status
                             }
                             catch (Exception ex)
                             {
                                 playlistStopwatch.Stop();
                                 logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
-                                throw;
+                                return false; // Return failure status, but don't propagate exception
                             }
                         });
                         
-                        // Wait for all tasks in this batch to complete
-                        await Task.WhenAll(tasks);
+                        // Wait for all tasks in this batch to complete and collect results
+                        var results = await Task.WhenAll(tasks);
+                        
+                        // Log batch completion summary
+                        var successCount = results.Count(r => r);
+                        var failureCount = results.Count(r => !r);
+                        if (failureCount > 0)
+                        {
+                            logger.LogWarning("Batch {BatchNumber} completed with {SuccessCount} successes and {FailureCount} failures", 
+                                (i / batchSize) + 1, successCount, failureCount);
+                        }
+                        else
+                        {
+                            logger.LogDebug("Batch {BatchNumber} completed successfully with {SuccessCount} playlists", 
+                                (i / batchSize) + 1, successCount);
+                        }
                         
                         // Update progress after each batch
                         processedCount += batch.Count;
@@ -310,6 +344,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                 stopwatch.Stop();
                 logger.LogError(ex, "Error occurred during SmartPlaylist refresh task after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
                 throw;
+            }
+            finally
+            {
+                // Clean up memory - explicitly clear the cache to free memory from large media collections
+                // This prevents memory leaks when processing large libraries with thousands of media items
+                if (userMediaCache != null)
+                {
+                    logger.LogDebug("Cleaning up media cache containing {CacheSize} user collections", userMediaCache.Count);
+                    userMediaCache.Clear();
+                }
+                
+                if (userCacheStats != null)
+                {
+                    userCacheStats.Clear();
+                }
             }
         }
 
@@ -474,10 +523,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     
                     try
                     {
-                        var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
-                        var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
-                        await playlistStore.SaveAsync(playlist);
-                        logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                        // Use semaphore to prevent concurrent migration saves (rare but can cause file corruption)
+                        await _migrationSemaphore.WaitAsync();
+                        try
+                        {
+                            var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
+                            var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
+                            await playlistStore.SaveAsync(playlist);
+                            logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                        }
+                        finally
+                        {
+                            _migrationSemaphore.Release();
+                        }
                     }
                     catch (Exception ex)
                     {
