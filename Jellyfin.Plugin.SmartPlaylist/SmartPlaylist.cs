@@ -23,6 +23,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         // OPTIMIZATION: Static cache for compiled rules to avoid recompilation
         private static readonly ConcurrentDictionary<string, List<List<Func<Operand, bool>>>> _ruleCache = new();
+        
+        // Cache management constants and fields
+        private const int MAX_CACHE_SIZE = 1000; // Maximum number of cached rule sets
+        private const int CLEANUP_THRESHOLD = 800; // Clean up when cache exceeds this size
+        private static readonly object _cacheCleanupLock = new();
+        private static DateTime _lastCleanupTime = DateTime.MinValue;
+        private static readonly TimeSpan MIN_CLEANUP_INTERVAL = TimeSpan.FromMinutes(5); // Minimum time between cleanups
 
         public SmartPlaylist(SmartPlaylistDto dto)
         {
@@ -45,58 +52,291 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger logger = null)
         {
-            // OPTIMIZATION: Generate a cache key based on the rule set content
-            var ruleSetHash = GenerateRuleSetHash();
-            
-            return _ruleCache.GetOrAdd(ruleSetHash, _ =>
+            try
             {
-                logger?.LogDebug("Compiling rules for playlist {PlaylistName} (cache miss)", Name);
-                return [.. ExpressionSets.Select(set => 
-                    set.Expressions.Select(r => Engine.CompileRule<Operand>(r, logger)).ToList())];
-            });
+                // Check if cache cleanup is needed (with rate limiting)
+                CheckAndCleanupCache(logger);
+                
+                // Input validation
+                if (ExpressionSets == null || ExpressionSets.Count == 0)
+                {
+                    logger?.LogDebug("No expression sets to compile for playlist '{PlaylistName}'", Name);
+                    return [];
+                }
+                
+                // OPTIMIZATION: Generate a cache key based on the rule set content
+                var ruleSetHash = GenerateRuleSetHash();
+                
+                return _ruleCache.GetOrAdd(ruleSetHash, _ =>
+                {
+                    try
+                    {
+                        logger?.LogDebug("Compiling rules for playlist {PlaylistName} (cache miss)", Name);
+                        
+                        var compiledRuleSets = new List<List<Func<Operand, bool>>>();
+                        
+                        for (int setIndex = 0; setIndex < ExpressionSets.Count; setIndex++)
+                        {
+                            var set = ExpressionSets[setIndex];
+                            if (set?.Expressions == null)
+                            {
+                                logger?.LogDebug("Skipping null expression set at index {SetIndex} for playlist '{PlaylistName}'", setIndex, Name);
+                                compiledRuleSets.Add([]);
+                                continue;
+                            }
+                            
+                            var compiledRules = new List<Func<Operand, bool>>();
+                            
+                            for (int exprIndex = 0; exprIndex < set.Expressions.Count; exprIndex++)
+                            {
+                                var expr = set.Expressions[exprIndex];
+                                if (expr == null)
+                                {
+                                    logger?.LogDebug("Skipping null expression at set {SetIndex}, index {ExprIndex} for playlist '{PlaylistName}'", setIndex, exprIndex, Name);
+                                    continue;
+                                }
+                                
+                                try
+                                {
+                                    var compiledRule = Engine.CompileRule<Operand>(expr, logger);
+                                    if (compiledRule != null)
+                                    {
+                                        compiledRules.Add(compiledRule);
+                                    }
+                                    else
+                                    {
+                                        logger?.LogWarning("Failed to compile rule at set {SetIndex}, index {ExprIndex} for playlist '{PlaylistName}': {Field} {Operator} {Value}", 
+                                            setIndex, exprIndex, Name, expr.MemberName, expr.Operator, expr.TargetValue);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger?.LogError(ex, "Error compiling rule at set {SetIndex}, index {ExprIndex} for playlist '{PlaylistName}': {Field} {Operator} {Value}", 
+                                        setIndex, exprIndex, Name, expr.MemberName, expr.Operator, expr.TargetValue);
+                                    // Skip this rule and continue with others
+                                }
+                            }
+                            
+                            compiledRuleSets.Add(compiledRules);
+                            logger?.LogDebug("Compiled {RuleCount} rules for expression set {SetIndex} in playlist '{PlaylistName}'", 
+                                compiledRules.Count, setIndex, Name);
+                        }
+                        
+                        logger?.LogDebug("Successfully compiled {SetCount} rule sets for playlist '{PlaylistName}'", 
+                            compiledRuleSets.Count, Name);
+                        
+                        return compiledRuleSets;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogError(ex, "Critical error during rule compilation for playlist '{PlaylistName}'. Returning empty rule set.", Name);
+                        return [];
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Critical error in CompileRuleSets for playlist '{PlaylistName}'. Returning empty rule set.", Name);
+                return [];
+            }
+        }
+
+        /// <summary>
+        /// Checks cache size and performs cleanup if needed, with rate limiting to prevent excessive cleanup operations.
+        /// </summary>
+        /// <param name="logger">Optional logger for diagnostics.</param>
+        private static void CheckAndCleanupCache(ILogger logger = null)
+        {
+            var currentCacheSize = _ruleCache.Count;
+            
+            // Only check for cleanup if we're approaching the threshold
+            if (currentCacheSize <= CLEANUP_THRESHOLD)
+                return;
+                
+            var now = DateTime.UtcNow;
+            
+            // Rate limit cleanup operations to prevent excessive cleanup
+            if (now - _lastCleanupTime < MIN_CLEANUP_INTERVAL)
+                return;
+                
+            // Use lock to ensure only one thread performs cleanup at a time
+            lock (_cacheCleanupLock)
+            {
+                // Double-check conditions after acquiring lock
+                if (_ruleCache.Count <= CLEANUP_THRESHOLD || now - _lastCleanupTime < MIN_CLEANUP_INTERVAL)
+                    return;
+                    
+                logger?.LogDebug("Rule cache size ({CurrentSize}) exceeded threshold ({Threshold}). Performing cleanup.", 
+                    _ruleCache.Count, CLEANUP_THRESHOLD);
+                
+                // Simple cleanup strategy: remove half the cache when it gets too large
+                // This is more efficient than LRU for this use case since rule compilation is expensive
+                var keysToRemove = _ruleCache.Keys.Take(_ruleCache.Count / 2).ToList();
+                
+                int removedCount = 0;
+                foreach (var key in keysToRemove)
+                {
+                    if (_ruleCache.TryRemove(key, out _))
+                    {
+                        removedCount++;
+                    }
+                }
+                
+                _lastCleanupTime = now;
+                
+                logger?.LogDebug("Rule cache cleanup completed. Removed {RemovedCount} entries. Cache size: {CurrentSize}/{MaxSize}", 
+                    removedCount, _ruleCache.Count, MAX_CACHE_SIZE);
+            }
+        }
+        
+        /// <summary>
+        /// Manually clears the entire rule cache. Useful for troubleshooting or memory management.
+        /// </summary>
+        /// <param name="logger">Optional logger for diagnostics.</param>
+        public static void ClearRuleCache(ILogger logger = null)
+        {
+            lock (_cacheCleanupLock)
+            {
+                var previousCount = _ruleCache.Count;
+                _ruleCache.Clear();
+                _lastCleanupTime = DateTime.UtcNow;
+                
+                logger?.LogDebug("Rule cache manually cleared. Removed {RemovedCount} entries.", previousCount);
+            }
+        }
+        
+        /// <summary>
+        /// Gets current cache statistics for monitoring and debugging.
+        /// </summary>
+        /// <returns>A tuple containing current cache size, maximum size, and cleanup threshold.</returns>
+        public static (int CurrentSize, int MaxSize, int CleanupThreshold, DateTime LastCleanup) GetCacheStats()
+        {
+            return (_ruleCache.Count, MAX_CACHE_SIZE, CLEANUP_THRESHOLD, _lastCleanupTime);
         }
 
         private string GenerateRuleSetHash()
         {
-            // Create a hash based on the rule set structure and content
-            var hashParts = new List<string>
+            try
             {
-                Id ?? "",
-                ExpressionSets.Count.ToString()
-            };
-            
-            for (int i = 0; i < ExpressionSets.Count; i++)
-            {
-                var set = ExpressionSets[i];
-                hashParts.Add($"set{i}:{set.Expressions.Count}");
-                
-                for (int j = 0; j < set.Expressions.Count; j++)
+                // Input validation
+                if (ExpressionSets == null)
                 {
-                    var expr = set.Expressions[j];
-                    hashParts.Add($"expr{i}_{j}:{expr.MemberName}:{expr.Operator}:{expr.TargetValue}");
+                    return $"id:{Id ?? ""}|sets:0";
                 }
+                
+                // Use StringBuilder for efficient string concatenation
+                var hashBuilder = new System.Text.StringBuilder();
+                hashBuilder.Append(Id ?? "");
+                hashBuilder.Append('|');
+                hashBuilder.Append(ExpressionSets.Count);
+                
+                for (int i = 0; i < ExpressionSets.Count; i++)
+                {
+                    var set = ExpressionSets[i];
+                    
+                    hashBuilder.Append("|set");
+                    hashBuilder.Append(i);
+                    hashBuilder.Append(':');
+                    
+                    // Handle null expression sets
+                    if (set?.Expressions == null)
+                    {
+                        hashBuilder.Append("null");
+                        continue;
+                    }
+                    
+                    hashBuilder.Append(set.Expressions.Count);
+                    
+                    for (int j = 0; j < set.Expressions.Count; j++)
+                    {
+                        var expr = set.Expressions[j];
+                        
+                        hashBuilder.Append("|expr");
+                        hashBuilder.Append(i);
+                        hashBuilder.Append('_');
+                        hashBuilder.Append(j);
+                        hashBuilder.Append(':');
+                        
+                        // Handle null expressions
+                        if (expr == null)
+                        {
+                            hashBuilder.Append("null");
+                            continue;
+                        }
+                        
+                        // Handle null expression properties and append efficiently
+                        hashBuilder.Append(expr.MemberName ?? "");
+                        hashBuilder.Append(':');
+                        hashBuilder.Append(expr.Operator ?? "");
+                        hashBuilder.Append(':');
+                        hashBuilder.Append(expr.TargetValue ?? "");
+                    }
+                }
+                
+                return hashBuilder.ToString();
             }
-            
-            return string.Join("|", hashParts);
+            catch (Exception)
+            {
+                // If hash generation fails, return a fallback hash based on basic properties
+                return $"fallback:{Id ?? ""}:{ExpressionSets?.Count ?? 0}";
+            }
         }
 
         private bool EvaluateLogicGroups(List<List<Func<Operand, bool>>> compiledRules, Operand operand)
         {
-            // Each ExpressionSet is a logic group
-            // Groups are combined with OR logic (any group can match)
-            // Rules within each group always use AND logic
-            for (int groupIndex = 0; groupIndex < ExpressionSets.Count; groupIndex++)
+            try
             {
-                var group = ExpressionSets[groupIndex];
-                var groupRules = compiledRules[groupIndex];
-                if (groupRules.Count == 0) continue; // Skip empty groups
-                bool groupMatches = groupRules.All(rule => rule(operand)); // Always AND logic
-                if (groupMatches)
+                if (compiledRules == null || operand == null)
                 {
-                    return true; // This group matches, so the item matches overall
+                    return false;
                 }
+                
+                // Each ExpressionSet is a logic group
+                // Groups are combined with OR logic (any group can match)
+                // Rules within each group always use AND logic
+                for (int groupIndex = 0; groupIndex < ExpressionSets.Count && groupIndex < compiledRules.Count; groupIndex++)
+                {
+                    var group = ExpressionSets[groupIndex];
+                    var groupRules = compiledRules[groupIndex];
+                    
+                    if (group == null || groupRules == null || groupRules.Count == 0) 
+                        continue; // Skip empty or null groups
+                    
+                    try
+                    {
+                        bool groupMatches = groupRules.All(rule => 
+                        {
+                            try
+                            {
+                                return rule?.Invoke(operand) ?? false;
+                            }
+                            catch (Exception)
+                            {
+                                // Log at debug level to avoid spam, but continue evaluation
+                                // Conservative approach: assume rule doesn't match if it fails
+                                return false;
+                            }
+                        });
+                        
+                        if (groupMatches)
+                        {
+                            return true; // This group matches, so the item matches overall
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // If we can't evaluate this group, skip it and continue with others
+                        continue;
+                    }
+                }
+                
+                return false; // No groups matched
             }
-            return false; // No groups matched
+            catch (Exception)
+            {
+                // If we can't evaluate any groups, conservative approach is to exclude item
+                return false;
+            }
         }
 
         // Returns the ID's of the items, if order is provided the IDs are sorted.
@@ -104,147 +344,186 @@ namespace Jellyfin.Plugin.SmartPlaylist
             User user, IUserDataManager userDataManager = null, ILogger logger = null)
         {
             var stopwatch = Stopwatch.StartNew();
-            logger?.LogDebug("FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
-                items.Count(), ExpressionSets.Count, string.Join(",", MediaTypes));
             
-            // Apply media type pre-filtering first for performance
-            if (MediaTypes != null && MediaTypes.Count > 0)
+            try
             {
-                var originalCount = items.Count();
-                items = items.Where(item => MediaTypes.Contains(item.GetType().Name));
-                logger?.LogDebug("Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount} (filtering for: {MediaTypes})", 
-                    originalCount, items.Count(), string.Join(", ", MediaTypes));
-            }
-            else
-            {
-                logger?.LogDebug("No media type pre-filtering applied (no MediaTypes specified)");
-            }
-            
-            var results = new List<BaseItem>();
-
-            // Check if any rules use expensive fields to avoid unnecessary extraction
-            var needsAudioLanguages = ExpressionSets
-                .SelectMany(set => set.Expressions)
-                .Any(expr => expr.MemberName == "AudioLanguages");
-            
-            var needsPeople = ExpressionSets
-                .SelectMany(set => set.Expressions)
-                .Any(expr => expr.MemberName == "People");
-
-            var compiledRules = CompileRuleSets(logger);
-            bool hasAnyRules = compiledRules.Any(set => set.Count > 0);
-            
-            // Check if there are any non-expensive rules for two-phase filtering optimization
-            bool hasNonExpensiveRules = ExpressionSets
-                .SelectMany(set => set.Expressions)
-                .Any(expr => expr.MemberName != "AudioLanguages" && expr.MemberName != "People");
-            
-            // OPTIMIZATION: Check for ItemType rules - apply them first for massive dataset reduction
-            // Only apply pre-filtering if ALL rule sets have ItemType constraints to avoid excluding
-            // items that could match rule sets without ItemType constraints
-            var itemTypeRules = new List<(int setIndex, int exprIndex, Func<Operand, bool> rule)>();
-            var ruleSetsWithItemType = new HashSet<int>();
-            
-            for (int setIndex = 0; setIndex < ExpressionSets.Count; setIndex++)
-            {
-                var set = ExpressionSets[setIndex];
-                for (int exprIndex = 0; exprIndex < set.Expressions.Count; exprIndex++)
+                // Input validation
+                if (items == null)
                 {
-                    var expr = set.Expressions[exprIndex];
-                    if (expr.MemberName == "ItemType")
+                    logger?.LogWarning("FilterPlaylistItems called with null items collection for playlist '{PlaylistName}'", Name);
+                    return [];
+                }
+                
+                if (libraryManager == null)
+                {
+                    logger?.LogError("FilterPlaylistItems called with null libraryManager for playlist '{PlaylistName}'", Name);
+                    return [];
+                }
+                
+                if (user == null)
+                {
+                    logger?.LogError("FilterPlaylistItems called with null user for playlist '{PlaylistName}'", Name);
+                    return [];
+                }
+                
+                var itemCount = items.Count();
+                logger?.LogDebug("FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
+                    itemCount, ExpressionSets?.Count ?? 0, MediaTypes != null ? string.Join(",", MediaTypes) : "None");
+                
+                // Early return for empty item collections
+                if (itemCount == 0)
+                {
+                    logger?.LogDebug("No items to filter for playlist '{PlaylistName}'", Name);
+                    return [];
+                }
+                
+                // Apply media type pre-filtering first for performance
+                if (MediaTypes != null && MediaTypes.Count > 0)
+                {
+                    try
                     {
-                        itemTypeRules.Add((setIndex, exprIndex, compiledRules[setIndex][exprIndex]));
-                        ruleSetsWithItemType.Add(setIndex);
+                        var originalCount = itemCount;
+                        items = items.Where(item => item != null && MediaTypes.Contains(item.GetType().Name));
+                        var filteredCount = items.Count();
+                        logger?.LogDebug("Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount} (filtering for: {MediaTypes})", 
+                            originalCount, filteredCount, string.Join(", ", MediaTypes));
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error during media type pre-filtering for playlist '{PlaylistName}'. Continuing without pre-filtering.", Name);
+                        // Continue without pre-filtering
                     }
                 }
-            }
-            
-            // Only apply ItemType filtering if ALL rule sets have ItemType constraints
-            bool canApplyItemTypeOptimization = ruleSetsWithItemType.Count == ExpressionSets.Count;
-            
-            if (canApplyItemTypeOptimization && itemTypeRules.Count > 0)
-            {
-                logger?.LogDebug("Applying ItemType pre-filtering to reduce dataset (all rule sets have ItemType constraints)");
-                var preFilteredItems = new List<BaseItem>();
-                
-                foreach (var item in items)
+                else
                 {
-                    // Create a lightweight operand for ItemType checking
-                    var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false);
-                    
-                    // Check if this item matches ALL ItemType rules within AT LEAST ONE rule set
-                    // Group ItemType rules by rule set and check each rule set independently
-                    bool matchesAnyRuleSet = false;
-                    
-                    foreach (var ruleSetIndex in ruleSetsWithItemType)
+                    logger?.LogDebug("No media type pre-filtering applied (no MediaTypes specified)");
+                }
+                
+                var results = new List<BaseItem>();
+
+                // Check if any rules use expensive fields to avoid unnecessary extraction
+                var needsAudioLanguages = false;
+                var needsPeople = false;
+                
+                try
+                {
+                    if (ExpressionSets != null)
                     {
-                        // Get all ItemType rules for this specific rule set
-                        var ruleSetItemTypeRules = itemTypeRules.Where(r => r.setIndex == ruleSetIndex);
+                        needsAudioLanguages = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Any(expr => expr?.MemberName == "AudioLanguages");
                         
-                        // Check if item matches ALL ItemType rules in this rule set
-                        if (ruleSetItemTypeRules.All(r => r.rule(operand)))
-                        {
-                            matchesAnyRuleSet = true;
-                            break;
-                        }
-                    }
-                    
-                    if (matchesAnyRuleSet)
-                    {
-                        preFilteredItems.Add(item);
+                        needsPeople = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Any(expr => expr?.MemberName == "People");
                     }
                 }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Error analyzing expression sets for expensive fields in playlist '{PlaylistName}'. Assuming no expensive fields needed.", Name);
+                }
+
+                // Compile rules with error handling
+                List<List<Func<Operand, bool>>> compiledRules = null;
+                try
+                {
+                    compiledRules = CompileRuleSets(logger);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogError(ex, "Failed to compile rules for playlist '{PlaylistName}'. Playlist will return no results.", Name);
+                    return [];
+                }
                 
-                logger?.LogDebug("ItemType pre-filtering reduced dataset from {OriginalCount} to {FilteredCount} items", 
-                    items.Count(), preFilteredItems.Count);
+                if (compiledRules == null)
+                {
+                    logger?.LogError("Compiled rules is null for playlist '{PlaylistName}'. Playlist will return no results.", Name);
+                    return [];
+                }
                 
-                // Continue with the pre-filtered items
-                items = preFilteredItems;
-            }
-            else if (itemTypeRules.Count > 0)
-            {
-                logger?.LogDebug("Skipping ItemType pre-filtering optimization: {RuleSetsWithItemType} of {TotalRuleSets} rule sets have ItemType constraints", 
-                    ruleSetsWithItemType.Count, ExpressionSets.Count);
-            }
-            
-            // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
-            const int chunkSize = 1000; // Process 1000 items at a time
-            var itemsArray = items.ToArray();
-            var totalItems = itemsArray.Length;
-            
-            if (totalItems > chunkSize)
-            {
-                logger?.LogDebug("Processing large library ({TotalItems} items) in chunks of {ChunkSize}", totalItems, chunkSize);
-            }
-            
-            for (int chunkStart = 0; chunkStart < totalItems; chunkStart += chunkSize)
-            {
-                var chunkEnd = Math.Min(chunkStart + chunkSize, totalItems);
-                var chunk = itemsArray.Skip(chunkStart).Take(chunkEnd - chunkStart);
+                bool hasAnyRules = compiledRules.Any(set => set?.Count > 0);
+                
+                // Check if there are any non-expensive rules for two-phase filtering optimization
+                bool hasNonExpensiveRules = false;
+                try
+                {
+                    if (ExpressionSets != null)
+                    {
+                        hasNonExpensiveRules = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Any(expr => expr?.MemberName != "AudioLanguages" && expr?.MemberName != "People");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Error analyzing non-expensive rules in playlist '{PlaylistName}'. Assuming non-expensive rules exist.", Name);
+                    hasNonExpensiveRules = true; // Conservative assumption
+                }
+                
+                // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
+                const int chunkSize = 1000; // Process 1000 items at a time
+                var itemsArray = items.ToArray();
+                var totalItems = itemsArray.Length;
                 
                 if (totalItems > chunkSize)
                 {
-                    logger?.LogDebug("Processing chunk {ChunkNumber}/{TotalChunks} (items {Start}-{End})", 
-                        (chunkStart / chunkSize) + 1, (totalItems + chunkSize - 1) / chunkSize, chunkStart + 1, chunkEnd);
+                    logger?.LogDebug("Processing large library ({TotalItems} items) in chunks of {ChunkSize}", totalItems, chunkSize);
                 }
                 
-                var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                    needsAudioLanguages, needsPeople, compiledRules, hasAnyRules, hasNonExpensiveRules);
-                results.AddRange(chunkResults);
-                
-                // OPTIMIZATION: Allow other operations to run between chunks for large libraries
-                if (totalItems > chunkSize * 2)
+                for (int chunkStart = 0; chunkStart < totalItems; chunkStart += chunkSize)
                 {
-                    // Yield control briefly to prevent blocking
-                    System.Threading.Thread.Sleep(1);
+                    try
+                    {
+                        var chunkEnd = Math.Min(chunkStart + chunkSize, totalItems);
+                        var chunk = itemsArray.Skip(chunkStart).Take(chunkEnd - chunkStart);
+                        
+                        if (totalItems > chunkSize)
+                        {
+                            logger?.LogDebug("Processing chunk {ChunkNumber}/{TotalChunks} (items {Start}-{End})", 
+                                (chunkStart / chunkSize) + 1, (totalItems + chunkSize - 1) / chunkSize, chunkStart + 1, chunkEnd);
+                        }
+                        
+                        var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
+                            needsAudioLanguages, needsPeople, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                        results.AddRange(chunkResults);
+                        
+                        // OPTIMIZATION: Allow other operations to run between chunks for large libraries
+                        if (totalItems > chunkSize * 2)
+                        {
+                            // Yield control briefly to prevent blocking
+                            System.Threading.Thread.Sleep(1);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogError(ex, "Error processing chunk {ChunkStart}-{ChunkEnd} for playlist '{PlaylistName}'. Skipping this chunk.", 
+                            chunkStart, Math.Min(chunkStart + chunkSize, totalItems), Name);
+                        // Continue with next chunk
+                    }
+                }
+
+                stopwatch.Stop();
+                logger?.LogInformation("Playlist filtering completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
+                    stopwatch.ElapsedMilliseconds, totalItems, results.Count);
+                
+                // Apply ordering with error handling
+                try
+                {
+                    return Order?.OrderBy(results).Select(x => x.Id) ?? results.Select(x => x.Id);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogError(ex, "Error applying ordering to playlist '{PlaylistName}'. Returning unordered results.", Name);
+                    return results.Select(x => x.Id);
                 }
             }
-
-            stopwatch.Stop();
-            logger?.LogInformation("Playlist filtering completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
-                stopwatch.ElapsedMilliseconds, totalItems, results.Count);
-            
-            return Order.OrderBy(results).Select(x => x.Id);
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                logger?.LogError(ex, "Critical error in FilterPlaylistItems for playlist '{PlaylistName}' after {ElapsedTime}ms. Returning empty results.", 
+                    Name, stopwatch.ElapsedMilliseconds);
+                return [];
+            }
         }
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
@@ -253,69 +532,243 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var results = new List<BaseItem>();
             
-            if (needsAudioLanguages || needsPeople)
+            try
             {
-                // Optimization: Separate rules into cheap and expensive categories
-                var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
-                var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
-                
-                logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded})", 
-                    needsAudioLanguages, needsPeople);
-                
-                for (int setIndex = 0; setIndex < ExpressionSets.Count; setIndex++)
+                if (items == null || compiledRules == null)
                 {
-                    var set = ExpressionSets[setIndex];
-                    var cheapRules = new List<Func<Operand, bool>>();
-                    var expensiveRules = new List<Func<Operand, bool>>();
-                    
-                    for (int exprIndex = 0; exprIndex < set.Expressions.Count; exprIndex++)
-                    {
-                        var expr = set.Expressions[exprIndex];
-                        var compiledRule = compiledRules[setIndex][exprIndex];
-                        
-                        if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People")
-                        {
-                            expensiveRules.Add(compiledRule);
-                            logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
-                                setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
-                        }
-                        else
-                        {
-                            cheapRules.Add(compiledRule);
-                            logger?.LogDebug("Rule set {SetIndex}: Added non-expensive rule: {Field} {Operator} {Value}", 
-                                setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
-                        }
-                    }
-                    
-                    cheapCompiledRules.Add(cheapRules);
-                    expensiveCompiledRules.Add(expensiveRules);
-                    
-                    logger?.LogDebug("Rule set {SetIndex}: {NonExpensiveCount} non-expensive rules, {ExpensiveCount} expensive rules", 
-                        setIndex, cheapRules.Count, expensiveRules.Count);
+                    logger?.LogDebug("ProcessItemChunk called with null items or compiledRules");
+                    return results;
                 }
                 
-                if (!hasNonExpensiveRules)
+                if (needsAudioLanguages || needsPeople)
                 {
-                    // No non-expensive rules - extract expensive data for all items that have expensive rules
-                    logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
-                    foreach (var i in items)
+                    // Optimization: Separate rules into cheap and expensive categories
+                    var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
+                    var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
+                    
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded})", 
+                        needsAudioLanguages, needsPeople);
+                    
+                    try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, needsAudioLanguages, needsPeople);
-                        
-                        // Debug: Log expensive data found for first few items
-                        if (results.Count < 5)
+                        for (int setIndex = 0; setIndex < ExpressionSets.Count && setIndex < compiledRules.Count; setIndex++)
                         {
-                            if (needsAudioLanguages)
+                            var set = ExpressionSets[setIndex];
+                            if (set?.Expressions == null) continue;
+                            
+                            var cheapRules = new List<Func<Operand, bool>>();
+                            var expensiveRules = new List<Func<Operand, bool>>();
+                            
+                            for (int exprIndex = 0; exprIndex < set.Expressions.Count && exprIndex < compiledRules[setIndex].Count; exprIndex++)
                             {
-                                logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                                    i.Name, operand.AudioLanguages.Count, string.Join(", ", operand.AudioLanguages));
+                                var expr = set.Expressions[exprIndex];
+                                if (expr == null) continue;
+                                
+                                try
+                                {
+                                    var compiledRule = compiledRules[setIndex][exprIndex];
+                                    
+                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People")
+                                    {
+                                        expensiveRules.Add(compiledRule);
+                                        logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
+                                            setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
+                                    }
+                                    else
+                                    {
+                                        cheapRules.Add(compiledRule);
+                                        logger?.LogDebug("Rule set {SetIndex}: Added non-expensive rule: {Field} {Operator} {Value}", 
+                                            setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger?.LogDebug(ex, "Error processing rule at set {SetIndex}, expression {ExprIndex}", setIndex, exprIndex);
+                                }
                             }
-                            if (needsPeople)
+                            
+                            cheapCompiledRules.Add(cheapRules);
+                            expensiveCompiledRules.Add(expensiveRules);
+                            
+                            logger?.LogDebug("Rule set {SetIndex}: {NonExpensiveCount} non-expensive rules, {ExpensiveCount} expensive rules", 
+                                setIndex, cheapRules.Count, expensiveRules.Count);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, compiledRules, hasAnyRules);
+                    }
+                    
+                    if (!hasNonExpensiveRules)
+                    {
+                        // No non-expensive rules - extract expensive data for all items that have expensive rules
+                        logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
+                        
+                        foreach (var item in items)
+                        {
+                            if (item == null) continue;
+                            
+                            try
                             {
-                                logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
-                                    i.Name, operand.People.Count, string.Join(", ", operand.People.Take(5)));
+                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople);
+                                
+                                // Debug: Log expensive data found for first few items
+                                if (results.Count < 5)
+                                {
+                                    if (needsAudioLanguages)
+                                    {
+                                        logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                            item.Name, operand.AudioLanguages?.Count ?? 0, operand.AudioLanguages != null ? string.Join(", ", operand.AudioLanguages) : "none");
+                                    }
+                                    if (needsPeople)
+                                    {
+                                        logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
+                                            item.Name, operand.People?.Count ?? 0, operand.People != null ? string.Join(", ", operand.People.Take(5)) : "none");
+                                    }
+                                }
+                                
+                                bool matches = false;
+                                if (!hasAnyRules) {
+                                    matches = true;
+                                } else {
+                                    matches = EvaluateLogicGroups(compiledRules, operand);
+                                }
+                            
+                                if (matches)
+                                {
+                                    results.Add(item);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Error processing item '{ItemName}' in expensive-only path. Skipping item.", item.Name);
+                                // Skip this item and continue with others
                             }
                         }
+                    }
+                    else
+                    {
+                        // Two-phase filtering: non-expensive rules first, then expensive data extraction
+                        logger?.LogDebug("Using two-phase filtering for expensive field optimization");
+                    
+                        foreach (var item in items)
+                        {
+                            if (item == null) continue;
+                            
+                            try
+                            {
+                                // Phase 1: Extract non-expensive properties and check non-expensive rules
+                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false);
+                                
+                                // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
+                                bool passesNonExpensiveRules = false;
+                                bool hasExpensiveOnlyRuleSets = false;
+                                
+                                for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
+                                {
+                                    try
+                                    {
+                                        // Check if this rule set has only expensive rules (no non-expensive rules)
+                                        if (cheapCompiledRules[setIndex].Count == 0)
+                                        {
+                                            hasExpensiveOnlyRuleSets = true;
+                                            continue; // Can't evaluate expensive-only rule sets in non-expensive phase
+                                        }
+                                        
+                                        // Evaluate non-expensive rules for this rule set
+                                        if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
+                                        {
+                                            passesNonExpensiveRules = true;
+                                            break;
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        logger?.LogDebug(ex, "Error evaluating non-expensive rules for item '{ItemName}' in set {SetIndex}. Assuming rules don't match.", item.Name, setIndex);
+                                        // Continue to next rule set
+                                    }
+                                }
+                                
+                                // Skip expensive data extraction only if:
+                                // 1. No rule set passed the non-expensive evaluation AND
+                                // 2. There are no expensive-only rule sets that still need to be checked
+                                if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
+                                    continue;
+                                
+                                // Phase 2: Extract expensive data and check complete rules
+                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople);
+                                
+                                // Debug: Log expensive data found for first few items
+                                if (results.Count < 5)
+                                {
+                                    if (needsAudioLanguages)
+                                    {
+                                        logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                            item.Name, fullOperand.AudioLanguages?.Count ?? 0, fullOperand.AudioLanguages != null ? string.Join(", ", fullOperand.AudioLanguages) : "none");
+                                    }
+                                    if (needsPeople)
+                                    {
+                                        logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
+                                            item.Name, fullOperand.People?.Count ?? 0, fullOperand.People != null ? string.Join(", ", fullOperand.People.Take(5)) : "none");
+                                    }
+                                }
+                                
+                                bool matches = false;
+                                if (!hasAnyRules) {
+                                    matches = true;
+                                } else {
+                                    matches = EvaluateLogicGroups(compiledRules, fullOperand);
+                                }
+                                
+                                if (matches)
+                                {
+                                    results.Add(item);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Error processing item '{ItemName}' in two-phase path. Skipping item.", item.Name);
+                                // Skip this item and continue with others
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // No expensive fields needed - use simple filtering
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, compiledRules, hasAnyRules);
+                }
+                
+                return results;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Critical error in ProcessItemChunk. Returning partial results.");
+                return results; // Return whatever we managed to process
+            }
+        }
+        
+        /// <summary>
+        /// Simple item processing fallback method with error handling.
+        /// </summary>
+        private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
+            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+        {
+            var results = new List<BaseItem>();
+            
+            try
+            {
+                logger?.LogDebug("No expensive fields required, using simple filtering");
+                
+                foreach (var item in items)
+                {
+                    if (item == null) continue;
+                    
+                    try
+                    {
+                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople);
                         
                         bool matches = false;
                         if (!hasAnyRules) {
@@ -323,103 +776,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         } else {
                             matches = EvaluateLogicGroups(compiledRules, operand);
                         }
-                    
+                        
                         if (matches)
                         {
-                            results.Add(i);
+                            results.Add(item);
                         }
                     }
-                }
-                else
-                {
-                    // Two-phase filtering: non-expensive rules first, then expensive data extraction
-                    logger?.LogDebug("Using two-phase filtering for expensive field optimization");
-                
-                    foreach (var i in items)
+                    catch (Exception ex)
                     {
-                        // Phase 1: Extract non-expensive properties and check non-expensive rules
-                        var cheapOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
-                        
-                        // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
-                        bool passesNonExpensiveRules = false;
-                        bool hasExpensiveOnlyRuleSets = false;
-                        
-                        for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
-                        {
-                            // Check if this rule set has only expensive rules (no non-expensive rules)
-                            if (cheapCompiledRules[setIndex].Count == 0)
-                            {
-                                hasExpensiveOnlyRuleSets = true;
-                                continue; // Can't evaluate expensive-only rule sets in non-expensive phase
-                            }
-                            
-                            // Evaluate non-expensive rules for this rule set
-                            if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
-                            {
-                                passesNonExpensiveRules = true;
-                                break;
-                            }
-                        }
-                        
-                        // Skip expensive data extraction only if:
-                        // 1. No rule set passed the non-expensive evaluation AND
-                        // 2. There are no expensive-only rule sets that still need to be checked
-                        if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
-                            continue;
-                        
-                        // Phase 2: Extract expensive data and check complete rules
-                        var fullOperand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, needsAudioLanguages, needsPeople);
-                        
-                        // Debug: Log expensive data found for first few items
-                        if (results.Count < 5)
-                        {
-                            if (needsAudioLanguages)
-                            {
-                                logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                                    i.Name, fullOperand.AudioLanguages.Count, string.Join(", ", fullOperand.AudioLanguages));
-                            }
-                            if (needsPeople)
-                            {
-                                logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
-                                    i.Name, fullOperand.People.Count, string.Join(", ", fullOperand.People.Take(5)));
-                            }
-                        }
-                        
-                        bool matches = false;
-                        if (!hasAnyRules) {
-                            matches = true;
-                        } else {
-                            matches = EvaluateLogicGroups(compiledRules, fullOperand);
-                        }
-                        
-                        if (matches)
-                        {
-                            results.Add(i);
-                        }
+                        logger?.LogDebug(ex, "Error processing item '{ItemName}' in simple path. Skipping item.", item.Name);
+                        // Skip this item and continue with others
                     }
                 }
             }
-            else
+            catch (Exception ex)
             {
-                // No expensive fields needed - use simple filtering
-                logger?.LogDebug("No expensive fields required, using simple filtering");
-                
-                foreach (var i in items)
-                {
-                    var operand = OperandFactory.GetMediaType(libraryManager, i, user, userDataManager, logger, false, false);
-                    
-                    bool matches = false;
-                    if (!hasAnyRules) {
-                        matches = true;
-                    } else {
-                        matches = EvaluateLogicGroups(compiledRules, operand);
-                    }
-                    
-                    if (matches)
-                    {
-                        results.Add(i);
-                    }
-                }
+                logger?.LogError(ex, "Critical error in ProcessItemsSimple. Returning partial results.");
             }
             
             return results;
@@ -460,7 +832,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public virtual IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items;
+            return items ?? [];
         }
     }
 
@@ -475,7 +847,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderBy(x => x.ProductionYear ?? 0);
+            return items == null ? [] : items.OrderBy(x => x.ProductionYear ?? 0);
         }
     }
 
@@ -485,7 +857,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderByDescending(x => x.ProductionYear ?? 0);
+            return items == null ? [] : items.OrderByDescending(x => x.ProductionYear ?? 0);
         }
     }
 
@@ -495,7 +867,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderBy(x => x.Name);
+            return items == null ? [] : items.OrderBy(x => x.Name ?? "");
         }
     }
 
@@ -505,7 +877,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderByDescending(x => x.Name);
+            return items == null ? [] : items.OrderByDescending(x => x.Name ?? "");
         }
     }
 
@@ -515,7 +887,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderBy(x => x.DateCreated);
+            return items == null ? [] : items.OrderBy(x => x.DateCreated);
         }
     }
 
@@ -525,7 +897,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderByDescending(x => x.DateCreated);
+            return items == null ? [] : items.OrderByDescending(x => x.DateCreated);
         }
     }
 
@@ -535,7 +907,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderBy(x => x.CommunityRating ?? 0);
+            return items == null ? [] : items.OrderBy(x => x.CommunityRating ?? 0);
         }
     }
 
@@ -545,7 +917,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items.OrderByDescending(x => x.CommunityRating ?? 0);
+            return items == null ? [] : items.OrderByDescending(x => x.CommunityRating ?? 0);
         }
     }
 }
