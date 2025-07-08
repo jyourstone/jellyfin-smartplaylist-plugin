@@ -84,9 +84,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             Dictionary<Guid, BaseItem[]> userMediaCache = [];
             Dictionary<Guid, (int MediaCount, int PlaylistCount)> userCacheStats = [];
             
+            // Acquire the global refresh lock for the duration of the scheduled task
+            using var refreshLock = await PlaylistService.AcquireRefreshLockAsync(cancellationToken);
+            
             try
             {
-                logger.LogInformation("Starting SmartPlaylist refresh task");
+                logger.LogInformation("Starting SmartPlaylist refresh task (acquired global refresh lock)");
 
                 // Create playlist store
                 var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
@@ -195,7 +198,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 var smartPlaylist = new SmartPlaylist(dto);
                                 
                                 // Log the playlist processing
-                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
+                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets?.Count ?? 0);
                                 
                                 // Use cached media (guaranteed to exist for this user)
                                 var playlistUserMedia = allUserMedia;
@@ -355,10 +358,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                     userMediaCache.Clear();
                 }
                 
-                if (userCacheStats != null)
-                {
-                    userCacheStats.Clear();
-                }
+                userCacheStats.Clear();
             }
         }
 

@@ -22,10 +22,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public interface IPlaylistService
     {
         Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<(bool Success, string Message)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<(bool Success, string Message)> TryRefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
     }
 
     public class PlaylistService(
@@ -43,8 +45,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private readonly ILogger<PlaylistService> _logger = logger;
         private readonly IProviderManager _providerManager = providerManager;
 
+        // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
+        private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
+
         public async Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
+            // This is the internal method that assumes the lock is already held
             var stopwatch = Stopwatch.StartNew();
             try
             {
@@ -71,7 +77,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var smartPlaylist = new SmartPlaylist(dto);
                 
                 // Log the playlist rules
-                _logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets.Count);
+                _logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets?.Count ?? 0);
 
                 var allUserMedia = GetAllUserMedia(user).ToArray();
                 _logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
@@ -147,6 +153,98 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 stopwatch.Stop();
                 _logger.LogError(ex, "Error refreshing smart playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, stopwatch.ElapsedMilliseconds);
                 throw;
+            }
+        }
+
+        public async Task<(bool Success, string Message)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        {
+            // Option A: Wait up to 5 seconds for create/edit operations
+            _logger.LogDebug("Attempting to acquire refresh lock for single playlist: {PlaylistName} (5-second timeout)", dto.Name);
+            
+            try
+            {
+                if (await _refreshOperationLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
+                {
+                    try
+                    {
+                        _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
+                        await RefreshSinglePlaylistAsync(dto, cancellationToken);
+                        return (true, "Playlist refreshed successfully");
+                    }
+                    finally
+                    {
+                        _refreshOperationLock.Release();
+                        _logger.LogDebug("Released refresh lock for single playlist: {PlaylistName}", dto.Name);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("Timeout waiting for refresh lock for single playlist: {PlaylistName}", dto.Name);
+                    return (false, "Playlist refresh is already in progress. Your changes are saved, trying again in 5 seconds...");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Refresh operation cancelled for playlist: {PlaylistName}", dto.Name);
+                return (false, "Refresh operation was cancelled.");
+            }
+        }
+
+        public Task<(bool Success, string Message)> TryRefreshAllPlaylistsAsync(CancellationToken cancellationToken = default)
+        {
+            // Option B: Immediate return for manual refresh all
+            _logger.LogDebug("Attempting to acquire refresh lock for all playlists (immediate return)");
+            
+            try
+            {
+                if (_refreshOperationLock.Wait(0, cancellationToken))
+                {
+                    try
+                    {
+                        _logger.LogDebug("Acquired refresh lock for all playlists - delegating to scheduled task");
+                        // Don't actually do the refresh here - just trigger the scheduled task
+                        // The scheduled task will handle the actual refresh with proper batching and optimization
+                        return Task.FromResult((true, "Playlist refresh started successfully"));
+                    }
+                    finally
+                    {
+                        _refreshOperationLock.Release();
+                        _logger.LogDebug("Released refresh lock for all playlists");
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("Refresh lock already held - refresh already in progress");
+                    return Task.FromResult((false, "Playlist refresh is already in progress. Please try again in a moment."));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Refresh operation cancelled for all playlists");
+                return Task.FromResult((false, "Refresh operation was cancelled."));
+            }
+        }
+
+        /// <summary>
+        /// Acquires the global refresh lock for use by the scheduled task.
+        /// This should be called by the scheduled task to ensure exclusive access.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token</param>
+        /// <returns>An IDisposable that releases the lock when disposed</returns>
+        public static async Task<IDisposable> AcquireRefreshLockAsync(CancellationToken cancellationToken = default)
+        {
+            await _refreshOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return new RefreshLockDisposable();
+        }
+
+        /// <summary>
+        /// Helper class to ensure the refresh lock is properly released.
+        /// </summary>
+        private class RefreshLockDisposable : IDisposable
+        {
+            public void Dispose()
+            {
+                _refreshOperationLock.Release();
             }
         }
 
@@ -228,10 +326,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 _logger.LogDebug("Enabling smart playlist: {PlaylistName}", dto.Name);
                 
-                // Refresh the playlist to create/update the Jellyfin playlist
-                await RefreshSinglePlaylistAsync(dto, cancellationToken);
+                // Use timeout approach for enable operations since they involve creating/editing playlists
+                var (success, message) = await RefreshSinglePlaylistWithTimeoutAsync(dto, cancellationToken);
                 
-                _logger.LogInformation("Successfully enabled smart playlist: {PlaylistName}", dto.Name);
+                if (success)
+                {
+                    _logger.LogInformation("Successfully enabled smart playlist: {PlaylistName}", dto.Name);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to enable smart playlist {PlaylistName}: {Message}", dto.Name, message);
+                    throw new InvalidOperationException(message);
+                }
             }
             catch (Exception ex)
             {
@@ -246,10 +352,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 _logger.LogDebug("Disabling smart playlist: {PlaylistName}", dto.Name);
                 
-                // Delete the Jellyfin playlist
-                await DeletePlaylistAsync(dto, cancellationToken);
-                
-                _logger.LogInformation("Successfully disabled smart playlist: {PlaylistName}", dto.Name);
+                // Use timeout approach for disable operations since they involve deleting playlists
+                if (await _refreshOperationLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
+                {
+                    try
+                    {
+                        _logger.LogDebug("Acquired refresh lock for disabling playlist: {PlaylistName}", dto.Name);
+                        await DeletePlaylistAsync(dto, cancellationToken);
+                        _logger.LogInformation("Successfully disabled smart playlist: {PlaylistName}", dto.Name);
+                    }
+                    finally
+                    {
+                        _refreshOperationLock.Release();
+                        _logger.LogDebug("Released refresh lock for disabling playlist: {PlaylistName}", dto.Name);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Timeout waiting for refresh lock to disable playlist: {PlaylistName}", dto.Name);
+                    throw new InvalidOperationException("Playlist refresh is already in progress. Please try again in a moment.");
+                }
             }
             catch (Exception ex)
             {

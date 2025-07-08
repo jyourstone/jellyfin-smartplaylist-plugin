@@ -813,7 +813,16 @@
             return response.json();
         }).then(async playlists => {
             if (playlists && playlists.length > 0) {
-                let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3></div>';
+                // Calculate summary statistics
+                const totalPlaylists = playlists.length;
+                const enabledPlaylists = playlists.filter(p => p.Enabled !== false).length;
+                const disabledPlaylists = totalPlaylists - enabledPlaylists;
+                
+                let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3>';
+                html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
+                html += '<strong>Summary:</strong> ' + totalPlaylists + ' total playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                        ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
+                html += '</div></div>';
                 
                 // Process playlists sequentially to resolve usernames
                 for (const playlist of playlists) {
@@ -1294,9 +1303,33 @@
         }).then(() => {
             Dashboard.hideLoadingMsg();
             showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
-        }).catch(() => {
+        }).catch((err) => {
             Dashboard.hideLoadingMsg();
-            showNotification('Failed to trigger playlist refresh. Please check server logs.');
+            
+            // Try to extract the specific error message from the server response
+            let errorMessage = 'Failed to trigger playlist refresh. Please check server logs.';
+            
+            if (err && typeof err.text === 'function') {
+                // For HTTP error responses, try to read the response body
+                err.text().then(serverMessage => {
+                    try {
+                        const response = JSON.parse(serverMessage);
+                        if (response && response.message) {
+                            errorMessage = response.message;
+                        }
+                    } catch (e) {
+                        // If parsing fails, use the raw server message if available
+                        if (serverMessage && serverMessage.trim()) {
+                            errorMessage = serverMessage;
+                        }
+                    }
+                    showNotification(errorMessage);
+                }).catch(() => {
+                    showNotification(errorMessage);
+                });
+            } else {
+                showNotification(errorMessage);
+            }
         });
     }
     

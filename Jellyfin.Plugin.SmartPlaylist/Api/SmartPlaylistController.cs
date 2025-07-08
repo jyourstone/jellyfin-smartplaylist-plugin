@@ -306,11 +306,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
-                _logger.LogDebug("Calling RefreshSinglePlaylistAsync for {PlaylistName}", playlist.Name);
+                _logger.LogDebug("Calling RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
-                await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
+                var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(createdPlaylist);
                 stopwatch.Stop();
-                _logger.LogDebug("Finished RefreshSinglePlaylistAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
+                
+                if (!success)
+                {
+                    _logger.LogWarning("Failed to refresh newly created playlist {PlaylistName}: {Message}", playlist.Name, message);
+                    // Still return the created playlist but with a warning
+                    return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, new { 
+                        playlist = createdPlaylist, 
+                        warning = message 
+                    });
+                }
+                
+                _logger.LogDebug("Finished RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
             }
@@ -428,10 +439,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 playlist.Id = id;
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
                 
-                // Immediately update the Jellyfin playlist using the single playlist service
+                // Immediately update the Jellyfin playlist using the single playlist service with timeout
                 var playlistService = GetPlaylistService();
-                await playlistService.RefreshSinglePlaylistAsync(updatedPlaylist);
+                var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(updatedPlaylist);
                 stopwatch.Stop();
+                
+                if (!success)
+                {
+                    _logger.LogWarning("Failed to refresh updated playlist {PlaylistName}: {Message}", playlist.Name, message);
+                    // Still return the updated playlist but with a warning
+                    return Ok(new { 
+                        playlist = updatedPlaylist, 
+                        warning = message 
+                    });
+                }
+                
                 _logger.LogInformation("Updated smart playlist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return Ok(updatedPlaylist);
@@ -715,12 +737,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         /// </summary>
         /// <returns>Success message.</returns>
         [HttpPost("refresh")]
-        public ActionResult TriggerRefresh()
+        public async Task<ActionResult> TriggerRefresh()
         {
             try
             {
-                TriggerPlaylistRefresh();
-                return Ok(new { message = "Smart playlist refresh task triggered successfully" });
+                var playlistService = GetPlaylistService();
+                var (success, message) = await playlistService.TryRefreshAllPlaylistsAsync();
+                
+                if (success)
+                {
+                    // If we got the lock, trigger the actual scheduled task
+                    TriggerPlaylistRefresh();
+                    return Ok(new { message = "Smart playlist refresh task triggered successfully" });
+                }
+                else
+                {
+                    return Conflict(new { message });
+                }
             }
             catch (Exception ex)
             {
