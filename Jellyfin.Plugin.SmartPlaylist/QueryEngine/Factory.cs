@@ -9,14 +9,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
     internal class OperandFactory
     {
+        // Cache reflection method lookups for better performance
+        private static readonly Dictionary<Type, System.Reflection.MethodInfo> _getMediaStreamsMethodCache = new();
+        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _mediaSourcesPropertyCache = new();
+        private static System.Reflection.MethodInfo _getPeopleMethodCache = null;
+        private static readonly object _getPeopleMethodLock = new object();
+
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
         {
+            // Cache the IsPlayed result to avoid multiple expensive calls
+            var isPlayed = baseItem.IsPlayed(user);
+            
             var operand = new Operand(baseItem.Name)
             {
                 Genres = [.. baseItem.Genres],
-                IsPlayed = baseItem.IsPlayed(user),
+                IsPlayed = isPlayed,
                 Studios = [.. baseItem.Studios],
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
@@ -29,6 +38,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     (int)TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0
             };
             
+            // Initialize user data properties with fallback values
+            operand.PlayCount = isPlayed ? 1 : 0;
+            operand.IsFavorite = false;
+            
             // Try to access user data properly
             try
             {
@@ -40,11 +53,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         operand.PlayCount = userData.PlayCount;
                         operand.IsFavorite = userData.IsFavorite;
                     }
-                    else
-                    {
-                        operand.PlayCount = baseItem.IsPlayed(user) ? 1 : 0;
-                        operand.IsFavorite = false;
-                    }
+                    // If userData is null, keep the fallback values we set above
                 }
                 else
                 {
@@ -60,30 +69,29 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             
                             if (playCountProp != null)
                             {
-                                operand.PlayCount = (int)(playCountProp.GetValue(userData) ?? 0);
+                                var playCountValue = playCountProp.GetValue(userData);
+                                if (playCountValue != null)
+                                {
+                                    operand.PlayCount = (int)playCountValue;
+                                }
                             }
                             
                             if (isFavoriteProp != null)
                             {
-                                operand.IsFavorite = (bool)(isFavoriteProp.GetValue(userData) ?? false);
+                                var isFavoriteValue = isFavoriteProp.GetValue(userData);
+                                if (isFavoriteValue != null)
+                                {
+                                    operand.IsFavorite = (bool)isFavoriteValue;
+                                }
                             }
                         }
-                    }
-                    
-                    if (operand.PlayCount == 0 && operand.IsFavorite == false)
-                    {
-                        // Simplified fallback
-                        operand.PlayCount = baseItem.IsPlayed(user) ? 1 : 0;
-                        operand.IsFavorite = false;
                     }
                 }
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Error accessing user data for item {Name}", baseItem.Name);
-                // Fallback to simplified values
-                operand.PlayCount = baseItem.IsPlayed(user) ? 1 : 0;
-                operand.IsFavorite = false;
+                // Keep the fallback values we set above
             }
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
@@ -92,7 +100,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.DateLastSaved = SafeToUnixTimeSeconds(baseItem.DateLastSaved);
             operand.DateModified = SafeToUnixTimeSeconds(baseItem.DateModified);
             operand.FolderPath = baseItem.ContainingFolderPath;
-            operand.FileName = System.IO.Path.GetFileName(baseItem.Path) ?? "";
+            
+            // Fix null reference exception for Path
+            operand.FileName = !string.IsNullOrEmpty(baseItem.Path) ? 
+                System.IO.Path.GetFileName(baseItem.Path) ?? "" : "";
             
             // Extract audio languages from media streams - only when needed for performance
             operand.AudioLanguages = [];
@@ -103,8 +114,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     // Try multiple approaches to access media stream information
                     var mediaStreams = new List<object>();
                     
-                    // Approach 1: Try GetMediaStreams method if it exists
-                    var getMediaStreamsMethod = baseItem.GetType().GetMethod("GetMediaStreams");
+                    // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                    var baseItemType = baseItem.GetType();
+                    if (!_getMediaStreamsMethodCache.TryGetValue(baseItemType, out var getMediaStreamsMethod))
+                    {
+                        getMediaStreamsMethod = baseItemType.GetMethod("GetMediaStreams");
+                        _getMediaStreamsMethodCache[baseItemType] = getMediaStreamsMethod;
+                    }
+                    
                     if (getMediaStreamsMethod != null)
                     {
                         try
@@ -115,14 +132,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 mediaStreams.AddRange(streamEnum);
                             }
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
-                            // Silently ignore errors in GetMediaStreams method
+                            logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
                         }
                     }
                     
-                    // Approach 2: Look for MediaSources property (similar to how RunTimeTicks works)
-                    var mediaSourcesProperty = baseItem.GetType().GetProperty("MediaSources");
+                    // Approach 2: Look for MediaSources property (with caching)
+                    if (!_mediaSourcesPropertyCache.TryGetValue(baseItemType, out var mediaSourcesProperty))
+                    {
+                        mediaSourcesProperty = baseItemType.GetProperty("MediaSources");
+                        _mediaSourcesPropertyCache[baseItemType] = mediaSourcesProperty;
+                    }
+                    
                     if (mediaSourcesProperty != null)
                     {
                         var mediaSources = mediaSourcesProperty.GetValue(baseItem);
@@ -142,9 +164,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                         }
                                     }
                                 }
-                                catch (Exception)
+                                catch (Exception ex)
                                 {
-                                    // Silently ignore errors processing individual MediaSources
+                                    logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
                                 }
                             }
                         }
@@ -177,15 +199,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 }
                             }
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
-                            // Silently ignore errors processing individual streams
+                            logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    logger?.LogError(ex, "Error extracting audio languages for item {Name}", baseItem.Name);
+                    logger?.LogWarning(ex, "Failed to extract audio languages for item {Name}", baseItem.Name);
                 }
             }
             
@@ -196,7 +218,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 try
                 {
                     // Cache the GetPeople method lookup for better performance
-                    var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
+                    var getPeopleMethod = _getPeopleMethodCache;
+                    if (getPeopleMethod == null)
+                    {
+                        lock (_getPeopleMethodLock)
+                        {
+                            if (_getPeopleMethodCache == null)
+                            {
+                                _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
+                            }
+                            getPeopleMethod = _getPeopleMethodCache;
+                        }
+                    }
+                    
                     if (getPeopleMethod != null)
                     {
                         // Use InternalPeopleQuery to get people associated with this item
@@ -229,7 +263,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
                 catch (Exception ex)
                 {
-                    logger?.LogWarning(ex, "Error extracting people for item {Name}", baseItem.Name);
+                    logger?.LogWarning(ex, "Failed to extract people for item {Name}", baseItem.Name);
                 }
             }
             
