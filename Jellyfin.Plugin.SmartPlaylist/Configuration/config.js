@@ -955,20 +955,30 @@
             if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
             return response.json();
         }).then(async playlists => {
+            // Store playlists data for filtering
+            page._allPlaylists = playlists;
+            
             if (playlists && playlists.length > 0) {
-                // Calculate summary statistics
+                // Apply current search filter if any
+                const searchInput = page.querySelector('#playlistSearchInput');
+                const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+                const filteredPlaylists = searchTerm ? filterPlaylists(playlists, searchTerm) : playlists;
+                
+                // Calculate summary statistics for filtered results
                 const totalPlaylists = playlists.length;
-                const enabledPlaylists = playlists.filter(p => p.Enabled !== false).length;
-                const disabledPlaylists = totalPlaylists - enabledPlaylists;
+                const filteredCount = filteredPlaylists.length;
+                const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
+                const disabledPlaylists = filteredCount - enabledPlaylists;
                 
                 let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3>';
                 html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
-                html += '<strong>Summary:</strong> ' + totalPlaylists + ' total playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                        (searchTerm ? ' matching "' + searchTerm + '"' : '') +
                         ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
                 html += '</div></div>';
                 
-                // Process playlists sequentially to resolve usernames
-                for (const playlist of playlists) {
+                // Process filtered playlists sequentially to resolve usernames
+                for (const playlist of filteredPlaylists) {
                     const isPublic = playlist.Public ? 'Public' : 'Private';
                     const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
                     const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
@@ -1052,6 +1062,189 @@
             container.innerHTML = '<div class="input-container"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
             page._loadingPlaylists = false;
         });
+    }
+
+    function filterPlaylists(playlists, searchTerm) {
+        if (!searchTerm) return playlists;
+        
+        return playlists.filter(playlist => {
+            // Search in playlist name
+            if (playlist.Name && playlist.Name.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in filename
+            if (playlist.FileName && playlist.FileName.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in media types
+            if (playlist.MediaTypes && playlist.MediaTypes.some(type => type.toLowerCase().includes(searchTerm))) {
+                return true;
+            }
+            
+            // Search in rules (field names, operators, and values)
+            if (playlist.ExpressionSets) {
+                for (const expressionSet of playlist.ExpressionSets) {
+                    if (expressionSet.Expressions) {
+                        for (const expression of expressionSet.Expressions) {
+                            // Search in field name
+                            if (expression.MemberName && expression.MemberName.toLowerCase().includes(searchTerm)) {
+                                return true;
+                            }
+                            
+                            // Search in operator
+                            if (expression.Operator && expression.Operator.toLowerCase().includes(searchTerm)) {
+                                return true;
+                            }
+                            
+                            // Search in target value
+                            if (expression.TargetValue && expression.TargetValue.toLowerCase().includes(searchTerm)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Search in sort order
+            if (playlist.Order && playlist.Order.Name && playlist.Order.Name.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in public/private status
+            if (searchTerm === 'public' && playlist.Public) {
+                return true;
+            }
+            if (searchTerm === 'private' && !playlist.Public) {
+                return true;
+            }
+            
+            // Search in enabled/disabled status
+            if (searchTerm === 'enabled' && playlist.Enabled !== false) {
+                return true;
+            }
+            if (searchTerm === 'disabled' && playlist.Enabled === false) {
+                return true;
+            }
+            
+            return false;
+        });
+    }
+
+    function applySearchFilter(page) {
+        const searchInput = page.querySelector('#playlistSearchInput');
+        if (!searchInput || !page._allPlaylists) return;
+        
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        const filteredPlaylists = filterPlaylists(page._allPlaylists, searchTerm);
+        
+        // Re-render the playlist list with filtered results
+        const container = page.querySelector('#playlist-list-container');
+        if (!container) return;
+        
+        if (filteredPlaylists.length === 0) {
+            container.innerHTML = '<div class="input-container"><p>No playlists match your search criteria.</p></div>';
+            return;
+        }
+        
+        // Re-use the existing display logic but with filtered data
+        // We'll need to resolve usernames again for the filtered results
+        displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
+    }
+
+    async function displayFilteredPlaylists(page, filteredPlaylists, searchTerm) {
+        const container = page.querySelector('#playlist-list-container');
+        const apiClient = getApiClient();
+        
+        // Calculate summary statistics for filtered results
+        const totalPlaylists = page._allPlaylists.length;
+        const filteredCount = filteredPlaylists.length;
+        const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
+        const disabledPlaylists = filteredCount - enabledPlaylists;
+        
+        let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3>';
+        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
+        html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                (searchTerm ? ' matching "' + searchTerm + '"' : '') +
+                ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
+        html += '</div></div>';
+        
+        // Process filtered playlists sequentially to resolve usernames
+        for (const playlist of filteredPlaylists) {
+            const isPublic = playlist.Public ? 'Public' : 'Private';
+            const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
+            const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
+            const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
+            const sortName = playlist.Order ? playlist.Order.Name : 'Default';
+            const userName = await resolveUsername(apiClient, playlist);
+            const playlistId = playlist.Id || 'NO_ID';
+            const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
+                playlist.MediaTypes.join(', ') : 'All Types';
+            
+            let rulesHtml = '';
+            if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+                playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
+                    if (groupIndex > 0) {
+                        rulesHtml += '<strong style="color: #888;">OR</strong><br>';
+                    }
+                    
+                    if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 3px; background: rgba(255,255,255,0.02);">';
+                        
+                        expressionSet.Expressions.forEach((rule, ruleIndex) => {
+                            if (ruleIndex > 0) {
+                                rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
+                            }
+                            
+                            let fieldName = rule.MemberName;
+                            if (fieldName === 'ItemType') fieldName = 'Media Type';
+                            let operator = rule.Operator;
+                            switch(operator) {
+                                case 'Equal': operator = 'equals'; break;
+                                case 'NotEqual': operator = 'not equals'; break;
+                                case 'Contains': operator = 'contains'; break;
+                                case 'NotContains': operator = "not contains"; break;
+                                case 'GreaterThan': operator = '>'; break;
+                                case 'LessThan': operator = '<'; break;
+                                case 'GreaterThanOrEqual': operator = '>='; break;
+                                case 'LessThanOrEqual': operator = '<='; break;
+                                case 'MatchRegex': operator = 'matches regex'; break;
+                            }
+                            let value = rule.TargetValue;
+                            if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                        });
+                        
+                        rulesHtml += '</div>';
+                    }
+                });
+            } else {
+                rulesHtml = '<em>No rules defined</em>';
+            }
+            
+            html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px; margin-bottom: 1.5em;">' +
+                '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                '<div class="field-description">' +
+                '<strong>File:</strong> ' + playlist.FileName + '<br>' +
+                '<strong>User:</strong> ' + userName + '<br>' +
+                '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
+                '<strong>Sort:</strong> ' + sortName + '<br>' +
+                '<strong>Visibility:</strong> ' + isPublic + '<br>' +
+                '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
+                '</div>' +
+                '<div style="margin-top: 1em;">' +
+                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                (isEnabled ? 
+                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
+                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                ) +
+                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                '</div>' +
+                '</div>';
+        }
+        container.innerHTML = html;
     }
 
     function deletePlaylist(page, playlistId, playlistName) {
@@ -1619,6 +1812,13 @@
     }
 
     function setupEventListeners(page) {
+        // Create AbortController for page event listeners
+        const pageAbortController = createAbortController();
+        const pageSignal = pageAbortController.signal;
+        
+        // Store controller on the page for cleanup
+        page._pageAbortController = pageAbortController;
+        
         page.addEventListener('click', function (e) {
             const target = e.target;
             
@@ -1660,12 +1860,38 @@
             if (target.closest('#cancelEditBtn')) {
                 cancelEdit(page);
             }
-        });
+        }, getEventListenerOptions(pageSignal));
         
-        page.querySelector('#playlistForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            createPlaylist(page);
-        });
+        const playlistForm = page.querySelector('#playlistForm');
+        if (playlistForm) {
+            playlistForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                createPlaylist(page);
+            }, getEventListenerOptions(pageSignal));
+        }
+        
+        // Add search input event listener
+        const searchInput = page.querySelector('#playlistSearchInput');
+        if (searchInput) {
+            // Store search timeout on the page for cleanup
+            page._searchTimeout = null;
+            
+            // Use debounced search to avoid too many re-renders
+            searchInput.addEventListener('input', function() {
+                clearTimeout(page._searchTimeout);
+                page._searchTimeout = setTimeout(() => {
+                    applySearchFilter(page);
+                }, 300); // 300ms delay
+            }, getEventListenerOptions(pageSignal));
+            
+            // Also search on Enter key
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    clearTimeout(page._searchTimeout);
+                    applySearchFilter(page);
+                }
+            }, getEventListenerOptions(pageSignal));
+        }
     }
 
     document.addEventListener('pageshow', function (e) {
@@ -1751,10 +1977,22 @@
             cleanupModalListeners(modal);
         }
         
+        // Clean up page event listeners
+        if (page._pageAbortController) {
+            page._pageAbortController.abort();
+            page._pageAbortController = null;
+        }
+        
         // Clean up tab listeners
         if (page._tabAbortController) {
             page._tabAbortController.abort();
             page._tabAbortController = null;
+        }
+        
+        // Clean up search timeout
+        if (page._searchTimeout) {
+            clearTimeout(page._searchTimeout);
+            page._searchTimeout = null;
         }
         
         // Clean up tab slider listeners (including window event listeners)
@@ -1780,6 +2018,7 @@
         page._editMode = false;
         page._editingPlaylistId = null;
         page._loadingPlaylists = false;
+        page._allPlaylists = null; // Clear stored playlist data
     }
 
 })();
