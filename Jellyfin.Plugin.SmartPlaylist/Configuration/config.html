@@ -198,22 +198,21 @@
                 <h1>SmartPlaylist Configuration</h1>
                 <div id="plugin-notification-area" style="display: none; padding: 1em; margin: 1em 0; border-radius: 4px; text-align: center; font-weight: bold;"></div>
 
-                <div class="emby-tabs">
-                    <div class="emby-tab-button" data-tab="create">
-                        <h3 class="emby-tab-button-title">Create Playlist</h3>
-                    </div>
-                    <div class="emby-tab-button" data-tab="manage">
-                        <h3 class="emby-tab-button-title">Manage Playlists</h3>
-                    </div>
-                     <div class="emby-tab-button" data-tab="settings">
-                        <h3 class="emby-tab-button-title">Settings</h3>
-                    </div>
-                     <div class="emby-tab-button" data-tab="help">
-                        <h3 class="emby-tab-button-title">Help</h3>
-                    </div>
+                <div class="emby-tabs-slider" style="white-space:nowrap;">
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button emby-tab-button-active" data-tab="create" data-index="0">
+                        <div class="emby-button-foreground">Create Playlist</div>
+                    </button>
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button" data-tab="manage" data-index="1">
+                        <div class="emby-button-foreground">Manage Playlists</div>
+                    </button>
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button" data-tab="settings" data-index="2">
+                        <div class="emby-button-foreground">Settings</div>
+                    </button>
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button" data-tab="help" data-index="3">
+                        <div class="emby-button-foreground">Help</div>
+                    </button>
                 </div>
 
-                <h2 class="section-title" id="current-tab-title">Create Playlist</h2>
                 <div id="edit-mode-indicator" style="display: none; color: #ffa500; font-weight: bold; margin: 0.5em 0;">
                     <span>✏️ Editing Mode - Modifying existing playlist</span>
                     <button type="button" id="cancelEditBtn" class="emby-button raised" style="margin-left: 1em; font-size: 0.8em;">Cancel Edit</button>
@@ -297,7 +296,7 @@
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <div style="margin-top:2em;">
                         <div class="input-container">
-                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised button-submit">Refresh List</button>
+                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised">Refresh List</button>
                         </div>
                         
                         <div id="playlist-list-container">
