@@ -92,6 +92,54 @@
         }, 10000);
     }
 
+    function handleApiError(err, defaultMessage) {
+        // Try to extract meaningful error message from server response
+        if (err && typeof err.text === 'function') {
+            return err.text().then(serverMessage => {
+                let friendlyMessage = defaultMessage;
+                try {
+                    const parsedMessage = JSON.parse(serverMessage);
+                    if (parsedMessage && parsedMessage.message) {
+                        // Remove quotes and Unicode escapes, then add context
+                        const cleanMessage = parsedMessage.message
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    } else if (parsedMessage && parsedMessage.title) {
+                        // Handle structured error responses (like ASP.NET Core error objects)
+                        const cleanMessage = parsedMessage.title
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    } else if (serverMessage && serverMessage.trim()) {
+                        // Remove quotes and Unicode escapes, then add context
+                        const cleanMessage = serverMessage
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    }
+                } catch (e) {
+                    if (serverMessage && serverMessage.trim()) {
+                        // Remove quotes and Unicode escapes, then add context
+                        const cleanMessage = serverMessage
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    }
+                }
+                showNotification(friendlyMessage);
+            }).catch(() => {
+                showNotification(defaultMessage + ' HTTP ' + (err.status || 'Unknown'));
+            });
+        } else {
+            showNotification(defaultMessage + ' ' + ((err && err.message) ? err.message : 'Unknown error'));
+        }
+    }
+
     function getApiClient() {
         return window.ApiClient;
     }
@@ -767,21 +815,9 @@
                 clearForm(page);
             }).catch(err => {
                 Dashboard.hideLoadingMsg();
-                if (err && typeof err.text === 'function') {
-                    err.text().then(serverMessage => {
-                        let friendlyMessage = 'An error occurred on the server.';
-                        try {
-                            friendlyMessage = JSON.parse(serverMessage) || friendlyMessage;
-                        } catch (e) {
-                            friendlyMessage = serverMessage || friendlyMessage;
-                        }
-                        showNotification(friendlyMessage);
-                    }).catch(() => {
-                        showNotification('Could not read error response from server. Status: ' + (err.status || 'Unknown'));
-                    });
-                } else {
-                    showNotification((err && err.message) ? err.message : 'An unknown network error occurred.');
-                }
+                console.error('Error creating playlist:', err);
+                const action = editState.editMode ? 'update' : 'create';
+                handleApiError(err, 'Failed to ' + action + ' playlist ' + playlistName);
             });
         } catch (e) {
             Dashboard.hideLoadingMsg();
@@ -1035,7 +1071,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error deleting playlist:', err);
-            showNotification('Failed to delete playlist "' + playlistName + '". Check console for details.');
+            handleApiError(err, 'Failed to delete playlist "' + playlistName + '".');
         });
     }
 
@@ -1057,7 +1093,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error enabling playlist:', err);
-            showNotification('Failed to enable playlist "' + playlistName + '". Check console for details.');
+            handleApiError(err, 'Failed to enable playlist "' + playlistName + '".');
         });
     }
 
@@ -1079,7 +1115,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error disabling playlist:', err);
-            showNotification('Failed to disable playlist "' + playlistName + '". Check console for details.');
+            handleApiError(err, 'Failed to disable playlist "' + playlistName + '".');
         });
     }
 
@@ -1334,28 +1370,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error loading playlist for edit:', err);
-            console.error('Error details:', err.status, err.statusText, err.message);
-            
-            if (err && typeof err.text === 'function') {
-                err.text().then(serverMessage => {
-                    console.error('Server error message:', serverMessage);
-                    let friendlyMessage = 'Failed to load playlist for editing.';
-                    try {
-                        friendlyMessage = JSON.parse(serverMessage) || friendlyMessage;
-                    } catch (e) {
-                        friendlyMessage = serverMessage || friendlyMessage;
-                    }
-                    showNotification(friendlyMessage);
-                }).catch(() => {
-                    showNotification('Failed to load playlist for editing. HTTP ' + (err.status || 'Unknown'));
-                });
-            } else {
-                let errorMessage = 'Failed to load playlist for editing.';
-                if (err && err.message) {
-                    errorMessage = errorMessage + ' Error: ' + err.message;
-                }
-                showNotification(errorMessage);
-            }
+            handleApiError(err, 'Failed to load playlist for editing');
         });
     }
 
@@ -1404,9 +1419,10 @@
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
-            }).catch(() => {
+            }).catch(err => {
                 Dashboard.hideLoadingMsg();
-                showNotification('Failed to save settings.');
+                console.error('Error saving configuration:', err);
+                handleApiError(err, 'Failed to save settings');
             });
         }).catch(() => {
             Dashboard.hideLoadingMsg();
@@ -1426,31 +1442,8 @@
             showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
-            
-            // Try to extract the specific error message from the server response
-            let errorMessage = 'Failed to trigger playlist refresh. Please check server logs.';
-            
-            if (err && typeof err.text === 'function') {
-                // For HTTP error responses, try to read the response body
-                err.text().then(serverMessage => {
-                    try {
-                        const response = JSON.parse(serverMessage);
-                        if (response && response.message) {
-                            errorMessage = response.message;
-                        }
-                    } catch (e) {
-                        // If parsing fails, use the raw server message if available
-                        if (serverMessage && serverMessage.trim()) {
-                            errorMessage = serverMessage;
-                        }
-                    }
-                    showNotification(errorMessage);
-                }).catch(() => {
-                    showNotification(errorMessage);
-                });
-            } else {
-                showNotification(errorMessage);
-            }
+            console.error('Error refreshing playlists:', err);
+            handleApiError(err, 'Failed to trigger playlist refresh');
         });
     }
     
