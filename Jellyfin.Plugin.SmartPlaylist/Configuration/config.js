@@ -943,7 +943,7 @@
                 const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
                 const disabledPlaylists = filteredCount - enabledPlaylists;
                 
-                let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3>';
+                let html = '<div class="input-container">';
                 html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
                 html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                         (searchTerm ? ' matching "' + searchTerm + '"' : '') +
@@ -1136,7 +1136,7 @@
         const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
         const disabledPlaylists = filteredCount - enabledPlaylists;
         
-        let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3>';
+        let html = '<div class="input-container">';
         html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
         html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                 (searchTerm ? ' matching "' + searchTerm + '"' : '') +
@@ -2002,7 +2002,7 @@
         for (var i = 0; i < tabContents.length; i++) {
             var el = tabContents[i];
             el.style.maxWidth = '850px';
-            el.style.paddingRight = 'clamp(20px, 5vw, 60px)';
+            el.style.paddingRight = '30px';
             el.style.boxSizing = 'border-box';
         }
     }
