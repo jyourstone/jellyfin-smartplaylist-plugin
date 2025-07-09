@@ -314,11 +314,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 if (!success)
                 {
                     _logger.LogWarning("Failed to refresh newly created playlist {PlaylistName}: {Message}", playlist.Name, message);
-                    // Still return the created playlist but with a warning
-                    return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, new { 
-                        playlist = createdPlaylist, 
-                        warning = message 
-                    });
+                    // Still return the created playlist but log the warning
+                    return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
                 }
                 
                 _logger.LogDebug("Finished RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
@@ -447,11 +444,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 if (!success)
                 {
                     _logger.LogWarning("Failed to refresh updated playlist {PlaylistName}: {Message}", playlist.Name, message);
-                    // Still return the updated playlist but with a warning
-                    return Ok(new { 
-                        playlist = updatedPlaylist, 
-                        warning = message 
-                    });
+                    // Still return the updated playlist but log the warning
+                    return Ok(updatedPlaylist);
                 }
                 
                 _logger.LogInformation("Updated smart playlist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
