@@ -54,9 +54,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             try
             {
-                // Use the same logger pattern as the rest of the controller
-                var loggerFactory = new LoggerFactory();
-                var logger = loggerFactory.CreateLogger<PlaylistService>();
+                // Use Microsoft.Extensions.Logging.Abstractions.NullLogger to avoid LoggerFactory resource leaks
+                // Since PlaylistService operations are logged at the controller level, this is acceptable
+                var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<PlaylistService>.Instance;
                 return new PlaylistService(_userManager, _libraryManager, _playlistManager, _userDataManager, logger, _providerManager);
             }
             catch (Exception ex)
@@ -296,7 +296,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                                     catch (ArgumentException ex)
                                     {
                                         _logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
-                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}'");
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}': {ex.Message}");
                                     }
                                 }
                             }
@@ -674,16 +674,29 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
                 
-                // Enable the playlist
+                // Temporarily set enabled state for the Jellyfin operation
+                var originalEnabledState = playlist.Enabled;
                 playlist.Enabled = true;
-                await playlistStore.SaveAsync(playlist);
                 
-                // Create/update the Jellyfin playlist
-                var playlistService = GetPlaylistService();
-                await playlistService.EnablePlaylistAsync(playlist);
-                
-                _logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
-                return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
+                try
+                {
+                    // Create/update the Jellyfin playlist FIRST
+                    var playlistService = GetPlaylistService();
+                    await playlistService.EnablePlaylistAsync(playlist);
+                    
+                    // Only save the configuration if the Jellyfin operation succeeds
+                    await playlistStore.SaveAsync(playlist);
+                    
+                    _logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
+                }
+                catch (Exception jellyfinEx)
+                {
+                    // Restore original state if Jellyfin operation fails
+                    playlist.Enabled = originalEnabledState;
+                    _logger.LogError(jellyfinEx, "Failed to enable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -714,16 +727,29 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
                 
-                // Disable the playlist
+                // Temporarily set disabled state for the Jellyfin operation
+                var originalEnabledState = playlist.Enabled;
                 playlist.Enabled = false;
-                await playlistStore.SaveAsync(playlist);
                 
-                // Remove the Jellyfin playlist
-                var playlistService = GetPlaylistService();
-                await playlistService.DisablePlaylistAsync(playlist);
-                
-                _logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
-                return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
+                try
+                {
+                    // Remove the Jellyfin playlist FIRST
+                    var playlistService = GetPlaylistService();
+                    await playlistService.DisablePlaylistAsync(playlist);
+                    
+                    // Only save the configuration if the Jellyfin operation succeeds
+                    await playlistStore.SaveAsync(playlist);
+                    
+                    _logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
+                }
+                catch (Exception jellyfinEx)
+                {
+                    // Restore original state if Jellyfin operation fails
+                    playlist.Enabled = originalEnabledState;
+                    _logger.LogError(jellyfinEx, "Failed to disable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    throw;
+                }
             }
             catch (Exception ex)
             {
