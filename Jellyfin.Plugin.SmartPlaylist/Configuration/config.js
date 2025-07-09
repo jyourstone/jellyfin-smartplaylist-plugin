@@ -109,7 +109,7 @@
         }
 
         const apiClient = getApiClient();
-        apiClient.getPluginConfiguration(getPluginId()).then(config => {
+        return apiClient.getPluginConfiguration(getPluginId()).then(config => {
             const defaultSortBy = config.DefaultSortBy || 'Name';
             const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
             const defaultMakePublic = config.DefaultMakePublic || false;
@@ -117,16 +117,31 @@
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
             page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
+            
+            // Populate settings tab dropdowns with current configuration values
+            const defaultSortBySetting = page.querySelector('#defaultSortBy');
+            const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
+            if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
+                populateSelect(defaultSortBySetting, sortOptions, defaultSortBy); 
+            }
+            if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
+                populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
+            }
         }).catch(() => {
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
             page.querySelector('#playlistIsPublic').checked = false;
+            
+            // Populate settings tab dropdowns with defaults even if config fails
+            const defaultSortBySetting = page.querySelector('#defaultSortBy');
+            const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
+            if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
+                populateSelect(defaultSortBySetting, sortOptions, 'Name'); 
+            }
+            if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
+                populateSelect(defaultSortOrderSetting, orderOptions, 'Ascending'); 
+            }
         });
-        
-        const defaultSortBy = page.querySelector('#defaultSortBy');
-        const defaultSortOrder = page.querySelector('#defaultSortOrder');
-        if (defaultSortBy && defaultSortBy.children.length === 0) { populateSelect(defaultSortBy, sortOptions, 'Name'); }
-        if (defaultSortOrder && defaultSortOrder.children.length === 0) { populateSelect(defaultSortOrder, orderOptions, 'Ascending'); }
     }
 
     function updateOperatorOptions(fieldValue, operatorSelect) {
@@ -301,6 +316,13 @@
         ruleDiv.className = 'rule-row';
         ruleDiv.setAttribute('data-rule-id', 'rule-' + Date.now());
 
+        // Create AbortController for this rule's event listeners
+        const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const signal = abortController ? abortController.signal : undefined;
+        
+        // Store the controller on the element for cleanup
+        ruleDiv._abortController = abortController;
+
         const fieldsHtml = `
             <div class="input-group" style="display: flex; gap: 0.5em; align-items: center; margin-bottom: 1em;">
                 <select is="emby-select" class="emby-select rule-field-select" style="flex: 0 0 25%;">
@@ -337,15 +359,17 @@
         setValueInput(fieldSelect.value, valueContainer);
         updateOperatorOptions(fieldSelect.value, operatorSelect);
         
+        // Add event listeners with AbortController signal (if supported)
+        const listenerOptions = signal ? { signal } : {};
         fieldSelect.addEventListener('change', function() {
             setValueInput(fieldSelect.value, valueContainer);
             updateOperatorOptions(fieldSelect.value, operatorSelect);
             updateRegexHelp(newRuleRow);
-        });
+        }, listenerOptions);
         
         operatorSelect.addEventListener('change', function() {
             updateRegexHelp(newRuleRow);
-        });
+        }, listenerOptions);
 
         // Style the action buttons
         const actionButtons = newRuleRow.querySelectorAll('.rule-action-btn');
@@ -389,7 +413,7 @@
                 `;
             }
             
-            // Add hover effects
+            // Add hover effects with AbortController signal (if supported)
             button.addEventListener('mouseenter', function() {
                 if (this.classList.contains('delete-btn')) {
                     this.style.background = 'rgba(255, 100, 100, 0.2) !important';
@@ -399,7 +423,7 @@
                     this.style.background = 'rgba(255, 255, 255, 0.25) !important';
                     this.style.borderColor = '#aaa !important';
                 }
-            });
+            }, listenerOptions);
             
             button.addEventListener('mouseleave', function() {
                 if (this.classList.contains('and-btn')) {
@@ -415,7 +439,7 @@
                     this.style.borderColor = '#888 !important';
                     this.style.color = '#999 !important';
                 }
-            });
+            }, listenerOptions);
         });
 
         // Update button visibility for all rules in all groups
@@ -496,6 +520,9 @@
         const logicGroup = ruleElement.closest('.logic-group');
         const rulesInGroup = logicGroup.querySelectorAll('.rule-row');
         
+        // Clean up event listeners before removing
+        cleanupRuleEventListeners(ruleElement);
+        
         if (rulesInGroup.length === 1) {
             // This is the last rule in the group, remove the entire group
             removeLogicGroup(page, logicGroup);
@@ -515,9 +542,21 @@
         }
     }
 
+    function cleanupRuleEventListeners(ruleElement) {
+        // Abort all event listeners for this rule
+        if (ruleElement._abortController) {
+            ruleElement._abortController.abort();
+            ruleElement._abortController = null;
+        }
+    }
+
     function removeLogicGroup(page, logicGroup) {
         const rulesContainer = page.querySelector('#rules-container');
         const allGroups = rulesContainer.querySelectorAll('.logic-group');
+        
+        // Clean up all event listeners in this group
+        const rulesInGroup = logicGroup.querySelectorAll('.rule-row');
+        rulesInGroup.forEach(rule => cleanupRuleEventListeners(rule));
         
         if (allGroups.length === 1) {
             // This is the last group, clear it and add a new rule
@@ -701,7 +740,13 @@
         // Only handle form clearing - edit mode management should be done by caller
         
         page.querySelector('#playlistName').value = '';
-        page.querySelector('#rules-container').innerHTML = '';
+        
+        // Clean up all existing event listeners before clearing rules
+        const rulesContainer = page.querySelector('#rules-container');
+        const allRules = rulesContainer.querySelectorAll('.rule-row');
+        allRules.forEach(rule => cleanupRuleEventListeners(rule));
+        
+        rulesContainer.innerHTML = '';
         
         // Clear media type selections
         const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
@@ -760,6 +805,7 @@
             console.error('Error loading users:', err);
             userSelect.innerHTML = '<option value="">Error loading users</option>';
             showNotification('Failed to load users. Using fallback.');
+            throw err; // Re-throw to be caught by Promise.all
         }
     }
     
@@ -983,11 +1029,8 @@
         const confirmBtn = modal.querySelector('#delete-confirm-btn');
         const cancelBtn = modal.querySelector('#delete-cancel-btn');
 
-        // Remove any existing backdrop listener to prevent accumulation
-        if (currentModalBackdropHandler) {
-            modal.removeEventListener('click', currentModalBackdropHandler);
-            currentModalBackdropHandler = null;
-        }
+        // Clean up any existing modal listeners
+        cleanupModalListeners(modal);
 
         // Force positioning with JavaScript since CSS isn't working reliably
         modalContainer.style.position = 'fixed';
@@ -1023,19 +1066,17 @@
         // Show the modal
         modal.classList.remove('hide');
         
-        // Remove any existing event listeners by cloning and replacing the elements
-        const newConfirmBtn = confirmBtn.cloneNode(true);
-        const newCancelBtn = cancelBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        // Create AbortController for modal event listeners
+        const modalAbortController = new AbortController();
+        const modalSignal = modalAbortController.signal;
         
-        // Clean up function to close modal and remove backdrop listener
+        // Store the controller on the modal for cleanup
+        modal._modalAbortController = modalAbortController;
+        
+        // Clean up function to close modal and remove all listeners
         const cleanupAndClose = () => {
             modal.classList.add('hide');
-            if (currentModalBackdropHandler) {
-                modal.removeEventListener('click', currentModalBackdropHandler);
-                currentModalBackdropHandler = null;
-            }
+            cleanupModalListeners(modal);
         };
         
         const handleConfirm = () => {
@@ -1053,11 +1094,24 @@
             }
         };
 
-        // Store reference to current handler and add fresh event listeners
-        currentModalBackdropHandler = handleBackdropClick;
-        newConfirmBtn.addEventListener('click', handleConfirm);
-        newCancelBtn.addEventListener('click', handleCancel);
-        modal.addEventListener('click', handleBackdropClick);
+        // Add event listeners with AbortController signal
+        confirmBtn.addEventListener('click', handleConfirm, { signal: modalSignal });
+        cancelBtn.addEventListener('click', handleCancel, { signal: modalSignal });
+        modal.addEventListener('click', handleBackdropClick, { signal: modalSignal });
+    }
+
+    function cleanupModalListeners(modal) {
+        // Remove any existing backdrop listener to prevent accumulation
+        if (currentModalBackdropHandler) {
+            modal.removeEventListener('click', currentModalBackdropHandler);
+            currentModalBackdropHandler = null;
+        }
+        
+        // Abort any AbortController-managed listeners
+        if (modal._modalAbortController) {
+            modal._modalAbortController.abort();
+            modal._modalAbortController = null;
+        }
     }
 
     async function editPlaylist(page, playlistId) {
@@ -1340,17 +1394,57 @@
         }
         pageInitialized = true;
         
-        populateStaticSelects(page);
-        loadUsers(page);
-        loadAndPopulateFields().then(() => {
+        // Show loading state
+        const userSelect = page.querySelector('#playlistUser');
+        if (userSelect) {
+            userSelect.innerHTML = '<option value="">Loading users...</option>';
+        }
+        
+        // Disable form submission until initialization is complete
+        const submitBtn = page.querySelector('#submitBtn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Loading...';
+        }
+        
+        // Coordinate all async initialization
+        Promise.all([
+            populateStaticSelects(page), // Make synchronous function async
+            loadUsers(page),
+            loadAndPopulateFields()
+        ]).then(() => {
+            // All async operations completed successfully
             const rulesContainer = page.querySelector('#rules-container');
             if (rulesContainer.children.length === 0) {
                 createInitialLogicGroup(page);
             }
-        }).catch(() => {
-            showNotification('Could not load rule options from server.');
+            
+            // Enable form submission
+            const submitBtn = page.querySelector('#submitBtn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = editMode ? 'Update Playlist' : 'Create Playlist';
+            }
+        }).catch((error) => {
+            console.error('Error during page initialization:', error);
+            showNotification('Some configuration options failed to load. Please refresh the page.');
+            
+            // Still enable form submission even if some things failed
+            const submitBtn = page.querySelector('#submitBtn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = editMode ? 'Update Playlist' : 'Create Playlist';
+            }
         });
 
+        // Set up event listeners (these don't depend on async operations)
+        setupEventListeners(page);
+        
+        // Load configuration (this can run independently)
+        loadConfiguration(page);
+    }
+
+    function setupEventListeners(page) {
         page.addEventListener('click', function (e) {
             const target = e.target;
             
@@ -1398,8 +1492,6 @@
             e.preventDefault();
             createPlaylist(page);
         });
-
-        loadConfiguration(page);
     }
 
     document.addEventListener('pageshow', function (e) {
@@ -1411,19 +1503,23 @@
             // Only add tab listeners once to prevent duplicates
             if (!tabListenersInitialized) {
                 tabListenersInitialized = true;
+                
+                // Create AbortController for tab listeners
+                const tabAbortController = new AbortController();
+                const tabSignal = tabAbortController.signal;
+                
+                // Store controller globally for potential cleanup
+                window._smartPlaylistTabController = tabAbortController;
+                
                 tabButtons.forEach(button => {
                     button.addEventListener('click', () => {
                         const tabId = button.getAttribute('data-tab');
                         
-                        // Hide any open modals when switching tabs and clean up backdrop listener
+                        // Hide any open modals when switching tabs and clean up listeners
                         const modal = page.querySelector('#delete-confirm-modal');
                         if (modal && !modal.classList.contains('hide')) {
                             modal.classList.add('hide');
-                            // Clean up backdrop listener to prevent memory leak
-                            if (currentModalBackdropHandler) {
-                                modal.removeEventListener('click', currentModalBackdropHandler);
-                                currentModalBackdropHandler = null;
-                            }
+                            cleanupModalListeners(modal);
                         }
                         
                         tabButtons.forEach(btn => btn.classList.remove('is-active'));
@@ -1433,7 +1529,7 @@
                             content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
                         });
                         if (tabId === 'manage') { loadPlaylistList(page); }
-                    });
+                    }, { signal: tabSignal });
                 });
             }
             
@@ -1444,4 +1540,34 @@
             initPage(page);
         }
     });
+    // Clean up all event listeners when page is hidden/unloaded
+    document.addEventListener('pagehide', function (e) {
+        const page = e.target;
+        if (page.classList.contains('SmartPlaylistConfigurationPage')) {
+            cleanupAllEventListeners(page);
+        }
+    });
+
+    function cleanupAllEventListeners(page) {
+        // Clean up rule event listeners
+        const allRules = page.querySelectorAll('.rule-row');
+        allRules.forEach(rule => cleanupRuleEventListeners(rule));
+        
+        // Clean up modal listeners
+        const modal = page.querySelector('#delete-confirm-modal');
+        if (modal) {
+            cleanupModalListeners(modal);
+        }
+        
+        // Clean up tab listeners
+        if (window._smartPlaylistTabController) {
+            window._smartPlaylistTabController.abort();
+            window._smartPlaylistTabController = null;
+        }
+        
+        // Reset initialization flags
+        pageInitialized = false;
+        tabListenersInitialized = false;
+    }
+
 })();
