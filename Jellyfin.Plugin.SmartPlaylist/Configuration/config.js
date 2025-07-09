@@ -1,30 +1,3 @@
-/*
- * CRITICAL FIXES IMPLEMENTED:
- * 
- * 1. PAGE-SPECIFIC EDIT STATE: Moved global editMode/editingPlaylistId to page-specific state
- *    - Prevents race conditions when multiple admin tabs are open
- *    - Fixes state corruption during async operations
- *    - Functions: getPageEditState(), setPageEditState()
- *
- * 2. ABORTCONTROLLER FALLBACK: Added polyfill for browsers without AbortController
- *    - Prevents memory leaks in older browsers
- *    - Proper event listener cleanup
- *    - Functions: createAbortController(), getEventListenerOptions()
- *
- * 3. RACE CONDITION PREVENTION: Added loading state management
- *    - Prevents multiple simultaneous playlist loading requests
- *    - Fixes stale data updates during navigation
- *    - Added page._loadingPlaylists flag
- *
- * 4. ENHANCED CLEANUP: Improved event listener cleanup
- *    - Properly removes window event listeners from tab slider
- *    - Resets all page-specific state on cleanup
- *    - Prevents memory leaks during page navigation
- *
- * These fixes address critical admin interface stability issues while maintaining
- * backward compatibility and performance.
- */
-
 (function () {
     'use strict';
     
@@ -1700,6 +1673,8 @@
         
         // Load configuration (this can run independently)
         loadConfiguration(page);
+
+        applyMainContainerLayoutFix(page);
     }
 
     function setupTabSlider(page) {
@@ -2019,6 +1994,17 @@
         page._editingPlaylistId = null;
         page._loadingPlaylists = false;
         page._allPlaylists = null; // Clear stored playlist data
+    }
+
+    function applyMainContainerLayoutFix(page) {
+        // Apply to all tab content containers
+        var tabContents = page.querySelectorAll('.page-content');
+        for (var i = 0; i < tabContents.length; i++) {
+            var el = tabContents[i];
+            el.style.maxWidth = '850px';
+            el.style.paddingRight = 'clamp(20px, 5vw, 60px)';
+            el.style.boxSizing = 'border-box';
+        }
     }
 
 })();

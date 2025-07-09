@@ -26,8 +26,6 @@ cp ../images/logo.jpg $OUTPUT_DIR/logo.jpg
 
 # Create the Configuration directory and copy the HTML and JS files, which is required for the UI
 mkdir -p $OUTPUT_DIR/Configuration
-cp ../Jellyfin.Plugin.SmartPlaylist/Configuration/config.html $OUTPUT_DIR/Configuration/
-cp ../Jellyfin.Plugin.SmartPlaylist/Configuration/config.js $OUTPUT_DIR/Configuration/
 cp logging.json jellyfin-data/config/config/logging.json
 
 echo ""
