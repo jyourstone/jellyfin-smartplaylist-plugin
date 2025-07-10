@@ -189,6 +189,27 @@
             gap: 1.5em;
             align-items: center;
         }
+        
+        /* Search clear button styles */
+        .search-clear-btn {
+            transition: color 0.2s ease, background-color 0.2s ease;
+            border-radius: 50%;
+            width: 1.5em;
+            height: 1.5em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .search-clear-btn:hover {
+            color: #fff !important;
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        
+        .search-clear-btn:active {
+            background-color: rgba(255, 255, 255, 0.2) !important;
+        }
     </style>
 </head>
 <body>
@@ -301,7 +322,10 @@
                         
                         <div class="input-container" style="margin-bottom: 1em;">
                             <label class="input-label" for="playlistSearchInput">Search Playlists</label>
-                            <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search by name, filename, rules, user, or media types...">
+                            <div class="search-input-container" style="position: relative; display: flex; align-items: center;">
+                                <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search all playlist fields..." style="padding-right: 2.5em;">
+                                <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
+                            </div>
                         </div>
                         
                         <div id="playlist-list-container">

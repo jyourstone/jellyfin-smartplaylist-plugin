@@ -52,6 +52,8 @@
         const notificationArea = document.querySelector('#plugin-notification-area');
         if (!notificationArea) return;
 
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
         notificationArea.textContent = message;
         notificationArea.style.color = 'white';
         notificationArea.style.backgroundColor = 
@@ -684,7 +686,6 @@
             const playlistName = page.querySelector('#playlistName').value;
 
             if (!playlistName) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
                 showNotification('Playlist name is required.');
                 return;
             }
@@ -713,7 +714,6 @@
                 }
             });
             if (selectedMediaTypes.length === 0) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
                 showNotification('At least one media type must be selected.');
                 return;
             }
@@ -1675,6 +1675,7 @@
         loadConfiguration(page);
 
         applyMainContainerLayoutFix(page);
+        applyNotificationLayoutFix(page);
     }
 
     function setupTabSlider(page) {
@@ -1847,12 +1848,21 @@
         
         // Add search input event listener
         const searchInput = page.querySelector('#playlistSearchInput');
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
         if (searchInput) {
             // Store search timeout on the page for cleanup
             page._searchTimeout = null;
             
+            // Function to update clear button visibility
+            const updateClearButtonVisibility = () => {
+                if (clearSearchBtn) {
+                    clearSearchBtn.style.display = searchInput.value.trim() ? 'flex' : 'none';
+                }
+            };
+            
             // Use debounced search to avoid too many re-renders
             searchInput.addEventListener('input', function() {
+                updateClearButtonVisibility();
                 clearTimeout(page._searchTimeout);
                 page._searchTimeout = setTimeout(() => {
                     applySearchFilter(page);
@@ -1866,6 +1876,20 @@
                     applySearchFilter(page);
                 }
             }, getEventListenerOptions(pageSignal));
+            
+            // Handle clear button click
+            if (clearSearchBtn) {
+                clearSearchBtn.addEventListener('click', function() {
+                    searchInput.value = '';
+                    updateClearButtonVisibility();
+                    clearTimeout(page._searchTimeout);
+                    applySearchFilter(page);
+                    searchInput.focus(); // Return focus to search input
+                }, getEventListenerOptions(pageSignal));
+            }
+            
+            // Initialize clear button visibility
+            updateClearButtonVisibility();
         }
     }
 
@@ -2001,9 +2025,18 @@
         var tabContents = page.querySelectorAll('.page-content');
         for (var i = 0; i < tabContents.length; i++) {
             var el = tabContents[i];
-            el.style.maxWidth = '850px';
-            el.style.paddingRight = '30px';
+            el.style.maxWidth = '830px';
             el.style.boxSizing = 'border-box';
+            el.style.paddingRight = '25px';
+        }
+    }
+
+    function applyNotificationLayoutFix(page) {
+        var notificationArea = page.querySelector('#plugin-notification-area');
+        if (notificationArea) {
+            notificationArea.style.maxWidth = '805px';
+            notificationArea.style.marginRight = '25px';
+            notificationArea.style.boxSizing = 'border-box';
         }
     }
 
