@@ -242,15 +242,15 @@
                 <!-- Create Tab -->
                 <div id="create-tab" class="page-content hide" data-tab-content="create">
                     <form id="playlistForm" style="margin-top:2em;">
-                        <div class="input-container" style="margin-bottom: 1em;">
+                        <div class="input-container" style="margin-bottom: 1.5em;">
                             <label class="input-label" for="playlistName">Playlist Name</label>
-                            <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
+                            <input type="text" style="margin-top: 5px;margin-bottom: 5px;" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
+                            <div class="field-description">The name of the playlist that will be created in Jellyfin. The suffix [Smart] will always be added.</div>
                         </div>
                        
                         <div class="input-container" style="margin-bottom: 1em;">
                             <label class="input-label">Media Types</label>
-                            <div class="field-description">Select one or more media types to include. This filter is always applied first.</div>
-                            <div class="media-type-flex" style="margin-top: 0.5em;">
+                            <div class="media-type-flex" style="margin-top: 5px;">
                                 <label class="checkbox-label">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeMovie" class="emby-checkbox media-type-checkbox" value="Movie">
                                     <span>Movies</span>
@@ -264,27 +264,28 @@
                                     <span>Music</span>
                                 </label>
                             </div>
+                            <div class="field-description" style="margin-bottom: 1.5em;">Select one or more media types to include. This filter is always applied first.</div>
                         </div>
 
                         <div class="input-container">
                             <label class="input-label">Rules</label>
-                            <div class="field-description" style="margin-bottom: 1em;">Build your rules using logical groups. Rules within a group are combined with AND, groups are combined with OR.</div>
-                            <div id="rules-container"></div>
+                            <div id="rules-container" style="margin-top: 5px;"></div>
+                            <div class="field-description" style="margin-bottom: 1.5em; margin-top: -0.7em;">Build your rules using logical groups. Rules within a group are combined with AND, groups are combined with OR.</div>
                         </div>
 
                         <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="input-label" for="sortBy">Sort By</label>
-                            <div id="sortBy-container"></div>
+                            <div id="sortBy-container" style="margin-top: 5px;"></div>
                         </div>
 
                         <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="input-label" for="sortOrder">Sort Order</label>
-                            <div id="sortOrder-container"></div>
+                            <div id="sortOrder-container" style="margin-top: 5px;"></div>
                         </div>
 
-                        <div class="input-container" style="margin-bottom: 1em;">
+                        <div class="input-container" style="margin-bottom: 1.5em;">
                             <label class="input-label" for="playlistUser">Playlist Owner</label>
-                            <select is="emby-select" id="playlistUser" class="emby-select" required>
+                            <select style="margin-top: 5px; margin-bottom: 5px;" is="emby-select" id="playlistUser" class="emby-select" required>
                                 <option value="">Loading users...</option>
                             </select>
                             <div class="field-description">The user who this playlist belongs to.</div>
