@@ -189,6 +189,27 @@
             gap: 1.5em;
             align-items: center;
         }
+        
+        /* Search clear button styles */
+        .search-clear-btn {
+            transition: color 0.2s ease, background-color 0.2s ease;
+            border-radius: 50%;
+            width: 1.5em;
+            height: 1.5em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .search-clear-btn:hover {
+            color: #fff !important;
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        
+        .search-clear-btn:active {
+            background-color: rgba(255, 255, 255, 0.2) !important;
+        }
     </style>
 </head>
 <body>
@@ -198,22 +219,21 @@
                 <h1>SmartPlaylist Configuration</h1>
                 <div id="plugin-notification-area" style="display: none; padding: 1em; margin: 1em 0; border-radius: 4px; text-align: center; font-weight: bold;"></div>
 
-                <div class="emby-tabs">
-                    <div class="emby-tab-button" data-tab="create">
-                        <h3 class="emby-tab-button-title">Create Playlist</h3>
-                    </div>
-                    <div class="emby-tab-button" data-tab="manage">
-                        <h3 class="emby-tab-button-title">Manage Playlists</h3>
-                    </div>
-                     <div class="emby-tab-button" data-tab="settings">
-                        <h3 class="emby-tab-button-title">Settings</h3>
-                    </div>
-                     <div class="emby-tab-button" data-tab="help">
-                        <h3 class="emby-tab-button-title">Help</h3>
-                    </div>
+                <div class="emby-tabs-slider" style="white-space:nowrap;">
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button emby-tab-button-active" data-tab="create" data-index="0">
+                        <div class="emby-button-foreground">Create Playlist</div>
+                    </button>
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button" data-tab="manage" data-index="1">
+                        <div class="emby-button-foreground">Manage Playlists</div>
+                    </button>
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button" data-tab="settings" data-index="2">
+                        <div class="emby-button-foreground">Settings</div>
+                    </button>
+                    <button type="button" is="emby-button" class="emby-tab-button emby-button" data-tab="help" data-index="3">
+                        <div class="emby-button-foreground">Help</div>
+                    </button>
                 </div>
 
-                <h2 class="section-title" id="current-tab-title">Create Playlist</h2>
                 <div id="edit-mode-indicator" style="display: none; color: #ffa500; font-weight: bold; margin: 0.5em 0;">
                     <span>✏️ Editing Mode - Modifying existing playlist</span>
                     <button type="button" id="cancelEditBtn" class="emby-button raised" style="margin-left: 1em; font-size: 0.8em;">Cancel Edit</button>
@@ -296,8 +316,16 @@
                 <!-- Manage Tab -->
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <div style="margin-top:2em;">
-                        <div class="input-container">
+                        <div class="input-container" style="margin-bottom: 1em;">
                             <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised">Refresh List</button>
+                        </div>
+                        
+                        <div class="input-container" style="margin-bottom: 1em;">
+                            <label class="input-label" for="playlistSearchInput">Search Playlists</label>
+                            <div class="search-input-container" style="position: relative; display: flex; align-items: center;">
+                                <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search all playlist fields..." style="padding-right: 2.5em;">
+                                <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
+                            </div>
                         </div>
                         
                         <div id="playlist-list-container">
@@ -376,7 +404,7 @@
                     </div>
                     <div class="custom-modal-footer">
                         <button type="button" is="emby-button" class="emby-button raised" id="delete-cancel-btn">Cancel</button>
-                        <button type="button" is="emby-button" class="emby-button raised button-submit" id="delete-confirm-btn">Delete</button>
+                        <button type="button" is="emby-button" class="emby-button raised button-delete" id="delete-confirm-btn">Delete</button>
                     </div>
                 </div>
             </div>

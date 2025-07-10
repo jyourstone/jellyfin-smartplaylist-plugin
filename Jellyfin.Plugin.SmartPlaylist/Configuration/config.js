@@ -16,16 +16,43 @@
 
     let availableFields = {};
     let notificationTimeout;
-    let pageInitialized = false;
-    let tabListenersInitialized = false;
-    let editMode = false;
-    let editingPlaylistId = null;
-    let currentModalBackdropHandler = null; // Track the current modal backdrop handler
+    // Remove global flags - these will be stored per page
+    // let pageInitialized = false;
+    // let tabListenersInitialized = false;
+    // REMOVED: Global edit state - now stored per page
+    // let editMode = false;
+    // let editingPlaylistId = null;
+    // Remove global modal handler - this will be stored per modal
+    // let currentModalBackdropHandler = null;
     const mediaTypes = [ { Value: "Movie", Label: "Movie" }, { Value: "Episode", Label: "Episode (TV Show)" }, { Value: "Audio", Label: "Audio (Music)" } ];
+
+    // Helper functions for page-specific state
+    function getPageEditState(page) {
+        return {
+            editMode: page._editMode || false,
+            editingPlaylistId: page._editingPlaylistId || null
+        };
+    }
+
+    function setPageEditState(page, editMode, editingPlaylistId = null) {
+        page._editMode = editMode;
+        page._editingPlaylistId = editingPlaylistId;
+    }
+
+    // AbortController for event listener cleanup
+    function createAbortController() {
+        return new AbortController();
+    }
+
+    function getEventListenerOptions(signal) {
+        return { signal };
+    }
 
     function showNotification(message, type = 'error') {
         const notificationArea = document.querySelector('#plugin-notification-area');
         if (!notificationArea) return;
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
 
         notificationArea.textContent = message;
         notificationArea.style.color = 'white';
@@ -38,6 +65,54 @@
         notificationTimeout = setTimeout(() => {
             notificationArea.style.display = 'none';
         }, 10000);
+    }
+
+    function handleApiError(err, defaultMessage) {
+        // Try to extract meaningful error message from server response
+        if (err && typeof err.text === 'function') {
+            return err.text().then(serverMessage => {
+                let friendlyMessage = defaultMessage;
+                try {
+                    const parsedMessage = JSON.parse(serverMessage);
+                    if (parsedMessage && parsedMessage.message) {
+                        // Remove quotes and Unicode escapes, then add context
+                        const cleanMessage = parsedMessage.message
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    } else if (parsedMessage && parsedMessage.title) {
+                        // Handle structured error responses (like ASP.NET Core error objects)
+                        const cleanMessage = parsedMessage.title
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    } else if (serverMessage && serverMessage.trim()) {
+                        // Remove quotes and Unicode escapes, then add context
+                        const cleanMessage = serverMessage
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    }
+                } catch (e) {
+                    if (serverMessage && serverMessage.trim()) {
+                        // Remove quotes and Unicode escapes, then add context
+                        const cleanMessage = serverMessage
+                            .replace(/"/g, '')
+                            .replace(/\\u0027/g, "'")
+                            .replace(/\\u0022/g, '"');
+                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                    }
+                }
+                showNotification(friendlyMessage);
+            }).catch(() => {
+                showNotification(defaultMessage + ' HTTP ' + (err.status || 'Unknown'));
+            });
+        } else {
+            showNotification(defaultMessage + ' ' + ((err && err.message) ? err.message : 'Unknown error'));
+        }
     }
 
     function getApiClient() {
@@ -317,8 +392,8 @@
         ruleDiv.setAttribute('data-rule-id', 'rule-' + Date.now());
 
         // Create AbortController for this rule's event listeners
-        const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        const signal = abortController ? abortController.signal : undefined;
+        const abortController = createAbortController();
+        const signal = abortController.signal;
         
         // Store the controller on the element for cleanup
         ruleDiv._abortController = abortController;
@@ -360,7 +435,7 @@
         updateOperatorOptions(fieldSelect.value, operatorSelect);
         
         // Add event listeners with AbortController signal (if supported)
-        const listenerOptions = signal ? { signal } : {};
+        const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
             setValueInput(fieldSelect.value, valueContainer);
             updateOperatorOptions(fieldSelect.value, operatorSelect);
@@ -611,7 +686,6 @@
             const playlistName = page.querySelector('#playlistName').value;
 
             if (!playlistName) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
                 showNotification('Playlist name is required.');
                 return;
             }
@@ -640,7 +714,6 @@
                 }
             });
             if (selectedMediaTypes.length === 0) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
                 showNotification('At least one media type must be selected.');
                 return;
             }
@@ -672,15 +745,16 @@
             };
 
             // Add ID if in edit mode
-            if (editMode && editingPlaylistId) {
-                playlistDto.Id = editingPlaylistId;
+            const editState = getPageEditState(page);
+            if (editState.editMode && editState.editingPlaylistId) {
+                playlistDto.Id = editState.editingPlaylistId;
             }
 
             Dashboard.showLoadingMsg();
             
-            const requestType = editMode ? "PUT" : "POST";
-            const url = editMode ? 
-                apiClient.getUrl(ENDPOINTS.base + '/' + editingPlaylistId) : 
+            const requestType = editState.editMode ? "PUT" : "POST";
+            const url = editState.editMode ? 
+                apiClient.getUrl(ENDPOINTS.base + '/' + editState.editingPlaylistId) : 
                 apiClient.getUrl(ENDPOINTS.base);
             
             apiClient.ajax({
@@ -690,22 +764,21 @@
                 contentType: 'application/json'
             }).then(() => {
                 Dashboard.hideLoadingMsg();
-                const actionPast = editMode ? 'updated' : 'created';
-                const actionFuture = editMode ? 'updated' : 'generated';
+                const actionPast = editState.editMode ? 'updated' : 'created';
+                const actionFuture = editState.editMode ? 'updated' : 'generated';
                 showNotification('Playlist "' + playlistName + '" ' + actionPast + '. The playlist has been ' + actionFuture + '.', 'success');
                 
                 // Exit edit mode and clear form
-                if (editMode) {
+                if (editState.editMode) {
                     // Exit edit mode silently without showing cancellation message
-                    editMode = false;
-                    editingPlaylistId = null;
+                    setPageEditState(page, false, null);
                     const editIndicator = page.querySelector('#edit-mode-indicator');
                     editIndicator.style.display = 'none';
-                    page.querySelector('#current-tab-title').textContent = 'Create Playlist';
-                    page.querySelector('#submitBtn').textContent = 'Create Playlist';
+                    const submitBtn = page.querySelector('#submitBtn');
+                    if (submitBtn) submitBtn.textContent = 'Create Playlist';
                     
                     // Restore tab button text
-                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
                     if (createTabButton) {
                         createTabButton.textContent = 'Create Playlist';
                     }
@@ -713,21 +786,9 @@
                 clearForm(page);
             }).catch(err => {
                 Dashboard.hideLoadingMsg();
-                if (err && typeof err.text === 'function') {
-                    err.text().then(serverMessage => {
-                        let friendlyMessage = 'An error occurred on the server.';
-                        try {
-                            friendlyMessage = JSON.parse(serverMessage) || friendlyMessage;
-                        } catch (e) {
-                            friendlyMessage = serverMessage || friendlyMessage;
-                        }
-                        showNotification(friendlyMessage);
-                    }).catch(() => {
-                        showNotification('Could not read error response from server. Status: ' + (err.status || 'Unknown'));
-                    });
-                } else {
-                    showNotification((err && err.message) ? err.message : 'An unknown network error occurred.');
-                }
+                console.error('Error creating playlist:', err);
+                const action = editState.editMode ? 'update' : 'create';
+                handleApiError(err, 'Failed to ' + action + ' playlist ' + playlistName);
             });
         } catch (e) {
             Dashboard.hideLoadingMsg();
@@ -848,6 +909,13 @@
     function loadPlaylistList(page) {
         const apiClient = getApiClient();
         const container = page.querySelector('#playlist-list-container');
+        
+        // Prevent multiple simultaneous requests
+        if (page._loadingPlaylists) {
+            return;
+        }
+        page._loadingPlaylists = true;
+        
         container.innerHTML = '<p>Loading playlists...</p>';
         
         apiClient.ajax({
@@ -858,20 +926,30 @@
             if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
             return response.json();
         }).then(async playlists => {
+            // Store playlists data for filtering
+            page._allPlaylists = playlists;
+            
             if (playlists && playlists.length > 0) {
-                // Calculate summary statistics
-                const totalPlaylists = playlists.length;
-                const enabledPlaylists = playlists.filter(p => p.Enabled !== false).length;
-                const disabledPlaylists = totalPlaylists - enabledPlaylists;
+                // Apply current search filter if any
+                const searchInput = page.querySelector('#playlistSearchInput');
+                const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+                const filteredPlaylists = searchTerm ? filterPlaylists(playlists, searchTerm) : playlists;
                 
-                let html = '<div class="input-container"><h3 class="section-title">Existing Smart Playlists</h3>';
+                // Calculate summary statistics for filtered results
+                const totalPlaylists = playlists.length;
+                const filteredCount = filteredPlaylists.length;
+                const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
+                const disabledPlaylists = filteredCount - enabledPlaylists;
+                
+                let html = '<div class="input-container">';
                 html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
-                html += '<strong>Summary:</strong> ' + totalPlaylists + ' total playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                        (searchTerm ? ' matching "' + searchTerm + '"' : '') +
                         ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
                 html += '</div></div>';
                 
-                // Process playlists sequentially to resolve usernames
-                for (const playlist of playlists) {
+                // Process filtered playlists sequentially to resolve usernames
+                for (const playlist of filteredPlaylists) {
                     const isPublic = playlist.Public ? 'Public' : 'Private';
                     const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
                     const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
@@ -940,7 +1018,7 @@
                             '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
                             '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
                         ) +
-                        '<button type="button" is="emby-button" class="emby-button raised delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
                         '</div>' +
                         '</div>';
                 }
@@ -948,11 +1026,196 @@
             } else {
                 container.innerHTML = '<div class="input-container"><p>No smart playlists found.</p></div>';
             }
+            page._loadingPlaylists = false;
         }).catch(err => {
             console.error('Error loading playlists:', err);
             let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
             container.innerHTML = '<div class="input-container"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+            page._loadingPlaylists = false;
         });
+    }
+
+    function filterPlaylists(playlists, searchTerm) {
+        if (!searchTerm) return playlists;
+        
+        return playlists.filter(playlist => {
+            // Search in playlist name
+            if (playlist.Name && playlist.Name.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in filename
+            if (playlist.FileName && playlist.FileName.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in media types
+            if (playlist.MediaTypes && playlist.MediaTypes.some(type => type.toLowerCase().includes(searchTerm))) {
+                return true;
+            }
+            
+            // Search in rules (field names, operators, and values)
+            if (playlist.ExpressionSets) {
+                for (const expressionSet of playlist.ExpressionSets) {
+                    if (expressionSet.Expressions) {
+                        for (const expression of expressionSet.Expressions) {
+                            // Search in field name
+                            if (expression.MemberName && expression.MemberName.toLowerCase().includes(searchTerm)) {
+                                return true;
+                            }
+                            
+                            // Search in operator
+                            if (expression.Operator && expression.Operator.toLowerCase().includes(searchTerm)) {
+                                return true;
+                            }
+                            
+                            // Search in target value
+                            if (expression.TargetValue && expression.TargetValue.toLowerCase().includes(searchTerm)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Search in sort order
+            if (playlist.Order && playlist.Order.Name && playlist.Order.Name.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in public/private status
+            if (searchTerm === 'public' && playlist.Public) {
+                return true;
+            }
+            if (searchTerm === 'private' && !playlist.Public) {
+                return true;
+            }
+            
+            // Search in enabled/disabled status
+            if (searchTerm === 'enabled' && playlist.Enabled !== false) {
+                return true;
+            }
+            if (searchTerm === 'disabled' && playlist.Enabled === false) {
+                return true;
+            }
+            
+            return false;
+        });
+    }
+
+    function applySearchFilter(page) {
+        const searchInput = page.querySelector('#playlistSearchInput');
+        if (!searchInput || !page._allPlaylists) return;
+        
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        const filteredPlaylists = filterPlaylists(page._allPlaylists, searchTerm);
+        
+        // Re-render the playlist list with filtered results
+        const container = page.querySelector('#playlist-list-container');
+        if (!container) return;
+        
+        if (filteredPlaylists.length === 0) {
+            container.innerHTML = '<div class="input-container"><p>No playlists match your search criteria.</p></div>';
+            return;
+        }
+        
+        // Re-use the existing display logic but with filtered data
+        // We'll need to resolve usernames again for the filtered results
+        displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
+    }
+
+    async function displayFilteredPlaylists(page, filteredPlaylists, searchTerm) {
+        const container = page.querySelector('#playlist-list-container');
+        const apiClient = getApiClient();
+        
+        // Calculate summary statistics for filtered results
+        const totalPlaylists = page._allPlaylists.length;
+        const filteredCount = filteredPlaylists.length;
+        const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
+        const disabledPlaylists = filteredCount - enabledPlaylists;
+        
+        let html = '<div class="input-container">';
+        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
+        html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                (searchTerm ? ' matching "' + searchTerm + '"' : '') +
+                ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
+        html += '</div></div>';
+        
+        // Process filtered playlists sequentially to resolve usernames
+        for (const playlist of filteredPlaylists) {
+            const isPublic = playlist.Public ? 'Public' : 'Private';
+            const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
+            const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
+            const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
+            const sortName = playlist.Order ? playlist.Order.Name : 'Default';
+            const userName = await resolveUsername(apiClient, playlist);
+            const playlistId = playlist.Id || 'NO_ID';
+            const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
+                playlist.MediaTypes.join(', ') : 'All Types';
+            
+            let rulesHtml = '';
+            if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+                playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
+                    if (groupIndex > 0) {
+                        rulesHtml += '<strong style="color: #888;">OR</strong><br>';
+                    }
+                    
+                    if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 3px; background: rgba(255,255,255,0.02);">';
+                        
+                        expressionSet.Expressions.forEach((rule, ruleIndex) => {
+                            if (ruleIndex > 0) {
+                                rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
+                            }
+                            
+                            let fieldName = rule.MemberName;
+                            if (fieldName === 'ItemType') fieldName = 'Media Type';
+                            let operator = rule.Operator;
+                            switch(operator) {
+                                case 'Equal': operator = 'equals'; break;
+                                case 'NotEqual': operator = 'not equals'; break;
+                                case 'Contains': operator = 'contains'; break;
+                                case 'NotContains': operator = "not contains"; break;
+                                case 'GreaterThan': operator = '>'; break;
+                                case 'LessThan': operator = '<'; break;
+                                case 'GreaterThanOrEqual': operator = '>='; break;
+                                case 'LessThanOrEqual': operator = '<='; break;
+                                case 'MatchRegex': operator = 'matches regex'; break;
+                            }
+                            let value = rule.TargetValue;
+                            if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                        });
+                        
+                        rulesHtml += '</div>';
+                    }
+                });
+            } else {
+                rulesHtml = '<em>No rules defined</em>';
+            }
+            
+            html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px; margin-bottom: 1.5em;">' +
+                '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                '<div class="field-description">' +
+                '<strong>File:</strong> ' + playlist.FileName + '<br>' +
+                '<strong>User:</strong> ' + userName + '<br>' +
+                '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
+                '<strong>Sort:</strong> ' + sortName + '<br>' +
+                '<strong>Visibility:</strong> ' + isPublic + '<br>' +
+                '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
+                '</div>' +
+                '<div style="margin-top: 1em;">' +
+                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                (isEnabled ? 
+                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
+                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                ) +
+                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                '</div>' +
+                '</div>';
+        }
+        container.innerHTML = html;
     }
 
     function deletePlaylist(page, playlistId, playlistName) {
@@ -972,7 +1235,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error deleting playlist:', err);
-            showNotification('Failed to delete playlist "' + playlistName + '". Check console for details.');
+            handleApiError(err, 'Failed to delete playlist "' + playlistName + '".');
         });
     }
 
@@ -994,7 +1257,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error enabling playlist:', err);
-            showNotification('Failed to enable playlist "' + playlistName + '". Check console for details.');
+            handleApiError(err, 'Failed to enable playlist "' + playlistName + '".');
         });
     }
 
@@ -1016,7 +1279,7 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error disabling playlist:', err);
-            showNotification('Failed to disable playlist "' + playlistName + '". Check console for details.');
+            handleApiError(err, 'Failed to disable playlist "' + playlistName + '".');
         });
     }
 
@@ -1067,7 +1330,7 @@
         modal.classList.remove('hide');
         
         // Create AbortController for modal event listeners
-        const modalAbortController = new AbortController();
+        const modalAbortController = createAbortController();
         const modalSignal = modalAbortController.signal;
         
         // Store the controller on the modal for cleanup
@@ -1094,17 +1357,21 @@
             }
         };
 
+        // Store the backdrop handler on the modal for cleanup
+        modal._modalBackdropHandler = handleBackdropClick;
+        
         // Add event listeners with AbortController signal
-        confirmBtn.addEventListener('click', handleConfirm, { signal: modalSignal });
-        cancelBtn.addEventListener('click', handleCancel, { signal: modalSignal });
-        modal.addEventListener('click', handleBackdropClick, { signal: modalSignal });
+        confirmBtn.addEventListener('click', handleConfirm, getEventListenerOptions(modalSignal));
+        cancelBtn.addEventListener('click', handleCancel, getEventListenerOptions(modalSignal));
+        modal.addEventListener('click', handleBackdropClick, getEventListenerOptions(modalSignal));
     }
 
     function cleanupModalListeners(modal) {
         // Remove any existing backdrop listener to prevent accumulation
-        if (currentModalBackdropHandler) {
-            modal.removeEventListener('click', currentModalBackdropHandler);
-            currentModalBackdropHandler = null;
+        // Use modal-specific handler instead of global
+        if (modal._modalBackdropHandler) {
+            modal.removeEventListener('click', modal._modalBackdropHandler);
+            modal._modalBackdropHandler = null;
         }
         
         // Abort any AbortController-managed listeners
@@ -1235,18 +1502,16 @@
                 }
                 
                                         // If we get here, form population was successful - now enter edit mode
-                editMode = true;
-                editingPlaylistId = playlistId;
+                setPageEditState(page, true, playlistId);
                 
                 // Update UI to show edit mode
                 const editIndicator = page.querySelector('#edit-mode-indicator');
                 editIndicator.style.display = 'block';
                 editIndicator.querySelector('span').textContent = '✏️ Editing Mode - Modifying existing playlist "' + playlist.Name + '"';
-                page.querySelector('#current-tab-title').textContent = 'Edit Playlist';
                 page.querySelector('#submitBtn').textContent = 'Update Playlist';
                 
                 // Update tab button text
-                const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
                 if (createTabButton) {
                     createTabButton.textContent = 'Edit Playlist';
                 }
@@ -1267,43 +1532,20 @@
         }).catch(err => {
             Dashboard.hideLoadingMsg();
             console.error('Error loading playlist for edit:', err);
-            console.error('Error details:', err.status, err.statusText, err.message);
-            
-            if (err && typeof err.text === 'function') {
-                err.text().then(serverMessage => {
-                    console.error('Server error message:', serverMessage);
-                    let friendlyMessage = 'Failed to load playlist for editing.';
-                    try {
-                        friendlyMessage = JSON.parse(serverMessage) || friendlyMessage;
-                    } catch (e) {
-                        friendlyMessage = serverMessage || friendlyMessage;
-                    }
-                    showNotification(friendlyMessage);
-                }).catch(() => {
-                    showNotification('Failed to load playlist for editing. HTTP ' + (err.status || 'Unknown'));
-                });
-            } else {
-                let errorMessage = 'Failed to load playlist for editing.';
-                if (err && err.message) {
-                    errorMessage = errorMessage + ' Error: ' + err.message;
-                }
-                showNotification(errorMessage);
-            }
+            handleApiError(err, 'Failed to load playlist for editing');
         });
     }
 
     function cancelEdit(page) {
-        editMode = false;
-        editingPlaylistId = null;
+        setPageEditState(page, false, null);
         
         // Update UI to show create mode
         const editIndicator = page.querySelector('#edit-mode-indicator');
         editIndicator.style.display = 'none';
-        page.querySelector('#current-tab-title').textContent = 'Create Playlist';
         page.querySelector('#submitBtn').textContent = 'Create Playlist';
         
         // Restore tab button text
-        const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+        const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
         if (createTabButton) {
             createTabButton.textContent = 'Create Playlist';
         }
@@ -1337,9 +1579,10 @@
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
-            }).catch(() => {
+            }).catch(err => {
                 Dashboard.hideLoadingMsg();
-                showNotification('Failed to save settings.');
+                console.error('Error saving configuration:', err);
+                handleApiError(err, 'Failed to save settings');
             });
         }).catch(() => {
             Dashboard.hideLoadingMsg();
@@ -1359,40 +1602,17 @@
             showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
-            
-            // Try to extract the specific error message from the server response
-            let errorMessage = 'Failed to trigger playlist refresh. Please check server logs.';
-            
-            if (err && typeof err.text === 'function') {
-                // For HTTP error responses, try to read the response body
-                err.text().then(serverMessage => {
-                    try {
-                        const response = JSON.parse(serverMessage);
-                        if (response && response.message) {
-                            errorMessage = response.message;
-                        }
-                    } catch (e) {
-                        // If parsing fails, use the raw server message if available
-                        if (serverMessage && serverMessage.trim()) {
-                            errorMessage = serverMessage;
-                        }
-                    }
-                    showNotification(errorMessage);
-                }).catch(() => {
-                    showNotification(errorMessage);
-                });
-            } else {
-                showNotification(errorMessage);
-            }
+            console.error('Error refreshing playlists:', err);
+            handleApiError(err, 'Failed to trigger playlist refresh');
         });
     }
     
     function initPage(page) {
-        // Only initialize once to prevent duplicate event listeners
-        if (pageInitialized) {
+        // Check if this specific page is already initialized
+        if (page._pageInitialized) {
             return;
         }
-        pageInitialized = true;
+        page._pageInitialized = true;
         
         // Show loading state
         const userSelect = page.querySelector('#playlistUser');
@@ -1420,31 +1640,154 @@
             }
             
             // Enable form submission
+            const editState = getPageEditState(page);
             const submitBtn = page.querySelector('#submitBtn');
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = editMode ? 'Update Playlist' : 'Create Playlist';
+                submitBtn.textContent = editState.editMode ? 'Update Playlist' : 'Create Playlist';
             }
         }).catch((error) => {
             console.error('Error during page initialization:', error);
             showNotification('Some configuration options failed to load. Please refresh the page.');
             
             // Still enable form submission even if some things failed
+            const editState = getPageEditState(page);
             const submitBtn = page.querySelector('#submitBtn');
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = editMode ? 'Update Playlist' : 'Create Playlist';
+                submitBtn.textContent = editState.editMode ? 'Update Playlist' : 'Create Playlist';
             }
         });
 
         // Set up event listeners (these don't depend on async operations)
         setupEventListeners(page);
         
+        // Set up tab slider functionality
+        setupTabSlider(page);
+        
         // Load configuration (this can run independently)
         loadConfiguration(page);
+
+        applyMainContainerLayoutFix(page);
+        applyNotificationLayoutFix(page);
+    }
+
+    function setupTabSlider(page) {
+        var tabSlider = page.querySelector('.emby-tabs-slider');
+        if (!tabSlider) return;
+        
+        // Prevent multiple setups on the same slider
+        if (tabSlider._sliderInitialized) return;
+        tabSlider._sliderInitialized = true;
+
+        // --- FORCE PARENT CONTAINERS TO ALLOW SCROLLING ---
+        var parent = tabSlider.parentElement;
+        while (parent && parent !== document.body) {
+            parent.style.overflowX = 'visible';
+            parent.style.overflowY = 'visible';
+            parent.style.width = '100%';
+            parent = parent.parentElement;
+        }
+
+        // --- TAB SLIDER STYLES ---
+        tabSlider.style.overflowX = 'auto';
+        tabSlider.style.overflowY = 'hidden';
+        tabSlider.style.whiteSpace = 'nowrap';
+        tabSlider.style.scrollbarWidth = 'thin';
+        tabSlider.style.msOverflowStyle = 'auto';
+        tabSlider.style.marginBottom = '1em';
+        tabSlider.style.paddingBottom = '0.5em';
+        tabSlider.style.position = 'relative';
+        tabSlider.style.width = '100%';
+        tabSlider.style.minHeight = '44px'; // ensure visible
+        tabSlider.style.background = 'inherit';
+
+        // Hide webkit scrollbar (best effort)
+        tabSlider.style.setProperty('scrollbar-width', 'thin');
+        tabSlider.style.setProperty('-webkit-scrollbar', 'display: none');
+
+        // --- TAB BUTTON STYLES ---
+        var tabButtons = tabSlider.querySelectorAll('.emby-tab-button');
+        for (var i = 0; i < tabButtons.length; i++) {
+            var button = tabButtons[i];
+            button.style.display = 'inline-block';
+            button.style.whiteSpace = 'nowrap';
+            button.style.marginRight = (i < tabButtons.length - 1) ? '0.5em' : '0';
+            button.style.flexShrink = '0';
+            button.style.minWidth = 'auto';
+            button.style.flex = 'none';
+            button.style.minHeight = '40px';
+            button.style.verticalAlign = 'middle';
+        }
+
+        // --- LISTENER LOGIC (unchanged) ---
+        tabSlider._sliderListeners = [];
+        function checkOverflow() {
+            var existingIndicator = tabSlider.querySelector('.tab-overflow-indicator');
+            if (existingIndicator) { existingIndicator.remove(); }
+        }
+        checkOverflow();
+        var resizeHandler = function() { checkOverflow(); };
+        window.addEventListener('resize', resizeHandler);
+        tabSlider._sliderListeners.push({ element: window, event: 'resize', handler: resizeHandler });
+        var wheelHandler = function(e) {
+            if (e.deltaY !== 0) {
+                e.preventDefault();
+                tabSlider.scrollLeft += e.deltaY;
+            }
+        };
+        tabSlider.addEventListener('wheel', wheelHandler);
+        tabSlider._sliderListeners.push({ element: tabSlider, event: 'wheel', handler: wheelHandler });
+        var isScrolling = false;
+        var startX = 0;
+        var scrollLeft = 0;
+        var touchStartHandler = function(e) {
+            isScrolling = true;
+            startX = e.touches[0].pageX - tabSlider.offsetLeft;
+            scrollLeft = tabSlider.scrollLeft;
+        };
+        tabSlider.addEventListener('touchstart', touchStartHandler);
+        tabSlider._sliderListeners.push({ element: tabSlider, event: 'touchstart', handler: touchStartHandler });
+        var touchMoveHandler = function(e) {
+            if (!isScrolling) return;
+            e.preventDefault();
+            var x = e.touches[0].pageX - tabSlider.offsetLeft;
+            var walk = (x - startX) * 2;
+            tabSlider.scrollLeft = scrollLeft - walk;
+        };
+        tabSlider.addEventListener('touchmove', touchMoveHandler);
+        tabSlider._sliderListeners.push({ element: tabSlider, event: 'touchmove', handler: touchMoveHandler });
+        var touchEndHandler = function() { isScrolling = false; };
+        tabSlider.addEventListener('touchend', touchEndHandler);
+        tabSlider._sliderListeners.push({ element: tabSlider, event: 'touchend', handler: touchEndHandler });
+        function scrollToActiveTab() {
+            var activeTab = tabSlider.querySelector('.emby-tab-button-active');
+            if (activeTab) {
+                var tabRect = activeTab.getBoundingClientRect();
+                var sliderRect = tabSlider.getBoundingClientRect();
+                if (tabRect.left < sliderRect.left || tabRect.right > sliderRect.right) {
+                    activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            }
+        }
+        var clickHandler = function(e) {
+            if (e.target.closest('.emby-tab-button')) {
+                setTimeout(scrollToActiveTab, 100);
+            }
+        };
+        tabSlider.addEventListener('click', clickHandler);
+        tabSlider._sliderListeners.push({ element: tabSlider, event: 'click', handler: clickHandler });
+        setTimeout(scrollToActiveTab, 100);
     }
 
     function setupEventListeners(page) {
+        // Create AbortController for page event listeners
+        const pageAbortController = createAbortController();
+        const pageSignal = pageAbortController.signal;
+        
+        // Store controller on the page for cleanup
+        page._pageAbortController = pageAbortController;
+        
         page.addEventListener('click', function (e) {
             const target = e.target;
             
@@ -1486,12 +1829,61 @@
             if (target.closest('#cancelEditBtn')) {
                 cancelEdit(page);
             }
-        });
+        }, getEventListenerOptions(pageSignal));
         
-        page.querySelector('#playlistForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            createPlaylist(page);
-        });
+        const playlistForm = page.querySelector('#playlistForm');
+        if (playlistForm) {
+            playlistForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                createPlaylist(page);
+            }, getEventListenerOptions(pageSignal));
+        }
+        
+        // Add search input event listener
+        const searchInput = page.querySelector('#playlistSearchInput');
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
+        if (searchInput) {
+            // Store search timeout on the page for cleanup
+            page._searchTimeout = null;
+            
+            // Function to update clear button visibility
+            const updateClearButtonVisibility = () => {
+                if (clearSearchBtn) {
+                    clearSearchBtn.style.display = searchInput.value.trim() ? 'flex' : 'none';
+                }
+            };
+            
+            // Use debounced search to avoid too many re-renders
+            searchInput.addEventListener('input', function() {
+                updateClearButtonVisibility();
+                clearTimeout(page._searchTimeout);
+                page._searchTimeout = setTimeout(() => {
+                    applySearchFilter(page);
+                }, 300); // 300ms delay
+            }, getEventListenerOptions(pageSignal));
+            
+            // Also search on Enter key
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    clearTimeout(page._searchTimeout);
+                    applySearchFilter(page);
+                }
+            }, getEventListenerOptions(pageSignal));
+            
+            // Handle clear button click
+            if (clearSearchBtn) {
+                clearSearchBtn.addEventListener('click', function() {
+                    searchInput.value = '';
+                    updateClearButtonVisibility();
+                    clearTimeout(page._searchTimeout);
+                    applySearchFilter(page);
+                    searchInput.focus(); // Return focus to search input
+                }, getEventListenerOptions(pageSignal));
+            }
+            
+            // Initialize clear button visibility
+            updateClearButtonVisibility();
+        }
     }
 
     document.addEventListener('pageshow', function (e) {
@@ -1500,16 +1892,16 @@
             const tabButtons = page.querySelectorAll('.emby-tab-button');
             const tabContents = page.querySelectorAll('[data-tab-content]');
             
-            // Only add tab listeners once to prevent duplicates
-            if (!tabListenersInitialized) {
-                tabListenersInitialized = true;
+            // Only add tab listeners once per page to prevent duplicates
+            if (!page._tabListenersInitialized) {
+                page._tabListenersInitialized = true;
                 
                 // Create AbortController for tab listeners
-                const tabAbortController = new AbortController();
+                const tabAbortController = createAbortController();
                 const tabSignal = tabAbortController.signal;
                 
-                // Store controller globally for potential cleanup
-                window._smartPlaylistTabController = tabAbortController;
+                // Store controller on the page for cleanup
+                page._tabAbortController = tabAbortController;
                 
                 tabButtons.forEach(button => {
                     button.addEventListener('click', () => {
@@ -1522,14 +1914,30 @@
                             cleanupModalListeners(modal);
                         }
                         
-                        tabButtons.forEach(btn => btn.classList.remove('is-active'));
-                        button.classList.add('is-active');
-                        page.querySelector('#current-tab-title').textContent = button.querySelector('.emby-tab-button-title').textContent;
+                        tabButtons.forEach(btn => btn.classList.remove('is-active', 'emby-tab-button-active'));
+                        button.classList.add('is-active', 'emby-tab-button-active');
                         tabContents.forEach(content => {
                             content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
                         });
                         if (tabId === 'manage') { loadPlaylistList(page); }
-                    }, { signal: tabSignal });
+                        
+                        // Scroll to the clicked tab if it's not fully visible
+                        setTimeout(() => {
+                            const tabSlider = page.querySelector('.emby-tabs-slider');
+                            if (tabSlider) {
+                                const buttonRect = button.getBoundingClientRect();
+                                const sliderRect = tabSlider.getBoundingClientRect();
+                                
+                                if (buttonRect.left < sliderRect.left || buttonRect.right > sliderRect.right) {
+                                    button.scrollIntoView({
+                                        behavior: 'smooth',
+                                        block: 'nearest',
+                                        inline: 'center'
+                                    });
+                                }
+                            }
+                        }, 50);
+                    }, getEventListenerOptions(tabSignal));
                 });
             }
             
@@ -1559,15 +1967,68 @@
             cleanupModalListeners(modal);
         }
         
-        // Clean up tab listeners
-        if (window._smartPlaylistTabController) {
-            window._smartPlaylistTabController.abort();
-            window._smartPlaylistTabController = null;
+        // Clean up page event listeners
+        if (page._pageAbortController) {
+            page._pageAbortController.abort();
+            page._pageAbortController = null;
         }
         
-        // Reset initialization flags
-        pageInitialized = false;
-        tabListenersInitialized = false;
+        // Clean up tab listeners
+        if (page._tabAbortController) {
+            page._tabAbortController.abort();
+            page._tabAbortController = null;
+        }
+        
+        // Clean up search timeout
+        if (page._searchTimeout) {
+            clearTimeout(page._searchTimeout);
+            page._searchTimeout = null;
+        }
+        
+        // Clean up tab slider listeners (including window event listeners)
+        const tabSlider = page.querySelector('.emby-tabs-slider');
+        if (tabSlider && tabSlider._sliderListeners) {
+            tabSlider._sliderListeners.forEach(listener => {
+                if (listener.element && listener.event && listener.handler) {
+                    try {
+                        listener.element.removeEventListener(listener.event, listener.handler);
+                    } catch (e) {
+                        // Ignore errors when removing listeners (element might be gone)
+                        console.warn('Failed to remove event listener:', e);
+                    }
+                }
+            });
+            tabSlider._sliderListeners = null;
+            tabSlider._sliderInitialized = false;
+        }
+        
+        // Reset page-specific initialization flags and edit state
+        page._pageInitialized = false;
+        page._tabListenersInitialized = false;
+        page._editMode = false;
+        page._editingPlaylistId = null;
+        page._loadingPlaylists = false;
+        page._allPlaylists = null; // Clear stored playlist data
+    }
+
+    function applyMainContainerLayoutFix(page) {
+        // Apply to all tab content containers
+        var tabContents = page.querySelectorAll('.page-content');
+        for (var i = 0; i < tabContents.length; i++) {
+            var el = tabContents[i];
+            el.style.maxWidth = '830px';
+            el.style.boxSizing = 'border-box';
+            el.style.paddingRight = '25px';
+        }
+    }
+
+    function applyNotificationLayoutFix(page) {
+        var notificationArea = page.querySelector('#plugin-notification-area');
+        if (notificationArea) {
+            notificationArea.style.maxWidth = '805px';
+            notificationArea.style.marginRight = '25px';
+            notificationArea.style.boxSizing = 'border-box';
+        }
     }
 
 })();
