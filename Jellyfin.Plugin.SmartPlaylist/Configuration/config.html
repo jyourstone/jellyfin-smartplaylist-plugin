@@ -386,17 +386,17 @@
         <div id="delete-confirm-modal" class="custom-modal hide">
             <div class="custom-modal-container">
                 <div class="modal-content">
-                    <div class="custom-modal-header">
-                        <h3 class="custom-modal-title">Confirm Deletion</h3>
+                    <div class="custom-modal-header" style="margin-top: -1em;">
+                        <h2 class="custom-modal-title">Confirm Deletion</h2>
                     </div>
                     <div class="custom-modal-body">
                         <p id="delete-confirm-text"></p>
-                        <div style="margin-top: 1em; padding: 0.5em; background-color: #3a3a3a; border-radius: 4px;">
+                        <div style="margin-top: 1em; margin-bottom: 1em; padding: 0.5em; background-color: #181818;">
                             <label style="display: flex; align-items: center; cursor: pointer;">
                                 <input type="checkbox" id="delete-jellyfin-playlist-checkbox" checked style="margin-right: 0.5em;">
                                 <span>Also delete the Jellyfin playlist</span>
                             </label>
-                            <div style="font-size: 0.9em; color: #aaa; margin-top: 0.5em;">
+                            <div style="font-size: 0.9em; color: #aaa; margin-top: 0.5em; margin-bottom: 0.5em;">
                                 <strong>Unchecked:</strong> Only delete the smart playlist configuration. The Jellyfin playlist will remain and can be managed manually.<br><br>
                                 <strong>Checked:</strong> Delete both the smart playlist configuration and the Jellyfin playlist.
                             </div>

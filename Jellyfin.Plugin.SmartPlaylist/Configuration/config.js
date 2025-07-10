@@ -1361,13 +1361,10 @@
         modalContainer.style.left = '50%';
         modalContainer.style.transform = 'translate(-50%, -50%)';
         modalContainer.style.zIndex = '10001';
-        modalContainer.style.backgroundColor = '#2a2a2a';
-        modalContainer.style.border = '1px solid #555';
-        modalContainer.style.borderRadius = '8px';
+        modalContainer.style.backgroundColor = '#101010';
         modalContainer.style.padding = '1.5em';
         modalContainer.style.width = '90%';
         modalContainer.style.maxWidth = '400px';
-        modalContainer.style.boxShadow = '0 8px 32px rgba(0,0,0,0.8)';
 
         // Style the modal backdrop
         modal.style.position = 'fixed';
@@ -1375,7 +1372,7 @@
         modal.style.left = '0';
         modal.style.width = '100%';
         modal.style.height = '100%';
-        modal.style.backgroundColor = 'rgba(0,0,0,0.75)';
+        modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
         modal.style.zIndex = '10000';
 
         confirmText.textContent = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
