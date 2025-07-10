@@ -1099,29 +1099,89 @@
                 return true;
             }
             
+            // Search in legacy username field (for backward compatibility)
+            if (playlist.User && playlist.User.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
             return false;
         });
     }
 
-    function applySearchFilter(page) {
+    async function filterPlaylistsByUser(playlists, searchTerm) {
+        if (!searchTerm) return playlists;
+        
+        const apiClient = getApiClient();
+        const matchingPlaylists = [];
+        
+        // Process playlists sequentially to resolve usernames and search
+        for (const playlist of playlists) {
+            try {
+                const userName = await resolveUsername(apiClient, playlist);
+                if (userName.toLowerCase().includes(searchTerm)) {
+                    matchingPlaylists.push(playlist);
+                }
+            } catch (err) {
+                console.error('Error resolving username for playlist search:', err);
+                // Continue with other playlists even if one fails
+            }
+        }
+        
+        return matchingPlaylists;
+    }
+
+    async function applySearchFilter(page) {
         const searchInput = page.querySelector('#playlistSearchInput');
         if (!searchInput || !page._allPlaylists) return;
         
         const searchTerm = searchInput.value.trim().toLowerCase();
-        const filteredPlaylists = filterPlaylists(page._allPlaylists, searchTerm);
         
-        // Re-render the playlist list with filtered results
-        const container = page.querySelector('#playlist-list-container');
-        if (!container) return;
-        
-        if (filteredPlaylists.length === 0) {
-            container.innerHTML = '<div class="input-container"><p>No playlists match your search criteria.</p></div>';
+        if (!searchTerm) {
+            // No search term, show all playlists
+            displayFilteredPlaylists(page, page._allPlaylists, '');
             return;
         }
         
-        // Re-use the existing display logic but with filtered data
-        // We'll need to resolve usernames again for the filtered results
-        displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
+        // Show loading state for user search
+        const container = page.querySelector('#playlist-list-container');
+        if (container) {
+            container.innerHTML = '<div class="input-container"><p>Searching playlists...</p></div>';
+        }
+        
+        try {
+            // Do basic filtering (synchronous) first
+            const basicFiltered = filterPlaylists(page._allPlaylists, searchTerm);
+            
+            // Also do user search (asynchronous) in parallel
+            const userFiltered = await filterPlaylistsByUser(page._allPlaylists, searchTerm);
+            
+            // Combine results, removing duplicates by playlist ID
+            const combinedResults = new Map();
+            
+            // Add basic filtered results
+            basicFiltered.forEach(playlist => {
+                combinedResults.set(playlist.Id, playlist);
+            });
+            
+            // Add user filtered results
+            userFiltered.forEach(playlist => {
+                combinedResults.set(playlist.Id, playlist);
+            });
+            
+            const filteredPlaylists = Array.from(combinedResults.values());
+            
+            if (filteredPlaylists.length === 0) {
+                container.innerHTML = '<div class="input-container"><p>No playlists match your search criteria.</p></div>';
+                return;
+            }
+            
+            // Re-use the existing display logic but with filtered data
+            displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
+            
+        } catch (err) {
+            console.error('Error during search:', err);
+            container.innerHTML = '<div class="input-container"><p style="color: #ff6b6b;">Search error: ' + err.message + '</p></div>';
+        }
     }
 
     async function displayFilteredPlaylists(page, filteredPlaylists, searchTerm) {
@@ -1857,8 +1917,13 @@
             searchInput.addEventListener('input', function() {
                 updateClearButtonVisibility();
                 clearTimeout(page._searchTimeout);
-                page._searchTimeout = setTimeout(() => {
-                    applySearchFilter(page);
+                page._searchTimeout = setTimeout(async () => {
+                    try {
+                        await applySearchFilter(page);
+                    } catch (err) {
+                        console.error('Error during search:', err);
+                        showNotification('Search error: ' + err.message);
+                    }
                 }, 300); // 300ms delay
             }, getEventListenerOptions(pageSignal));
             
@@ -1866,7 +1931,10 @@
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     clearTimeout(page._searchTimeout);
-                    applySearchFilter(page);
+                    applySearchFilter(page).catch(err => {
+                        console.error('Error during search:', err);
+                        showNotification('Search error: ' + err.message);
+                    });
                 }
             }, getEventListenerOptions(pageSignal));
             
@@ -1876,7 +1944,10 @@
                     searchInput.value = '';
                     updateClearButtonVisibility();
                     clearTimeout(page._searchTimeout);
-                    applySearchFilter(page);
+                    applySearchFilter(page).catch(err => {
+                        console.error('Error during search:', err);
+                        showNotification('Search error: ' + err.message);
+                    });
                     searchInput.focus(); // Return focus to search input
                 }, getEventListenerOptions(pageSignal));
             }
