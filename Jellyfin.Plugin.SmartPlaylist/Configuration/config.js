@@ -774,13 +774,11 @@
                     setPageEditState(page, false, null);
                     const editIndicator = page.querySelector('#edit-mode-indicator');
                     editIndicator.style.display = 'none';
-                    const tabTitle = page.querySelector('#current-tab-title');
-                    if (tabTitle) tabTitle.textContent = 'Create Playlist';
                     const submitBtn = page.querySelector('#submitBtn');
                     if (submitBtn) submitBtn.textContent = 'Create Playlist';
                     
                     // Restore tab button text
-                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
                     if (createTabButton) {
                         createTabButton.textContent = 'Create Playlist';
                     }
@@ -1510,12 +1508,10 @@
                 const editIndicator = page.querySelector('#edit-mode-indicator');
                 editIndicator.style.display = 'block';
                 editIndicator.querySelector('span').textContent = '✏️ Editing Mode - Modifying existing playlist "' + playlist.Name + '"';
-                const tabTitle = page.querySelector('#current-tab-title');
-                if (tabTitle) tabTitle.textContent = 'Edit Playlist';
                 page.querySelector('#submitBtn').textContent = 'Update Playlist';
                 
                 // Update tab button text
-                const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+                const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
                 if (createTabButton) {
                     createTabButton.textContent = 'Edit Playlist';
                 }
@@ -1546,12 +1542,10 @@
         // Update UI to show create mode
         const editIndicator = page.querySelector('#edit-mode-indicator');
         editIndicator.style.display = 'none';
-        const tabTitle = page.querySelector('#current-tab-title');
-        if (tabTitle) tabTitle.textContent = 'Create Playlist';
         page.querySelector('#submitBtn').textContent = 'Create Playlist';
         
         // Restore tab button text
-        const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-tab-button-title');
+        const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
         if (createTabButton) {
             createTabButton.textContent = 'Create Playlist';
         }
@@ -1729,7 +1723,6 @@
         // --- LISTENER LOGIC (unchanged) ---
         tabSlider._sliderListeners = [];
         function checkOverflow() {
-            var isOverflowing = tabSlider.scrollWidth > tabSlider.clientWidth;
             var existingIndicator = tabSlider.querySelector('.tab-overflow-indicator');
             if (existingIndicator) { existingIndicator.remove(); }
         }
@@ -1923,8 +1916,6 @@
                         
                         tabButtons.forEach(btn => btn.classList.remove('is-active', 'emby-tab-button-active'));
                         button.classList.add('is-active', 'emby-tab-button-active');
-                        const tabTitle = page.querySelector('#current-tab-title');
-                        if (tabTitle) tabTitle.textContent = button.querySelector('.emby-button-foreground').textContent;
                         tabContents.forEach(content => {
                             content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
                         });
