@@ -1052,7 +1052,7 @@
                             }
                             
                             if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                                rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 1px; background: rgba(255,255,255,0.02);">';
+                                rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
                                 
                                 expressionSet.Expressions.forEach((rule, ruleIndex) => {
                                     if (ruleIndex > 0) {
@@ -1075,7 +1075,7 @@
                                     }
                                     let value = rule.TargetValue;
                                     if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 1px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
                                 });
                                 
                                 rulesHtml += '</div>';
@@ -1085,13 +1085,13 @@
                         rulesHtml = '<em>No rules defined</em>';
                     }
                     
-                    html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
+                    html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
                         '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                         '<div class="field-description">' +
                         '<strong>File:</strong> ' + playlist.FileName + '<br>' +
                         '<strong>User:</strong> ' + userName + '<br>' +
                         '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
-                        '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
+                        '<strong>Rules:</strong><br>' + rulesHtml + 
                         '<strong>Sort:</strong> ' + sortName + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
