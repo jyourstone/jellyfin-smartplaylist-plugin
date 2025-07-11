@@ -320,7 +320,7 @@
         if (operatorSelect && operatorSelect.value === 'MatchRegex') {
             const helpDiv = document.createElement('div');
             helpDiv.className = 'regex-help field-description';
-            helpDiv.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em; font-size: 0.85em; color: #aaa; background: rgba(255,255,255,0.05); padding: 0.5em; border-radius: 3px;';
+            helpDiv.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em; font-size: 0.85em; color: #aaa; background: rgba(255,255,255,0.05); padding: 0.5em; border-radius: 1px;';
             helpDiv.innerHTML = '<strong>Regex Help:</strong> Use .NET syntax. Examples: <code>(?i)swe</code> (case-insensitive), <code>(?i)(eng|en)</code> (multiple options), <code>^Action</code> (starts with). Do not use JavaScript-style /pattern/flags.<br><strong>Test patterns:</strong> <a href="https://regex101.com/?flavor=dotnet" target="_blank" style="color: #00a4dc;">Regex101.com (.NET flavor)</a>';
             ruleGroup.appendChild(helpDiv);
         }
@@ -336,8 +336,8 @@
         
         // Apply styles directly via JavaScript to bypass CSS specificity issues
         logicGroupDiv.style.cssText = `
-            border: 2px solid #666 !important;
-            border-radius: 8px !important;
+            border: 1px solid #666 !important;
+            border-radius: 2px !important;
             padding: 1.5em 1.5em 0.5em 1.5em !important;
             margin-bottom: 1em !important;
             background: rgba(255, 255, 255, 0.05) !important;
@@ -574,8 +574,8 @@
         
         // Apply styles directly via JavaScript to bypass CSS specificity issues
         logicGroupDiv.style.cssText = `
-            border: 2px solid #666 !important;
-            border-radius: 8px !important;
+            border: 1px solid #666 !important;
+            border-radius: 2px !important;
             padding: 1.5em 1.5em 0.5em 1.5em !important;
             margin-bottom: 1em !important;
             background: rgba(255, 255, 255, 0.05) !important;
@@ -941,7 +941,7 @@
                 const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
                 const disabledPlaylists = filteredCount - enabledPlaylists;
                 
-                let html = '<div class="input-container">';
+                let html = '<div class="inputContainer">';
                 html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
                 html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                         (searchTerm ? ' matching "' + searchTerm + '"' : '') +
@@ -968,7 +968,7 @@
                             }
                             
                             if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                                rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 3px; background: rgba(255,255,255,0.02);">';
+                                rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 1px; background: rgba(255,255,255,0.02);">';
                                 
                                 expressionSet.Expressions.forEach((rule, ruleIndex) => {
                                     if (ruleIndex > 0) {
@@ -991,7 +991,7 @@
                                     }
                                     let value = rule.TargetValue;
                                     if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
+                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 1px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
                                 });
                                 
                                 rulesHtml += '</div>';
@@ -1001,7 +1001,7 @@
                         rulesHtml = '<em>No rules defined</em>';
                     }
                     
-                    html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px; margin-bottom: 1.5em;">' +
+                    html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
                         '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                         '<div class="field-description">' +
                         '<strong>File:</strong> ' + playlist.FileName + '<br>' +
@@ -1024,13 +1024,13 @@
                 }
                 container.innerHTML = html;
             } else {
-                container.innerHTML = '<div class="input-container"><p>No smart playlists found.</p></div>';
+                container.innerHTML = '<div class="inputContainer"><p>No smart playlists found.</p></div>';
             }
             page._loadingPlaylists = false;
         }).catch(err => {
             console.error('Error loading playlists:', err);
             let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
-            container.innerHTML = '<div class="input-container"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
             page._loadingPlaylists = false;
         });
     }
@@ -1145,7 +1145,7 @@
         // Show loading state for user search
         const container = page.querySelector('#playlist-list-container');
         if (container) {
-            container.innerHTML = '<div class="input-container"><p>Searching playlists...</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p>Searching playlists...</p></div>';
         }
         
         try {
@@ -1171,7 +1171,7 @@
             const filteredPlaylists = Array.from(combinedResults.values());
             
             if (filteredPlaylists.length === 0) {
-                container.innerHTML = '<div class="input-container"><p>No playlists match your search criteria.</p></div>';
+                container.innerHTML = '<div class="inputContainer"><p>No playlists match your search criteria.</p></div>';
                 return;
             }
             
@@ -1180,7 +1180,7 @@
             
         } catch (err) {
             console.error('Error during search:', err);
-            container.innerHTML = '<div class="input-container"><p style="color: #ff6b6b;">Search error: ' + err.message + '</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + err.message + '</p></div>';
         }
     }
 
@@ -1194,8 +1194,8 @@
         const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
         const disabledPlaylists = filteredCount - enabledPlaylists;
         
-        let html = '<div class="input-container">';
-        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
+        let html = '<div class="inputContainer">';
+        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 1px; border-left: 3px solid #00a4dc;">';
         html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                 (searchTerm ? ' matching "' + searchTerm + '"' : '') +
                 ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
@@ -1221,7 +1221,7 @@
                     }
                     
                     if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 3px; background: rgba(255,255,255,0.02);">';
+                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 1px; background: rgba(255,255,255,0.02);">';
                         
                         expressionSet.Expressions.forEach((rule, ruleIndex) => {
                             if (ruleIndex > 0) {
@@ -1254,7 +1254,7 @@
                 rulesHtml = '<em>No rules defined</em>';
             }
             
-            html += '<div class="input-container" style="border: 1px solid #444; padding: 1em; border-radius: 4px; margin-bottom: 1.5em;">' +
+            html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
                 '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                 '<div class="field-description">' +
                 '<strong>File:</strong> ' + playlist.FileName + '<br>' +

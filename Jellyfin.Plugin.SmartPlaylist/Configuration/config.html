@@ -242,69 +242,69 @@
                 <!-- Create Tab -->
                 <div id="create-tab" class="page-content hide" data-tab-content="create">
                     <form id="playlistForm" style="margin-top:2em;">
-                        <div class="input-container" style="margin-bottom: 1.5em;">
-                            <label class="input-label" for="playlistName">Playlist Name</label>
-                            <input type="text" style="margin-top: 5px;margin-bottom: 5px;" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
-                            <div class="field-description">The name of the playlist that will be created in Jellyfin. The suffix [Smart] will always be added.</div>
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <label class="inputLabel" for="playlistName">Playlist Name</label>
+                            <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
+                            <div class="fieldDescription">The name of the playlist that will be created in Jellyfin. The suffix [Smart] will always be added.</div>
                         </div>
                        
-                        <div class="input-container" style="margin-bottom: 1em;">
-                            <label class="input-label">Media Types</label>
-                            <div class="media-type-flex" style="margin-top: 5px;">
-                                <label class="checkbox-label">
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <label class="inputLabel">Media Types</label>
+                            <div class="media-type-flex">
+                                <label class="checkboxLabel">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeMovie" class="emby-checkbox media-type-checkbox" value="Movie">
                                     <span>Movies</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkboxLabel">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeEpisode" class="emby-checkbox media-type-checkbox" value="Episode">
                                     <span>TV Shows</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkboxLabel">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeAudio" class="emby-checkbox media-type-checkbox" value="Audio">
                                     <span>Music</span>
                                 </label>
                             </div>
-                            <div class="field-description" style="margin-bottom: 1.5em;">Select one or more media types to include. This filter is always applied first.</div>
+                            <div class="fieldDescription" style="margin-bottom: 1.5em;">Select one or more media types to include. This filter is always applied first.</div>
                         </div>
 
-                        <div class="input-container">
-                            <label class="input-label">Rules</label>
-                            <div id="rules-container" style="margin-top: 5px;"></div>
-                            <div class="field-description" style="margin-bottom: 1.5em; margin-top: -0.7em;">Build your rules using logical groups. Rules within a group are combined with AND, groups are combined with OR.</div>
+                        <div class="inputContainer">
+                            <label class="inputLabel">Rules</label>
+                            <div id="rules-container"></div>
+                            <div class="fieldDescription" style="margin-bottom: 1.5em; margin-top: -0.7em;">Build your rules using logical groups. Rules within a group are combined with AND, groups are combined with OR.</div>
                         </div>
 
-                        <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="input-label" for="sortBy">Sort By</label>
-                            <div id="sortBy-container" style="margin-top: 5px;"></div>
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="sortBy">Sort By</label>
+                            <div id="sortBy-container"></div>
                         </div>
 
-                        <div class="input-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="input-label" for="sortOrder">Sort Order</label>
-                            <div id="sortOrder-container" style="margin-top: 5px;"></div>
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="sortOrder">Sort Order</label>
+                            <div id="sortOrder-container"></div>
                         </div>
 
-                        <div class="input-container" style="margin-bottom: 1.5em;">
-                            <label class="input-label" for="playlistUser">Playlist Owner</label>
-                            <select style="margin-top: 5px; margin-bottom: 5px;" is="emby-select" id="playlistUser" class="emby-select" required>
+                        <div class="inputContainer" style="margin-bottom: 1.5em;">
+                            <label class="inputLabel" for="playlistUser">Playlist Owner</label>
+                            <select is="emby-select" id="playlistUser" class="emby-select" required>
                                 <option value="">Loading users...</option>
                             </select>
-                            <div class="field-description">The user who this playlist belongs to.</div>
+                            <div class="fieldDescription">The user who this playlist belongs to.</div>
                         </div>
 
                         <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="checkbox-label">
+                            <label class="checkboxLabel">
                                 <input type="checkbox" is="emby-checkbox" id="playlistIsPublic" class="emby-checkbox">
                                 <span>Make playlist public</span>
                             </label>
-                            <div class="field-description">Allow this playlist to be viewed by any logged in user.</div>
+                            <div class="fieldDescription">Allow this playlist to be viewed by any logged in user.</div>
                         </div>
 
                         <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="checkbox-label">
+                            <label class="checkboxLabel">
                                 <input type="checkbox" is="emby-checkbox" id="playlistIsEnabled" class="emby-checkbox" checked>
                                 <span>Enable playlist</span>
                             </label>
-                            <div class="field-description">When enabled, the playlist will be created and updated automatically. When disabled, the playlist will be removed from Jellyfin.</div>
+                            <div class="fieldDescription">When enabled, the playlist will be created and updated automatically. When disabled, the playlist will be removed from Jellyfin.</div>
                         </div>
 
                         <div style="margin-top: 2em;">
@@ -317,13 +317,13 @@
                 <!-- Manage Tab -->
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <div style="margin-top:2em;">
-                        <div class="input-container" style="margin-bottom: 1em;">
+                        <div class="inputContainer" style="margin-bottom: 1em;">
                             <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised">Refresh List</button>
                         </div>
                         
-                        <div class="input-container" style="margin-bottom: 1em;">
-                            <label class="input-label" for="playlistSearchInput">Search Playlists</label>
-                            <div class="search-input-container" style="position: relative; display: flex; align-items: center;">
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <label class="inputLabel" for="playlistSearchInput">Search Playlists</label>
+                            <div class="search-inputContainer" style="position: relative; display: flex; align-items: center;">
                                 <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search all playlist fields..." style="padding-right: 2.5em;">
                                 <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
                             </div>
@@ -338,26 +338,26 @@
                 <!-- Settings Tab -->
                 <div id="settings-tab" class="page-content hide" data-tab-content="settings">
                     <div style="margin-top:2em;">
-                        <h3 class="section-title">General Settings</h3>
+                        <h3 class="sectionTitle">General Settings</h3>
                         <div class="input-group" style="display: flex; gap: 2em;">
-                            <div class="input-container flex-grow">
-                                <label class="input-label" for="defaultSortBy">Default Sort By</label>
+                            <div class="inputContainer flex-grow">
+                                <label class="inputLabel" for="defaultSortBy">Default Sort By</label>
                                 <select is="emby-select" id="defaultSortBy" class="emby-select"></select>
-                                <div class="field-description">Default sorting method for new smart playlists.</div>
+                                <div class="fieldDescription">Default sorting method for new smart playlists.</div>
                             </div>
-                            <div class="input-container flex-grow">
-                                <label class="input-label" for="defaultSortOrder">Default Sort Order</label>
+                            <div class="inputContainer flex-grow">
+                                <label class="inputLabel" for="defaultSortOrder">Default Sort Order</label>
                                 <select is="emby-select" id="defaultSortOrder" class="emby-select"></select>
-                                <div class="field-description">Default sorting direction for new smart playlists.</div>
+                                <div class="fieldDescription">Default sorting direction for new smart playlists.</div>
                             </div>
                         </div>
 
                         <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="checkbox-label">
+                            <label class="checkboxLabel">
                                 <input type="checkbox" is="emby-checkbox" id="defaultMakePublic" class="emby-checkbox">
                                 <span>Make playlists public by default</span>
                             </label>
-                            <div class="field-description">New smart playlists will be public by default when this is enabled.</div>
+                            <div class="fieldDescription">New smart playlists will be public by default when this is enabled.</div>
                         </div>
 
                         <div style="margin-top: 2em;">
@@ -370,7 +370,7 @@
                 <!-- Help Tab -->
                 <div id="help-tab" class="page-content hide" data-tab-content="help">
                      <div style="margin-top:2em;">
-                        <h3 class="section-title">Need Help?</h3>
+                        <h3 class="sectionTitle">Need Help?</h3>
                         <p>For detailed instructions and bug reports, please see the following GitHub repository.</p>
                         <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin" target="_blank" style="text-decoration: none;">
                             <button is="emby-button" class="emby-button raised">
