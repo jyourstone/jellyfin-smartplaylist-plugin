@@ -200,15 +200,19 @@
                                     <span>Movies</span>
                                 </label>
                                 <label class="checkboxLabel">
+                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeSeries" class="emby-checkbox media-type-checkbox" value="Series">
+                                    <span>Series</span>
+                                </label>
+                                <label class="checkboxLabel">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeEpisode" class="emby-checkbox media-type-checkbox" value="Episode">
-                                    <span>TV Shows</span>
+                                    <span>Episodes</span>
                                 </label>
                                 <label class="checkboxLabel">
                                     <input type="checkbox" is="emby-checkbox" id="mediaTypeAudio" class="emby-checkbox media-type-checkbox" value="Audio">
                                     <span>Music</span>
                                 </label>
                             </div>
-                            <div class="fieldDescription" style="margin-bottom: 1.5em;">Select one or more media types to include. This filter is always applied first.</div>
+                            <div class="fieldDescription">Select the types of media items to include in your playlist. Episodes are individual TV show episodes, while Series are the show containers (shows as a whole). At least one type must be selected.</div>
                         </div>
 
                         <div class="inputContainer">

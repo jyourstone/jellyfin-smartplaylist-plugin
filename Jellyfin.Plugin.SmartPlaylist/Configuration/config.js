@@ -243,7 +243,12 @@
     // let editingPlaylistId = null;
     // Remove global modal handler - this will be stored per modal
     // let currentModalBackdropHandler = null;
-    const mediaTypes = [ { Value: "Movie", Label: "Movie" }, { Value: "Episode", Label: "Episode (TV Show)" }, { Value: "Audio", Label: "Audio (Music)" } ];
+    const mediaTypes = [ 
+        { Value: "Movie", Label: "Movie" }, 
+        { Value: "Series", Label: "Series" }, 
+        { Value: "Episode", Label: "Episode" }, 
+        { Value: "Audio", Label: "Audio (Music)" } 
+    ];
 
     // Helper functions for page-specific state
     function getPageEditState(page) {
