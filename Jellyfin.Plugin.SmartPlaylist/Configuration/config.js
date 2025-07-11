@@ -1082,7 +1082,7 @@
                             }
                         });
                     } else {
-                        rulesHtml = '<em>No rules defined</em>';
+                        rulesHtml = '<em>No rules defined</em><br>';
                     }
                     
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +

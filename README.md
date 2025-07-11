@@ -100,6 +100,7 @@ Here are some of the planned features for future updates. Feel free to contribut
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 - **Caching**: Look into a cache solution to increase performance.
+- **Connect playlist ID**: Connect smart playlists to Jellyfin playlists by ID instead of name. Would also include updating existing playlists instead of recreating.
 
 ## Development
 
