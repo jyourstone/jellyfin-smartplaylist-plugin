@@ -94,13 +94,20 @@
             min-width: 40px;
         }
         
+        /* Rule action buttons layout */
+        .rule-actions {
+            display: flex;
+            gap: 0.5em;
+            align-items: center;
+            margin-left: 0.5em;
+        }
+        
+        .rule-action-btn.hidden {
+            display: none !important;
+        }
+        
+        /* Basic logic group styling - detailed styles are applied via JavaScript */
         .SmartPlaylistConfigurationPage .logic-group {
-            border: 2px solid #00a4dc !important;
-            border-radius: 8px !important;
-            padding: 1.5em !important;
-            margin-bottom: 2em !important;
-            background: rgba(0, 164, 220, 0.08) !important;
-            box-shadow: 0 2px 8px rgba(0, 164, 220, 0.15) !important;
             position: relative !important;
         }
         
@@ -116,69 +123,6 @@
             font-size: 0.75em !important;
             font-weight: bold !important;
             border: 1px solid #00a4dc !important;
-        }
-        
-        .SmartPlaylistConfigurationPage .logic-group-separator {
-            text-align: center !important;
-            margin: 2.5em 0 !important;
-            position: relative !important;
-        }
-        
-        .SmartPlaylistConfigurationPage .logic-group-separator::before {
-            content: '' !important;
-            position: absolute !important;
-            top: 50% !important;
-            left: 0 !important;
-            right: 0 !important;
-            height: 2px !important;
-            background: linear-gradient(to right, transparent, #ff6b6b, transparent) !important;
-            z-index: 1 !important;
-        }
-        
-        .SmartPlaylistConfigurationPage .logic-group-separator-text {
-            background: #1a1a1a !important;
-            color: #ff6b6b !important;
-            padding: 0.8em 1.5em !important;
-            border-radius: 6px !important;
-            font-weight: bold !important;
-            font-size: 1em !important;
-            position: relative !important;
-            z-index: 2 !important;
-            display: inline-block !important;
-            border: 2px solid #ff6b6b !important;
-            box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3) !important;
-        }
-        
-        .rule-actions {
-            display: flex;
-            gap: 0.5em;
-            align-items: center;
-            margin-left: 0.5em;
-        }
-        
-        .rule-action-btn.hidden {
-            display: none !important;
-        }
-        
-        .SmartPlaylistConfigurationPage .rule-within-group-separator {
-            text-align: center !important;
-            margin: 0.8em 0 !important;
-            color: #00a4dc !important;
-            font-size: 0.8em !important;
-            font-weight: bold !important;
-            position: relative !important;
-            padding: 0.3em 0 !important;
-        }
-        
-        .SmartPlaylistConfigurationPage .rule-within-group-separator::before {
-            content: '' !important;
-            position: absolute !important;
-            top: 50% !important;
-            left: 20% !important;
-            right: 20% !important;
-            height: 1px !important;
-            background: rgba(0, 164, 220, 0.3) !important;
-            z-index: 1 !important;
         }
         
 

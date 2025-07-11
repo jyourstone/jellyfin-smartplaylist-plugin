@@ -10,6 +10,225 @@
         refresh: 'Plugins/SmartPlaylist/refresh'
     };
     
+    // Centralized styling configuration
+    const STYLES = {
+        // Logic group styles
+        logicGroup: {
+            border: '1px solid #666',
+            borderRadius: '2px',
+            padding: '1.5em 1.5em 0.5em 1.5em',
+            marginBottom: '1em',
+            background: 'rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            position: 'relative'
+        },
+
+                // Rule action buttons
+        buttons: {
+            action: {
+                base: {
+                    padding: '0.3em 0.8em',
+                    fontSize: '0.8em',
+                    border: '1px solid #666',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: '#aaa',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
+                }
+            },
+            delete: {
+                base: {
+                    padding: '0.3em 0.8em',
+                    fontSize: '0.8em',
+                    border: '1px solid #666',
+                    background: 'rgba(255, 255, 255, 0.07)',
+                    color: '#aaa',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                }
+            }
+        },
+
+        // Separator styles
+        separators: {
+            and: {
+                textAlign: 'center',
+                margin: '0.8em 0',
+                color: '#888',
+                fontSize: '0.8em',
+                fontWeight: 'bold',
+                position: 'relative',
+                padding: '0.3em 0'
+            },
+            or: {
+                textAlign: 'center',
+                margin: '1em 0',
+                position: 'relative'
+            },
+            orText: {
+                background: '#1a1a1a',
+                color: '#bbb',
+                padding: '0.4em',
+                borderRadius: '4px',
+                fontWeight: 'bold',
+                fontSize: '0.9em',
+                position: 'relative',
+                zIndex: '2',
+                display: 'inline-block',
+                border: '1px solid #777',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.4)'
+            },
+            orLine: {
+                position: 'absolute',
+                top: '50%',
+                left: '0',
+                right: '0',
+                height: '2px',
+                background: 'linear-gradient(to right, transparent, #777, transparent)',
+                zIndex: '1'
+            },
+            andLine: {
+                position: 'absolute',
+                top: '50%',
+                left: '20%',
+                right: '20%',
+                height: '1px',
+                background: 'rgba(136, 136, 136, 0.3)',
+                zIndex: '1'
+            }
+        },
+
+        // Modal styles
+        modal: {
+            container: {
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: '10001',
+                backgroundColor: '#101010',
+                padding: '1.5em',
+                width: '90%',
+                maxWidth: '400px'
+            },
+            backdrop: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                zIndex: '10000'
+            }
+        },
+
+        // Tab slider styles
+        tabSlider: {
+            container: {
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                whiteSpace: 'nowrap',
+                scrollbarWidth: 'thin',
+                msOverflowStyle: 'auto',
+                marginBottom: '1em',
+                paddingBottom: '0.5em',
+                position: 'relative',
+                width: '100%',
+                minHeight: '44px',
+                background: 'inherit'
+            },
+            button: {
+                display: 'inline-block',
+                whiteSpace: 'nowrap',
+                flexShrink: '0',
+                minWidth: 'auto',
+                flex: 'none',
+                minHeight: '40px',
+                verticalAlign: 'middle'
+            }
+        },
+
+        // Layout fixes
+        layout: {
+            tabContent: {
+                maxWidth: '830px',
+                boxSizing: 'border-box',
+                paddingRight: '25px'
+            },
+            notification: {
+                maxWidth: '805px',
+                marginRight: '25px',
+                boxSizing: 'border-box'
+            }
+        }
+    };
+
+    // Utility functions for applying styles
+    function applyStyles(element, styles) {
+        if (!element || !styles) return;
+        
+        Object.entries(styles).forEach(([property, value]) => {
+            // Convert camelCase to kebab-case
+            const cssProperty = property.replace(/([A-Z])/g, '-$1').toLowerCase();
+            element.style.setProperty(cssProperty, value, 'important');
+        });
+    }
+
+    function applyCssText(element, styleObj) {
+        if (!element || !styleObj) return;
+        
+        const cssText = Object.entries(styleObj)
+            .map(([prop, value]) => {
+                const cssProp = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                return `${cssProp}: ${value} !important`;
+            })
+            .join('; ');
+        
+        element.style.cssText = cssText;
+    }
+
+    function createStyledElement(tagName, className, styles) {
+        const element = document.createElement(tagName);
+        if (className) element.className = className;
+        if (styles) applyStyles(element, styles);
+        return element;
+    }
+
+    function styleRuleActionButton(button, buttonType, isHover = false) {
+        // Map and/or buttons to shared 'action' styling
+        const styleKey = (buttonType === 'and' || buttonType === 'or') ? 'action' : buttonType;
+        const buttonStyles = STYLES.buttons[styleKey];
+        if (!buttonStyles) return;
+        
+        const styles = buttonStyles.base;
+        applyStyles(button, styles);
+    }
+
+    function createAndSeparator() {
+        const separator = createStyledElement('div', 'rule-within-group-separator', STYLES.separators.and);
+        separator.textContent = 'AND';
+        
+        const line = createStyledElement('div', '', STYLES.separators.andLine);
+        separator.appendChild(line);
+        
+        return separator;
+    }
+
+    function createOrSeparator() {
+        const separator = createStyledElement('div', 'logic-group-separator', STYLES.separators.or);
+        
+        const orText = createStyledElement('span', '', STYLES.separators.orText);
+        orText.textContent = 'OR';
+        separator.appendChild(orText);
+        
+        const gradientLine = createStyledElement('div', '', STYLES.separators.orLine);
+        separator.appendChild(gradientLine);
+        
+        return separator;
+    }
+
     function getPluginId() {
         return PLUGIN_ID;
     }
@@ -330,20 +549,8 @@
         const rulesContainer = page.querySelector('#rules-container');
         const logicGroupId = 'logic-group-' + Date.now();
         
-        const logicGroupDiv = document.createElement('div');
-        logicGroupDiv.className = 'logic-group';
+        const logicGroupDiv = createStyledElement('div', 'logic-group', STYLES.logicGroup);
         logicGroupDiv.setAttribute('data-group-id', logicGroupId);
-        
-        // Apply styles directly via JavaScript to bypass CSS specificity issues
-        logicGroupDiv.style.cssText = `
-            border: 1px solid #666 !important;
-            border-radius: 2px !important;
-            padding: 1.5em 1.5em 0.5em 1.5em !important;
-            margin-bottom: 1em !important;
-            background: rgba(255, 255, 255, 0.05) !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-            position: relative !important;
-        `;
         
         rulesContainer.appendChild(logicGroupDiv);
         
@@ -358,32 +565,7 @@
         
         // Add AND separator if this isn't the first rule in the group
         if (existingRules.length > 0) {
-            const andSeparator = document.createElement('div');
-            andSeparator.className = 'rule-within-group-separator';
-            andSeparator.style.cssText = `
-                text-align: center !important;
-                margin: 0.8em 0 !important;
-                color: #888 !important;
-                font-size: 0.8em !important;
-                font-weight: bold !important;
-                position: relative !important;
-                padding: 0.3em 0 !important;
-            `;
-            andSeparator.textContent = 'AND';
-            
-            // Add subtle line behind AND text
-            const line = document.createElement('div');
-            line.style.cssText = `
-                position: absolute !important;
-                top: 50% !important;
-                left: 20% !important;
-                right: 20% !important;
-                height: 1px !important;
-                background: rgba(136, 136, 136, 0.3) !important;
-                z-index: 1 !important;
-            `;
-            andSeparator.appendChild(line);
-            
+            const andSeparator = createAndSeparator();
             logicGroup.appendChild(andSeparator);
         }
         
@@ -449,72 +631,24 @@
         // Style the action buttons
         const actionButtons = newRuleRow.querySelectorAll('.rule-action-btn');
         actionButtons.forEach(button => {
-            if (button.classList.contains('and-btn')) {
-                button.style.cssText = `
-                    padding: 0.3em 0.8em !important;
-                    font-size: 0.8em !important;
-                    border: 1px solid #666 !important;
-                    background: rgba(255, 255, 255, 0.1) !important;
-                    color: #aaa !important;
-                    border-radius: 4px !important;
-                    cursor: pointer !important;
-                    font-weight: 500 !important;
-                `;
-            } else if (button.classList.contains('or-btn')) {
-                button.style.cssText = `
-                    padding: 0.3em 0.8em !important;
-                    font-size: 0.8em !important;
-                    border: 1px solid #777 !important;
-                    background: rgba(255, 255, 255, 0.15) !important;
-                    color: #bbb !important;
-                    border-radius: 4px !important;
-                    cursor: pointer !important;
-                    font-weight: 500 !important;
-                `;
-            } else if (button.classList.contains('delete-btn')) {
-                button.style.cssText = `
-                    padding: 0.3em 0.8em !important;
-                    font-size: 0.8em !important;
-                    border: 1px solid #888 !important;
-                    background: rgba(255, 255, 255, 0.08) !important;
-                    color: #999 !important;
-                    border-radius: 4px !important;
-                    cursor: pointer !important;
-                    font-weight: 600 !important;
-                    line-height: 1.2 !important;
-                    display: inline-flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                `;
+            let buttonType;
+            if (button.classList.contains('and-btn')) buttonType = 'and';
+            else if (button.classList.contains('or-btn')) buttonType = 'or';
+            else if (button.classList.contains('delete-btn')) buttonType = 'delete';
+            
+            if (buttonType) {
+                // Apply base styles
+                styleRuleActionButton(button, buttonType);
+                
+                // Add hover effects
+                button.addEventListener('mouseenter', function() {
+                    styleRuleActionButton(this, buttonType, true);
+                }, listenerOptions);
+                
+                button.addEventListener('mouseleave', function() {
+                    styleRuleActionButton(this, buttonType, false);
+                }, listenerOptions);
             }
-            
-            // Add hover effects with AbortController signal (if supported)
-            button.addEventListener('mouseenter', function() {
-                if (this.classList.contains('delete-btn')) {
-                    this.style.background = 'rgba(255, 100, 100, 0.2) !important';
-                    this.style.borderColor = '#ff6464 !important';
-                    this.style.color = '#ff6464 !important';
-                } else {
-                    this.style.background = 'rgba(255, 255, 255, 0.25) !important';
-                    this.style.borderColor = '#aaa !important';
-                }
-            }, listenerOptions);
-            
-            button.addEventListener('mouseleave', function() {
-                if (this.classList.contains('and-btn')) {
-                    this.style.background = 'rgba(255, 255, 255, 0.1) !important';
-                    this.style.borderColor = '#666 !important';
-                    this.style.color = '#aaa !important';
-                } else if (this.classList.contains('or-btn')) {
-                    this.style.background = 'rgba(255, 255, 255, 0.15) !important';
-                    this.style.borderColor = '#777 !important';
-                    this.style.color = '#bbb !important';
-                } else if (this.classList.contains('delete-btn')) {
-                    this.style.background = 'rgba(255, 255, 255, 0.08) !important';
-                    this.style.borderColor = '#888 !important';
-                    this.style.color = '#999 !important';
-                }
-            }, listenerOptions);
         });
 
         // Update button visibility for all rules in all groups
@@ -525,63 +659,13 @@
         const rulesContainer = page.querySelector('#rules-container');
         
         // Add OR separator between groups
-        const orSeparator = document.createElement('div');
-        orSeparator.className = 'logic-group-separator';
-        orSeparator.style.cssText = `
-            text-align: center !important;
-            margin: 1em 0 !important;
-            position: relative !important;
-        `;
-        
-        // Create OR text with styling
-        const orText = document.createElement('span');
-        orText.style.cssText = `
-            background: #1a1a1a !important;
-            color: #bbb !important;
-            padding: 0.4em !important;
-            border-radius: 4px !important;
-            font-weight: bold !important;
-            font-size: 0.9em !important;
-            position: relative !important;
-            z-index: 2 !important;
-            display: inline-block !important;
-            border: 1px solid #777 !important;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
-        `;
-        orText.textContent = 'OR';
-        orSeparator.appendChild(orText);
-        
-        // Add gradient line behind OR text
-        const gradientLine = document.createElement('div');
-        gradientLine.style.cssText = `
-            position: absolute !important;
-            top: 50% !important;
-            left: 0 !important;
-            right: 0 !important;
-            height: 2px !important;
-            background: linear-gradient(to right, transparent, #777, transparent) !important;
-            z-index: 1 !important;
-        `;
-        orSeparator.appendChild(gradientLine);
-        
+        const orSeparator = createOrSeparator();
         rulesContainer.appendChild(orSeparator);
         
         // Create new logic group
         const logicGroupId = 'logic-group-' + Date.now();
-        const logicGroupDiv = document.createElement('div');
-        logicGroupDiv.className = 'logic-group';
+        const logicGroupDiv = createStyledElement('div', 'logic-group', STYLES.logicGroup);
         logicGroupDiv.setAttribute('data-group-id', logicGroupId);
-        
-        // Apply styles directly via JavaScript to bypass CSS specificity issues
-        logicGroupDiv.style.cssText = `
-            border: 1px solid #666 !important;
-            border-radius: 2px !important;
-            padding: 1.5em 1.5em 0.5em 1.5em !important;
-            margin-bottom: 1em !important;
-            background: rgba(255, 255, 255, 0.05) !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-            position: relative !important;
-        `;
         
         rulesContainer.appendChild(logicGroupDiv);
         
@@ -1355,25 +1439,9 @@
         // Clean up any existing modal listeners
         cleanupModalListeners(modal);
 
-        // Force positioning with JavaScript since CSS isn't working reliably
-        modalContainer.style.position = 'fixed';
-        modalContainer.style.top = '50%';
-        modalContainer.style.left = '50%';
-        modalContainer.style.transform = 'translate(-50%, -50%)';
-        modalContainer.style.zIndex = '10001';
-        modalContainer.style.backgroundColor = '#101010';
-        modalContainer.style.padding = '1.5em';
-        modalContainer.style.width = '90%';
-        modalContainer.style.maxWidth = '400px';
-
-        // Style the modal backdrop
-        modal.style.position = 'fixed';
-        modal.style.top = '0';
-        modal.style.left = '0';
-        modal.style.width = '100%';
-        modal.style.height = '100%';
-        modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
-        modal.style.zIndex = '10000';
+        // Apply modal styles using centralized configuration
+        applyStyles(modalContainer, STYLES.modal.container);
+        applyStyles(modal, STYLES.modal.backdrop);
 
         confirmText.textContent = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
         
@@ -1747,17 +1815,7 @@
         }
 
         // --- TAB SLIDER STYLES ---
-        tabSlider.style.overflowX = 'auto';
-        tabSlider.style.overflowY = 'hidden';
-        tabSlider.style.whiteSpace = 'nowrap';
-        tabSlider.style.scrollbarWidth = 'thin';
-        tabSlider.style.msOverflowStyle = 'auto';
-        tabSlider.style.marginBottom = '1em';
-        tabSlider.style.paddingBottom = '0.5em';
-        tabSlider.style.position = 'relative';
-        tabSlider.style.width = '100%';
-        tabSlider.style.minHeight = '44px'; // ensure visible
-        tabSlider.style.background = 'inherit';
+        applyStyles(tabSlider, STYLES.tabSlider.container);
 
         // Hide webkit scrollbar (best effort)
         tabSlider.style.setProperty('scrollbar-width', 'thin');
@@ -1767,22 +1825,15 @@
         var tabButtons = tabSlider.querySelectorAll('.emby-tab-button');
         for (var i = 0; i < tabButtons.length; i++) {
             var button = tabButtons[i];
-            button.style.display = 'inline-block';
-            button.style.whiteSpace = 'nowrap';
+            applyStyles(button, STYLES.tabSlider.button);
             button.style.marginRight = (i < tabButtons.length - 1) ? '0.5em' : '0';
-            button.style.flexShrink = '0';
-            button.style.minWidth = 'auto';
-            button.style.flex = 'none';
-            button.style.minHeight = '40px';
-            button.style.verticalAlign = 'middle';
         }
 
         // --- LISTENER LOGIC (unchanged) ---
         tabSlider._sliderListeners = [];
         function checkOverflow() {
             var existingIndicator = tabSlider.querySelector('.tab-overflow-indicator');
-            if (existingIndicator) { existingIndicator.remove(); }
-        }
+            if (existingIndicator) existingIndicator.remove(); }
         checkOverflow();
         var resizeHandler = function() { checkOverflow(); };
         window.addEventListener('resize', resizeHandler);
@@ -2083,19 +2134,14 @@
         // Apply to all tab content containers
         var tabContents = page.querySelectorAll('.page-content');
         for (var i = 0; i < tabContents.length; i++) {
-            var el = tabContents[i];
-            el.style.maxWidth = '830px';
-            el.style.boxSizing = 'border-box';
-            el.style.paddingRight = '25px';
+            applyStyles(tabContents[i], STYLES.layout.tabContent);
         }
     }
 
     function applyNotificationLayoutFix(page) {
         var notificationArea = page.querySelector('#plugin-notification-area');
         if (notificationArea) {
-            notificationArea.style.maxWidth = '805px';
-            notificationArea.style.marginRight = '25px';
-            notificationArea.style.boxSizing = 'border-box';
+            applyStyles(notificationArea, STYLES.layout.notification);
         }
     }
 
