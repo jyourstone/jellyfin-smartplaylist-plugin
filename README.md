@@ -22,7 +22,7 @@ Tested and works with Jellyfin version `10.10.0` and newer.
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled task).
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
-- 🎵 **All Media Types** - Works with movies, TV shows and music
+- 🎵 **All Media Types** - Works with movies, series, episodes, and music
 
 ## Configuration
 
@@ -30,7 +30,8 @@ SmartPlaylist now features a modern web-based configuration interface through th
 
 <div align="center">
     <p>
-        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page.png" height="800"/>
+        <img alt="Create playlist page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_create.png" width="400" style="margin-right: 10px;"/>
+        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_manage.png" width="400"/>
     </p>
 </div>
 
@@ -73,7 +74,7 @@ Smart playlists automatically refresh when:
 This plugin creates smart playlists that automatically updates based on rules you define, such as:
 
 - **Unplayed movies** from specific genres
-- **Recently added** TV shows
+- **Recently added** series or episodes
 - **High-rated** content from certain years
 - **Music** from specific artists or albums
 - **Tagged content** like "Christmas movies", "Kids safe", or "Documentaries"
@@ -99,6 +100,7 @@ Here are some of the planned features for future updates. Feel free to contribut
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 - **Caching**: Look into a cache solution to increase performance.
+- **Connect playlist ID**: Connect smart playlists to Jellyfin playlists by ID instead of name. Would also include updating existing playlists instead of recreating.
 
 ## Development
 
@@ -113,7 +115,7 @@ The web interface provides access to all available fields for creating playlist 
 
 #### **Content Fields**
 - **Name** - Title of the media item
-- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Audio`). It's recommended to always use this filter for best performance.
+- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Audio`). It's recommended to always use this filter for best performance.
 - **Audio Languages** - The audio language of the movie/TV show.
 - **Album** - Album name (for music)
 - **Folder Path** - Location in your library

@@ -487,7 +487,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode],
+                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series],
                 Recursive = true
             };
 

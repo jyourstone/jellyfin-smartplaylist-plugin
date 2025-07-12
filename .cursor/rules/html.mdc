@@ -21,4 +21,4 @@ When handling API errors, remember that the server returns error messages in a s
 
 To maintain a consistent and professional appearance, all UI elements must use Jellyfin's standard CSS classes.
 
-- Avoid using custom inline styles for layout and component styling. Instead, use Jellyfin's predefined classes like `input-container`, `section-title`, `field-description`, `emby-button`, and `raised` to ensure the plugin's UI matches the native Jellyfin look and feel.
+- Avoid using custom inline styles for layout and component styling. Instead, use Jellyfin's predefined classes like `inputContainer`, `inputLabel` `sectionTitle`, `checkboxLabel`, `fieldDescription`, `emby-button`, and `raised` to ensure the plugin's UI matches the native Jellyfin look and feel.
