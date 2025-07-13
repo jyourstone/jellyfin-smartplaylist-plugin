@@ -345,7 +345,7 @@ ASALocalRun/
 healthchecksdb
 
 # Local dev files (now in dev/ folder)
-dev/jellyfin-data/
+dev/jellyfin-data*
 dev/media/
 
 # Mac
