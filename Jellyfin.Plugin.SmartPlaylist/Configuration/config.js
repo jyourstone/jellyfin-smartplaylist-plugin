@@ -447,9 +447,9 @@
         } else if (numericFields.includes(fieldValue) || dateFields.includes(fieldValue)) {
             allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
             
-            // For date fields, exclude "GreaterThanOrEqual" and "LessThanOrEqual" as they don't make practical sense
             if (dateFields.includes(fieldValue)) {
                 allowedOperators = allowedOperators.filter(op => op.Value !== 'GreaterThanOrEqual' && op.Value !== 'LessThanOrEqual');
+                // Do not push any additional operators here; rely on backend-provided list
             }
         } else if (booleanFields.includes(fieldValue) || simpleFields.includes(fieldValue)) {
             allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
@@ -518,11 +518,60 @@
             input.style.width = '100%';
             valueContainer.appendChild(input);
         } else if (dateFields.includes(fieldValue)) {
-            const input = document.createElement('input');
-            input.type = 'date';
-            input.className = 'emby-input rule-value-input';
-            input.style.width = '100%';
-            valueContainer.appendChild(input);
+            // Check if this is a relative date operator by looking at the current operator
+            const ruleRow = valueContainer.closest('.rule-row');
+            const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
+            const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
+            
+            if (isRelativeDateOperator) {
+                // For relative date operators, use a number input and a unit dropdown
+                const inputContainer = document.createElement('div');
+                inputContainer.style.display = 'flex';
+                inputContainer.style.gap = '0.5em';
+                inputContainer.style.alignItems = 'center';
+                valueContainer.appendChild(inputContainer);
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'emby-input rule-value-input';
+                input.placeholder = 'Number';
+                input.min = '1';
+                input.style.flex = '0 0 43%';
+                inputContainer.appendChild(input);
+
+                const unitSelect = document.createElement('select');
+                unitSelect.className = 'emby-select rule-value-unit';
+                unitSelect.setAttribute('is', 'emby-select');
+                unitSelect.style.flex = '0 0 55%';
+                
+                // Add placeholder option
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = '-- Select Unit --';
+                placeholderOption.disabled = true;
+                placeholderOption.selected = true;
+                unitSelect.appendChild(placeholderOption);
+                
+                [
+                    { value: 'days', label: 'Days' },
+                    { value: 'weeks', label: 'Weeks' },
+                    { value: 'months', label: 'Months' },
+                    { value: 'years', label: 'Years' }
+                ].forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    unitSelect.appendChild(option);
+                });
+                inputContainer.appendChild(unitSelect);
+            } else {
+                // For regular date operators, use a date input
+                const input = document.createElement('input');
+                input.type = 'date';
+                input.className = 'emby-input rule-value-input';
+                input.style.width = '100%';
+                valueContainer.appendChild(input);
+            }
         }
         else {
             const input = document.createElement('input');
@@ -545,6 +594,36 @@
                 if (newValueInput.tagName === 'SELECT') {
                     const option = Array.from(newValueInput.options).find(opt => opt.value === currentValue);
                     if (option) {
+                        newValueInput.value = currentValue;
+                    }
+                }
+            } else if (dateFields.includes(fieldValue)) {
+                // Check if this is a relative date operator
+                const ruleRow = valueContainer.closest('.rule-row');
+                const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
+                const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
+                
+                if (isRelativeDateOperator) {
+                    // Parse number:unit format for relative date operators
+                    const parts = currentValue.split(':');
+                    if (parts.length === 2) {
+                        const num = parts[0];
+                        const unit = parts[1];
+                        
+                        // Set the number input
+                        if (newValueInput.tagName === 'INPUT') {
+                            newValueInput.value = num;
+                        }
+                        
+                        // Set the unit dropdown
+                        const unitSelect = valueContainer.querySelector('.rule-value-unit');
+                        if (unitSelect) {
+                            unitSelect.value = unit;
+                        }
+                    }
+                } else {
+                    // For regular date operators, restore the date value directly
+                    if (newValueInput.tagName === 'INPUT') {
                         newValueInput.value = currentValue;
                     }
                 }
@@ -673,6 +752,12 @@
         
         operatorSelect.addEventListener('change', function() {
             updateRegexHelp(newRuleRow);
+            // Update value input type if this is a date field and operator changed to/from relative date operators
+            const fieldValue = fieldSelect.value;
+            const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+            if (dateFields.includes(fieldValue)) {
+                setValueInput(fieldValue, valueContainer);
+            }
         }, listenerOptions);
 
         // Style the action buttons
@@ -866,6 +951,12 @@
                 
                 operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(ruleRow);
+                    // Update value input type if this is a date field and operator changed to/from relative date operators
+                    const fieldValue = fieldSelect.value;
+                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+                    if (dateFields.includes(fieldValue)) {
+                        setValueInput(fieldValue, valueContainer);
+                    }
                 }, listenerOptions);
                 
                 // Re-style action buttons
@@ -922,7 +1013,15 @@
                 logicGroup.querySelectorAll('.rule-row').forEach(rule => {
                     const memberName = rule.querySelector('.rule-field-select').value;
                     const operator = rule.querySelector('.rule-operator-select').value;
-                    const targetValue = rule.querySelector('.rule-value-input').value;
+                    let targetValue;
+                    if ((operator === 'NewerThan' || operator === 'OlderThan') && rule.querySelector('.rule-value-unit')) {
+                        // Serialize as number:unit
+                        const num = rule.querySelector('.rule-value-input').value;
+                        const unit = rule.querySelector('.rule-value-unit').value;
+                        targetValue = num && unit ? `${num}:${unit}` : '';
+                    } else {
+                        targetValue = rule.querySelector('.rule-value-input').value;
+                    }
                     
                     if (memberName && operator && targetValue) {
                         const expression = { MemberName: memberName, Operator: operator, TargetValue: targetValue };
@@ -1863,16 +1962,40 @@
                                 
                                 fieldSelect.value = expression.MemberName;
                                 
+                                // Update operator options first
+                                updateOperatorOptions(expression.MemberName, operatorSelect);
+                                
+                                // Set operator so setValueInput knows what type of input to create
+                                operatorSelect.value = expression.Operator;
+                                
                                 // Update UI elements based on the loaded rule data
                                 setValueInput(expression.MemberName, valueContainer);
-                                updateOperatorOptions(expression.MemberName, operatorSelect);
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
                                 
-                                // Set operator and value
+                                // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
-                                operatorSelect.value = expression.Operator;
                                 if (valueInput) {
-                                    valueInput.value = expression.TargetValue;
+                                    // For relative date operators, we need to parse the "number:unit" format
+                                    const isRelativeDateOperator = expression.Operator === 'NewerThan' || expression.Operator === 'OlderThan';
+                                    if (isRelativeDateOperator && expression.TargetValue) {
+                                        const parts = expression.TargetValue.split(':');
+                                        if (parts.length === 2) {
+                                            const num = parts[0];
+                                            const unit = parts[1];
+                                            
+                                            // Set the number input
+                                            valueInput.value = num;
+                                            
+                                            // Set the unit dropdown
+                                            const unitSelect = currentRule.querySelector('.rule-value-unit');
+                                            if (unitSelect) {
+                                                unitSelect.value = unit;
+                                            }
+                                        }
+                                    } else {
+                                        // For regular inputs, set the value directly
+                                        valueInput.value = expression.TargetValue;
+                                    }
                                 }
                                 
                                 // Set user selector if this is a user-specific rule

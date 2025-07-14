@@ -44,7 +44,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             Type tProp;
             
             // Handle user-specific expressions
-            if (r.IsUserSpecific)
+            if (r.IsUserSpecific && r.UserSpecificField != null)
             {
                 logger?.LogDebug("SmartPlaylist BuildExpr: User-specific query for Field={Field}, UserId={UserId}, Operator={Operator}", r.MemberName, r.UserId, r.Operator);
                 
@@ -54,13 +54,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 
                 if (method == null)
                 {
-                    logger?.LogError("SmartPlaylist BuildExpr: User-specific method '{Method}' not found for field '{Field}'", methodName, r.MemberName);
+                    logger?.LogError("SmartPlaylist user-specific method '{Method}' not found for field '{Field}'", methodName, r.MemberName);
                     throw new ArgumentException($"User-specific method '{methodName}' not found for field '{r.MemberName}'");
                 }
                 
-                var userIdConstant = System.Linq.Expressions.Expression.Constant(r.UserId);
-                left = System.Linq.Expressions.Expression.Call(param, method, userIdConstant);
-                tProp = method.ReturnType;
+                // Create the method call: operand.GetIsPlayedByUser(userId)
+                var methodCall = System.Linq.Expressions.Expression.Call(param, method, System.Linq.Expressions.Expression.Constant(r.UserId));
+                
+                // Convert the target value to boolean
+                var targetValue = Convert.ChangeType(r.TargetValue, typeof(bool));
+                var right = System.Linq.Expressions.Expression.Constant(targetValue);
+                
+                // Create equality comparison: operand.GetIsPlayedByUser(userId) == true/false
+                return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, methodCall, right);
             }
             else
             {
@@ -70,6 +76,42 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             logger?.LogDebug("SmartPlaylist BuildExpr: Field={Field}, Type={Type}, Operator={Operator}", r.MemberName, tProp.Name, r.Operator);
+
+            // Handle NewerThan and OlderThan operators for date fields before general date field processing
+            if (tProp == typeof(double) && IsDateField(r.MemberName) && (r.Operator == "NewerThan" || r.Operator == "OlderThan"))
+            {
+                logger?.LogDebug("SmartPlaylist handling '{Operator}' for field {Field} with value {Value}", r.Operator, r.MemberName, r.TargetValue);
+                // Parse value as number:unit
+                var parts = (r.TargetValue ?? "").Split(':');
+                if (parts.Length != 2 || !int.TryParse(parts[0], out int num) || num <= 0)
+                {
+                    logger?.LogError("SmartPlaylist '{Operator}' requires value in format number:unit, got: '{Value}'", r.Operator, r.TargetValue);
+                    throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
+                }
+                string unit = parts[1].ToLowerInvariant();
+                int days = unit switch
+                {
+                    "days" => num,
+                    "weeks" => num * 7,
+                    "months" => num * 30,
+                    "years" => num * 365,
+                    _ => throw new ArgumentException($"Unknown unit '{unit}' for '{r.Operator}'")
+                };
+                var cutoffDate = DateTimeOffset.UtcNow.AddDays(-days);
+                var cutoffTimestamp = (double)cutoffDate.ToUnixTimeSeconds();
+                logger?.LogDebug("SmartPlaylist '{Operator}' cutoff: {CutoffDate} (timestamp: {Timestamp})", r.Operator, cutoffDate, cutoffTimestamp);
+                var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
+                if (r.Operator == "NewerThan")
+                {
+                    // operand.DateCreated >= cutoffTimestamp
+                    return System.Linq.Expressions.Expression.GreaterThanOrEqual(left, cutoffConstant);
+                }
+                else
+                {
+                    // operand.DateCreated < cutoffTimestamp
+                    return System.Linq.Expressions.Expression.LessThan(left, cutoffConstant);
+                }
+            }
 
             if (tProp == typeof(string))
             {
@@ -189,6 +231,27 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         logger?.LogDebug("SmartPlaylist {Operator} IS a built-in ExpressionType for date field: {ExpressionType}", r.Operator, dateBinary);
                         var right = System.Linq.Expressions.Expression.Constant(targetTimestamp);
                         return System.Linq.Expressions.Expression.MakeBinary(dateBinary, left, right);
+                    }
+                    else if (r.Operator == "WithinLastDays")
+                    {
+                        logger?.LogDebug("SmartPlaylist handling 'WithinLastDays' for field {Field} with {Days} days", r.MemberName, r.TargetValue);
+                        
+                        // Parse the number of days
+                        if (!int.TryParse(r.TargetValue, out int days) || days <= 0)
+                        {
+                            logger?.LogError("SmartPlaylist 'WithinLastDays' requires a positive integer for days, got: '{Value}'", r.TargetValue);
+                            throw new ArgumentException($"'WithinLastDays' requires a positive integer for days, but got: '{r.TargetValue}'");
+                        }
+                        
+                        // Calculate the cutoff date (X days ago from now)
+                        var cutoffDate = DateTimeOffset.UtcNow.AddDays(-days);
+                        var cutoffTimestamp = (double)cutoffDate.ToUnixTimeSeconds();
+                        
+                        logger?.LogDebug("SmartPlaylist 'WithinLastDays' cutoff: {CutoffDate} (timestamp: {Timestamp})", cutoffDate, cutoffTimestamp);
+                        
+                        // Create expression: operand.DateCreated >= cutoffTimestamp
+                        var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
+                        return System.Linq.Expressions.Expression.GreaterThanOrEqual(left, cutoffConstant);
                     }
                     else
                     {
