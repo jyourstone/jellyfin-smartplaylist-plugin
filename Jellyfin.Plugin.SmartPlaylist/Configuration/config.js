@@ -446,6 +446,11 @@
             allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
         } else if (numericFields.includes(fieldValue) || dateFields.includes(fieldValue)) {
             allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
+            
+            // For date fields, exclude "GreaterThanOrEqual" and "LessThanOrEqual" as they don't make practical sense
+            if (dateFields.includes(fieldValue)) {
+                allowedOperators = allowedOperators.filter(op => op.Value !== 'GreaterThanOrEqual' && op.Value !== 'LessThanOrEqual');
+            }
         } else if (booleanFields.includes(fieldValue) || simpleFields.includes(fieldValue)) {
             allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
         } else { // Default to string fields

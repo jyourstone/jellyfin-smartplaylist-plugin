@@ -306,6 +306,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
+                
+                // Clear the rule cache to ensure the new playlist rules are properly compiled
+                SmartPlaylist.ClearRuleCache(_logger);
+                _logger.LogDebug("Cleared rule cache after creating playlist '{PlaylistName}'", playlist.Name);
+                
                 _logger.LogDebug("Calling RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(createdPlaylist);
@@ -435,6 +440,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 playlist.Id = id;
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
+                
+                // Clear the rule cache to ensure any rule changes are properly reflected
+                SmartPlaylist.ClearRuleCache(_logger);
+                _logger.LogDebug("Cleared rule cache after updating playlist '{PlaylistName}'", playlist.Name);
                 
                 // Immediately update the Jellyfin playlist using the single playlist service with timeout
                 var playlistService = GetPlaylistService();

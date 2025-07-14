@@ -114,6 +114,90 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, left, right);
             }
 
+            // Handle date fields specially - convert date string to Unix timestamp
+            if (tProp == typeof(double) && IsDateField(r.MemberName))
+            {
+                logger?.LogDebug("SmartPlaylist handling date field {Field} with value {Value}", r.MemberName, r.TargetValue);
+                
+                if (string.IsNullOrWhiteSpace(r.TargetValue))
+                {
+                    logger?.LogError("SmartPlaylist date comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                    throw new ArgumentException($"Date comparison requires a valid date value for field '{r.MemberName}', but got: '{r.TargetValue}'");
+                }
+                
+                // Convert date string to Unix timestamp
+                double targetTimestamp;
+                try
+                {
+                    targetTimestamp = ConvertDateStringToUnixTimestamp(r.TargetValue);
+                    logger?.LogDebug("SmartPlaylist converted date '{DateString}' to Unix timestamp {Timestamp}", r.TargetValue, targetTimestamp);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogError(ex, "SmartPlaylist date conversion failed for field '{Field}' with value '{Value}'", r.MemberName, r.TargetValue);
+                    throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
+                }
+                
+                // Handle date equality specially - compare date ranges instead of exact timestamps
+                if (r.Operator == "Equal")
+                {
+                    logger?.LogDebug("SmartPlaylist handling date equality for field {Field} with date {Date}", r.MemberName, r.TargetValue);
+                    
+                    // For equality, we need to check if the date falls within the target day
+                    // Convert the target date to start and end of day timestamps
+                    var targetDate = DateTime.ParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                    var startOfDay = (double)new DateTimeOffset(targetDate).ToUnixTimeSeconds();
+                    var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1)).ToUnixTimeSeconds();
+                    
+                    logger?.LogDebug("SmartPlaylist date equality range: {StartOfDay} to {EndOfDay}", startOfDay, endOfDay);
+                    
+                    // Create expression: operand.DateCreated >= startOfDay && operand.DateCreated <= endOfDay
+                    var startConstant = System.Linq.Expressions.Expression.Constant(startOfDay);
+                    var endConstant = System.Linq.Expressions.Expression.Constant(endOfDay);
+                    
+                    var greaterThanOrEqual = System.Linq.Expressions.Expression.GreaterThanOrEqual(left, startConstant);
+                    var lessThanOrEqual = System.Linq.Expressions.Expression.LessThanOrEqual(left, endConstant);
+                    
+                    return System.Linq.Expressions.Expression.AndAlso(greaterThanOrEqual, lessThanOrEqual);
+                }
+                else if (r.Operator == "NotEqual")
+                {
+                    logger?.LogDebug("SmartPlaylist handling date inequality for field {Field} with date {Date}", r.MemberName, r.TargetValue);
+                    
+                    // For inequality, we need to check if the date is outside the target day
+                    var targetDate = DateTime.ParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                    var startOfDay = (double)new DateTimeOffset(targetDate).ToUnixTimeSeconds();
+                    var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1)).ToUnixTimeSeconds();
+                    
+                    logger?.LogDebug("SmartPlaylist date inequality range: < {StartOfDay} or > {EndOfDay}", startOfDay, endOfDay);
+                    
+                    // Create expression: operand.DateCreated < startOfDay || operand.DateCreated > endOfDay
+                    var startConstant = System.Linq.Expressions.Expression.Constant(startOfDay);
+                    var endConstant = System.Linq.Expressions.Expression.Constant(endOfDay);
+                    
+                    var lessThan = System.Linq.Expressions.Expression.LessThan(left, startConstant);
+                    var greaterThan = System.Linq.Expressions.Expression.GreaterThan(left, endConstant);
+                    
+                    return System.Linq.Expressions.Expression.OrElse(lessThan, greaterThan);
+                }
+                else
+                {
+                    // For other operators (GreaterThan, LessThan, etc.), use the exact timestamp comparison
+                    // Check if the operator is a known .NET operator for date comparison
+                    if (Enum.TryParse(r.Operator, out ExpressionType dateBinary))
+                    {
+                        logger?.LogDebug("SmartPlaylist {Operator} IS a built-in ExpressionType for date field: {ExpressionType}", r.Operator, dateBinary);
+                        var right = System.Linq.Expressions.Expression.Constant(targetTimestamp);
+                        return System.Linq.Expressions.Expression.MakeBinary(dateBinary, left, right);
+                    }
+                    else
+                    {
+                        logger?.LogError("SmartPlaylist unsupported date operator '{Operator}' for field '{Field}'", r.Operator, r.MemberName);
+                        throw new ArgumentException($"Operator '{r.Operator}' is not supported for date field '{r.MemberName}'");
+                    }
+                }
+            }
+
             // is the operator a known .NET operator?
             logger?.LogDebug("SmartPlaylist checking if {Operator} is a built-in .NET ExpressionType", r.Operator);
             if (Enum.TryParse(r.Operator, out ExpressionType tBinary))
@@ -189,6 +273,50 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // If we reach here, the operator is not supported for this field type
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for field '{Field}' of type '{Type}'", r.Operator, r.MemberName, tProp.Name);
             throw new ArgumentException($"Operator '{r.Operator}' is not supported for field '{r.MemberName}' of type '{tProp.Name}'. Supported operators depend on the field type.");
+        }
+
+        /// <summary>
+        /// Checks if a field name is a date field that needs special handling.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a date field, false otherwise</returns>
+        private static bool IsDateField(string fieldName)
+        {
+            var dateFields = new[] { "DateCreated", "DateLastRefreshed", "DateLastSaved", "DateModified" };
+            return dateFields.Contains(fieldName);
+        }
+
+        /// <summary>
+        /// Converts a date string (YYYY-MM-DD) to Unix timestamp.
+        /// </summary>
+        /// <param name="dateString">The date string to convert</param>
+        /// <returns>Unix timestamp in seconds</returns>
+        /// <exception cref="ArgumentException">Thrown when the date string is invalid</exception>
+        private static double ConvertDateStringToUnixTimestamp(string dateString)
+        {
+            if (string.IsNullOrWhiteSpace(dateString))
+            {
+                throw new ArgumentException("Date string cannot be null or empty");
+            }
+
+            try
+            {
+                // Parse the date string as YYYY-MM-DD format
+                if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
+                    System.Globalization.DateTimeStyles.None, out DateTime parsedDate))
+                {
+                    // Convert to Unix timestamp - use the same logic as SafeToUnixTimeSeconds
+                    return new DateTimeOffset(parsedDate).ToUnixTimeSeconds();
+                }
+                else
+                {
+                    throw new ArgumentException($"Invalid date format: {dateString}. Expected format: YYYY-MM-DD");
+                }
+            }
+            catch (Exception ex) when (!(ex is ArgumentException))
+            {
+                throw new ArgumentException($"Failed to parse date string '{dateString}': {ex.Message}", ex);
+            }
         }
 
         public static Func<T, bool> CompileRule<T>(Expression r, ILogger logger = null)
