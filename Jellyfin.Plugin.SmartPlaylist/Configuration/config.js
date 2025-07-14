@@ -1202,9 +1202,13 @@
             
             const users = await response.json();
             
-            // Don't clear existing options if this is optional (preserves the default option)
             if (!isOptional) {
                 userSelect.innerHTML = '';
+            } else {
+                // Remove all options except the first (default) if present
+                while (userSelect.options.length > 1) {
+                    userSelect.remove(1);
+                }
             }
             
             // Add user options
