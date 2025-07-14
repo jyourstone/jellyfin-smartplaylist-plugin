@@ -141,6 +141,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             logger?.LogWarning("Invalid user ID format: {UserId}", userId);
                         }
                     }
+                    catch (InvalidOperationException)
+                    {
+                        // Re-throw InvalidOperationException to allow SmartPlaylist.cs to handle it properly
+                        // This stops playlist processing when a referenced user no longer exists
+                        throw;
+                    }
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error extracting user data for user {UserId} on item {Name}", userId, baseItem.Name);
