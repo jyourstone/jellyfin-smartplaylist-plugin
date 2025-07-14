@@ -437,6 +437,28 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     logger?.LogWarning(ex, "Error analyzing expression sets for expensive fields in playlist '{PlaylistName}'. Assuming no expensive fields needed.", Name);
                 }
 
+                // Early validation of additional users to prevent exceptions during item processing
+                if (additionalUserIds.Count > 0 && userDataManager != null)
+                {
+                    foreach (var userId in additionalUserIds)
+                    {
+                        if (Guid.TryParse(userId, out var userGuid))
+                        {
+                            var targetUser = QueryEngine.OperandFactory.GetUserById(userDataManager, userGuid);
+                            if (targetUser == null)
+                            {
+                                logger?.LogWarning("User with ID '{UserId}' not found for playlist '{PlaylistName}'. This playlist rule references a user that no longer exists. Skipping playlist processing.", userId, Name);
+                                return []; // Return empty results to avoid exception spam
+                            }
+                        }
+                        else
+                        {
+                            logger?.LogWarning("Invalid user ID format '{UserId}' for playlist '{PlaylistName}'. Skipping playlist processing.", userId, Name);
+                            return []; // Return empty results
+                        }
+                    }
+                }
+
                 // Compile rules with error handling
                 List<List<Func<Operand, bool>>> compiledRules = null;
                 try

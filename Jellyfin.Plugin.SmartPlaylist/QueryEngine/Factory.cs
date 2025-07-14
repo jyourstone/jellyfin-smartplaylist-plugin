@@ -337,7 +337,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <param name="userDataManager">The user data manager instance.</param>
         /// <param name="userId">The user ID to look up.</param>
         /// <returns>The user if found, otherwise null.</returns>
-        private static User GetUserById(IUserDataManager userDataManager, Guid userId)
+        public static User GetUserById(IUserDataManager userDataManager, Guid userId)
         {
             if (userDataManager == null)
             {
