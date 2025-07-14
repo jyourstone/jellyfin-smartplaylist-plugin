@@ -40,8 +40,34 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
         {
-            var left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
-            var tProp = left.Type;
+            System.Linq.Expressions.Expression left;
+            Type tProp;
+            
+            // Handle user-specific expressions
+            if (r.IsUserSpecific)
+            {
+                logger?.LogDebug("SmartPlaylist BuildExpr: User-specific query for Field={Field}, UserId={UserId}, Operator={Operator}", r.MemberName, r.UserId, r.Operator);
+                
+                // Get the method to call (e.g., GetIsPlayedByUser)
+                var methodName = r.UserSpecificField;
+                var method = typeof(T).GetMethod(methodName, [typeof(string)]);
+                
+                if (method == null)
+                {
+                    logger?.LogError("SmartPlaylist BuildExpr: User-specific method '{Method}' not found for field '{Field}'", methodName, r.MemberName);
+                    throw new ArgumentException($"User-specific method '{methodName}' not found for field '{r.MemberName}'");
+                }
+                
+                var userIdConstant = System.Linq.Expressions.Expression.Constant(r.UserId);
+                left = System.Linq.Expressions.Expression.Call(param, method, userIdConstant);
+                tProp = method.ReturnType;
+            }
+            else
+            {
+                // Standard property access
+                left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
+                tProp = left.Type;
+            }
             
             logger?.LogDebug("SmartPlaylist BuildExpr: Field={Field}, Type={Type}, Operator={Operator}", r.MemberName, tProp.Name, r.Operator);
 

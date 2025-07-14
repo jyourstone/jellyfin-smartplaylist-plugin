@@ -404,6 +404,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Check if any rules use expensive fields to avoid unnecessary extraction
                 var needsAudioLanguages = false;
                 var needsPeople = false;
+                var additionalUserIds = new List<string>();
                 
                 try
                 {
@@ -416,11 +417,46 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         needsPeople = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
                             .Any(expr => expr?.MemberName == "People");
+                        
+                        // Collect unique user IDs from user-specific expressions
+                        additionalUserIds = [..ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Where(expr => expr?.IsUserSpecific == true && !string.IsNullOrEmpty(expr.UserId))
+                            .Select(expr => expr.UserId)
+                            .Distinct()];
+                        
+                        if (additionalUserIds.Count > 0)
+                        {
+                            logger?.LogDebug("Found user-specific expressions for {Count} users: [{UserIds}]", 
+                                additionalUserIds.Count, string.Join(", ", additionalUserIds));
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     logger?.LogWarning(ex, "Error analyzing expression sets for expensive fields in playlist '{PlaylistName}'. Assuming no expensive fields needed.", Name);
+                }
+
+                // Early validation of additional users to prevent exceptions during item processing
+                if (additionalUserIds.Count > 0 && userDataManager != null)
+                {
+                    foreach (var userId in additionalUserIds)
+                    {
+                        if (Guid.TryParse(userId, out var userGuid))
+                        {
+                            var targetUser = QueryEngine.OperandFactory.GetUserById(userDataManager, userGuid);
+                            if (targetUser == null)
+                            {
+                                logger?.LogWarning("User with ID '{UserId}' not found for playlist '{PlaylistName}'. This playlist rule references a user that no longer exists. Skipping playlist processing.", userId, Name);
+                                return []; // Return empty results to avoid exception spam
+                            }
+                        }
+                        else
+                        {
+                            logger?.LogWarning("Invalid user ID format '{UserId}' for playlist '{PlaylistName}'. Skipping playlist processing.", userId, Name);
+                            return []; // Return empty results
+                        }
+                    }
                 }
 
                 // Compile rules with error handling
@@ -484,7 +520,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -528,7 +564,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
-            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
+            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
             
@@ -597,7 +633,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -611,7 +647,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople);
+                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -640,6 +676,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     results.Add(item);
                                 }
                             }
+                            catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                            {
+                                // User-specific rule references a user that no longer exists
+                                logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                throw; // Re-throw to stop playlist processing entirely
+                            }
                             catch (Exception ex)
                             {
                                 logger?.LogDebug(ex, "Error processing item '{ItemName}' in expensive-only path. Skipping item.", item.Name);
@@ -659,7 +701,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             try
                             {
                                 // Phase 1: Extract non-expensive properties and check non-expensive rules
-                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false);
+                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false, []);
                                 
                                 // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
                                 bool passesNonExpensiveRules = false;
@@ -697,7 +739,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     continue;
                                 
                                 // Phase 2: Extract expensive data and check complete rules
-                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople);
+                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -726,6 +768,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     results.Add(item);
                                 }
                             }
+                            catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                            {
+                                // User-specific rule references a user that no longer exists
+                                logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                throw; // Re-throw to stop playlist processing entirely
+                            }
                             catch (Exception ex)
                             {
                                 logger?.LogDebug(ex, "Error processing item '{ItemName}' in two-phase path. Skipping item.", item.Name);
@@ -737,10 +785,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules);
                 }
                 
                 return results;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+            {
+                // User-specific rule references a user that no longer exists
+                logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                throw; // Re-throw to stop playlist processing entirely
             }
             catch (Exception ex)
             {
@@ -754,7 +808,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
-            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
             var results = new List<BaseItem>();
             
@@ -768,7 +822,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople);
+                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds);
                         
                         bool matches = false;
                         if (!hasAnyRules) {
@@ -782,12 +836,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             results.Add(item);
                         }
                     }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                    {
+                        // User-specific rule references a user that no longer exists
+                        logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                        throw; // Re-throw to stop playlist processing entirely
+                    }
                     catch (Exception ex)
                     {
                         logger?.LogDebug(ex, "Error processing item '{ItemName}' in simple path. Skipping item.", item.Name);
                         // Skip this item and continue with others
                     }
                 }
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+            {
+                // User-specific rule references a user that no longer exists
+                logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                throw; // Re-throw to stop playlist processing entirely
             }
             catch (Exception ex)
             {

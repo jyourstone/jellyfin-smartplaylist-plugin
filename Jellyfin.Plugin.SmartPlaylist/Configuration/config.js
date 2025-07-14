@@ -176,18 +176,7 @@
         });
     }
 
-    function applyCssText(element, styleObj) {
-        if (!element || !styleObj) return;
-        
-        const cssText = Object.entries(styleObj)
-            .map(([prop, value]) => {
-                const cssProp = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
-                return `${cssProp}: ${value} !important`;
-            })
-            .join('; ');
-        
-        element.style.cssText = cssText;
-    }
+
 
     function createStyledElement(tagName, className, styles) {
         const element = document.createElement(tagName);
@@ -196,7 +185,7 @@
         return element;
     }
 
-    function styleRuleActionButton(button, buttonType, isHover = false) {
+    function styleRuleActionButton(button, buttonType) {
         // Map and/or buttons to shared 'action' styling
         const styleKey = (buttonType === 'and' || buttonType === 'or') ? 'action' : buttonType;
         const buttonStyles = STYLES.buttons[styleKey];
@@ -473,6 +462,10 @@
     }
 
     function setValueInput(fieldValue, valueContainer) {
+        // Store the current value before clearing the container
+        const currentValueInput = valueContainer.querySelector('.rule-value-input');
+        const currentValue = currentValueInput ? currentValueInput.value : '';
+        
         valueContainer.innerHTML = '';
 
         const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
@@ -533,6 +526,27 @@
             input.placeholder = 'Value';
             input.style.width = '100%';
             valueContainer.appendChild(input);
+        }
+        
+        // Restore the current value if it exists and is valid for the new field type
+        const newValueInput = valueContainer.querySelector('.rule-value-input');
+        if (newValueInput && currentValue) {
+            // Store the original value as a data attribute for potential restoration
+            newValueInput.setAttribute('data-original-value', currentValue);
+            
+            // Try to restore the value if it's appropriate for the new field type
+            if (simpleFields.includes(fieldValue) || booleanFields.includes(fieldValue)) {
+                // For selects, check if the value exists as an option
+                if (newValueInput.tagName === 'SELECT') {
+                    const option = Array.from(newValueInput.options).find(opt => opt.value === currentValue);
+                    if (option) {
+                        newValueInput.value = currentValue;
+                    }
+                }
+            } else {
+                // For inputs, restore the value directly
+                newValueInput.value = currentValue;
+            }
         }
     }
     
@@ -601,6 +615,14 @@
                     <button type="button" class="rule-action-btn or-btn" title="Add OR group">Or</button>
                     <button type="button" class="rule-action-btn delete-btn" title="Remove rule">×</button>
                 </div>
+            </div>
+            <div class="rule-user-selector" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Check for specific user (optional):
+                </label>
+                <select is="emby-select" class="emby-select rule-user-select" style="width: 100%;">
+                    <option value="">Default (playlist owner)</option>
+                </select>
             </div>`;
         
         ruleDiv.innerHTML = fieldsHtml;
@@ -612,7 +634,14 @@
         const valueContainer = newRuleRow.querySelector('.rule-value-container');
 
         if (availableFields.ContentFields) {
-            populateSelect(fieldSelect, availableFields.ContentFields.concat(availableFields.RatingsPlaybackFields, availableFields.DateFields, availableFields.FileFields, availableFields.CollectionFields), null, false);
+            const allFields = availableFields.ContentFields.concat(
+                availableFields.RatingsPlaybackFields, 
+                availableFields.DateFields, 
+                availableFields.FileFields, 
+                availableFields.CollectionFields
+            );
+            
+            populateSelect(fieldSelect, allFields, null, false);
         }
         if (availableFields.Operators) {
             populateSelect(operatorSelect, availableFields.Operators, null, false);
@@ -621,11 +650,19 @@
         setValueInput(fieldSelect.value, valueContainer);
         updateOperatorOptions(fieldSelect.value, operatorSelect);
         
+        // Initialize user selector visibility and load users
+        updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
+        const userSelect = newRuleRow.querySelector('.rule-user-select');
+        if (userSelect) {
+            loadUsersForRule(userSelect, true);
+        }
+        
         // Add event listeners with AbortController signal (if supported)
         const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
             setValueInput(fieldSelect.value, valueContainer);
             updateOperatorOptions(fieldSelect.value, operatorSelect);
+            updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
@@ -647,11 +684,11 @@
                 
                 // Add hover effects
                 button.addEventListener('mouseenter', function() {
-                    styleRuleActionButton(this, buttonType, true);
+                    styleRuleActionButton(this, buttonType);
                 }, listenerOptions);
                 
                 button.addEventListener('mouseleave', function() {
-                    styleRuleActionButton(this, buttonType, false);
+                    styleRuleActionButton(this, buttonType);
                 }, listenerOptions);
             }
         });
@@ -768,6 +805,101 @@
             });
         });
     }
+
+    function reinitializeExistingRules(page) {
+        // Clean up existing event listeners for all rules
+        const allRules = page.querySelectorAll('.rule-row');
+        allRules.forEach(rule => cleanupRuleEventListeners(rule));
+        
+        // Re-initialize each rule with proper event listeners
+        allRules.forEach(ruleRow => {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            const operatorSelect = ruleRow.querySelector('.rule-operator-select');
+            const valueContainer = ruleRow.querySelector('.rule-value-container');
+            
+            if (fieldSelect && operatorSelect && valueContainer) {
+                // Create new AbortController for this rule
+                const abortController = createAbortController();
+                const signal = abortController.signal;
+                
+                // Store the controller on the element for cleanup
+                ruleRow._abortController = abortController;
+                
+                // Re-populate field options if needed
+                if (availableFields.ContentFields && fieldSelect.children.length <= 1) {
+                    const allFields = availableFields.ContentFields.concat(
+                        availableFields.RatingsPlaybackFields, 
+                        availableFields.DateFields, 
+                        availableFields.FileFields, 
+                        availableFields.CollectionFields
+                    );
+                    
+                    populateSelect(fieldSelect, allFields, fieldSelect.value, false);
+                }
+                
+                // Re-populate operator options if needed
+                if (availableFields.Operators && operatorSelect.children.length <= 1) {
+                    populateSelect(operatorSelect, availableFields.Operators, operatorSelect.value, false);
+                }
+                
+                // Re-set value input based on current field value
+                const currentFieldValue = fieldSelect.value;
+                if (currentFieldValue) {
+                    setValueInput(currentFieldValue, valueContainer);
+                    updateOperatorOptions(currentFieldValue, operatorSelect);
+                    updateUserSelectorVisibility(ruleRow, currentFieldValue);
+                }
+                
+                // Re-add event listeners
+                const listenerOptions = getEventListenerOptions(signal);
+                fieldSelect.addEventListener('change', function() {
+                    setValueInput(fieldSelect.value, valueContainer);
+                    updateOperatorOptions(fieldSelect.value, operatorSelect);
+                    updateUserSelectorVisibility(ruleRow, fieldSelect.value);
+                    updateRegexHelp(ruleRow);
+                }, listenerOptions);
+                
+                operatorSelect.addEventListener('change', function() {
+                    updateRegexHelp(ruleRow);
+                }, listenerOptions);
+                
+                // Re-style action buttons
+                const actionButtons = ruleRow.querySelectorAll('.rule-action-btn');
+                actionButtons.forEach(button => {
+                    let buttonType;
+                    if (button.classList.contains('and-btn')) buttonType = 'and';
+                    else if (button.classList.contains('or-btn')) buttonType = 'or';
+                    else if (button.classList.contains('delete-btn')) buttonType = 'delete';
+                    
+                    if (buttonType) {
+                        // Apply base styles
+                        styleRuleActionButton(button, buttonType);
+                        
+                        // Add hover effects
+                        button.addEventListener('mouseenter', function() {
+                            styleRuleActionButton(this, buttonType);
+                        }, listenerOptions);
+                        
+                        button.addEventListener('mouseleave', function() {
+                            styleRuleActionButton(this, buttonType);
+                        }, listenerOptions);
+                    }
+                });
+                
+                // Re-initialize user selector if needed
+                const userSelect = ruleRow.querySelector('.rule-user-select');
+                if (userSelect && userSelect.children.length <= 1) {
+                    loadUsersForRule(userSelect, true);
+                }
+                
+                // Update regex help if needed
+                updateRegexHelp(ruleRow);
+            }
+        });
+        
+        // Update button visibility
+        updateRuleButtonVisibility(page);
+    }
     
     async function createPlaylist(page) {
         try {
@@ -786,8 +918,20 @@
                     const memberName = rule.querySelector('.rule-field-select').value;
                     const operator = rule.querySelector('.rule-operator-select').value;
                     const targetValue = rule.querySelector('.rule-value-input').value;
+                    
                     if (memberName && operator && targetValue) {
-                        expressions.push({ MemberName: memberName, Operator: operator, TargetValue: targetValue });
+                        const expression = { MemberName: memberName, Operator: operator, TargetValue: targetValue };
+                        
+                        // Check if a specific user is selected for user data fields
+                        const userSelect = rule.querySelector('.rule-user-select');
+                        if (userSelect && userSelect.value) {
+                            // Only add UserId if a specific user is selected (not default)
+                            expression.UserId = userSelect.value;
+                        }
+                        // If no user is selected or default is selected, the expression works as before
+                        // (for the playlist owner - backwards compatibility)
+                        
+                        expressions.push(expression);
                     }
                 });
                 if (expressions.length > 0) {
@@ -924,6 +1068,58 @@
         updateRuleButtonVisibility(page);
     }
 
+    function updateUserSelectorVisibility(ruleRow, fieldValue) {
+        const userDataFields = ['IsPlayed', 'IsFavorite', 'PlayCount'];
+        const isUserDataField = userDataFields.includes(fieldValue);
+        const userSelectorDiv = ruleRow.querySelector('.rule-user-selector');
+        
+        if (userSelectorDiv) {
+            if (isUserDataField) {
+                userSelectorDiv.style.display = 'block';
+            } else {
+                userSelectorDiv.style.display = 'none';
+                // Reset to default when hiding
+                const userSelect = userSelectorDiv.querySelector('.rule-user-select');
+                if (userSelect) {
+                    userSelect.value = '';
+                }
+            }
+        }
+    }
+
+    async function loadUsersForRule(userSelect, isOptional = false) {
+        const apiClient = getApiClient();
+        
+        try {
+            const response = await apiClient.ajax({
+                type: "GET",
+                url: apiClient.getUrl(ENDPOINTS.users),
+                contentType: 'application/json'
+            });
+            
+            const users = await response.json();
+            
+            // Don't clear existing options if this is optional (preserves the default option)
+            if (!isOptional) {
+                userSelect.innerHTML = '';
+            }
+            
+            // Add user options
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.Id;
+                option.textContent = user.Name;
+                userSelect.appendChild(option);
+            });
+            
+        } catch (err) {
+            console.error('Error loading users for rule:', err);
+            if (!isOptional) {
+                userSelect.innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+    }
+
     async function loadUsers(page) {
         const apiClient = getApiClient();
         const userSelect = page.querySelector('#playlistUser');
@@ -995,6 +1191,36 @@
         return 'Unknown User';
     }
 
+    // Cache for user ID to name lookups
+    const userNameCache = new Map();
+    
+    async function resolveUserIdToName(apiClient, userId) {
+        if (!userId || userId === '00000000-0000-0000-0000-000000000000') {
+            return null;
+        }
+        
+        // Check cache first
+        if (userNameCache.has(userId)) {
+            return userNameCache.get(userId);
+        }
+        
+        try {
+            const user = await apiClient.getUser(userId);
+            const userName = user?.Name || 'Unknown User';
+            
+            // Cache the result
+            userNameCache.set(userId, userName);
+            return userName;
+        } catch (err) {
+            console.error('Error resolving user ID ' + userId + ':', err);
+            const fallback = 'Unknown User';
+            
+            // Cache the fallback too to avoid repeated failed lookups
+            userNameCache.set(userId, fallback);
+            return fallback;
+        }
+    }
+
     function loadPlaylistList(page) {
         const apiClient = getApiClient();
         const container = page.querySelector('#playlist-list-container');
@@ -1051,7 +1277,8 @@
                     
                     let rulesHtml = '';
                     if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-                        playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
+                        for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
+                            const expressionSet = playlist.ExpressionSets[groupIndex];
                             if (groupIndex > 0) {
                                 rulesHtml += '<strong style="color: #888;">OR</strong><br>';
                             }
@@ -1059,7 +1286,8 @@
                             if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
                                 rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
                                 
-                                expressionSet.Expressions.forEach((rule, ruleIndex) => {
+                                for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
+                                    const rule = expressionSet.Expressions[ruleIndex];
                                     if (ruleIndex > 0) {
                                         rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
                                     }
@@ -1080,12 +1308,22 @@
                                     }
                                     let value = rule.TargetValue;
                                     if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
-                                });
+                                    
+                                    // Check if this rule has a specific user
+                                    let userInfo = '';
+                                    if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
+                                        const userName = await resolveUserIdToName(apiClient, rule.UserId);
+                                        if (userName) {
+                                            userInfo = ' for user "' + userName + '"';
+                                        }
+                                    }
+                                    
+                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + '</span>';
+                                }
                                 
                                 rulesHtml += '</div>';
                             }
-                        });
+                        }
                     } else {
                         rulesHtml = '<em>No rules defined</em><br>';
                     }
@@ -1304,7 +1542,8 @@
             
             let rulesHtml = '';
             if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-                playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
+                for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
+                    const expressionSet = playlist.ExpressionSets[groupIndex];
                     if (groupIndex > 0) {
                         rulesHtml += '<strong style="color: #888;">OR</strong><br>';
                     }
@@ -1312,7 +1551,8 @@
                     if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
                         rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 1px; background: rgba(255,255,255,0.02);">';
                         
-                        expressionSet.Expressions.forEach((rule, ruleIndex) => {
+                        for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
+                            const rule = expressionSet.Expressions[ruleIndex];
                             if (ruleIndex > 0) {
                                 rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
                             }
@@ -1333,12 +1573,22 @@
                             }
                             let value = rule.TargetValue;
                             if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"</span>';
-                        });
+                            
+                            // Check if this rule has a specific user
+                            let userInfo = '';
+                            if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
+                                const userName = await resolveUserIdToName(apiClient, rule.UserId);
+                                if (userName) {
+                                    userInfo = ' for user "' + userName + '"';
+                                }
+                            }
+                            
+                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + '</span>';
+                        }
                         
                         rulesHtml += '</div>';
                     }
-                });
+                }
             } else {
                 rulesHtml = '<em>No rules defined</em>';
             }
@@ -1611,12 +1861,24 @@
                                 // Update UI elements based on the loaded rule data
                                 setValueInput(expression.MemberName, valueContainer);
                                 updateOperatorOptions(expression.MemberName, operatorSelect);
+                                updateUserSelectorVisibility(currentRule, expression.MemberName);
                                 
                                 // Set operator and value
                                 const valueInput = currentRule.querySelector('.rule-value-input');
                                 operatorSelect.value = expression.Operator;
                                 if (valueInput) {
                                     valueInput.value = expression.TargetValue;
+                                }
+                                
+                                // Set user selector if this is a user-specific rule
+                                if (expression.UserId) {
+                                    const userSelect = currentRule.querySelector('.rule-user-select');
+                                    if (userSelect) {
+                                        // Load users for this rule selector and then set the value
+                                        loadUsersForRule(userSelect, true).then(() => {
+                                            userSelect.value = expression.UserId;
+                                        });
+                                    }
                                 }
                                 
                                 updateRegexHelp(currentRule);
@@ -1767,6 +2029,9 @@
             const rulesContainer = page.querySelector('#rules-container');
             if (rulesContainer.children.length === 0) {
                 createInitialLogicGroup(page);
+            } else {
+                // Re-initialize existing rules to ensure event listeners are properly attached
+                reinitializeExistingRules(page);
             }
             
             // Enable form submission

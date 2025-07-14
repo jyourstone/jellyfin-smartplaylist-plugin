@@ -19,6 +19,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
         {
+            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, extractAudioLanguages, extractPeople, []);
+        }
+        
+        // Overload that supports extracting user data for multiple users
+        public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, 
+            List<string> additionalUserIds = null)
+        {
             // Cache the IsPlayed result to avoid multiple expensive calls
             var isPlayed = baseItem.IsPlayed(user);
 
@@ -91,6 +99,69 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 logger?.LogWarning(ex, "Error accessing user data for item {Name}", baseItem.Name);
                 // Keep the fallback values we set above
+            }
+            
+            // Extract user-specific data for additional users
+            if (additionalUserIds != null && additionalUserIds.Count > 0 && userDataManager != null)
+            {
+                foreach (var userId in additionalUserIds)
+                {
+                    try
+                    {
+                        if (Guid.TryParse(userId, out var userGuid))
+                        {
+                            // Try to get user by ID
+                            try
+                            {
+                                var targetUser = GetUserById(userDataManager, userGuid);
+                                if (targetUser != null)
+                                {
+                                    var userIsPlayed = baseItem.IsPlayed(targetUser);
+                                    operand.IsPlayedByUser[userId] = userIsPlayed;
+                                    
+                                    var targetUserData = userDataManager.GetUserData(targetUser, baseItem);
+                                    if (targetUserData != null)
+                                    {
+                                        operand.PlayCountByUser[userId] = targetUserData.PlayCount;
+                                        operand.IsFavoriteByUser[userId] = targetUserData.IsFavorite;
+                                    }
+                                    else
+                                    {
+                                        // Fallback values
+                                        operand.PlayCountByUser[userId] = userIsPlayed ? 1 : 0;
+                                        operand.IsFavoriteByUser[userId] = false;
+                                    }
+                                }
+                                else
+                                {
+                                    // User exists in system but GetUserById returned null - this is a legitimate "user not found" case
+                                    logger?.LogWarning("User with ID {UserId} not found for user-specific data extraction. This playlist rule references a user that no longer exists.", userId);
+                                    throw new InvalidOperationException($"User with ID {userId} not found. This playlist rule references a user that no longer exists.");
+                                }
+                            }
+                            catch (InvalidOperationException ex) when (ex.Message.Contains("reflection") || ex.Message.Contains("internal structure"))
+                            {
+                                // This is a reflection failure, not a missing user - provide a more helpful error
+                                logger?.LogError(ex, "Failed to access user manager via reflection for user {UserId}. This may be due to a Jellyfin version compatibility issue.", userId);
+                                throw new InvalidOperationException($"Unable to access user information due to internal system changes. This plugin may need to be updated for this version of Jellyfin. Original error: {ex.Message}", ex);
+                            }
+                        }
+                        else
+                        {
+                            logger?.LogWarning("Invalid user ID format: {UserId}", userId);
+                        }
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Re-throw InvalidOperationException to allow SmartPlaylist.cs to handle it properly
+                        // This stops playlist processing when a referenced user no longer exists or when reflection fails
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error extracting user data for user {UserId} on item {Name}", userId, baseItem.Name);
+                    }
+                }
             }
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
@@ -269,6 +340,66 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             return operand;
         }
 
+        /// <summary>
+        /// Gets a user by ID using reflection to access the user manager from the user data manager.
+        /// This is a workaround since IUserDataManager doesn't directly expose user lookup.
+        /// </summary>
+        /// <param name="userDataManager">The user data manager instance.</param>
+        /// <param name="userId">The user ID to look up.</param>
+        /// <returns>The user if found, otherwise null.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when reflection fails to access the user manager.</exception>
+        public static User GetUserById(IUserDataManager userDataManager, Guid userId)
+        {
+            if (userDataManager == null)
+            {
+                throw new InvalidOperationException("UserDataManager is null - cannot retrieve user information.");
+            }
+            
+            try
+            {
+                // We need to use reflection to access the user manager from the user data manager
+                // This is a workaround since IUserDataManager doesn't directly expose user lookup
+                var userManagerField = userDataManager.GetType().GetField("_userManager", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                if (userManagerField == null)
+                {
+                    // Try alternative field names in case the internal implementation changed
+                    var alternativeFields = new[] { "_userManager", "userManager", "_users", "users" };
+                    foreach (var fieldName in alternativeFields)
+                    {
+                        userManagerField = userDataManager.GetType().GetField(fieldName, 
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (userManagerField != null)
+                        {
+                            break;
+                        }
+                    }
+                }
+                
+                if (userManagerField != null)
+                {
+                    var userManager = userManagerField.GetValue(userDataManager) as IUserManager;
+                    if (userManager != null)
+                    {
+                        return userManager.GetUserById(userId);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Failed to cast user manager field '{userManagerField.Name}' to IUserManager. The internal structure may have changed.");
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException("Failed to find user manager field in UserDataManager via reflection. The internal structure may have changed - this plugin may need to be updated for this version of Jellyfin.");
+                }
+            }
+            catch (Exception ex) when (!(ex is InvalidOperationException))
+            {
+                throw new InvalidOperationException($"Reflection failed while trying to access user manager: {ex.Message}", ex);
+            }
+        }
+        
         /// <summary>
         /// Safely converts a DateTime to Unix timestamp, handling invalid dates.
         /// </summary>
