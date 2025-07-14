@@ -61,12 +61,72 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 // Create the method call: operand.GetIsPlayedByUser(userId)
                 var methodCall = System.Linq.Expressions.Expression.Call(param, method, System.Linq.Expressions.Expression.Constant(r.UserId));
                 
-                // Convert the target value to boolean
-                var targetValue = Convert.ChangeType(r.TargetValue, typeof(bool));
-                var right = System.Linq.Expressions.Expression.Constant(targetValue);
+                // Get the return type of the method to handle different data types properly
+                var returnType = method.ReturnType;
+                logger?.LogDebug("SmartPlaylist user-specific method '{Method}' returns type '{ReturnType}'", methodName, returnType.Name);
                 
-                // Create equality comparison: operand.GetIsPlayedByUser(userId) == true/false
-                return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, methodCall, right);
+                // Handle different return types and operators appropriately
+                if (returnType == typeof(bool))
+                {
+                    // Boolean methods (GetIsPlayedByUser, GetIsFavoriteByUser)
+                    if (r.Operator == "Equal")
+                    {
+                        // Validate and parse boolean value safely
+                        if (string.IsNullOrWhiteSpace(r.TargetValue))
+                        {
+                            logger?.LogError("SmartPlaylist boolean comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                            throw new ArgumentException($"Boolean comparison requires a valid true/false value for field '{r.MemberName}', but got: '{r.TargetValue}'");
+                        }
+                        
+                        if (!bool.TryParse(r.TargetValue, out bool boolValue))
+                        {
+                            logger?.LogError("SmartPlaylist boolean comparison failed: Invalid boolean value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                            throw new ArgumentException($"Invalid boolean value '{r.TargetValue}' for field '{r.MemberName}'. Expected 'true' or 'false'.");
+                        }
+                        
+                        var right = System.Linq.Expressions.Expression.Constant(boolValue);
+                        return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, methodCall, right);
+                    }
+                    else
+                    {
+                        logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for boolean user-specific field '{Field}'", r.Operator, r.MemberName);
+                        throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean user-specific field '{r.MemberName}'. Only 'Equal' is supported.");
+                    }
+                }
+                else if (returnType == typeof(int))
+                {
+                    // Integer methods (GetPlayCountByUser)
+                    if (string.IsNullOrWhiteSpace(r.TargetValue))
+                    {
+                        logger?.LogError("SmartPlaylist integer comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                        throw new ArgumentException($"Integer comparison requires a valid numeric value for field '{r.MemberName}', but got: '{r.TargetValue}'");
+                    }
+                    
+                    if (!int.TryParse(r.TargetValue, out int intValue))
+                    {
+                        logger?.LogError("SmartPlaylist integer comparison failed: Invalid integer value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                        throw new ArgumentException($"Invalid integer value '{r.TargetValue}' for field '{r.MemberName}'. Expected a valid number.");
+                    }
+                    
+                    var right = System.Linq.Expressions.Expression.Constant(intValue);
+                    
+                    // Check if the operator is a known .NET operator for integer comparison
+                    if (Enum.TryParse(r.Operator, out ExpressionType intBinary))
+                    {
+                        logger?.LogDebug("SmartPlaylist {Operator} IS a built-in ExpressionType for integer field: {ExpressionType}", r.Operator, intBinary);
+                        return System.Linq.Expressions.Expression.MakeBinary(intBinary, methodCall, right);
+                    }
+                    else
+                    {
+                        logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for integer user-specific field '{Field}'", r.Operator, r.MemberName);
+                        throw new ArgumentException($"Operator '{r.Operator}' is not supported for integer user-specific field '{r.MemberName}'. Supported operators: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual");
+                    }
+                }
+                else
+                {
+                    logger?.LogError("SmartPlaylist unsupported return type '{ReturnType}' for user-specific method '{Method}'", returnType.Name, methodName);
+                    throw new ArgumentException($"User-specific method '{methodName}' returns unsupported type '{returnType.Name}' for field '{r.MemberName}'");
+                }
             }
             else
             {
@@ -89,15 +149,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
                 }
                 string unit = parts[1].ToLowerInvariant();
-                int days = unit switch
+                DateTimeOffset cutoffDate = unit switch
                 {
-                    "days" => num,
-                    "weeks" => num * 7,
-                    "months" => num * 30,
-                    "years" => num * 365,
+                    "days" => DateTimeOffset.UtcNow.AddDays(-num),
+                    "weeks" => DateTimeOffset.UtcNow.AddDays(-num * 7),
+                    "months" => DateTimeOffset.UtcNow.AddMonths(-num),
+                    "years" => DateTimeOffset.UtcNow.AddYears(-num),
                     _ => throw new ArgumentException($"Unknown unit '{unit}' for '{r.Operator}'")
                 };
-                var cutoffDate = DateTimeOffset.UtcNow.AddDays(-days);
                 var cutoffTimestamp = (double)cutoffDate.ToUnixTimeSeconds();
                 logger?.LogDebug("SmartPlaylist '{Operator}' cutoff: {CutoffDate} (timestamp: {Timestamp})", r.Operator, cutoffDate, cutoffTimestamp);
                 var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);

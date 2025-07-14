@@ -894,6 +894,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
     }
 
+    /// <summary>
+    /// Utility class for shared ordering operations
+    /// </summary>
+    public static class OrderUtilities
+    {
+        /// <summary>
+        /// Gets the release date for a BaseItem by checking the PremiereDate property
+        /// </summary>
+        /// <param name="item">The BaseItem to get the release date for</param>
+        /// <returns>The release date or DateTime.MinValue if not available</returns>
+        public static DateTime GetReleaseDate(BaseItem item)
+        {
+            var unixTimestamp = DateUtils.GetReleaseDateUnixTimestamp(item);
+            if (unixTimestamp > 0)
+            {
+                return DateTimeOffset.FromUnixTimeSeconds((long)unixTimestamp).DateTime;
+            }
+            return DateTime.MinValue;
+        }
+    }
+
     public abstract class Order
     {
         public abstract string Name { get; }
@@ -975,29 +996,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items == null ? [] : items.OrderBy(GetReleaseDate);
-        }
-        
-        private static DateTime GetReleaseDate(BaseItem item)
-        {
-            try
-            {
-                var premiereDateProperty = item.GetType().GetProperty("PremiereDate");
-                if (premiereDateProperty != null)
-                {
-                    var premiereDate = premiereDateProperty.GetValue(item);
-                    if (premiereDate is DateTime premiereDateTime && premiereDateTime != DateTime.MinValue)
-                    {
-                        return premiereDateTime;
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore errors and fall back to default
-            }
-            
-            return DateTime.MinValue;
+            return items == null ? [] : items.OrderBy(OrderUtilities.GetReleaseDate);
         }
     }
 
@@ -1007,29 +1006,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items == null ? [] : items.OrderByDescending(GetReleaseDate);
-        }
-        
-        private static DateTime GetReleaseDate(BaseItem item)
-        {
-            try
-            {
-                var premiereDateProperty = item.GetType().GetProperty("PremiereDate");
-                if (premiereDateProperty != null)
-                {
-                    var premiereDate = premiereDateProperty.GetValue(item);
-                    if (premiereDate is DateTime premiereDateTime && premiereDateTime != DateTime.MinValue)
-                    {
-                        return premiereDateTime;
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore errors and fall back to default
-            }
-            
-            return DateTime.MinValue;
+            return items == null ? [] : items.OrderByDescending(OrderUtilities.GetReleaseDate);
         }
     }
 

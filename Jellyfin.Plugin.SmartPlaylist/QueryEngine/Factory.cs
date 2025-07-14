@@ -4,6 +4,7 @@ using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
+using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -171,33 +172,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.DateModified = SafeToUnixTimeSeconds(baseItem.DateModified);
             
             // Extract ReleaseDate from PremiereDate property
-            try
-            {
-                var premiereDateProperty = baseItem.GetType().GetProperty("PremiereDate");
-                if (premiereDateProperty != null)
-                {
-                    var premiereDate = premiereDateProperty.GetValue(baseItem);
-                    if (premiereDate is DateTime premiereDateTime && premiereDateTime != DateTime.MinValue)
-                    {
-                        operand.ReleaseDate = SafeToUnixTimeSeconds(premiereDateTime);
-                    }
-                    else
-                    {
-                        // No valid PremiereDate available
-                        operand.ReleaseDate = 0;
-                    }
-                }
-                else
-                {
-                    // PremiereDate property doesn't exist
-                    operand.ReleaseDate = 0;
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogDebug(ex, "Error extracting ReleaseDate for item {Name}", baseItem.Name);
-                operand.ReleaseDate = 0;
-            }
+            operand.ReleaseDate = DateUtils.GetReleaseDateUnixTimestamp(baseItem);
             
             operand.FolderPath = baseItem.ContainingFolderPath;
             
