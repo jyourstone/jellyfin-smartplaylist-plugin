@@ -557,7 +557,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "DateCreated", Label = "Date Created" },
                     new { Value = "DateLastRefreshed", Label = "Date Last Refreshed" },
                     new { Value = "DateLastSaved", Label = "Date Last Saved" },
-                    new { Value = "DateModified", Label = "Date Modified" }
+                    new { Value = "DateModified", Label = "Date Modified" },
+                    new { Value = "ReleaseDate", Label = "Release Date" }
                 },
                 FileFields = new[]
                 {
@@ -588,8 +589,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 OrderOptions = new[]
                 {
                     new { Value = "NoOrder", Label = "No Order" },
-                    new { Value = "Release Date Ascending", Label = "Release Date Ascending" },
-                    new { Value = "Release Date Descending", Label = "Release Date Descending" }
+                    new { Value = "Name Ascending", Label = "Name Ascending" },
+                    new { Value = "Name Descending", Label = "Name Descending" },
+                    new { Value = "ProductionYear Ascending", Label = "Production Year Ascending" },
+                    new { Value = "ProductionYear Descending", Label = "Production Year Descending" },
+                    new { Value = "DateCreated Ascending", Label = "Date Created Ascending" },
+                    new { Value = "DateCreated Descending", Label = "Date Created Descending" },
+                    new { Value = "ReleaseDate Ascending", Label = "Release Date Ascending" },
+                    new { Value = "ReleaseDate Descending", Label = "Release Date Descending" },
+                    new { Value = "CommunityRating Ascending", Label = "Community Rating Ascending" },
+                    new { Value = "CommunityRating Descending", Label = "Community Rating Descending" }
                 }
             };
 

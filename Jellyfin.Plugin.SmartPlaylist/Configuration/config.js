@@ -368,6 +368,7 @@
             { Value: 'ProductionYear', Label: 'Production Year' },
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
+            { Value: 'ReleaseDate', Label: 'Release Date' },
             { Value: 'NoOrder', Label: 'No Order' }
         ];
         const orderOptions = [
@@ -438,7 +439,7 @@
         
         const listFields = ['People', 'Genres', 'Studios', 'Tags'];
         const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
-        const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+        const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'];
         const booleanFields = ['IsPlayed', 'IsFavorite'];
         const simpleFields = ['ItemType'];
 
@@ -474,7 +475,7 @@
         valueContainer.innerHTML = '';
 
         const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
-        const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+        const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'];
         const booleanFields = ['IsPlayed', 'IsFavorite'];
         const simpleFields = ['ItemType'];
 
@@ -750,15 +751,15 @@
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
-        operatorSelect.addEventListener('change', function() {
-            updateRegexHelp(newRuleRow);
-            // Update value input type if this is a date field and operator changed to/from relative date operators
-            const fieldValue = fieldSelect.value;
-            const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-            if (dateFields.includes(fieldValue)) {
-                setValueInput(fieldValue, valueContainer);
-            }
-        }, listenerOptions);
+                        operatorSelect.addEventListener('change', function() {
+                    updateRegexHelp(newRuleRow);
+                    // Update value input type if this is a date field and operator changed to/from relative date operators
+                    const fieldValue = fieldSelect.value;
+                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'];
+                    if (dateFields.includes(fieldValue)) {
+                        setValueInput(fieldValue, valueContainer);
+                    }
+                }, listenerOptions);
 
         // Style the action buttons
         const actionButtons = newRuleRow.querySelectorAll('.rule-action-btn');
@@ -953,7 +954,7 @@
                     updateRegexHelp(ruleRow);
                     // Update value input type if this is a date field and operator changed to/from relative date operators
                     const fieldValue = fieldSelect.value;
-                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
+                    const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'];
                     if (dateFields.includes(fieldValue)) {
                         setValueInput(fieldValue, valueContainer);
                     }

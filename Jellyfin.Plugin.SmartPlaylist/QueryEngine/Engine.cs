@@ -40,7 +40,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
         {
-            System.Linq.Expressions.Expression left;
+            MemberExpression left;
             Type tProp;
             
             // Handle user-specific expressions
@@ -345,7 +345,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <returns>True if it's a date field, false otherwise</returns>
         private static bool IsDateField(string fieldName)
         {
-            var dateFields = new[] { "DateCreated", "DateLastRefreshed", "DateLastSaved", "DateModified" };
+            var dateFields = new[] { "DateCreated", "DateLastRefreshed", "DateLastSaved", "DateModified", "ReleaseDate" };
             return dateFields.Contains(fieldName);
         }
 
@@ -376,7 +376,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     throw new ArgumentException($"Invalid date format: {dateString}. Expected format: YYYY-MM-DD");
                 }
             }
-            catch (Exception ex) when (!(ex is ArgumentException))
+            catch (Exception ex) when (ex is not ArgumentException)
             {
                 throw new ArgumentException($"Failed to parse date string '{dateString}': {ex.Message}", ex);
             }

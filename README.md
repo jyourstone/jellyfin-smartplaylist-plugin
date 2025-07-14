@@ -134,6 +134,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Community Rating** - User ratings (0-10)
 - **Critic Rating** - Professional critic ratings
 - **Production Year** - Original production year
+- **Release Date** - Original release date of the media
 - **Date Created** - When added to your library
 - **Date Last Refreshed** - Last metadata update
 - **Date Last Saved** - Last saved to database

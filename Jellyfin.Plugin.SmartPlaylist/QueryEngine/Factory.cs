@@ -169,6 +169,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.DateLastRefreshed = SafeToUnixTimeSeconds(baseItem.DateLastRefreshed);
             operand.DateLastSaved = SafeToUnixTimeSeconds(baseItem.DateLastSaved);
             operand.DateModified = SafeToUnixTimeSeconds(baseItem.DateModified);
+            
+            // Extract ReleaseDate from PremiereDate property
+            try
+            {
+                var premiereDateProperty = baseItem.GetType().GetProperty("PremiereDate");
+                if (premiereDateProperty != null)
+                {
+                    var premiereDate = premiereDateProperty.GetValue(baseItem);
+                    if (premiereDate is DateTime premiereDateTime && premiereDateTime != DateTime.MinValue)
+                    {
+                        operand.ReleaseDate = SafeToUnixTimeSeconds(premiereDateTime);
+                    }
+                    else
+                    {
+                        // No valid PremiereDate available
+                        operand.ReleaseDate = 0;
+                    }
+                }
+                else
+                {
+                    // PremiereDate property doesn't exist
+                    operand.ReleaseDate = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Error extracting ReleaseDate for item {Name}", baseItem.Name);
+                operand.ReleaseDate = 0;
+            }
+            
             operand.FolderPath = baseItem.ContainingFolderPath;
             
             // Fix null reference exception for Path
@@ -379,8 +409,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 
                 if (userManagerField != null)
                 {
-                    var userManager = userManagerField.GetValue(userDataManager) as IUserManager;
-                    if (userManager != null)
+                    if (userManagerField.GetValue(userDataManager) is IUserManager userManager)
                     {
                         return userManager.GetUserById(userId);
                     }
@@ -394,7 +423,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     throw new InvalidOperationException("Failed to find user manager field in UserDataManager via reflection. The internal structure may have changed - this plugin may need to be updated for this version of Jellyfin.");
                 }
             }
-            catch (Exception ex) when (!(ex is InvalidOperationException))
+            catch (Exception ex) when (ex is not InvalidOperationException)
             {
                 throw new InvalidOperationException($"Reflection failed while trying to access user manager: {ex.Message}", ex);
             }
