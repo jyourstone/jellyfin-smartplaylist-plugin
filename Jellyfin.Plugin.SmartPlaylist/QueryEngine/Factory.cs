@@ -19,6 +19,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
         {
+            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, extractAudioLanguages, extractPeople, []);
+        }
+        
+        // Overload that supports extracting user data for multiple users
+        public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, 
+            List<string> additionalUserIds = null)
+        {
             // Cache the IsPlayed result to avoid multiple expensive calls
             var isPlayed = baseItem.IsPlayed(user);
 
@@ -91,6 +99,53 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 logger?.LogWarning(ex, "Error accessing user data for item {Name}", baseItem.Name);
                 // Keep the fallback values we set above
+            }
+            
+            // Extract user-specific data for additional users
+            if (additionalUserIds != null && additionalUserIds.Count > 0 && userDataManager != null)
+            {
+                foreach (var userId in additionalUserIds)
+                {
+                    try
+                    {
+                        if (Guid.TryParse(userId, out var userGuid))
+                        {
+                            // Try to get user by ID
+                            var targetUser = GetUserById(userDataManager, userGuid);
+                            if (targetUser != null)
+                            {
+                                var userIsPlayed = baseItem.IsPlayed(targetUser);
+                                operand.IsPlayedByUser[userId] = userIsPlayed;
+                                
+                                var targetUserData = userDataManager.GetUserData(targetUser, baseItem);
+                                if (targetUserData != null)
+                                {
+                                    operand.PlayCountByUser[userId] = targetUserData.PlayCount;
+                                    operand.IsFavoriteByUser[userId] = targetUserData.IsFavorite;
+                                }
+                                else
+                                {
+                                    // Fallback values
+                                    operand.PlayCountByUser[userId] = userIsPlayed ? 1 : 0;
+                                    operand.IsFavoriteByUser[userId] = false;
+                                }
+                            }
+                            else
+                            {
+                                logger?.LogWarning("User with ID {UserId} not found for user-specific data extraction. This playlist rule references a user that no longer exists.", userId);
+                                throw new InvalidOperationException($"User with ID {userId} not found. This playlist rule references a user that no longer exists.");
+                            }
+                        }
+                        else
+                        {
+                            logger?.LogWarning("Invalid user ID format: {UserId}", userId);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error extracting user data for user {UserId} on item {Name}", userId, baseItem.Name);
+                    }
+                }
             }
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
@@ -269,6 +324,34 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             return operand;
         }
 
+        /// <summary>
+        /// Gets a user by ID using reflection to access the user manager from the user data manager.
+        /// This is a workaround since IUserDataManager doesn't directly expose user lookup.
+        /// </summary>
+        /// <param name="userDataManager">The user data manager instance.</param>
+        /// <param name="userId">The user ID to look up.</param>
+        /// <returns>The user if found, otherwise null.</returns>
+        private static User GetUserById(IUserDataManager userDataManager, Guid userId)
+        {
+            if (userDataManager == null)
+            {
+                return null;
+            }
+            
+            // We need to use reflection to access the user manager from the user data manager
+            // This is a workaround since IUserDataManager doesn't directly expose user lookup
+            var userManagerField = userDataManager.GetType().GetField("_userManager", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            if (userManagerField != null)
+            {
+                var userManager = userManagerField.GetValue(userDataManager) as IUserManager;
+                return userManager?.GetUserById(userId);
+            }
+            
+            return null;
+        }
+        
         /// <summary>
         /// Safely converts a DateTime to Unix timestamp, handling invalid dates.
         /// </summary>

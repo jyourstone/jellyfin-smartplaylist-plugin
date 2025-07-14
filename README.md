@@ -77,7 +77,7 @@ This plugin creates smart playlists that automatically updates based on rules yo
 - **Recently added** series or episodes
 - **High-rated** content from certain years
 - **Music** from specific artists or albums
-- **Tagged content** like "Christmas movies", "Kids safe", or "Documentaries"
+- **Tagged content** like "Christmas", "Kids", or "Documentaries"
 - And much more!
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
@@ -115,7 +115,7 @@ The web interface provides access to all available fields for creating playlist 
 
 #### **Content Fields**
 - **Name** - Title of the media item
-- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Audio`). It's recommended to always use this filter for best performance.
+- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Audio`)
 - **Audio Languages** - The audio language of the movie/TV show.
 - **Album** - Album name (for music)
 - **Folder Path** - Location in your library
@@ -124,6 +124,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Is Played** - Whether the item has been watched/listened to
 - **Is Favorite** - Whether the item is marked as a favorite
 - **Play Count** - Number of times the item has been played
+> **Note:** These playback fields can optionally be set to a specific user. This allows you to create rules like "Is Played by user X" or "Is Favorite for user X AND for user Y".
 
 #### **Content Info**
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)

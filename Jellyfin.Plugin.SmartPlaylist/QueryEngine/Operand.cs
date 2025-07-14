@@ -28,5 +28,27 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public bool IsFavorite { get; set; } = false;
         public List<string> AudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
+        
+        // User-specific data - Store user ID -> data mappings
+        // These will be populated based on which users are referenced in rules
+        public Dictionary<string, bool> IsPlayedByUser { get; set; } = [];
+        public Dictionary<string, int> PlayCountByUser { get; set; } = [];
+        public Dictionary<string, bool> IsFavoriteByUser { get; set; } = [];
+        
+        // Helper methods to check user-specific data
+        public bool GetIsPlayedByUser(string userId)
+        {
+            return IsPlayedByUser.TryGetValue(userId, out var value) && value;
+        }
+        
+        public int GetPlayCountByUser(string userId)
+        {
+            return PlayCountByUser.TryGetValue(userId, out var value) ? value : 0;
+        }
+        
+        public bool GetIsFavoriteByUser(string userId)
+        {
+            return IsFavoriteByUser.TryGetValue(userId, out var value) && value;
+        }
     }
 }
