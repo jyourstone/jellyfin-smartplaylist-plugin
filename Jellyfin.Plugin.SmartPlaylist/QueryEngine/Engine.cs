@@ -283,15 +283,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Handle date equality specially - compare date ranges instead of exact timestamps
             if (r.Operator == "Equal")
             {
-                return BuildDateEqualityExpression(r, left, logger);
+                return (BinaryExpression)BuildDateEqualityExpression(r, left, logger);
             }
             else if (r.Operator == "NotEqual")
             {
-                return BuildDateInequalityExpression(r, left, logger);
+                return (BinaryExpression)BuildDateInequalityExpression(r, left, logger);
             }
             else if (r.Operator == "WithinLastDays")
             {
-                return BuildWithinLastDaysExpression(r, left, logger);
+                return (BinaryExpression)BuildWithinLastDaysExpression(r, left, logger);
             }
             else
             {
@@ -360,20 +360,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             // For equality, we need to check if the date falls within the target day
             // Convert the target date to start and end of day timestamps using UTC
-            var targetDate = DateTime.ParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
+                System.Globalization.DateTimeStyles.None, out DateTime targetDate))
+            {
+                logger?.LogError("SmartPlaylist date equality failed: Invalid date format '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
+            }
+            
             var startOfDay = (double)new DateTimeOffset(targetDate, TimeSpan.Zero).ToUnixTimeSeconds();
-            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1), TimeSpan.Zero).ToUnixTimeSeconds();
+            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1), TimeSpan.Zero).ToUnixTimeSeconds();
             
-            logger?.LogDebug("SmartPlaylist date equality range: {StartOfDay} to {EndOfDay}", startOfDay, endOfDay);
+            logger?.LogDebug("SmartPlaylist date equality range: {StartOfDay} to {EndOfDay} (exclusive)", startOfDay, endOfDay);
             
-            // Create expression: operand.DateCreated >= startOfDay && operand.DateCreated <= endOfDay
+            // Create expression: operand.DateCreated >= startOfDay && operand.DateCreated < endOfDay
             var startConstant = System.Linq.Expressions.Expression.Constant(startOfDay);
             var endConstant = System.Linq.Expressions.Expression.Constant(endOfDay);
             
             var greaterThanOrEqual = System.Linq.Expressions.Expression.GreaterThanOrEqual(left, startConstant);
-            var lessThanOrEqual = System.Linq.Expressions.Expression.LessThanOrEqual(left, endConstant);
+            var lessThan = System.Linq.Expressions.Expression.LessThan(left, endConstant);
             
-            return System.Linq.Expressions.Expression.AndAlso(greaterThanOrEqual, lessThanOrEqual);
+            return System.Linq.Expressions.Expression.AndAlso(greaterThanOrEqual, lessThan);
         }
 
         /// <summary>
@@ -384,20 +390,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogDebug("SmartPlaylist handling date inequality for field {Field} with date {Date}", r.MemberName, r.TargetValue);
             
             // For inequality, we need to check if the date is outside the target day
-            var targetDate = DateTime.ParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
+                System.Globalization.DateTimeStyles.None, out DateTime targetDate))
+            {
+                logger?.LogError("SmartPlaylist date inequality failed: Invalid date format '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
+            }
+            
             var startOfDay = (double)new DateTimeOffset(targetDate, TimeSpan.Zero).ToUnixTimeSeconds();
-            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1), TimeSpan.Zero).ToUnixTimeSeconds();
+            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1), TimeSpan.Zero).ToUnixTimeSeconds();
             
-            logger?.LogDebug("SmartPlaylist date inequality range: < {StartOfDay} or > {EndOfDay}", startOfDay, endOfDay);
+            logger?.LogDebug("SmartPlaylist date inequality range: < {StartOfDay} or >= {EndOfDay}", startOfDay, endOfDay);
             
-            // Create expression: operand.DateCreated < startOfDay || operand.DateCreated > endOfDay
+            // Create expression: operand.DateCreated < startOfDay || operand.DateCreated >= endOfDay
             var startConstant = System.Linq.Expressions.Expression.Constant(startOfDay);
             var endConstant = System.Linq.Expressions.Expression.Constant(endOfDay);
             
             var lessThan = System.Linq.Expressions.Expression.LessThan(left, startConstant);
-            var greaterThan = System.Linq.Expressions.Expression.GreaterThan(left, endConstant);
+            var greaterThanOrEqual = System.Linq.Expressions.Expression.GreaterThanOrEqual(left, endConstant);
             
-            return System.Linq.Expressions.Expression.OrElse(lessThan, greaterThan);
+            return System.Linq.Expressions.Expression.OrElse(lessThan, greaterThanOrEqual);
         }
 
         /// <summary>
