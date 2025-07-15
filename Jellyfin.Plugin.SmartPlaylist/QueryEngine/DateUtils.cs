@@ -7,6 +7,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     {
         /// <summary>
         /// Extracts the PremiereDate property from a BaseItem and returns its Unix timestamp, or 0 on error.
+        /// Treats the PremiereDate as UTC to ensure consistency with user-input date handling.
         /// </summary>
         public static double GetReleaseDateUnixTimestamp(BaseItem item)
         {
@@ -18,7 +19,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     var premiereDate = premiereDateProperty.GetValue(item);
                     if (premiereDate is DateTime premiereDateTime && premiereDateTime != DateTime.MinValue)
                     {
-                        return new DateTimeOffset(premiereDateTime).ToUnixTimeSeconds();
+                        // Treat the PremiereDate as UTC to ensure consistency with user-input date handling
+                        // This assumes Jellyfin stores dates in UTC, which is the typical behavior
+                        return new DateTimeOffset(premiereDateTime, TimeSpan.Zero).ToUnixTimeSeconds();
                     }
                 }
             }

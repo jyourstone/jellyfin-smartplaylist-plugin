@@ -405,6 +405,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         
         /// <summary>
         /// Safely converts a DateTime to Unix timestamp, handling invalid dates.
+        /// Treats the DateTime as UTC to ensure consistency with other date handling in the plugin.
         /// </summary>
         /// <param name="dateTime">The DateTime to convert.</param>
         /// <returns>Unix timestamp in seconds, or 0 if the date is invalid.</returns>
@@ -424,7 +425,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     return 0;
                 }
 
-                return new DateTimeOffset(dateTime).ToUnixTimeSeconds();
+                // Treat the DateTime as UTC to ensure consistency with other date handling in the plugin
+                // This assumes Jellyfin stores dates in UTC, which is the typical behavior
+                return new DateTimeOffset(dateTime, TimeSpan.Zero).ToUnixTimeSeconds();
             }
             catch (ArgumentOutOfRangeException)
             {
