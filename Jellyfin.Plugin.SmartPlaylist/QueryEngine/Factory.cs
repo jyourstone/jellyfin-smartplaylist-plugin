@@ -4,7 +4,6 @@ using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
-using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
