@@ -464,11 +464,15 @@
                     op.Value === 'LessThanOrEqual'
                 );
             } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-                // Date fields can include all operators including date-specific ones
+                // Date fields: exclude string operators and numeric-specific operators, include date-specific operators
                 allowedOperators = availableFields.Operators.filter(op => 
                     op.Value !== 'Contains' && 
                     op.Value !== 'NotContains' && 
-                    op.Value !== 'MatchRegex'
+                    op.Value !== 'MatchRegex' &&
+                    op.Value !== 'GreaterThan' &&
+                    op.Value !== 'LessThan' &&
+                    op.Value !== 'GreaterThanOrEqual' &&
+                    op.Value !== 'LessThanOrEqual'
                 );
             } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
                 allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
@@ -1426,6 +1430,8 @@
                                         case 'NotContains': operator = "not contains"; break;
                                         case 'GreaterThan': operator = '>'; break;
                                         case 'LessThan': operator = '<'; break;
+                                        case 'After': operator = 'after'; break;
+                                        case 'Before': operator = 'before'; break;
                                         case 'GreaterThanOrEqual': operator = '>='; break;
                                         case 'LessThanOrEqual': operator = '<='; break;
                                         case 'MatchRegex': operator = 'matches regex'; break;
@@ -1691,6 +1697,8 @@
                                 case 'NotContains': operator = "not contains"; break;
                                 case 'GreaterThan': operator = '>'; break;
                                 case 'LessThan': operator = '<'; break;
+                                case 'After': operator = 'after'; break;
+                                case 'Before': operator = 'before'; break;
                                 case 'GreaterThanOrEqual': operator = '>='; break;
                                 case 'LessThanOrEqual': operator = '<='; break;
                                 case 'MatchRegex': operator = 'matches regex'; break;
