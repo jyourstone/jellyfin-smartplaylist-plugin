@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -64,6 +65,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _logger.LogError(ex, "Failed to create PlaylistService");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Gets a user-friendly label for a field name.
+        /// </summary>
+        /// <param name="fieldName">The field name</param>
+        /// <returns>The user-friendly label</returns>
+        private static string GetFieldLabel(string fieldName)
+        {
+            return fieldName switch
+            {
+                "DateCreated" => "Date Created",
+                "DateLastRefreshed" => "Date Last Refreshed",
+                "DateLastSaved" => "Date Last Saved",
+                "DateModified" => "Date Modified",
+                "ReleaseDate" => "Release Date",
+                "ProductionYear" => "Production Year",
+                "CommunityRating" => "Community Rating",
+                "CriticRating" => "Critic Rating",
+                "RuntimeMinutes" => "Runtime (Minutes)",
+                "IsPlayed" => "Is Played",
+                "IsFavorite" => "Is Favorite",
+                "PlayCount" => "Play Count",
+                "ItemType" => "Media Type",
+                "OfficialRating" => "Parental Rating",
+                "AudioLanguages" => "Audio Languages",
+                "FileName" => "File Name",
+                "FolderPath" => "Folder Path",
+                _ => fieldName
+            };
         }
 
         private void DeleteJellyfinPlaylist(string playlistName, Guid userId)
@@ -552,14 +583,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "PlayCount", Label = "Play Count" },
                     new { Value = "RuntimeMinutes", Label = "Runtime (Minutes)" }
                 },
-                DateFields = new[]
-                {
-                    new { Value = "DateCreated", Label = "Date Created" },
-                    new { Value = "DateLastRefreshed", Label = "Date Last Refreshed" },
-                    new { Value = "DateLastSaved", Label = "Date Last Saved" },
-                    new { Value = "DateModified", Label = "Date Modified" },
-                    new { Value = "ReleaseDate", Label = "Release Date" }
-                },
+                DateFields = FieldDefinitions.DateFields.Select(field => new { Value = field, Label = GetFieldLabel(field) }).ToArray(),
                 FileFields = new[]
                 {
                     new { Value = "FileName", Label = "File Name" },

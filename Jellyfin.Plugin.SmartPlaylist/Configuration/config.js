@@ -445,19 +445,36 @@
         operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
         let allowedOperators = [];
         
-        if (FIELD_TYPES.LIST_FIELDS.includes(fieldValue)) {
-            allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
-        } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue) || FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-            allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
-            
-            if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-                allowedOperators = allowedOperators.filter(op => op.Value !== 'GreaterThanOrEqual' && op.Value !== 'LessThanOrEqual');
-                // Do not push any additional operators here; rely on backend-provided list
+        // Use the new field-specific operator mappings from the API
+        if (availableFields.FieldOperators && availableFields.FieldOperators[fieldValue]) {
+            const allowedOperatorValues = availableFields.FieldOperators[fieldValue];
+            allowedOperators = availableFields.Operators.filter(op => allowedOperatorValues.includes(op.Value));
+        } else {
+            // Fallback to the old logic if FieldOperators is not available
+            if (FIELD_TYPES.LIST_FIELDS.includes(fieldValue)) {
+                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+            } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
+                // Numeric fields should NOT include date-specific operators
+                allowedOperators = availableFields.Operators.filter(op => 
+                    op.Value === 'Equal' || 
+                    op.Value === 'NotEqual' || 
+                    op.Value === 'GreaterThan' || 
+                    op.Value === 'LessThan' || 
+                    op.Value === 'GreaterThanOrEqual' || 
+                    op.Value === 'LessThanOrEqual'
+                );
+            } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
+                // Date fields can include all operators including date-specific ones
+                allowedOperators = availableFields.Operators.filter(op => 
+                    op.Value !== 'Contains' && 
+                    op.Value !== 'NotContains' && 
+                    op.Value !== 'MatchRegex'
+                );
+            } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
+                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
+            } else { // Default to string fields
+                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
             }
-        } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
-            allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
-        } else { // Default to string fields
-            allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
         }
 
         allowedOperators.forEach(opt => {

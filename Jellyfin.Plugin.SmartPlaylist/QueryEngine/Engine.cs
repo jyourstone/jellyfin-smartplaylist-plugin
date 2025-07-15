@@ -41,8 +41,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
         {
             // Handle user-specific expressions first
-            if (r.IsUserSpecific && r.UserSpecificField != null)
+            if (r.IsUserSpecific)
             {
+                if (r.UserSpecificField == null)
+                {
+                    logger?.LogError("SmartPlaylist user-specific expression for unsupported field '{Field}' with UserId '{UserId}'", r.MemberName, r.UserId);
+                    throw new ArgumentException($"Field '{r.MemberName}' does not support user-specific queries. Supported user-specific fields are: IsPlayed, PlayCount, IsFavorite.");
+                }
                 return BuildUserSpecificExpression<T>(r, param, logger);
             }
 
@@ -118,6 +123,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Validates and parses a boolean TargetValue for expression building.
+        /// </summary>
+        /// <param name="targetValue">The target value to validate and parse</param>
+        /// <param name="fieldName">The field name for error reporting</param>
+        /// <param name="logger">Optional logger for error reporting</param>
+        /// <returns>The parsed boolean value</returns>
+        /// <exception cref="ArgumentException">Thrown when the target value is invalid</exception>
+        private static bool ValidateAndParseBooleanValue(string targetValue, string fieldName, ILogger logger = null)
+        {
+            // Validate and parse boolean value safely
+            if (string.IsNullOrWhiteSpace(targetValue))
+            {
+                logger?.LogError("SmartPlaylist boolean comparison failed: TargetValue is null or empty for field '{Field}'", fieldName);
+                throw new ArgumentException($"Boolean comparison requires a valid true/false value for field '{fieldName}', but got: '{targetValue}'");
+            }
+            
+            if (!bool.TryParse(targetValue, out bool boolValue))
+            {
+                logger?.LogError("SmartPlaylist boolean comparison failed: Invalid boolean value '{Value}' for field '{Field}'", targetValue, fieldName);
+                throw new ArgumentException($"Invalid boolean value '{targetValue}' for field '{fieldName}'. Expected 'true' or 'false'.");
+            }
+            
+            return boolValue;
+        }
+
+        /// <summary>
         /// Builds expressions for boolean user-specific fields.
         /// </summary>
         private static BinaryExpression BuildUserSpecificBooleanExpression(Expression r, System.Linq.Expressions.Expression methodCall, ILogger logger)
@@ -128,19 +159,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean user-specific field '{r.MemberName}'. Only 'Equal' is supported.");
             }
             
-            // Validate and parse boolean value safely
-            if (string.IsNullOrWhiteSpace(r.TargetValue))
-            {
-                logger?.LogError("SmartPlaylist boolean comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
-                throw new ArgumentException($"Boolean comparison requires a valid true/false value for field '{r.MemberName}', but got: '{r.TargetValue}'");
-            }
-            
-            if (!bool.TryParse(r.TargetValue, out bool boolValue))
-            {
-                logger?.LogError("SmartPlaylist boolean comparison failed: Invalid boolean value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
-                throw new ArgumentException($"Invalid boolean value '{r.TargetValue}' for field '{r.MemberName}'. Expected 'true' or 'false'.");
-            }
-            
+            var boolValue = ValidateAndParseBooleanValue(r.TargetValue, r.MemberName, logger);
             var right = System.Linq.Expressions.Expression.Constant(boolValue);
             return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, methodCall, right);
         }
@@ -224,19 +243,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean field '{r.MemberName}'. Only 'Equal' is supported.");
             }
             
-            // Validate and parse boolean value safely
-            if (string.IsNullOrWhiteSpace(r.TargetValue))
-            {
-                logger?.LogError("SmartPlaylist boolean comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
-                throw new ArgumentException($"Boolean comparison requires a valid true/false value for field '{r.MemberName}', but got: '{r.TargetValue}'");
-            }
-            
-            if (!bool.TryParse(r.TargetValue, out bool boolValue))
-            {
-                logger?.LogError("SmartPlaylist boolean comparison failed: Invalid boolean value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
-                throw new ArgumentException($"Invalid boolean value '{r.TargetValue}' for field '{r.MemberName}'. Expected 'true' or 'false'.");
-            }
-            
+            var boolValue = ValidateAndParseBooleanValue(r.TargetValue, r.MemberName, logger);
             var right = System.Linq.Expressions.Expression.Constant(boolValue);
             return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, left, right);
         }
@@ -524,8 +531,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <returns>True if it's a date field, false otherwise</returns>
         private static bool IsDateField(string fieldName)
         {
-            var dateFields = new[] { "DateCreated", "DateLastRefreshed", "DateLastSaved", "DateModified", "ReleaseDate" };
-            return dateFields.Contains(fieldName);
+            return FieldDefinitions.IsDateField(fieldName);
         }
 
         /// <summary>

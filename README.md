@@ -143,6 +143,8 @@ The web interface provides access to all available fields for creating playlist 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "Greater Than" or "Less Than" with a specific date (e.g., "2024-01-01")
 > - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
+> 
+> **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
 
 #### **Metadata**
 - **People** - Cast and crew (actors, directors, producers, etc.)
