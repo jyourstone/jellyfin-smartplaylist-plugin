@@ -359,10 +359,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogDebug("SmartPlaylist handling date equality for field {Field} with date {Date}", r.MemberName, r.TargetValue);
             
             // For equality, we need to check if the date falls within the target day
-            // Convert the target date to start and end of day timestamps
+            // Convert the target date to start and end of day timestamps using UTC
             var targetDate = DateTime.ParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-            var startOfDay = (double)new DateTimeOffset(targetDate).ToUnixTimeSeconds();
-            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1)).ToUnixTimeSeconds();
+            var startOfDay = (double)new DateTimeOffset(targetDate, TimeSpan.Zero).ToUnixTimeSeconds();
+            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1), TimeSpan.Zero).ToUnixTimeSeconds();
             
             logger?.LogDebug("SmartPlaylist date equality range: {StartOfDay} to {EndOfDay}", startOfDay, endOfDay);
             
@@ -385,8 +385,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             // For inequality, we need to check if the date is outside the target day
             var targetDate = DateTime.ParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-            var startOfDay = (double)new DateTimeOffset(targetDate).ToUnixTimeSeconds();
-            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1)).ToUnixTimeSeconds();
+            var startOfDay = (double)new DateTimeOffset(targetDate, TimeSpan.Zero).ToUnixTimeSeconds();
+            var endOfDay = (double)new DateTimeOffset(targetDate.AddDays(1).AddSeconds(-1), TimeSpan.Zero).ToUnixTimeSeconds();
             
             logger?.LogDebug("SmartPlaylist date inequality range: < {StartOfDay} or > {EndOfDay}", startOfDay, endOfDay);
             
@@ -553,8 +553,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
                     System.Globalization.DateTimeStyles.None, out DateTime parsedDate))
                 {
-                    // Convert to Unix timestamp - use the same logic as SafeToUnixTimeSeconds
-                    return new DateTimeOffset(parsedDate).ToUnixTimeSeconds();
+                    // Convert to Unix timestamp using UTC to ensure consistency with other date operations
+                    return new DateTimeOffset(parsedDate, TimeSpan.Zero).ToUnixTimeSeconds();
                 }
                 else
                 {

@@ -446,7 +446,7 @@
         let allowedOperators = [];
         
         // Use the new field-specific operator mappings from the API
-        if (availableFields.FieldOperators && availableFields.FieldOperators[fieldValue]) {
+        if (availableFields.FieldOperators?.[fieldValue]) {
             const allowedOperatorValues = availableFields.FieldOperators[fieldValue];
             allowedOperators = availableFields.Operators.filter(op => allowedOperatorValues.includes(op.Value));
         } else {

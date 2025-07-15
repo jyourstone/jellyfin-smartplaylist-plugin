@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -11,64 +10,64 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <summary>
         /// Date fields that require special handling for date operations.
         /// </summary>
-        public static readonly HashSet<string> DateFields = new()
-        {
+        public static readonly HashSet<string> DateFields =
+        [
             "DateCreated",
             "DateLastRefreshed", 
             "DateLastSaved",
             "DateModified",
             "ReleaseDate"
-        };
+        ];
 
         /// <summary>
         /// List fields that contain collections of strings.
         /// </summary>
-        public static readonly HashSet<string> ListFields = new()
-        {
+        public static readonly HashSet<string> ListFields =
+        [
             "People",
             "Genres", 
             "Studios",
             "Tags"
-        };
+        ];
 
         /// <summary>
         /// Numeric fields that support numeric comparisons.
         /// </summary>
-        public static readonly HashSet<string> NumericFields = new()
-        {
+        public static readonly HashSet<string> NumericFields =
+        [
             "ProductionYear",
             "CommunityRating",
             "CriticRating", 
             "RuntimeMinutes",
             "PlayCount"
-        };
+        ];
 
         /// <summary>
         /// Boolean fields that only support equality comparisons.
         /// </summary>
-        public static readonly HashSet<string> BooleanFields = new()
-        {
+        public static readonly HashSet<string> BooleanFields =
+        [
             "IsPlayed",
             "IsFavorite"
-        };
+        ];
 
         /// <summary>
         /// Simple fields that have predefined values.
         /// </summary>
-        public static readonly HashSet<string> SimpleFields = new()
-        {
+        public static readonly HashSet<string> SimpleFields =
+        [
             "ItemType"
-        };
+        ];
 
         /// <summary>
         /// User-specific fields that can be filtered by user.
         /// </summary>
-        public static readonly HashSet<string> UserDataFields = new()
-        {
+        public static readonly HashSet<string> UserDataFields =
+        [
             "IsPlayed",
             "IsFavorite", 
             "PlayCount"
-        };
+        ];
 
         /// <summary>
         /// Checks if a field is a date field that requires special date handling.
@@ -152,7 +151,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("FolderPath");
             allFields.Add("MediaType");
             
-            return allFields.ToArray();
+            return [.. allFields];
         }
     }
 } 
