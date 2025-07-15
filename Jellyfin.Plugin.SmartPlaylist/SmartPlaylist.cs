@@ -444,7 +444,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         if (Guid.TryParse(userId, out var userGuid))
                         {
-                            var targetUser = QueryEngine.OperandFactory.GetUserById(userDataManager, userGuid);
+                            var targetUser = OperandFactory.GetUserById(userDataManager, userGuid);
                             if (targetUser == null)
                             {
                                 logger?.LogWarning("User with ID '{UserId}' not found for playlist '{PlaylistName}'. This playlist rule references a user that no longer exists. Skipping playlist processing.", userId, Name);
@@ -879,6 +879,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "ProductionYear Descending", () => new ProductionYearOrderDesc() },
             { "DateCreated Ascending", () => new DateCreatedOrder() },
             { "DateCreated Descending", () => new DateCreatedOrderDesc() },
+            { "ReleaseDate Ascending", () => new ReleaseDateOrder() },
+            { "ReleaseDate Descending", () => new ReleaseDateOrderDesc() },
             { "CommunityRating Ascending", () => new CommunityRatingOrder() },
             { "CommunityRating Descending", () => new CommunityRatingOrderDesc() },
             { "NoOrder", () => new NoOrder() }
@@ -889,6 +891,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return OrderMap.TryGetValue(orderName ?? "", out var factory) 
                 ? factory() 
                 : new NoOrder();
+        }
+    }
+
+    /// <summary>
+    /// Utility class for shared ordering operations
+    /// </summary>
+    public static class OrderUtilities
+    {
+        /// <summary>
+        /// Gets the release date for a BaseItem by checking the PremiereDate property
+        /// </summary>
+        /// <param name="item">The BaseItem to get the release date for</param>
+        /// <returns>The release date or DateTime.MinValue if not available</returns>
+        public static DateTime GetReleaseDate(BaseItem item)
+        {
+            var unixTimestamp = DateUtils.GetReleaseDateUnixTimestamp(item);
+            if (unixTimestamp > 0)
+            {
+                return DateTimeOffset.FromUnixTimeSeconds((long)unixTimestamp).DateTime;
+            }
+            return DateTime.MinValue;
         }
     }
 
@@ -964,6 +987,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
             return items == null ? [] : items.OrderByDescending(x => x.DateCreated);
+        }
+    }
+
+    public class ReleaseDateOrder : Order
+    {
+        public override string Name => "ReleaseDate Ascending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            return items == null ? [] : items.OrderBy(OrderUtilities.GetReleaseDate);
+        }
+    }
+
+    public class ReleaseDateOrderDesc : Order
+    {
+        public override string Name => "ReleaseDate Descending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            return items == null ? [] : items.OrderByDescending(OrderUtilities.GetReleaseDate);
         }
     }
 

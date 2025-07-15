@@ -134,10 +134,17 @@ The web interface provides access to all available fields for creating playlist 
 - **Community Rating** - User ratings (0-10)
 - **Critic Rating** - Professional critic ratings
 - **Production Year** - Original production year
+- **Release Date** - Original release date of the media
 - **Date Created** - When added to your library
 - **Date Last Refreshed** - Last metadata update
 - **Date Last Saved** - Last saved to database
 - **Date Modified** - Last file modification
+
+> **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
+> - **Exact dates**: Use "Greater Than" or "Less Than" with a specific date (e.g., "2024-01-01")
+> - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
+> 
+> **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
 
 #### **Metadata**
 - **People** - Cast and crew (actors, directors, producers, etc.)
@@ -150,7 +157,8 @@ The web interface provides access to all available fields for creating playlist 
 - **Equals** / **Not Equals** - Exact matches
 - **Contains** / **Not Contains** - Partial text matching
 - **Greater Than** / **Less Than** - Numeric comparisons
-- **Greater Than or Equal** / **Less Than or Equal** - Numeric comparisons
+- **Greater Than or Equal** / **Less Than or Equal** - Numeric comparisons (not available for date fields)
+- **Newer Than** / **Older Than** - Relative date comparisons (days, weeks, months, years)
 - **Matches Regex** - Advanced pattern matching using .NET regex syntax
 
 #### Regex Pattern Examples

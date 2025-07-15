@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -64,6 +65,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _logger.LogError(ex, "Failed to create PlaylistService");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Gets a user-friendly label for a field name.
+        /// </summary>
+        /// <param name="fieldName">The field name</param>
+        /// <returns>The user-friendly label</returns>
+        private static string GetFieldLabel(string fieldName)
+        {
+            return fieldName switch
+            {
+                "DateCreated" => "Date Created",
+                "DateLastRefreshed" => "Date Last Refreshed",
+                "DateLastSaved" => "Date Last Saved",
+                "DateModified" => "Date Modified",
+                "ReleaseDate" => "Release Date",
+                "ProductionYear" => "Production Year",
+                "CommunityRating" => "Community Rating",
+                "CriticRating" => "Critic Rating",
+                "RuntimeMinutes" => "Runtime (Minutes)",
+                "IsPlayed" => "Is Played",
+                "IsFavorite" => "Is Favorite",
+                "PlayCount" => "Play Count",
+                "ItemType" => "Media Type",
+                "OfficialRating" => "Parental Rating",
+                "AudioLanguages" => "Audio Languages",
+                "FileName" => "File Name",
+                "FolderPath" => "Folder Path",
+                _ => fieldName
+            };
         }
 
         private void DeleteJellyfinPlaylist(string playlistName, Guid userId)
@@ -306,6 +337,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
+                
+                // Clear the rule cache to ensure the new playlist rules are properly compiled
+                SmartPlaylist.ClearRuleCache(_logger);
+                _logger.LogDebug("Cleared rule cache after creating playlist '{PlaylistName}'", playlist.Name);
+                
                 _logger.LogDebug("Calling RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(createdPlaylist);
@@ -436,6 +472,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 playlist.Id = id;
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
                 
+                // Clear the rule cache to ensure any rule changes are properly reflected
+                SmartPlaylist.ClearRuleCache(_logger);
+                _logger.LogDebug("Cleared rule cache after updating playlist '{PlaylistName}'", playlist.Name);
+                
                 // Immediately update the Jellyfin playlist using the single playlist service with timeout
                 var playlistService = GetPlaylistService();
                 var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(updatedPlaylist);
@@ -543,13 +583,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "PlayCount", Label = "Play Count" },
                     new { Value = "RuntimeMinutes", Label = "Runtime (Minutes)" }
                 },
-                DateFields = new[]
-                {
-                    new { Value = "DateCreated", Label = "Date Created" },
-                    new { Value = "DateLastRefreshed", Label = "Date Last Refreshed" },
-                    new { Value = "DateLastSaved", Label = "Date Last Saved" },
-                    new { Value = "DateModified", Label = "Date Modified" }
-                },
+                DateFields = FieldDefinitions.DateFields.Select(field => new { Value = field, Label = GetFieldLabel(field) }).ToArray(),
                 FileFields = new[]
                 {
                     new { Value = "FileName", Label = "File Name" },
@@ -572,13 +606,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "LessThan", Label = "Less Than" },
                     new { Value = "GreaterThanOrEqual", Label = "Greater Than or Equal" },
                     new { Value = "LessThanOrEqual", Label = "Less Than or Equal" },
-                    new { Value = "MatchRegex", Label = "Matches Regex (.NET syntax)" }
+                    new { Value = "MatchRegex", Label = "Matches Regex (.NET syntax)" },
+                    new { Value = "NewerThan", Label = "Newer Than" },
+                    new { Value = "OlderThan", Label = "Older Than" }
                 },
                 OrderOptions = new[]
                 {
                     new { Value = "NoOrder", Label = "No Order" },
-                    new { Value = "Release Date Ascending", Label = "Release Date Ascending" },
-                    new { Value = "Release Date Descending", Label = "Release Date Descending" }
+                    new { Value = "Name Ascending", Label = "Name Ascending" },
+                    new { Value = "Name Descending", Label = "Name Descending" },
+                    new { Value = "ProductionYear Ascending", Label = "Production Year Ascending" },
+                    new { Value = "ProductionYear Descending", Label = "Production Year Descending" },
+                    new { Value = "DateCreated Ascending", Label = "Date Created Ascending" },
+                    new { Value = "DateCreated Descending", Label = "Date Created Descending" },
+                    new { Value = "ReleaseDate Ascending", Label = "Release Date Ascending" },
+                    new { Value = "ReleaseDate Descending", Label = "Release Date Descending" },
+                    new { Value = "CommunityRating Ascending", Label = "Community Rating Ascending" },
+                    new { Value = "CommunityRating Descending", Label = "Community Rating Descending" }
                 }
             };
 

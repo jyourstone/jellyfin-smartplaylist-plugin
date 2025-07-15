@@ -21,6 +21,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public double DateLastRefreshed { get; set; } = 0;
         public double DateLastSaved { get; set; } = 0;
         public double DateModified { get; set; } = 0;
+        public double ReleaseDate { get; set; } = 0;
         public List<string> Tags { get; set; } = [];
         public int RuntimeMinutes { get; set; } = 0;
         public int PlayCount { get; set; } = 0;

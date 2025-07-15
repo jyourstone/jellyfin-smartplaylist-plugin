@@ -10,6 +10,16 @@
         refresh: 'Plugins/SmartPlaylist/refresh'
     };
     
+    // Field type constants to avoid duplication
+    const FIELD_TYPES = {
+        LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags'],
+        NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
+        DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'],
+        BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite'],
+        SIMPLE_FIELDS: ['ItemType'],
+        USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount']
+    };
+    
     // Centralized styling configuration
     const STYLES = {
         // Logic group styles
@@ -175,8 +185,6 @@
             element.style.setProperty(cssProperty, value, 'important');
         });
     }
-
-
 
     function createStyledElement(tagName, className, styles) {
         const element = document.createElement(tagName);
@@ -368,6 +376,7 @@
             { Value: 'ProductionYear', Label: 'Production Year' },
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
+            { Value: 'ReleaseDate', Label: 'Release Date' },
             { Value: 'NoOrder', Label: 'No Order' }
         ];
         const orderOptions = [
@@ -436,20 +445,36 @@
         operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
         let allowedOperators = [];
         
-        const listFields = ['People', 'Genres', 'Studios', 'Tags'];
-        const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
-        const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-        const booleanFields = ['IsPlayed', 'IsFavorite'];
-        const simpleFields = ['ItemType'];
-
-        if (listFields.includes(fieldValue)) {
-            allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
-        } else if (numericFields.includes(fieldValue) || dateFields.includes(fieldValue)) {
-            allowedOperators = availableFields.Operators.filter(op => op.Value !== 'Contains' && op.Value !== 'NotContains' && op.Value !== 'MatchRegex');
-        } else if (booleanFields.includes(fieldValue) || simpleFields.includes(fieldValue)) {
-            allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
-        } else { // Default to string fields
-            allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+        // Use the new field-specific operator mappings from the API
+        if (availableFields.FieldOperators?.[fieldValue]) {
+            const allowedOperatorValues = availableFields.FieldOperators[fieldValue];
+            allowedOperators = availableFields.Operators.filter(op => allowedOperatorValues.includes(op.Value));
+        } else {
+            // Fallback to the old logic if FieldOperators is not available
+            if (FIELD_TYPES.LIST_FIELDS.includes(fieldValue)) {
+                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+            } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
+                // Numeric fields should NOT include date-specific operators
+                allowedOperators = availableFields.Operators.filter(op => 
+                    op.Value === 'Equal' || 
+                    op.Value === 'NotEqual' || 
+                    op.Value === 'GreaterThan' || 
+                    op.Value === 'LessThan' || 
+                    op.Value === 'GreaterThanOrEqual' || 
+                    op.Value === 'LessThanOrEqual'
+                );
+            } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
+                // Date fields can include all operators including date-specific ones
+                allowedOperators = availableFields.Operators.filter(op => 
+                    op.Value !== 'Contains' && 
+                    op.Value !== 'NotContains' && 
+                    op.Value !== 'MatchRegex'
+                );
+            } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
+                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
+            } else { // Default to string fields
+                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+            }
         }
 
         allowedOperators.forEach(opt => {
@@ -468,12 +493,7 @@
         
         valueContainer.innerHTML = '';
 
-        const numericFields = ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'];
-        const dateFields = ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified'];
-        const booleanFields = ['IsPlayed', 'IsFavorite'];
-        const simpleFields = ['ItemType'];
-
-        if (simpleFields.includes(fieldValue)) {
+        if (FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
             const select = document.createElement('select');
             select.className = 'emby-select rule-value-input';
             select.setAttribute('is', 'emby-select');
@@ -485,7 +505,7 @@
                 select.appendChild(option);
             });
             valueContainer.appendChild(select);
-        } else if (booleanFields.includes(fieldValue)) {
+        } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) {
             const select = document.createElement('select');
             select.className = 'emby-select rule-value-input';
             select.setAttribute('is', 'emby-select');
@@ -505,19 +525,68 @@
                 select.appendChild(option);
             });
             valueContainer.appendChild(select);
-        } else if (numericFields.includes(fieldValue)) {
+        } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
             const input = document.createElement('input');
             input.type = 'number';
             input.className = 'emby-input rule-value-input';
             input.placeholder = 'Value';
             input.style.width = '100%';
             valueContainer.appendChild(input);
-        } else if (dateFields.includes(fieldValue)) {
-            const input = document.createElement('input');
-            input.type = 'date';
-            input.className = 'emby-input rule-value-input';
-            input.style.width = '100%';
-            valueContainer.appendChild(input);
+        } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
+            // Check if this is a relative date operator by looking at the current operator
+            const ruleRow = valueContainer.closest('.rule-row');
+            const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
+            const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
+            
+            if (isRelativeDateOperator) {
+                // For relative date operators, use a number input and a unit dropdown
+                const inputContainer = document.createElement('div');
+                inputContainer.style.display = 'flex';
+                inputContainer.style.gap = '0.5em';
+                inputContainer.style.alignItems = 'center';
+                valueContainer.appendChild(inputContainer);
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'emby-input rule-value-input';
+                input.placeholder = 'Number';
+                input.min = '1';
+                input.style.flex = '0 0 43%';
+                inputContainer.appendChild(input);
+
+                const unitSelect = document.createElement('select');
+                unitSelect.className = 'emby-select rule-value-unit';
+                unitSelect.setAttribute('is', 'emby-select');
+                unitSelect.style.flex = '0 0 55%';
+                
+                // Add placeholder option
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = '-- Select Unit --';
+                placeholderOption.disabled = true;
+                placeholderOption.selected = true;
+                unitSelect.appendChild(placeholderOption);
+                
+                [
+                    { value: 'days', label: 'Days' },
+                    { value: 'weeks', label: 'Weeks' },
+                    { value: 'months', label: 'Months' },
+                    { value: 'years', label: 'Years' }
+                ].forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    unitSelect.appendChild(option);
+                });
+                inputContainer.appendChild(unitSelect);
+            } else {
+                // For regular date operators, use a date input
+                const input = document.createElement('input');
+                input.type = 'date';
+                input.className = 'emby-input rule-value-input';
+                input.style.width = '100%';
+                valueContainer.appendChild(input);
+            }
         }
         else {
             const input = document.createElement('input');
@@ -535,11 +604,45 @@
             newValueInput.setAttribute('data-original-value', currentValue);
             
             // Try to restore the value if it's appropriate for the new field type
-            if (simpleFields.includes(fieldValue) || booleanFields.includes(fieldValue)) {
+            if (FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue) || FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) {
                 // For selects, check if the value exists as an option
                 if (newValueInput.tagName === 'SELECT') {
                     const option = Array.from(newValueInput.options).find(opt => opt.value === currentValue);
                     if (option) {
+                        newValueInput.value = currentValue;
+                    }
+                }
+            } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
+                // Check if this is a relative date operator
+                const ruleRow = valueContainer.closest('.rule-row');
+                const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
+                const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
+                
+                if (isRelativeDateOperator) {
+                    // Parse number:unit format for relative date operators
+                    const parts = currentValue.split(':');
+                    const validUnits = ['days', 'weeks', 'months', 'years'];
+                    const num = parts[0];
+                    const unit = parts[1];
+                    const isValidNum = /^\d+$/.test(num) && parseInt(num, 10) > 0;
+                    const isValidUnit = validUnits.includes(unit);
+                    if (parts.length === 2 && isValidNum && isValidUnit) {
+                        // Set the number input
+                        if (newValueInput.tagName === 'INPUT') {
+                            newValueInput.value = num;
+                        }
+                        // Set the unit dropdown
+                        const unitSelect = valueContainer.querySelector('.rule-value-unit');
+                        if (unitSelect) {
+                            unitSelect.value = unit;
+                        }
+                    } else {
+                        // Log a warning if the value is malformed
+                        console.warn(`Malformed relative date value: '${currentValue}'. Expected format: <number>:<unit> (e.g., '3:months'). Parts:`, parts, `isValidNum: ${isValidNum}`, `isValidUnit: ${isValidUnit}`);
+                    }
+                } else {
+                    // For regular date operators, restore the date value directly
+                    if (newValueInput.tagName === 'INPUT') {
                         newValueInput.value = currentValue;
                     }
                 }
@@ -666,9 +769,14 @@
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
-        operatorSelect.addEventListener('change', function() {
-            updateRegexHelp(newRuleRow);
-        }, listenerOptions);
+                        operatorSelect.addEventListener('change', function() {
+                    updateRegexHelp(newRuleRow);
+                    // Update value input type if this is a date field and operator changed to/from relative date operators
+                    const fieldValue = fieldSelect.value;
+                    if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
+                        setValueInput(fieldValue, valueContainer);
+                    }
+                }, listenerOptions);
 
         // Style the action buttons
         const actionButtons = newRuleRow.querySelectorAll('.rule-action-btn');
@@ -861,6 +969,11 @@
                 
                 operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(ruleRow);
+                    // Update value input type if this is a date field and operator changed to/from relative date operators
+                    const fieldValue = fieldSelect.value;
+                    if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
+                        setValueInput(fieldValue, valueContainer);
+                    }
                 }, listenerOptions);
                 
                 // Re-style action buttons
@@ -917,7 +1030,15 @@
                 logicGroup.querySelectorAll('.rule-row').forEach(rule => {
                     const memberName = rule.querySelector('.rule-field-select').value;
                     const operator = rule.querySelector('.rule-operator-select').value;
-                    const targetValue = rule.querySelector('.rule-value-input').value;
+                    let targetValue;
+                    if ((operator === 'NewerThan' || operator === 'OlderThan') && rule.querySelector('.rule-value-unit')) {
+                        // Serialize as number:unit
+                        const num = rule.querySelector('.rule-value-input').value;
+                        const unit = rule.querySelector('.rule-value-unit').value;
+                        targetValue = num && unit ? `${num}:${unit}` : '';
+                    } else {
+                        targetValue = rule.querySelector('.rule-value-input').value;
+                    }
                     
                     if (memberName && operator && targetValue) {
                         const expression = { MemberName: memberName, Operator: operator, TargetValue: targetValue };
@@ -1069,8 +1190,7 @@
     }
 
     function updateUserSelectorVisibility(ruleRow, fieldValue) {
-        const userDataFields = ['IsPlayed', 'IsFavorite', 'PlayCount'];
-        const isUserDataField = userDataFields.includes(fieldValue);
+        const isUserDataField = FIELD_TYPES.USER_DATA_FIELDS.includes(fieldValue);
         const userSelectorDiv = ruleRow.querySelector('.rule-user-selector');
         
         if (userSelectorDiv) {
@@ -1099,9 +1219,13 @@
             
             const users = await response.json();
             
-            // Don't clear existing options if this is optional (preserves the default option)
             if (!isOptional) {
                 userSelect.innerHTML = '';
+            } else {
+                // Remove all options except the first (default) if present
+                while (userSelect.options.length > 1) {
+                    userSelect.remove(1);
+                }
             }
             
             // Add user options
@@ -1858,16 +1982,40 @@
                                 
                                 fieldSelect.value = expression.MemberName;
                                 
+                                // Update operator options first
+                                updateOperatorOptions(expression.MemberName, operatorSelect);
+                                
+                                // Set operator so setValueInput knows what type of input to create
+                                operatorSelect.value = expression.Operator;
+                                
                                 // Update UI elements based on the loaded rule data
                                 setValueInput(expression.MemberName, valueContainer);
-                                updateOperatorOptions(expression.MemberName, operatorSelect);
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
                                 
-                                // Set operator and value
+                                // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
-                                operatorSelect.value = expression.Operator;
                                 if (valueInput) {
-                                    valueInput.value = expression.TargetValue;
+                                    // For relative date operators, we need to parse the "number:unit" format
+                                    const isRelativeDateOperator = expression.Operator === 'NewerThan' || expression.Operator === 'OlderThan';
+                                    if (isRelativeDateOperator && expression.TargetValue) {
+                                        const parts = expression.TargetValue.split(':');
+                                        if (parts.length === 2) {
+                                            const num = parts[0];
+                                            const unit = parts[1];
+                                            
+                                            // Set the number input
+                                            valueInput.value = num;
+                                            
+                                            // Set the unit dropdown
+                                            const unitSelect = currentRule.querySelector('.rule-value-unit');
+                                            if (unitSelect) {
+                                                unitSelect.value = unit;
+                                            }
+                                        }
+                                    } else {
+                                        // For regular inputs, set the value directly
+                                        valueInput.value = expression.TargetValue;
+                                    }
                                 }
                                 
                                 // Set user selector if this is a user-specific rule
@@ -1999,6 +2147,29 @@
         });
     }
     
+    function applyCustomStyles() {
+        // Check if styles are already added
+        if (document.getElementById('smartplaylist-custom-styles')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'smartplaylist-custom-styles';
+        style.textContent = `
+            select.emby-select, select[is="emby-select"] {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='%23e0e0e0' viewBox='0 0 24 24'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+                background-repeat: no-repeat;
+                background-position: right 0.7em top 50%;
+                background-size: 1.2em auto;
+                padding-right: 1em !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     function initPage(page) {
         // Check if this specific page is already initialized
         if (page._pageInitialized) {
@@ -2006,6 +2177,8 @@
         }
         page._pageInitialized = true;
         
+        applyCustomStyles();
+
         // Show loading state
         const userSelect = page.querySelector('#playlistUser');
         if (userSelect) {
