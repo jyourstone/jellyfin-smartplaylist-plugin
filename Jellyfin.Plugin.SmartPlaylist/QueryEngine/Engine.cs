@@ -293,9 +293,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 return (BinaryExpression)BuildWithinLastDaysExpression(r, left, logger);
             }
+            else if (r.Operator == "After")
+            {
+                logger?.LogDebug("SmartPlaylist 'After' operator for date field {Field} with timestamp {Timestamp}", r.MemberName, targetTimestamp);
+                var right = System.Linq.Expressions.Expression.Constant(targetTimestamp);
+                return System.Linq.Expressions.Expression.GreaterThan(left, right);
+            }
+            else if (r.Operator == "Before")
+            {
+                logger?.LogDebug("SmartPlaylist 'Before' operator for date field {Field} with timestamp {Timestamp}", r.MemberName, targetTimestamp);
+                var right = System.Linq.Expressions.Expression.Constant(targetTimestamp);
+                return System.Linq.Expressions.Expression.LessThan(left, right);
+            }
             else
             {
-                // For other operators (GreaterThan, LessThan, etc.), use the exact timestamp comparison
+                // For other operators (legacy .NET ExpressionType), use the exact timestamp comparison
                 if (Enum.TryParse(r.Operator, out ExpressionType dateBinary))
                 {
                     logger?.LogDebug("SmartPlaylist {Operator} IS a built-in ExpressionType for date field: {ExpressionType}", r.Operator, dateBinary);
@@ -305,7 +317,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 else
                 {
                     logger?.LogError("SmartPlaylist unsupported date operator '{Operator}' for field '{Field}'", r.Operator, r.MemberName);
-                    throw new ArgumentException($"Operator '{r.Operator}' is not supported for date field '{r.MemberName}'");
+                    throw new ArgumentException($"Operator '{r.Operator}' is not supported for date field '{r.MemberName}'. Supported operators: Equal, NotEqual, After, Before, NewerThan, OlderThan, WithinLastDays");
                 }
             }
         }

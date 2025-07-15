@@ -155,9 +155,10 @@ The web interface provides access to all available fields for creating playlist 
 ### Available Operators
 
 - **Equals** / **Not Equals** - Exact matches
-- **Contains** / **Not Contains** - Partial text matching
+- **Contains** / **Not Contains** - Partial text matching  
 - **Greater Than** / **Less Than** - Numeric comparisons
-- **Greater Than or Equal** / **Less Than or Equal** - Numeric comparisons (not available for date fields)
+- **Greater Than or Equal** / **Less Than or Equal** - Numeric comparisons
+- **After** / **Before** - Date comparisons
 - **Newer Than** / **Older Than** - Relative date comparisons (days, weeks, months, years)
 - **Matches Regex** - Advanced pattern matching using .NET regex syntax
 

@@ -607,6 +607,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "GreaterThanOrEqual", Label = "Greater Than or Equal" },
                     new { Value = "LessThanOrEqual", Label = "Less Than or Equal" },
                     new { Value = "MatchRegex", Label = "Matches Regex (.NET syntax)" },
+                    new { Value = "After", Label = "After" },
+                    new { Value = "Before", Label = "Before" },
                     new { Value = "NewerThan", Label = "Newer Than" },
                     new { Value = "OlderThan", Label = "Older Than" }
                 },
