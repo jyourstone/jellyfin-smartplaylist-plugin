@@ -539,8 +539,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
 
                 stopwatch.Stop();
-                logger?.LogInformation("Playlist filtering completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
-                    stopwatch.ElapsedMilliseconds, totalItems, results.Count);
+                logger?.LogDebug("Playlist filtering for '{PlaylistName}' completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
+                    Name,stopwatch.ElapsedMilliseconds, totalItems, results.Count);
                 
                 // Apply ordering with error handling
                 try

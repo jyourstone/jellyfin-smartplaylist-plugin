@@ -89,7 +89,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
             
             try
             {
-                logger.LogInformation("Starting SmartPlaylist refresh task (acquired global refresh lock)");
+                logger.LogDebug("Starting SmartPlaylist refresh task (acquired global refresh lock)");
 
                 // Create playlist store
                 var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
@@ -340,7 +340,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
                 progress?.Report(100);
                 stopwatch.Stop();
-                logger.LogInformation("SmartPlaylist refresh task completed successfully in {TotalTime}ms", stopwatch.ElapsedMilliseconds);
+                logger.LogDebug("SmartPlaylist refresh task completed successfully in {TotalTime}ms", stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
