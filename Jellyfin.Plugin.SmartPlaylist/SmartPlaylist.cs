@@ -404,7 +404,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Check if any rules use expensive fields to avoid unnecessary extraction
                 var needsAudioLanguages = false;
                 var needsPeople = false;
-                var needsArtists = false;
                 var additionalUserIds = new List<string>();
                 
                 try
@@ -419,9 +418,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             .SelectMany(set => set?.Expressions ?? [])
                             .Any(expr => expr?.MemberName == "People");
                         
-                        needsArtists = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "Artists" || expr?.MemberName == "AlbumArtists");
+
                         
                         // Collect unique user IDs from user-specific expressions
                         additionalUserIds = [..ExpressionSets
@@ -492,10 +489,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         hasNonExpensiveRules = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName != "AudioLanguages" 
-                                       && expr?.MemberName != "People"
-                                       && expr?.MemberName != "Artists"
-                                       && expr?.MemberName != "AlbumArtists");
+                            .Any(expr => expr?.MemberName != "AudioLanguages" && expr?.MemberName != "People");
                     }
                 }
                 catch (Exception ex)
@@ -528,7 +522,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules, needsArtists);
+                            needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -572,7 +566,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
-            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules, bool needsArtists)
+            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
             
@@ -584,13 +578,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople || needsArtists)
+                if (needsAudioLanguages || needsPeople)
                 {
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
                     var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Artists: {ArtistNeeded})",
-                        needsAudioLanguages, needsPeople, needsArtists);
+
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded})",
+                        needsAudioLanguages, needsPeople);
                     
                     
                     try
@@ -612,7 +607,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     var compiledRule = compiledRules[setIndex][exprIndex];
                                     
-                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People" || expr.MemberName == "Artists" || expr.MemberName == "AlbumArtists")
+                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People")
                                     {
                                         expensiveRules.Add(compiledRule);
                                         logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
@@ -641,7 +636,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, needsArtists, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -655,7 +650,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, needsArtists);
+                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -747,7 +742,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     continue;
                                 
                                 // Phase 2: Extract expensive data and check complete rules
-                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, needsArtists);
+                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -793,7 +788,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, needsArtists, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, compiledRules, hasAnyRules);
                 }
                 
                 return results;
@@ -816,7 +811,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople,
-            List<string> additionalUserIds, bool needsArtists, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
             var results = new List<BaseItem>();
             
@@ -830,7 +825,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds, needsArtists);
+                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, additionalUserIds);
                         
                         bool matches = false;
                         if (!hasAnyRules) {
