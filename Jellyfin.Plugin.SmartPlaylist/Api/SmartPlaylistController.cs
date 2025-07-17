@@ -93,6 +93,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 "AudioLanguages" => "Audio Languages",
                 "FileName" => "File Name",
                 "FolderPath" => "Folder Path",
+                "Tags" => "Tags",
                 "Artists" => "Artists",
                 "AlbumArtists" => "Album Artists",
                 _ => fieldName

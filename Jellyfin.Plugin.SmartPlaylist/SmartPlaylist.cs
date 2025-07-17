@@ -492,7 +492,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         hasNonExpensiveRules = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName != "AudioLanguages" && expr?.MemberName != "People");
+                            .Any(expr => expr?.MemberName != "AudioLanguages" 
+                                       && expr?.MemberName != "People"
+                                       && expr?.MemberName != "Artists"
+                                       && expr?.MemberName != "AlbumArtists");
                     }
                 }
                 catch (Exception ex)
@@ -581,14 +584,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople)
+                if (needsAudioLanguages || needsPeople || needsArtists)
                 {
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
                     var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Artists: {ArtistNeeded})",
+                        needsAudioLanguages, needsPeople, needsArtists);
                     
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded})", 
-                        needsAudioLanguages, needsPeople);
                     
                     try
                     {

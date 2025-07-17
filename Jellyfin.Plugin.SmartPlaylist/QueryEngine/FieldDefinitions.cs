@@ -152,8 +152,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("FileName");
             allFields.Add("FolderPath");
             allFields.Add("MediaType");
-            allFields.Add("Artists");
-            allFields.Add("AlbumArtists");
             
             return [.. allFields];
         }
