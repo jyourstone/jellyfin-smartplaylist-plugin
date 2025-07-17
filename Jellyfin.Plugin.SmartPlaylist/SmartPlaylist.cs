@@ -492,10 +492,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         hasNonExpensiveRules = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName != "AudioLanguages" 
-                                       && expr?.MemberName != "People"
-                                       && expr?.MemberName != "Artists"
-                                       && expr?.MemberName != "AlbumArtists");
+                            .Any(expr => expr?.MemberName != "AudioLanguages" && expr?.MemberName != "People");
                     }
                 }
                 catch (Exception ex)
@@ -584,13 +581,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople || needsArtists)
+                if (needsAudioLanguages || needsPeople)
                 {
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
                     var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Artists: {ArtistNeeded})",
-                        needsAudioLanguages, needsPeople, needsArtists);
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded})",
+                        needsAudioLanguages, needsPeople);
                     
                     
                     try
@@ -612,7 +609,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     var compiledRule = compiledRules[setIndex][exprIndex];
                                     
-                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People" || expr.MemberName == "Artists" || expr.MemberName == "AlbumArtists")
+                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People")
                                     {
                                         expensiveRules.Add(compiledRule);
                                         logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
