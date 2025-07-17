@@ -141,16 +141,20 @@ The web interface provides access to all available fields for creating playlist 
 - **Date Modified** - Last file modification
 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
-> - **Exact dates**: Use "Greater Than" or "Less Than" with a specific date (e.g., "2024-01-01")
+> - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")
 > - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
 > 
 > **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
 
 #### **Metadata**
-- **People** - Cast and crew (actors, directors, producers, etc.)
+- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
+- **Artists** - Track-level artists *for music*
+- **Album Artists** - Album-level primary artists *for music*
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
+
+> **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** field is designed for movies/TV and contains cast/crew information rather than music performers.
 
 ### Available Operators
 

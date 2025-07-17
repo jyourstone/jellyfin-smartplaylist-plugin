@@ -518,21 +518,37 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                _logger.LogDebug("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
+                var directoryService = new BasicDirectoryService();
                 
-                // Only generate cover images for playlists that have content
+                // Check if playlist is empty
                 if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
                 {
-                    _logger.LogDebug("Skipping cover image generation for empty playlist {PlaylistName} - no content to generate image from", playlist.Name);
+                    _logger.LogDebug("Playlist {PlaylistName} is empty - clearing any existing cover images", playlist.Name);
+                    
+                    // Force metadata refresh to clear existing cover images for empty playlists
+                    var clearOptions = new MetadataRefreshOptions(directoryService)
+                    {
+                        MetadataRefreshMode = MetadataRefreshMode.FullRefresh,
+                        ImageRefreshMode = MetadataRefreshMode.FullRefresh,
+                        ReplaceAllImages = true,  // Clear all existing images
+                        ReplaceAllMetadata = true  // Clear all metadata to ensure clean state
+                    };
+                    
+                    await _providerManager.RefreshSingleItem(playlist, clearOptions, cancellationToken).ConfigureAwait(false);
+                    
+                    stopwatch.Stop();
+                    _logger.LogDebug("Cover image clearing completed for empty playlist {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                     return;
                 }
                 
-                var directoryService = new BasicDirectoryService();
+                _logger.LogDebug("Triggering metadata refresh for playlist {PlaylistName} to generate cover image", playlist.Name);
+                
                 var refreshOptions = new MetadataRefreshOptions(directoryService)
                 {
                     MetadataRefreshMode = MetadataRefreshMode.Default,
                     ImageRefreshMode = MetadataRefreshMode.Default,
-                    ReplaceAllMetadata = true  // Force regeneration of playlist metadata and cover images
+                    ReplaceAllMetadata = true, // Force regeneration of playlist metadata 
+                    ReplaceAllImages = true   // Force regeneration of playlist cover images
                 };
                 
                 await _providerManager.RefreshSingleItem(playlist, refreshOptions, cancellationToken).ConfigureAwait(false);

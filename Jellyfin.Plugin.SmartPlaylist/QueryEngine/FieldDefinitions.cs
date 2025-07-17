@@ -27,7 +27,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "People",
             "Genres", 
             "Studios",
-            "Tags"
+            "Tags",
+            "Artists",
+            "AlbumArtists"
         ];
 
         /// <summary>

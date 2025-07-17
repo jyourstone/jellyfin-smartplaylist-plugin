@@ -30,6 +30,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public List<string> AudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
         
+        // Music-specific fields
+        public List<string> Artists { get; set; } = [];
+        public List<string> AlbumArtists { get; set; } = [];
+        
         // User-specific data - Store user ID -> data mappings
         // These will be populated based on which users are referenced in rules
         public Dictionary<string, bool> IsPlayedByUser { get; set; } = [];

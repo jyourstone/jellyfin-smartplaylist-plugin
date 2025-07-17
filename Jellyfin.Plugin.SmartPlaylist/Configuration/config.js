@@ -12,7 +12,7 @@
     
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
-        LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags'],
+        LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite'],
@@ -366,6 +366,44 @@
             
             if ((defaultValue && opt.Value === defaultValue) || (!defaultValue && forceSelection && index === 0)) {
                 option.selected = true;
+            }
+        });
+    }
+
+    function populateFieldSelect(selectElement, fieldGroups, defaultValue = null) {
+        if (!selectElement || !fieldGroups) return;
+        
+        // Clear existing options
+        selectElement.innerHTML = '<option value="">-- Select Field --</option>';
+        
+        // Define field group display names and order
+        const groupConfig = [
+            { key: 'ContentFields', label: 'Content' },
+            { key: 'RatingsPlaybackFields', label: 'Ratings & Playback' },
+            { key: 'DateFields', label: 'Dates' },
+            { key: 'FileFields', label: 'File Info' },
+            { key: 'CollectionFields', label: 'Collections' }
+        ];
+        
+        groupConfig.forEach(group => {
+            const fields = fieldGroups[group.key];
+            if (fields && fields.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = group.label;
+                
+                fields.forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field.Value;
+                    option.textContent = field.Label;
+                    
+                    if (defaultValue && field.Value === defaultValue) {
+                        option.selected = true;
+                    }
+                    
+                    optgroup.appendChild(option);
+                });
+                
+                selectElement.appendChild(optgroup);
             }
         });
     }
@@ -741,14 +779,7 @@
         const valueContainer = newRuleRow.querySelector('.rule-value-container');
 
         if (availableFields.ContentFields) {
-            const allFields = availableFields.ContentFields.concat(
-                availableFields.RatingsPlaybackFields, 
-                availableFields.DateFields, 
-                availableFields.FileFields, 
-                availableFields.CollectionFields
-            );
-            
-            populateSelect(fieldSelect, allFields, null, false);
+            populateFieldSelect(fieldSelect, availableFields, null);
         }
         if (availableFields.Operators) {
             populateSelect(operatorSelect, availableFields.Operators, null, false);
@@ -939,14 +970,7 @@
                 
                 // Re-populate field options if needed
                 if (availableFields.ContentFields && fieldSelect.children.length <= 1) {
-                    const allFields = availableFields.ContentFields.concat(
-                        availableFields.RatingsPlaybackFields, 
-                        availableFields.DateFields, 
-                        availableFields.FileFields, 
-                        availableFields.CollectionFields
-                    );
-                    
-                    populateSelect(fieldSelect, allFields, fieldSelect.value, false);
+                    populateFieldSelect(fieldSelect, availableFields, fieldSelect.value);
                 }
                 
                 // Re-populate operator options if needed
@@ -2173,6 +2197,24 @@
                 background-position: right 0.7em top 50%;
                 background-size: 1.2em auto;
                 padding-right: 1em !important;
+            }
+            
+            /* Field group styling */
+            optgroup {
+                font-weight: bold;
+                font-size: 0.9em;
+                color: #00a4dc;
+                background: rgba(255, 255, 255, 0.05);
+                padding: 0.2em 0;
+                margin-top: 0.3em;
+            }
+            
+            optgroup option {
+                font-weight: normal;
+                font-size: 1em;
+                color: #e0e0e0;
+                background: inherit;
+                padding-left: 1em;
             }
         `;
         document.head.appendChild(style);

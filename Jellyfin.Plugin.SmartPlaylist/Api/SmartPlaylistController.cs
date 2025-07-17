@@ -93,6 +93,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 "AudioLanguages" => "Audio Languages",
                 "FileName" => "File Name",
                 "FolderPath" => "Folder Path",
+                "Tags" => "Tags",
+                "Artists" => "Artists",
+                "AlbumArtists" => "Album Artists",
                 _ => fieldName
             };
         }
@@ -139,7 +142,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 var refreshTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshSmartPlaylists");
                 if (refreshTask != null)
                 {
-                    _logger.LogInformation("Triggering smart playlist refresh task");
+                    _logger.LogInformation("Triggering SmartPlaylist refresh task");
                     _taskManager.Execute(refreshTask, new TaskOptions());
                 }
                 else
@@ -149,7 +152,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error triggering smart playlist refresh task");
+                _logger.LogError(ex, "Error triggering SmartPlaylist refresh task");
             }
         }
 
@@ -488,7 +491,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return Ok(updatedPlaylist);
                 }
                 
-                _logger.LogInformation("Updated smart playlist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
+                _logger.LogInformation("Updated SmartPlaylist: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return Ok(updatedPlaylist);
             }
@@ -594,7 +597,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "People", Label = "People" },
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },
-                    new { Value = "Tags", Label = "Tags" }
+                    new { Value = "Tags", Label = "Tags" },
+                    new { Value = "Artists", Label = "Artists" },
+                    new { Value = "AlbumArtists", Label = "Album Artists" }
                 },
                 Operators = new[]
                 {

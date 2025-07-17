@@ -4,6 +4,7 @@ using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
+using System.Linq;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -17,15 +18,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractArtists = false)
         {
-            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, extractAudioLanguages, extractPeople, []);
+            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, extractAudioLanguages, extractPeople, [], extractArtists);
         }
         
         // Overload that supports extracting user data for multiple users
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, 
-            List<string> additionalUserIds = null)
+            List<string> additionalUserIds = null, bool extractArtists = false)
         {
             // Cache the IsPlayed result to avoid multiple expensive calls
             var isPlayed = baseItem.IsPlayed(user);
@@ -338,6 +339,91 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 catch (Exception ex)
                 {
                     logger?.LogWarning(ex, "Failed to extract people for item {Name}", baseItem.Name);
+                }
+            }
+            
+            // Extract artists and album artists for music items - only when needed for performance
+            operand.Artists = [];
+            operand.AlbumArtists = [];
+            if (extractArtists)
+            {
+                try
+                {
+                    // Try to extract Artist property
+                    var artistProperty = baseItem.GetType().GetProperty("Artist");
+                    if (artistProperty != null)
+                    {
+                        var artistValue = artistProperty.GetValue(baseItem) as string;
+                        if (!string.IsNullOrEmpty(artistValue))
+                        {
+                            operand.Artists.Add(artistValue);
+                        }
+                    }
+                    
+                    // Try to extract Artists property (collection)
+                    var artistsProperty = baseItem.GetType().GetProperty("Artists");
+                    if (artistsProperty != null)
+                    {
+                        var artistsValue = artistsProperty.GetValue(baseItem);
+                        if (artistsValue is IEnumerable<string> artistsCollection)
+                        {
+                            foreach (var artist in artistsCollection)
+                            {
+                                if (!string.IsNullOrEmpty(artist) && !operand.Artists.Contains(artist))
+                                {
+                                    operand.Artists.Add(artist);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Try to extract AlbumArtist property
+                    var albumArtistProperty = baseItem.GetType().GetProperty("AlbumArtist");
+                    if (albumArtistProperty != null)
+                    {
+                        var albumArtistValue = albumArtistProperty.GetValue(baseItem) as string;
+                        if (!string.IsNullOrEmpty(albumArtistValue))
+                        {
+                            operand.AlbumArtists.Add(albumArtistValue);
+                        }
+                    }
+                    
+                    // Try to extract AlbumArtists property (collection)
+                    var albumArtistsProperty = baseItem.GetType().GetProperty("AlbumArtists");
+                    if (albumArtistsProperty != null)
+                    {
+                        var albumArtistsValue = albumArtistsProperty.GetValue(baseItem);
+                        if (albumArtistsValue is IEnumerable<string> albumArtistsCollection)
+                        {
+                            foreach (var albumArtist in albumArtistsCollection)
+                            {
+                                if (!string.IsNullOrEmpty(albumArtist) && !operand.AlbumArtists.Contains(albumArtist))
+                                {
+                                    operand.AlbumArtists.Add(albumArtist);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Debug logging for discovered properties on Audio items
+                    if (logger != null && baseItem.GetType().Name == "Audio")
+                    {
+                        var properties = baseItem.GetType().GetProperties()
+                            .Where(p => p.Name.Contains("Artist", StringComparison.OrdinalIgnoreCase) || 
+                                      p.Name.Contains("Composer", StringComparison.OrdinalIgnoreCase) ||
+                                      p.Name.Contains("Performer", StringComparison.OrdinalIgnoreCase))
+                            .Select(p => p.Name).ToArray();
+                        
+                        if (properties.Length > 0)
+                        {
+                            logger.LogDebug("Available artist-related properties on Audio item '{Name}': [{Properties}]", 
+                                baseItem.Name, string.Join(", ", properties));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed to extract artists for item {Name}", baseItem.Name);
                 }
             }
             

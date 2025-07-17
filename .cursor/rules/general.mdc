@@ -159,4 +159,3 @@ The plugin implements a two-phase filtering approach for expensive fields (Audio
 
 #### User Data (Requires UserDataManager)
 - `PlayCount`, `IsFavorite`, `LastPlayedDate`
-- Always provide fallbacks for when UserDataManager is unavailable

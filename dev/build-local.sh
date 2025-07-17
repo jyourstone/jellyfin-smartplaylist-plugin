@@ -9,7 +9,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 VERSION="10.10.0.0"
 OUTPUT_DIR="../build_output"
 
-echo "Building SmartPlaylist plugin version $DEV_VERSION for local development..."
+echo "Building SmartPlaylist plugin version for local development..."
 
 # Clean the previous build output
 rm -rf $OUTPUT_DIR
@@ -24,7 +24,7 @@ cp meta-dev.json $OUTPUT_DIR/meta.json
 # Copy the logo image for local plugin display
 cp ../images/logo.jpg $OUTPUT_DIR/logo.jpg
 
-# Create the Configuration directory and copy the HTML and JS files, which is required for the UI
+# Create the Configuration directory and copy the logging file for debug logs
 mkdir -p $OUTPUT_DIR/Configuration
 cp logging.json jellyfin-data/config/config/logging.json
 
