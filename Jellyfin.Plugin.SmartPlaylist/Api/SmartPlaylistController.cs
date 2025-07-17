@@ -93,6 +93,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 "AudioLanguages" => "Audio Languages",
                 "FileName" => "File Name",
                 "FolderPath" => "Folder Path",
+                "Artists" => "Artists",
+                "AlbumArtists" => "Album Artists",
                 _ => fieldName
             };
         }
@@ -594,7 +596,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "People", Label = "People" },
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },
-                    new { Value = "Tags", Label = "Tags" }
+                    new { Value = "Tags", Label = "Tags" },
+                    new { Value = "Artists", Label = "Artists" },
+                    new { Value = "AlbumArtists", Label = "Album Artists" }
                 },
                 Operators = new[]
                 {
