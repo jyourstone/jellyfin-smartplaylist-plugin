@@ -133,6 +133,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // Public status hasn't changed, just update the items
                         _logger.LogDebug("Updating smart playlist {PlaylistName} for user {User} with {ItemCount} items", smartPlaylistName, user.Username, newLinkedChildren.Length);
                         existingPlaylist.LinkedChildren = newLinkedChildren;
+                        
+                        // Note: Jellyfin defaults playlist MediaType to "Audio" regardless of content - this is a known Jellyfin limitation
+                        
                         await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                         
                         // Refresh metadata to generate cover images
@@ -388,6 +391,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Update the playlist items
             playlist.LinkedChildren = linkedChildren;
             
+            // Note: Jellyfin defaults playlist MediaType to "Audio" regardless of content - this is a known Jellyfin limitation
+            
             // Update the public status by setting the OpenAccess property
             var openAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             if (openAccessProperty != null && openAccessProperty.CanWrite)
@@ -447,6 +452,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
                 
                 newPlaylist.LinkedChildren = linkedChildren;
+                
+                // Note: Jellyfin defaults playlist MediaType to "Audio" regardless of content - this is a known Jellyfin limitation
+                
                 await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 
                 // Log the final state after update
@@ -562,6 +570,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName} after {ElapsedTime}ms. Cover image may not be generated.", playlist.Name, stopwatch.ElapsedMilliseconds);
             }
         }
+
+
     }
 
     /// <summary>

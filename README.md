@@ -115,7 +115,7 @@ The web interface provides access to all available fields for creating playlist 
 
 #### **Content Fields**
 - **Name** - Title of the media item
-- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Audio`)
+- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Music`)
 - **Audio Languages** - The audio language of the movie/TV show.
 - **Album** - Album name (for music)
 - **Folder Path** - Location in your library
