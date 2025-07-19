@@ -357,6 +357,37 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
                 }
                 
+                // DEBUG: Check the MediaType of the created Jellyfin playlist
+                try
+                {
+                    var user = _userManager.GetUserById(createdPlaylist.UserId);
+                    if (user != null)
+                    {
+                        var smartPlaylistName = createdPlaylist.Name + " [Smart]";
+                        var query = new InternalItemsQuery(user)
+                        {
+                            IncludeItemTypes = [BaseItemKind.Playlist],
+                            Recursive = true,
+                            Name = smartPlaylistName
+                        };
+                        var jellyfinPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+                        
+                        if (jellyfinPlaylist != null)
+                        {
+                            var mediaTypeProperty = jellyfinPlaylist.GetType().GetProperty("MediaType");
+                            var currentMediaType = mediaTypeProperty?.GetValue(jellyfinPlaylist)?.ToString() ?? "Unknown";
+                            
+                            // Log MediaType for debugging - note this is a known Jellyfin limitation
+                            _logger.LogDebug("Created Jellyfin playlist '{PlaylistName}' has MediaType: {MediaType}. Note: Jellyfin defaults to 'Audio' for all playlists regardless of content.", 
+                                smartPlaylistName, currentMediaType);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Error checking MediaType of created playlist");
+                }
+                
                 _logger.LogDebug("Finished RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
                 
                 return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);

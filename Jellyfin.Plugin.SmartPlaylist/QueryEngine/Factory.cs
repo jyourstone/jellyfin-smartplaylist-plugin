@@ -403,22 +403,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                     }
                 }
-                
-                // Debug logging for discovered properties on Audio items
-                if (logger != null && baseItem.GetType().Name == "Audio")
-                {
-                    var properties = baseItem.GetType().GetProperties()
-                        .Where(p => p.Name.Contains("Artist", StringComparison.OrdinalIgnoreCase) || 
-                                  p.Name.Contains("Composer", StringComparison.OrdinalIgnoreCase) ||
-                                  p.Name.Contains("Performer", StringComparison.OrdinalIgnoreCase))
-                        .Select(p => p.Name).ToArray();
-                    
-                    if (properties.Length > 0)
-                    {
-                        logger.LogDebug("Available artist-related properties on Audio item '{Name}': [{Properties}]", 
-                            baseItem.Name, string.Join(", ", properties));
-                    }
-                }
             }
             catch (Exception ex)
             {
