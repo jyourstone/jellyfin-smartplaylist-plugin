@@ -10,7 +10,7 @@ A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfi
 
 This plugin allows you to create dynamic playlists based on a set of rules, which will automatically update as your library changes. 
 
-Tested and works with Jellyfin version `10.10.0` and newer.
+Requires Jellyfin version `10.10.0` and newer.
 
 ## ✨ Features
 
