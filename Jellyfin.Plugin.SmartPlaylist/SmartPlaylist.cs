@@ -981,9 +981,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             if (items == null) return [];
             
+            // Convert to list to ensure stable enumeration
+            var itemsList = items.ToList();
+            if (itemsList.Count == 0) return [];
+            
             // Use current ticks as seed for different results each refresh
             var random = new Random((int)(DateTime.Now.Ticks & 0x7FFFFFFF));
-            return items.OrderBy(x => random.Next());
+            
+            // Create a list of items with their random keys to ensure consistent random values
+            var itemsWithKeys = itemsList.Select(item => new { Item = item, Key = random.Next() }).ToList();
+            
+            // Sort by the pre-generated random keys
+            return itemsWithKeys.OrderBy(x => x.Key).Select(x => x.Item);
         }
     }
 

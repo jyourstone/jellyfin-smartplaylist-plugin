@@ -449,12 +449,15 @@
             const defaultSortBy = config.DefaultSortBy || 'Name';
             const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
             const defaultMakePublic = config.DefaultMakePublic || false;
-            const defaultMaxItems = config.DefaultMaxItems || 500;
+            const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
             page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
-            page.querySelector('#playlistMaxItems').value = defaultMaxItems;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = defaultMaxItems;
+            }
             
             // Populate settings tab dropdowns with current configuration values
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
@@ -1113,7 +1116,9 @@
             const orderName = sortByValue === 'Random' ? 'Random' : sortByValue + ' ' + sortOrderValue;
             const isPublic = page.querySelector('#playlistIsPublic').checked || false;
             const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
-            const maxItems = parseInt(page.querySelector('#playlistMaxItems').value) || 500;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            const maxItemsInput = maxItemsElement?.value || '';
+            const maxItems = maxItemsInput === '' ? 500 : parseInt(maxItemsInput);
 
             // Get selected user ID from dropdown
             const userId = page.querySelector('#playlistUser').value;
@@ -1211,7 +1216,7 @@
             page.querySelector('#sortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#playlistIsPublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
-            page.querySelector('#playlistMaxItems').value = config.DefaultMaxItems || 500;
+            page.querySelector('#playlistMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
             page.querySelector('#sortOrder').value = 'Ascending';
@@ -2171,7 +2176,7 @@
             page.querySelector('#defaultSortBy').value = config.DefaultSortBy || 'Name';
             page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
-            page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems || 500;
+            page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             Dashboard.hideLoadingMsg();
         }).catch(() => {
             Dashboard.hideLoadingMsg();
@@ -2186,7 +2191,13 @@
             config.DefaultSortBy = page.querySelector('#defaultSortBy').value;
             config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
             config.DefaultMakePublic = page.querySelector('#defaultMakePublic').checked;
-            config.DefaultMaxItems = parseInt(page.querySelector('#defaultMaxItems').value) || 500;
+            const defaultMaxItemsInput = page.querySelector('#defaultMaxItems').value;
+            if (defaultMaxItemsInput === '') {
+                config.DefaultMaxItems = 500;
+            } else {
+                const parsedValue = parseInt(defaultMaxItemsInput);
+                config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
+            }
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
