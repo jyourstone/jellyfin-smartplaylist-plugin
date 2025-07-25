@@ -415,6 +415,7 @@
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
             { Value: 'ReleaseDate', Label: 'Release Date' },
+            { Value: 'Random', Label: 'Random' },
             { Value: 'NoOrder', Label: 'No Order' }
         ];
         const orderOptions = [
@@ -448,10 +449,15 @@
             const defaultSortBy = config.DefaultSortBy || 'Name';
             const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
             const defaultMakePublic = config.DefaultMakePublic || false;
+            const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
             page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = defaultMaxItems;
+            }
             
             // Populate settings tab dropdowns with current configuration values
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
@@ -466,6 +472,10 @@
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
             page.querySelector('#playlistIsPublic').checked = false;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = 500;
+            }
             
             // Populate settings tab dropdowns with defaults even if config fails
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
@@ -1104,9 +1114,20 @@
             const sortOrderElement = page.querySelector('#sortOrder');
             const sortByValue = sortByElement?.value || 'Name';
             const sortOrderValue = sortOrderElement?.value || 'Ascending';
-            const orderName = sortByValue + ' ' + sortOrderValue;
+            
+            // Special handling for Random - it doesn't need Ascending/Descending
+            const orderName = sortByValue === 'Random' ? 'Random' : sortByValue + ' ' + sortOrderValue;
             const isPublic = page.querySelector('#playlistIsPublic').checked || false;
             const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            const maxItemsInput = maxItemsElement?.value || '';
+            let maxItems;
+            if (maxItemsInput === '') {
+                maxItems = 500;
+            } else {
+                const parsedValue = parseInt(maxItemsInput);
+                maxItems = isNaN(parsedValue) ? 500 : parsedValue;
+            }
 
             // Get selected user ID from dropdown
             const userId = page.querySelector('#playlistUser').value;
@@ -1123,7 +1144,8 @@
                 Public: isPublic,
                 Enabled: isEnabled,
                 UserId: userId,
-                MediaTypes: selectedMediaTypes
+                MediaTypes: selectedMediaTypes,
+                MaxItems: maxItems
             };
 
             // Add ID if in edit mode
@@ -1203,11 +1225,19 @@
             page.querySelector('#sortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#playlistIsPublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            }
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
             page.querySelector('#sortOrder').value = 'Ascending';
             page.querySelector('#playlistIsPublic').checked = false;
             page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = 500;
+            }
         });
         
         // Create initial logic group with one rule
@@ -1482,6 +1512,9 @@
                         rulesHtml = '<em>No rules defined</em><br>';
                     }
                     
+                    // Format Max Items display
+                    const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
+                    
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
                         '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                         '<div class="field-description">' +
@@ -1490,6 +1523,7 @@
                         '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
                         '<strong>Rules:</strong><br>' + rulesHtml + 
                         '<strong>Sort:</strong> ' + sortName + '<br>' +
+                        '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
@@ -1749,6 +1783,9 @@
                 rulesHtml = '<em>No rules defined</em>';
             }
             
+            // Format Max Items display
+            const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
+            
             html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
                 '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                 '<div class="field-description">' +
@@ -1757,6 +1794,7 @@
                 '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
                 '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
                 '<strong>Sort:</strong> ' + sortName + '<br>' +
+                '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
                 '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                 '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
@@ -1947,6 +1985,16 @@
                 page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
                 page.querySelector('#playlistIsEnabled').checked = playlist.Enabled !== false; // Default to true for backward compatibility
                 
+                // Handle MaxItems with backward compatibility for existing playlists
+                // Default to 0 (unlimited) for old playlists that didn't have this setting
+                const maxItemsValue = (playlist.MaxItems !== undefined && playlist.MaxItems !== null) ? playlist.MaxItems : 0;
+                const maxItemsElement = page.querySelector('#playlistMaxItems');
+                if (maxItemsElement) {
+                    maxItemsElement.value = maxItemsValue;
+                } else {
+                    console.warn('Max Items element not found when trying to populate edit form');
+                }
+                
                 // Set media types
                 const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
                 if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
@@ -1971,9 +2019,18 @@
                 
                 // Set sort options
                 const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
-                const parts = orderName.split(' ');
-                const sortBy = parts.slice(0, -1).join(' ') || 'Name';
-                const sortOrder = parts[parts.length - 1] || 'Ascending';
+                
+                let sortBy, sortOrder;
+                if (orderName === 'Random') {
+                    // Special handling for Random - it doesn't have Ascending/Descending
+                    sortBy = 'Random';
+                    sortOrder = 'Ascending'; // Default sort order (though it won't be used)
+                } else {
+                    // Normal parsing for other orders like "Name Ascending"
+                    const parts = orderName.split(' ');
+                    sortBy = parts.slice(0, -1).join(' ') || 'Name';
+                    sortOrder = parts[parts.length - 1] || 'Ascending';
+                }
                 
                 page.querySelector('#sortBy').value = sortBy;
                 page.querySelector('#sortOrder').value = sortOrder;
@@ -2134,6 +2191,7 @@
             page.querySelector('#defaultSortBy').value = config.DefaultSortBy || 'Name';
             page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
+            page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             Dashboard.hideLoadingMsg();
         }).catch(() => {
             Dashboard.hideLoadingMsg();
@@ -2148,6 +2206,13 @@
             config.DefaultSortBy = page.querySelector('#defaultSortBy').value;
             config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
             config.DefaultMakePublic = page.querySelector('#defaultMakePublic').checked;
+            const defaultMaxItemsInput = page.querySelector('#defaultMaxItems').value;
+            if (defaultMaxItemsInput === '') {
+                config.DefaultMaxItems = 500;
+            } else {
+                const parsedValue = parseInt(defaultMaxItemsInput);
+                config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
+            }
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');

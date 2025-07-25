@@ -13,6 +13,33 @@ The local development environment is completely contained within the `/dev` dire
 
 Use C# 12+ collection expressions for cleaner, more concise code.
 
+### UI Development Patterns
+
+When adding new form fields, implement across all flows: create form (defaults), edit form (backwards compatibility), display views, API handling, and backend DTOs.
+
+Implementation locations:
+- HTML: Add to create/edit sections
+- JavaScript: populateStaticSelects() for defaults, edit form loading, form submission, display functions
+- Backend: Update DTOs and validation
+
+Pattern:
+```javascript
+// Create defaults
+page.querySelector('#newField').value = config.DefaultNewField || 'default';
+
+// Edit with backwards compatibility  
+const fieldValue = playlist.NewField !== undefined ? playlist.NewField : 'default';
+page.querySelector('#newField').value = fieldValue;
+
+// Form submission
+const newFieldValue = page.querySelector('#newField').value;
+playlistDto.NewField = newFieldValue;
+
+// Display
+const displayValue = playlist.NewField || 'Default';
+html += '<strong>New Field:</strong> ' + displayValue + '<br>';
+```
+
 ### Metadata Extraction Patterns
 
 When adding new fields that require metadata from Jellyfin's BaseItem objects, follow these established patterns:

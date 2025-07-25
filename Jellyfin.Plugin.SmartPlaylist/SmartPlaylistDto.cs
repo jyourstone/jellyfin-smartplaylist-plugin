@@ -24,6 +24,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public bool Public { get; set; } = false; // Default to private
         public List<string> MediaTypes { get; set; } = []; // Pre-filter media types
         public bool Enabled { get; set; } = true; // Default to enabled
+        public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]

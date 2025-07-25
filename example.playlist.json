@@ -31,5 +31,6 @@
   "MediaTypes": [
     "Movie"
   ],
-  "Enabled": true
+  "Enabled": true,
+  "MaxItems": 500
 }

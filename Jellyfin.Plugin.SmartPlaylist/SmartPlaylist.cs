@@ -20,6 +20,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public Order Order { get; set; }
         public List<string> MediaTypes { get; set; }
         public List<ExpressionSet> ExpressionSets { get; set; }
+        public int MaxItems { get; set; }
 
         // OPTIMIZATION: Static cache for compiled rules to avoid recompilation
         private static readonly ConcurrentDictionary<string, List<List<Func<Operand, bool>>>> _ruleCache = new();
@@ -39,6 +40,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             UserId = dto.UserId;
             Order = OrderFactory.CreateOrder(dto.Order.Name);
             MediaTypes = dto.MediaTypes ?? [];
+            MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
 
             if (dto.ExpressionSets != null && dto.ExpressionSets.Count > 0)
             {
@@ -544,14 +546,51 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug("Playlist filtering for '{PlaylistName}' completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
                     Name,stopwatch.ElapsedMilliseconds, totalItems, results.Count);
                 
-                // Apply ordering with error handling
+                // Apply ordering and max items limit with error handling
                 try
                 {
-                    return Order?.OrderBy(results).Select(x => x.Id) ?? results.Select(x => x.Id);
+                    var orderedResults = Order?.OrderBy(results) ?? results;
+                    
+                    // Apply max items logic with performance optimization
+                    if (MaxItems > 0)
+                    {
+                        if (Order is RandomOrder)
+                        {
+                            // For random order, we need to process all items first, then take max items
+                            // The RandomOrder.OrderBy already handles the randomization
+                            var limitedResults = orderedResults.Take(MaxItems);
+                            
+                            logger?.LogInformation("Applied random order and limited playlist '{PlaylistName}' to {MaxItems} items from {TotalItems} total items", 
+                                Name, MaxItems, orderedResults.Count());
+                            
+                            return limitedResults.Select(x => x.Id);
+                        }
+                        else
+                        {
+                            // Performance optimization: Take max items without randomization (deterministic order)
+                            var limitedResults = orderedResults.Take(MaxItems);
+                            
+                            logger?.LogInformation("Limited playlist '{PlaylistName}' to {MaxItems} items from {TotalItems} total items (deterministic order)", 
+                                Name, MaxItems, orderedResults.Count());
+                            
+                            return limitedResults.Select(x => x.Id);
+                        }
+                    }
+                    else
+                    {
+                        // No max items limit - return all ordered results
+                        if (Order is RandomOrder)
+                        {
+                            logger?.LogInformation("Applied random order to playlist '{PlaylistName}' with {TotalItems} items (no limit)", 
+                                Name, orderedResults.Count());
+                        }
+                        
+                        return orderedResults.Select(x => x.Id);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    logger?.LogError(ex, "Error applying ordering to playlist '{PlaylistName}'. Returning unordered results.", Name);
+                    logger?.LogError(ex, "Error applying ordering and max items to playlist '{PlaylistName}'. Returning unordered results.", Name);
                     return results.Select(x => x.Id);
                 }
             }
@@ -886,6 +925,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "ReleaseDate Descending", () => new ReleaseDateOrderDesc() },
             { "CommunityRating Ascending", () => new CommunityRatingOrder() },
             { "CommunityRating Descending", () => new CommunityRatingOrderDesc() },
+            { "Random", () => new RandomOrder() },
             { "NoOrder", () => new NoOrder() }
         };
 
@@ -931,6 +971,29 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public class NoOrder : Order
     {
         public override string Name => "NoOrder";
+    }
+
+    public class RandomOrder : Order
+    {
+        public override string Name => "Random";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+            
+            // Convert to list to ensure stable enumeration
+            var itemsList = items.ToList();
+            if (itemsList.Count == 0) return [];
+            
+            // Use current ticks as seed for different results each refresh
+            var random = new Random((int)(DateTime.Now.Ticks & 0x7FFFFFFF));
+            
+            // Create a list of items with their random keys to ensure consistent random values
+            var itemsWithKeys = itemsList.Select(item => new { Item = item, Key = random.Next() }).ToList();
+            
+            // Sort by the pre-generated random keys
+            return itemsWithKeys.OrderBy(x => x.Key).Select(x => x.Item);
+        }
     }
 
     public class ProductionYearOrder : Order

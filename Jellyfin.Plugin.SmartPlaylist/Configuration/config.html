@@ -229,14 +229,21 @@
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="sortOrder">Sort Order</label>
                             <div id="sortOrder-container"></div>
+                            <div class="fieldDescription">Note: This field has no effect when "Random" is selected as Sort By.</div>
                         </div>
 
-                        <div class="inputContainer" style="margin-bottom: 1.5em;">
+                        <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel" for="playlistUser">Playlist Owner</label>
                             <select is="emby-select" id="playlistUser" class="emby-select" required>
                                 <option value="">Loading users...</option>
                             </select>
                             <div class="fieldDescription">The user who this playlist belongs to.</div>
+                        </div>
+
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="playlistMaxItems">Max Items</label>
+                            <input type="number" is="emby-input" id="playlistMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <div class="fieldDescription">Maximum number of items in this playlist. Set to 0 for no limit.</div>
                         </div>
 
                         <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
@@ -307,6 +314,14 @@
                             </label>
                             <div class="fieldDescription">New smart playlists will be public by default when this is enabled.</div>
                         </div>
+
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="defaultMaxItems">Default Max Items</label>
+                            <input type="number" is="emby-input" id="defaultMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <div class="fieldDescription">Default maximum number of items for new smart playlists. Set to 0 for no limit.</div>
+                        </div>
+
+
 
                         <div style="margin-top: 2em;">
                             <button type="button" is="emby-button" id="saveSettingsBtn" class="button-submit emby-button block">Save Settings</button>
