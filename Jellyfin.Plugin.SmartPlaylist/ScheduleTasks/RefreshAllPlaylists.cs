@@ -340,6 +340,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                         
                                         // Refresh metadata to generate cover images
                                         await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken).ConfigureAwait(false);
+                                        
+                                        // Save the Jellyfin playlist ID if it's not already saved
+                                        if (string.IsNullOrEmpty(dto.JellyfinPlaylistId) || dto.JellyfinPlaylistId != existingPlaylist.Id.ToString())
+                                        {
+                                            dto.JellyfinPlaylistId = existingPlaylist.Id.ToString();
+                                            await plStore.SaveAsync(dto);
+                                            logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
+                                                existingPlaylist.Id, dto.Name);
+                                        }
                                     }
                                 }
                                                                     else
@@ -367,6 +376,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                         
                                         // Refresh metadata to generate cover images
                                         await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
+                                        
+                                        // Save the Jellyfin playlist ID for the newly created playlist
+                                        dto.JellyfinPlaylistId = newPlaylist.Id.ToString();
+                                        await plStore.SaveAsync(dto);
+                                        logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for newly created smart playlist {PlaylistName}", 
+                                            newPlaylist.Id, dto.Name);
                                     }
                                 }
                                 
