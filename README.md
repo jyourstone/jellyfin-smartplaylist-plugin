@@ -42,6 +42,7 @@ The web interface is organized into three tabs:
 1.  **Create Playlist**: This is where you build new playlists.
     -   Define the rules for including items.
     -   Choose the sort order.
+    -   Set the maximum number of items (defaults to 500).
     -   Select which user should own the playlist.
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
@@ -192,11 +193,23 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 ### Sorting Options
 
 - **No Order** - Items appear in library order
-- **Release Date**
-- **Production Year**
-- **Community Rating**
+- **Name** - Sort by title
+- **Release Date** - Sort by release date
+- **Production Year** - Sort by production year
+- **Community Rating** - Sort by user ratings
+- **Date Created** - Sort by when added to library
+- **Random** - Randomize the order of items
 - **Ascending** - Oldest first
 - **Descending** - Newest first
+
+### Max Items
+
+You can optionally set a maximum number of items for your smart playlist. This is useful for:
+- Limiting large playlists to a manageable size
+- Creating "Top 10" or "Best of" style playlists
+- Improving performance for very large libraries
+
+**Note**: Setting this to unlimited (0) might cause performance issues or even crashes for very large playlists.
 
 ### Rule Logic
 

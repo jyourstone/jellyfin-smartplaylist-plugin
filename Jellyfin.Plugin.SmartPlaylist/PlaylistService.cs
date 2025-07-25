@@ -21,8 +21,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// </summary>
     public interface IPlaylistService
     {
-        Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
-        Task<(bool Success, string Message)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
@@ -48,7 +48,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
         private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
 
-        public async Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        public async Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
             // This is the internal method that assumes the lock is already held
             var stopwatch = Stopwatch.StartNew();
@@ -63,7 +63,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (!dto.Enabled)
                 {
                     _logger.LogDebug("Smart playlist '{PlaylistName}' is disabled. Skipping refresh.", dto.Name);
-                    return;
+                    return string.Empty;
                 }
 
                 // Get the user for this playlist
@@ -71,7 +71,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (user == null)
                 {
                     _logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
-                    return;
+                    return string.Empty;
                 }
 
                 var smartPlaylist = new SmartPlaylist(dto);
@@ -96,12 +96,102 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     };
                 }).ToArray();
 
-                // Add [Smart] suffix to distinguish from regular playlists
+                // Try to find existing playlist by Jellyfin playlist ID first, then by name
+                Playlist existingPlaylist = null;
                 var smartPlaylistName = dto.Name + " [Smart]";
-                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                
+                _logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
+                    smartPlaylistName, user.Id, dto.JellyfinPlaylistId);
+                
+                // First try to find by Jellyfin playlist ID (most reliable)
+                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
+                {
+                    if (_libraryManager.GetItemById(jellyfinPlaylistId) is Playlist playlistById)
+                    {
+                        existingPlaylist = playlistById;
+                        _logger.LogDebug("Found existing playlist by Jellyfin playlist ID: {JellyfinPlaylistId} - {PlaylistName}",
+                            dto.JellyfinPlaylistId, existingPlaylist.Name);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No playlist found by Jellyfin playlist ID: {JellyfinPlaylistId}", dto.JellyfinPlaylistId);
+                    }
+                }
+                
+                // Fallback to name-based lookup (for backward compatibility)
+                if (existingPlaylist == null)
+                {
+                    // Try to find by the new name first
+                    existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                    if (existingPlaylist != null)
+                    {
+                        _logger.LogDebug("Found existing playlist by new name: {PlaylistName}", smartPlaylistName);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No playlist found by new name: {PlaylistName}", smartPlaylistName);
+                        
+                        // Could not find playlist by name - this might indicate a name change or missing playlist
+                        _logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate a name change or the playlist was deleted.", 
+                            smartPlaylistName, user.Username);
+                        
+                        // Log available playlists for debugging (only when debug or trace logging is enabled)
+                        if (_logger.IsEnabled(LogLevel.Debug))
+                        {
+                            var userPlaylistsQuery = new InternalItemsQuery(user)
+                            {
+                                IncludeItemTypes = [BaseItemKind.Playlist],
+                                Recursive = true
+                            };
+                            
+                            var userPlaylists = _libraryManager.GetItemsResult(userPlaylistsQuery).Items.OfType<Playlist>().ToList();
+                            if (userPlaylists.Count > 0)
+                            {
+                                _logger.LogDebug("Available playlists for user '{UserName}':", user.Username);
+                                foreach (var playlist in userPlaylists)
+                                {
+                                    _logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogDebug("No playlists found for user '{UserName}'", user.Username);
+                            }
+                        }
+                    }
+                }
                 
                 if (existingPlaylist != null)
                 {
+                    _logger.LogDebug("Processing existing playlist: {PlaylistName} (ID: {PlaylistId})", existingPlaylist.Name, existingPlaylist.Id);
+                    
+                    // Check if the playlist name needs to be updated
+                    var currentName = existingPlaylist.Name;
+                    var expectedName = smartPlaylistName;
+                    var nameChanged = currentName != expectedName;
+                    
+                    if (nameChanged)
+                    {
+                        _logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}'", currentName, expectedName);
+                        existingPlaylist.Name = expectedName;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Playlist name unchanged: '{Name}'", currentName);
+                    }
+                    
+                    // Check if ownership needs to be updated
+                    var ownershipChanged = existingPlaylist.OwnerUserId != user.Id;
+                    if (ownershipChanged)
+                    {
+                        _logger.LogDebug("Playlist ownership changing from {OldOwner} to {NewOwner}", existingPlaylist.OwnerUserId, user.Id);
+                        existingPlaylist.OwnerUserId = user.Id;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Playlist ownership unchanged: {OwnerId}", existingPlaylist.OwnerUserId);
+                    }
+                    
                     // Check if we need to update the playlist due to public/private setting change
                     // Use OpenAccess property instead of Shares.Any() as revealed by debugging
                     var openAccessProperty = existingPlaylist.GetType().GetProperty("OpenAccess");
@@ -144,12 +234,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
+                    _logger.LogDebug("No existing playlist found - creating new playlist: {PlaylistName}", smartPlaylistName);
                     // Create new playlist
-                    await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, cancellationToken);
+                    var newPlaylistId = await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, cancellationToken);
+                    
+                    // Update the existingPlaylist variable to point to the newly created playlist
+                    if (!string.IsNullOrEmpty(newPlaylistId) && Guid.TryParse(newPlaylistId, out var playlistGuid))
+                    {
+                        existingPlaylist = _libraryManager.GetItemById(playlistGuid) as Playlist;
+                        if (existingPlaylist != null)
+                        {
+                            _logger.LogDebug("Successfully created and retrieved new playlist: {PlaylistName} (ID: {PlaylistId})", 
+                                existingPlaylist.Name, existingPlaylist.Id);
+                        }
+                    }
                 }
 
                 stopwatch.Stop();
                 _logger.LogInformation("Successfully refreshed smart playlist: {PlaylistName} in {ElapsedTime}ms", dto.Name, stopwatch.ElapsedMilliseconds);
+                
+                // Return the Jellyfin playlist ID for storage
+                return existingPlaylist?.Id.ToString() ?? string.Empty;
             }
             catch (Exception ex)
             {
@@ -159,7 +264,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        public async Task<(bool Success, string Message)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
             // Option A: Wait up to 5 seconds for create/edit operations
             _logger.LogDebug("Attempting to acquire refresh lock for single playlist: {PlaylistName} (5-second timeout)", dto.Name);
@@ -171,8 +276,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     try
                     {
                         _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
-                        await RefreshSinglePlaylistAsync(dto, cancellationToken);
-                        return (true, "Playlist refreshed successfully");
+                        var jellyfinPlaylistId = await RefreshSinglePlaylistAsync(dto, cancellationToken);
+                        return (true, "Playlist refreshed successfully", jellyfinPlaylistId);
                     }
                     finally
                     {
@@ -183,13 +288,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     _logger.LogDebug("Timeout waiting for refresh lock for single playlist: {PlaylistName}", dto.Name);
-                    return (false, "Playlist refresh is already in progress. Your changes are saved, trying again in 5 seconds...");
+                    return (false, "Playlist refresh is already in progress. Your changes are saved, trying again in 5 seconds...", string.Empty);
                 }
             }
             catch (OperationCanceledException)
             {
                 _logger.LogDebug("Refresh operation cancelled for playlist: {PlaylistName}", dto.Name);
-                return (false, "Refresh operation was cancelled.");
+                return (false, "Refresh operation was cancelled.", string.Empty);
             }
         }
 
@@ -262,17 +367,32 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return Task.CompletedTask;
                 }
 
-                var smartPlaylistName = dto.Name + " [Smart]";
-                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                Playlist existingPlaylist = null;
                 
-                if (existingPlaylist != null)
+                // Try to find by Jellyfin playlist ID only (no name fallback for deletion)
+                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
                 {
-                    _logger.LogDebug("Deleting Jellyfin playlist '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
-                    _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
+                    if (_libraryManager.GetItemById(jellyfinPlaylistId) is Playlist playlistById)
+                    {
+                        existingPlaylist = playlistById;
+                        _logger.LogDebug("Found playlist by Jellyfin playlist ID for deletion: {JellyfinPlaylistId} - {PlaylistName}",
+                            dto.JellyfinPlaylistId, existingPlaylist.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No Jellyfin playlist found by ID '{JellyfinPlaylistId}' for deletion. Playlist may have been manually deleted.", dto.JellyfinPlaylistId);
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    _logger.LogWarning("No Jellyfin playlist ID available for playlist '{PlaylistName}'. Cannot delete Jellyfin playlist.", dto.Name);
+                }
+                
+                if (existingPlaylist != null)
+                {
+                    _logger.LogInformation("Deleting Jellyfin playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
+                        existingPlaylist.Name, existingPlaylist.Id, user.Username);
+                    _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
                 }
                 
                 return Task.CompletedTask;
@@ -295,12 +415,32 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return;
                 }
 
-                var smartPlaylistName = dto.Name + " [Smart]";
-                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                Playlist existingPlaylist = null;
+                
+                // Try to find by Jellyfin playlist ID only (no name fallback for suffix removal)
+                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
+                {
+                    if (_libraryManager.GetItemById(jellyfinPlaylistId) is Playlist playlistById)
+                    {
+                        existingPlaylist = playlistById;
+                        _logger.LogDebug("Found playlist by Jellyfin playlist ID for suffix removal: {JellyfinPlaylistId} - {PlaylistName}",
+                            dto.JellyfinPlaylistId, existingPlaylist.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No Jellyfin playlist found by ID '{JellyfinPlaylistId}' for suffix removal. Playlist may have been manually deleted.", dto.JellyfinPlaylistId);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("No Jellyfin playlist ID available for playlist '{PlaylistName}'. Cannot remove smart suffix.", dto.Name);
+                }
                 
                 if (existingPlaylist != null)
                 {
-                    _logger.LogDebug("Removing '[Smart]' suffix from playlist '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    var oldName = existingPlaylist.Name;
+                    _logger.LogInformation("Removing '[Smart]' suffix from playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
+                        oldName, existingPlaylist.Id, user.Username);
                     
                     // Rename the playlist by removing the [Smart] suffix
                     existingPlaylist.Name = dto.Name;
@@ -309,11 +449,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                     
                     _logger.LogDebug("Successfully renamed playlist from '{OldName}' to '{NewName}' for user '{UserName}'", 
-                        smartPlaylistName, dto.Name, user.Username);
-                }
-                else
-                {
-                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                        oldName, dto.Name, user.Username);
                 }
             }
             catch (Exception ex)
@@ -330,7 +466,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Enabling smart playlist: {PlaylistName}", dto.Name);
                 
                 // Use timeout approach for enable operations since they involve creating/editing playlists
-                var (success, message) = await RefreshSinglePlaylistWithTimeoutAsync(dto, cancellationToken);
+                var (success, message, _) = await RefreshSinglePlaylistWithTimeoutAsync(dto, cancellationToken);
                 
                 if (success)
                 {
@@ -432,7 +568,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             await RefreshPlaylistMetadataAsync(playlist, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task CreateNewPlaylistAsync(string playlistName, Guid userId, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
+        private async Task<string> CreateNewPlaylistAsync(string playlistName, Guid userId, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
         {
             _logger.LogDebug("Creating new smart playlist {PlaylistName} with {ItemCount} items and {PublicStatus} status", 
                 playlistName, linkedChildren.Length, isPublic ? "public" : "private");
@@ -463,10 +599,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
+                
+                return result.Id.ToString();
             }
             else
             {
                 _logger.LogWarning("Failed to retrieve newly created playlist with ID {PlaylistId}", result.Id);
+                return string.Empty;
             }
         }
 
@@ -500,14 +639,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private Playlist GetPlaylist(User user, string name)
         {
+            _logger.LogDebug("GetPlaylist: Searching for playlist '{PlaylistName}' for user '{UserName}'", name, user.Username);
+            
+            // Use the same approach as DeleteJellyfinPlaylist function
             var query = new InternalItemsQuery(user)
             {
                 IncludeItemTypes = [BaseItemKind.Playlist],
                 Recursive = true,
                 Name = name
             };
+
+            var existingPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+            if (existingPlaylist != null)
+            {
+                _logger.LogDebug("GetPlaylist: Found playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
+                    existingPlaylist.Name, existingPlaylist.Id, user.Username);
+                return existingPlaylist;
+            }
             
-            return _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+            _logger.LogDebug("GetPlaylist: No playlist found with name '{PlaylistName}' for user '{UserName}'", name, user.Username);
+            return null;
         }
 
         private IEnumerable<BaseItem> GetAllUserMedia(User user)
