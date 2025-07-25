@@ -16,6 +16,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public class SmartPlaylistDto
     {
         public string Id { get; set; }
+        public string JellyfinPlaylistId { get; set; }  // Jellyfin playlist ID for reliable lookup
         public string Name { get; set; }
         public string FileName { get; set; }
         public Guid UserId { get; set; }

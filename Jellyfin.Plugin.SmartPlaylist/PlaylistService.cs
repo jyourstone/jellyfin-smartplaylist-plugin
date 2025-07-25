@@ -21,7 +21,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// </summary>
     public interface IPlaylistService
     {
-        Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
@@ -48,7 +48,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
         private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
 
-        public async Task RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        public async Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
             // This is the internal method that assumes the lock is already held
             var stopwatch = Stopwatch.StartNew();
@@ -63,7 +63,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (!dto.Enabled)
                 {
                     _logger.LogDebug("Smart playlist '{PlaylistName}' is disabled. Skipping refresh.", dto.Name);
-                    return;
+                    return string.Empty;
                 }
 
                 // Get the user for this playlist
@@ -71,7 +71,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (user == null)
                 {
                     _logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
-                    return;
+                    return string.Empty;
                 }
 
                 var smartPlaylist = new SmartPlaylist(dto);
@@ -96,46 +96,64 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     };
                 }).ToArray();
 
-                // Try to find existing playlist by name, with fallback for name changes
+                // Try to find existing playlist by Jellyfin playlist ID first, then by name
                 Playlist existingPlaylist = null;
                 var smartPlaylistName = dto.Name + " [Smart]";
                 
-                _logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}", smartPlaylistName, user.Id);
+                _logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
+                    smartPlaylistName, user.Id, dto.JellyfinPlaylistId);
                 
-                // First try to find by name
-                existingPlaylist = GetPlaylist(user, smartPlaylistName);
-                if (existingPlaylist != null)
+                // First try to find by Jellyfin playlist ID (most reliable)
+                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
                 {
-                    _logger.LogDebug("Found existing playlist by name: {PlaylistName}", smartPlaylistName);
-                }
-                else
-                {
-                    _logger.LogDebug("No playlist found by name: {PlaylistName}", smartPlaylistName);
-                    
-                    // For name changes, try to find any playlist that might be the one we're looking for
-                    // by checking if there's only one playlist and it has the old name pattern
-                    var allPlaylistsQuery = new InternalItemsQuery()
+                    if (_libraryManager.GetItemById(jellyfinPlaylistId) is Playlist playlistById)
                     {
-                        IncludeItemTypes = [BaseItemKind.Playlist],
-                        Recursive = true
-                    };
-                    
-                    var allPlaylists = _libraryManager.GetItemsResult(allPlaylistsQuery).Items.OfType<Playlist>().ToList();
-                    
-                    // If there's only one playlist, it's likely the one we want to update
-                    if (allPlaylists.Count == 1)
-                    {
-                        var singlePlaylist = allPlaylists[0];
-                        _logger.LogDebug("Found single playlist '{PlaylistName}' (ID: {PlaylistId}) - assuming this is the one to update", 
-                            singlePlaylist.Name, singlePlaylist.Id);
-                        existingPlaylist = singlePlaylist;
+                        existingPlaylist = playlistById;
+                        _logger.LogDebug("Found existing playlist by Jellyfin playlist ID: {JellyfinPlaylistId} - {PlaylistName}",
+                            dto.JellyfinPlaylistId, existingPlaylist.Name);
                     }
-                    else if (allPlaylists.Count > 1)
+                    else
                     {
-                        _logger.LogDebug("Found multiple playlists - cannot determine which one to update:");
-                        foreach (var playlist in allPlaylists)
+                        _logger.LogDebug("No playlist found by Jellyfin playlist ID: {JellyfinPlaylistId}", dto.JellyfinPlaylistId);
+                    }
+                }
+                
+                // Fallback to name-based lookup (for backward compatibility)
+                if (existingPlaylist == null)
+                {
+                    // Try to find by the new name first
+                    existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                    if (existingPlaylist != null)
+                    {
+                        _logger.LogDebug("Found existing playlist by new name: {PlaylistName}", smartPlaylistName);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No playlist found by new name: {PlaylistName}", smartPlaylistName);
+                        
+                        // Could not find playlist by name - this might indicate a name change or missing playlist
+                        _logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate a name change or the playlist was deleted.", 
+                            smartPlaylistName, user.Username);
+                        
+                        // Log available playlists for debugging
+                        var userPlaylistsQuery = new InternalItemsQuery(user)
                         {
-                            _logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                            IncludeItemTypes = [BaseItemKind.Playlist],
+                            Recursive = true
+                        };
+                        
+                        var userPlaylists = _libraryManager.GetItemsResult(userPlaylistsQuery).Items.OfType<Playlist>().ToList();
+                        if (userPlaylists.Count > 0)
+                        {
+                            _logger.LogDebug("Available playlists for user '{UserName}':", user.Username);
+                            foreach (var playlist in userPlaylists)
+                            {
+                                _logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogDebug("No playlists found for user '{UserName}'", user.Username);
                         }
                     }
                 }
@@ -220,6 +238,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
                 stopwatch.Stop();
                 _logger.LogInformation("Successfully refreshed smart playlist: {PlaylistName} in {ElapsedTime}ms", dto.Name, stopwatch.ElapsedMilliseconds);
+                
+                // Return the Jellyfin playlist ID for storage
+                return existingPlaylist?.Id.ToString() ?? string.Empty;
             }
             catch (Exception ex)
             {
@@ -241,7 +262,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     try
                     {
                         _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
-                        await RefreshSinglePlaylistAsync(dto, cancellationToken);
+                        var jellyfinPlaylistId = await RefreshSinglePlaylistAsync(dto, cancellationToken);
                         return (true, "Playlist refreshed successfully");
                     }
                     finally
@@ -332,17 +353,33 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return Task.CompletedTask;
                 }
 
-                var smartPlaylistName = dto.Name + " [Smart]";
-                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                Playlist existingPlaylist = null;
                 
-                if (existingPlaylist != null)
+                // Try to find by Jellyfin playlist ID only (no name fallback for deletion)
+                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
                 {
-                    _logger.LogDebug("Deleting Jellyfin playlist '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
-                    _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
+                    var playlistById = _libraryManager.GetItemById(jellyfinPlaylistId) as Playlist;
+                    if (playlistById != null)
+                    {
+                        existingPlaylist = playlistById;
+                        _logger.LogDebug("Found playlist by Jellyfin playlist ID for deletion: {JellyfinPlaylistId} - {PlaylistName}", 
+                            dto.JellyfinPlaylistId, existingPlaylist.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No Jellyfin playlist found by ID '{JellyfinPlaylistId}' for deletion. Playlist may have been manually deleted.", dto.JellyfinPlaylistId);
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    _logger.LogWarning("No Jellyfin playlist ID available for playlist '{PlaylistName}'. Cannot delete Jellyfin playlist.", dto.Name);
+                }
+                
+                if (existingPlaylist != null)
+                {
+                    _logger.LogInformation("Deleting Jellyfin playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
+                        existingPlaylist.Name, existingPlaylist.Id, user.Username);
+                    _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
                 }
                 
                 return Task.CompletedTask;
@@ -365,12 +402,33 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return;
                 }
 
-                var smartPlaylistName = dto.Name + " [Smart]";
-                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                Playlist existingPlaylist = null;
+                
+                // Try to find by Jellyfin playlist ID only (no name fallback for suffix removal)
+                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
+                {
+                    var playlistById = _libraryManager.GetItemById(jellyfinPlaylistId) as Playlist;
+                    if (playlistById != null)
+                    {
+                        existingPlaylist = playlistById;
+                        _logger.LogDebug("Found playlist by Jellyfin playlist ID for suffix removal: {JellyfinPlaylistId} - {PlaylistName}", 
+                            dto.JellyfinPlaylistId, existingPlaylist.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No Jellyfin playlist found by ID '{JellyfinPlaylistId}' for suffix removal. Playlist may have been manually deleted.", dto.JellyfinPlaylistId);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("No Jellyfin playlist ID available for playlist '{PlaylistName}'. Cannot remove smart suffix.", dto.Name);
+                }
                 
                 if (existingPlaylist != null)
                 {
-                    _logger.LogDebug("Removing '[Smart]' suffix from playlist '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                    var oldName = existingPlaylist.Name;
+                    _logger.LogInformation("Removing '[Smart]' suffix from playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
+                        oldName, existingPlaylist.Id, user.Username);
                     
                     // Rename the playlist by removing the [Smart] suffix
                     existingPlaylist.Name = dto.Name;
@@ -379,11 +437,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     await existingPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                     
                     _logger.LogDebug("Successfully renamed playlist from '{OldName}' to '{NewName}' for user '{UserName}'", 
-                        smartPlaylistName, dto.Name, user.Username);
-                }
-                else
-                {
-                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}'", smartPlaylistName, user.Username);
+                        oldName, dto.Name, user.Username);
                 }
             }
             catch (Exception ex)

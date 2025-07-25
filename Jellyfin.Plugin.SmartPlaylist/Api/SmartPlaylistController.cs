@@ -67,14 +67,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         // Wrapper class to adapt the controller logger for PlaylistService
-        private class PlaylistServiceLogger : ILogger<PlaylistService>
+        private class PlaylistServiceLogger(ILogger logger) : ILogger<PlaylistService>
         {
-            private readonly ILogger _logger;
-
-            public PlaylistServiceLogger(ILogger logger)
-            {
-                _logger = logger;
-            }
+            private readonly ILogger _logger = logger;
 
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
             {
@@ -124,42 +119,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _ => fieldName
             };
         }
-
-        private void DeleteJellyfinPlaylist(string playlistName, Guid userId)
-        {
-            try
-            {
-                var user = _userManager.GetUserById(userId);
-                if (user == null)
-                {
-                    _logger.LogWarning("User with ID '{UserId}' not found when trying to delete Jellyfin playlist '{PlaylistName}'", userId, playlistName);
-                    return;
-                }
-
-                var query = new InternalItemsQuery(user)
-                {
-                    IncludeItemTypes = [BaseItemKind.Playlist],
-                    Recursive = true,
-                    Name = playlistName
-                };
-
-                var existingPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
-                if (existingPlaylist != null)
-                {
-                    _logger.LogInformation("Deleting Jellyfin playlist '{PlaylistName}' for user '{UserName}' ({UserId})", playlistName, user.Username, userId);
-                    _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
-                }
-                else
-                {
-                    _logger.LogWarning("No Jellyfin playlist found with name '{PlaylistName}' for user '{UserName}' ({UserId})", playlistName, user.Username, userId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting Jellyfin playlist '{PlaylistName}' for user ID '{UserId}'", playlistName, userId);
-            }
-        }
-
         private void TriggerPlaylistRefresh()
         {
             try
@@ -373,6 +332,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 _logger.LogDebug("Calling RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
                 var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(createdPlaylist);
+                
+                // If refresh was successful, get the Jellyfin playlist ID and save it
+                if (success)
+                {
+                    // Get the Jellyfin playlist ID by calling the refresh method directly
+                    var jellyfinPlaylistId = await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
+                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                    {
+                        createdPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
+                        await playlistStore.SaveAsync(createdPlaylist);
+                        _logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
+                            jellyfinPlaylistId, createdPlaylist.Name);
+                    }
+                }
                 stopwatch.Stop();
                 
                 if (!success)
@@ -527,6 +500,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
 
                 playlist.Id = id;
+                
+                // Preserve the Jellyfin playlist ID from the existing playlist if it exists
+                if (!string.IsNullOrEmpty(existingPlaylist.JellyfinPlaylistId))
+                {
+                    playlist.JellyfinPlaylistId = existingPlaylist.JellyfinPlaylistId;
+                    _logger.LogDebug("Preserved Jellyfin playlist ID {JellyfinPlaylistId} from existing playlist", existingPlaylist.JellyfinPlaylistId);
+                }
+                
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
                 
                 // Clear the rule cache to ensure any rule changes are properly reflected
@@ -536,6 +517,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 // Immediately update the Jellyfin playlist using the single playlist service with timeout
                 var playlistService = GetPlaylistService();
                 var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(updatedPlaylist);
+                
+                // If refresh was successful, get the Jellyfin playlist ID and save it
+                if (success)
+                {
+                    // Get the Jellyfin playlist ID by calling the refresh method directly
+                    var jellyfinPlaylistId = await playlistService.RefreshSinglePlaylistAsync(updatedPlaylist);
+                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                    {
+                        updatedPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
+                        await playlistStore.SaveAsync(updatedPlaylist);
+                        _logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
+                            jellyfinPlaylistId, updatedPlaylist.Name);
+                    }
+                }
+                
                 stopwatch.Stop();
                 
                 if (!success)

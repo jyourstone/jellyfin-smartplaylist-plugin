@@ -218,44 +218,64 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                     };
                                 }).ToArray();
 
-                                // Try to find existing playlist by name, with fallback for name changes
+                                // Try to find existing playlist by Jellyfin playlist ID first, then by name
                                 Playlist existingPlaylist = null;
                                 var smartPlaylistName = dto.Name + " [Smart]";
                                 
-                                // First try to find by name
-                                existingPlaylist = GetPlaylist(playlistUser, smartPlaylistName);
-                                if (existingPlaylist != null)
+                                logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
+                                    smartPlaylistName, playlistUser.Id, dto.JellyfinPlaylistId);
+                                
+                                // First try to find by Jellyfin playlist ID (most reliable)
+                                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
                                 {
-                                    logger.LogDebug("Found existing playlist by name: {PlaylistName}", smartPlaylistName);
-                                }
-                                else
-                                {
-                                    logger.LogDebug("No playlist found by name: {PlaylistName}", smartPlaylistName);
-                                    
-                                    // For name changes, try to find any playlist that might be the one we're looking for
-                                    // by checking if there's only one playlist and it has the old name pattern
-                                    var allPlaylistsQuery = new InternalItemsQuery()
+                                    var playlistById = libraryManager.GetItemById(jellyfinPlaylistId) as Playlist;
+                                    if (playlistById != null)
                                     {
-                                        IncludeItemTypes = [BaseItemKind.Playlist],
-                                        Recursive = true
-                                    };
-                                    
-                                    var allPlaylists = libraryManager.GetItemsResult(allPlaylistsQuery).Items.OfType<Playlist>().ToList();
-                                    
-                                    // If there's only one playlist, it's likely the one we want to update
-                                    if (allPlaylists.Count == 1)
-                                    {
-                                        var singlePlaylist = allPlaylists[0];
-                                        logger.LogDebug("Found single playlist '{PlaylistName}' (ID: {PlaylistId}) - assuming this is the one to update", 
-                                            singlePlaylist.Name, singlePlaylist.Id);
-                                        existingPlaylist = singlePlaylist;
+                                        existingPlaylist = playlistById;
+                                        logger.LogDebug("Found existing playlist by Jellyfin playlist ID: {JellyfinPlaylistId} - {PlaylistName}", 
+                                            dto.JellyfinPlaylistId, existingPlaylist.Name);
                                     }
-                                    else if (allPlaylists.Count > 1)
+                                    else
                                     {
-                                        logger.LogDebug("Found multiple playlists - cannot determine which one to update:");
-                                        foreach (var playlist in allPlaylists)
+                                        logger.LogDebug("No playlist found by Jellyfin playlist ID: {JellyfinPlaylistId}", dto.JellyfinPlaylistId);
+                                    }
+                                }
+                                
+                                // Fallback to name-based lookup (for backward compatibility)
+                                if (existingPlaylist == null)
+                                {
+                                    existingPlaylist = GetPlaylist(playlistUser, smartPlaylistName);
+                                    if (existingPlaylist != null)
+                                    {
+                                        logger.LogDebug("Found existing playlist by new name: {PlaylistName}", smartPlaylistName);
+                                    }
+                                    else
+                                    {
+                                        logger.LogDebug("No playlist found by new name: {PlaylistName}", smartPlaylistName);
+                                        
+                                        // Could not find playlist by name - this might indicate a name change or missing playlist
+                                        logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate a name change or the playlist was deleted.", 
+                                            smartPlaylistName, playlistUser.Username);
+                                        
+                                        // Log available playlists for debugging
+                                        var userPlaylistsQuery = new InternalItemsQuery(playlistUser)
                                         {
-                                            logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                                            IncludeItemTypes = [BaseItemKind.Playlist],
+                                            Recursive = true
+                                        };
+                                        
+                                        var userPlaylists = libraryManager.GetItemsResult(userPlaylistsQuery).Items.OfType<Playlist>().ToList();
+                                        if (userPlaylists.Count > 0)
+                                        {
+                                            logger.LogDebug("Available playlists for user '{UserName}':", playlistUser.Username);
+                                            foreach (var playlist in userPlaylists)
+                                            {
+                                                logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            logger.LogDebug("No playlists found for user '{UserName}'", playlistUser.Username);
                                         }
                                     }
                                 }
