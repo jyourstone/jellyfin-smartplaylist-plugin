@@ -472,7 +472,10 @@
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
             page.querySelector('#playlistIsPublic').checked = false;
-            page.querySelector('#playlistMaxItems').value = 500;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = 500;
+            }
             
             // Populate settings tab dropdowns with defaults even if config fails
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
@@ -1118,7 +1121,13 @@
             const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             const maxItemsInput = maxItemsElement?.value || '';
-            const maxItems = maxItemsInput === '' ? 500 : parseInt(maxItemsInput);
+            let maxItems;
+            if (maxItemsInput === '') {
+                maxItems = 500;
+            } else {
+                const parsedValue = parseInt(maxItemsInput);
+                maxItems = isNaN(parsedValue) ? 500 : parsedValue;
+            }
 
             // Get selected user ID from dropdown
             const userId = page.querySelector('#playlistUser').value;
@@ -1216,13 +1225,19 @@
             page.querySelector('#sortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#playlistIsPublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
-            page.querySelector('#playlistMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            }
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
             page.querySelector('#sortOrder').value = 'Ascending';
             page.querySelector('#playlistIsPublic').checked = false;
             page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
-            page.querySelector('#playlistMaxItems').value = 500;
+            const maxItemsElement = page.querySelector('#playlistMaxItems');
+            if (maxItemsElement) {
+                maxItemsElement.value = 500;
+            }
         });
         
         // Create initial logic group with one rule
