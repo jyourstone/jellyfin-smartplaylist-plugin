@@ -331,20 +331,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 _logger.LogDebug("Calling RefreshSinglePlaylistWithTimeoutAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
-                var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(createdPlaylist);
+                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(createdPlaylist);
                 
-                // If refresh was successful, get the Jellyfin playlist ID and save it
-                if (success)
+                // If refresh was successful, save the Jellyfin playlist ID
+                if (success && !string.IsNullOrEmpty(jellyfinPlaylistId))
                 {
-                    // Get the Jellyfin playlist ID by calling the refresh method directly
-                    var jellyfinPlaylistId = await playlistService.RefreshSinglePlaylistAsync(createdPlaylist);
-                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
-                    {
-                        createdPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
-                        await playlistStore.SaveAsync(createdPlaylist);
-                        _logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
-                            jellyfinPlaylistId, createdPlaylist.Name);
-                    }
+                    createdPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
+                    await playlistStore.SaveAsync(createdPlaylist);
+                    _logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
+                        jellyfinPlaylistId, createdPlaylist.Name);
                 }
                 stopwatch.Stop();
                 
@@ -516,20 +511,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 // Immediately update the Jellyfin playlist using the single playlist service with timeout
                 var playlistService = GetPlaylistService();
-                var (success, message) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(updatedPlaylist);
+                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(updatedPlaylist);
                 
-                // If refresh was successful, get the Jellyfin playlist ID and save it
-                if (success)
+                // If refresh was successful, save the Jellyfin playlist ID
+                if (success && !string.IsNullOrEmpty(jellyfinPlaylistId))
                 {
-                    // Get the Jellyfin playlist ID by calling the refresh method directly
-                    var jellyfinPlaylistId = await playlistService.RefreshSinglePlaylistAsync(updatedPlaylist);
-                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
-                    {
-                        updatedPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
-                        await playlistStore.SaveAsync(updatedPlaylist);
-                        _logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
-                            jellyfinPlaylistId, updatedPlaylist.Name);
-                    }
+                    updatedPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
+                    await playlistStore.SaveAsync(updatedPlaylist);
+                    _logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
+                        jellyfinPlaylistId, updatedPlaylist.Name);
                 }
                 
                 stopwatch.Stop();

@@ -228,11 +228,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                 // First try to find by Jellyfin playlist ID (most reliable)
                                 if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
                                 {
-                                    var playlistById = libraryManager.GetItemById(jellyfinPlaylistId) as Playlist;
-                                    if (playlistById != null)
+                                    if (libraryManager.GetItemById(jellyfinPlaylistId) is Playlist playlistById)
                                     {
                                         existingPlaylist = playlistById;
-                                        logger.LogDebug("Found existing playlist by Jellyfin playlist ID: {JellyfinPlaylistId} - {PlaylistName}", 
+                                        logger.LogDebug("Found existing playlist by Jellyfin playlist ID: {JellyfinPlaylistId} - {PlaylistName}",
                                             dto.JellyfinPlaylistId, existingPlaylist.Name);
                                     }
                                     else
