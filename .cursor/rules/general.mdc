@@ -67,7 +67,7 @@ logger?.LogDebug("Methods containing 'keyword': [{Methods}]", string.Join(", ", 
 ## Debugging Workflow
 1. Make code changes
 2. Build: `./build-local.sh` from `/dev`
-3. Wait for container restart (10-15 seconds)
+3. Wait for user input
 4. Check logs: `tail -n 100 jellyfin-data/config/log/log_YYYYMMDD.log`
 
 Log analysis:

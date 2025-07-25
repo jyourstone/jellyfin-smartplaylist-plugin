@@ -218,12 +218,69 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                     };
                                 }).ToArray();
 
-                                // Add [Smart] suffix to distinguish from regular playlists
+                                // Try to find existing playlist by name, with fallback for name changes
+                                Playlist existingPlaylist = null;
                                 var smartPlaylistName = dto.Name + " [Smart]";
-                                var existingPlaylist = GetPlaylist(playlistUser, smartPlaylistName);
+                                
+                                // First try to find by name
+                                existingPlaylist = GetPlaylist(playlistUser, smartPlaylistName);
+                                if (existingPlaylist != null)
+                                {
+                                    logger.LogDebug("Found existing playlist by name: {PlaylistName}", smartPlaylistName);
+                                }
+                                else
+                                {
+                                    logger.LogDebug("No playlist found by name: {PlaylistName}", smartPlaylistName);
+                                    
+                                    // For name changes, try to find any playlist that might be the one we're looking for
+                                    // by checking if there's only one playlist and it has the old name pattern
+                                    var allPlaylistsQuery = new InternalItemsQuery()
+                                    {
+                                        IncludeItemTypes = [BaseItemKind.Playlist],
+                                        Recursive = true
+                                    };
+                                    
+                                    var allPlaylists = libraryManager.GetItemsResult(allPlaylistsQuery).Items.OfType<Playlist>().ToList();
+                                    
+                                    // If there's only one playlist, it's likely the one we want to update
+                                    if (allPlaylists.Count == 1)
+                                    {
+                                        var singlePlaylist = allPlaylists[0];
+                                        logger.LogDebug("Found single playlist '{PlaylistName}' (ID: {PlaylistId}) - assuming this is the one to update", 
+                                            singlePlaylist.Name, singlePlaylist.Id);
+                                        existingPlaylist = singlePlaylist;
+                                    }
+                                    else if (allPlaylists.Count > 1)
+                                    {
+                                        logger.LogDebug("Found multiple playlists - cannot determine which one to update:");
+                                        foreach (var playlist in allPlaylists)
+                                        {
+                                            logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                                        }
+                                    }
+                                }
                                 
                                 if (existingPlaylist != null)
                                 {
+                                    // Check if the playlist name needs to be updated
+                                    var currentName = existingPlaylist.Name;
+                                    var expectedName = smartPlaylistName;
+                                    var nameChanged = currentName != expectedName;
+                                    
+                                    if (nameChanged)
+                                    {
+                                        logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}'", currentName, expectedName);
+                                        existingPlaylist.Name = expectedName;
+                                    }
+                                    
+                                    // Check if ownership needs to be updated
+                                    var ownershipChanged = existingPlaylist.OwnerUserId != playlistUser.Id;
+                                    if (ownershipChanged)
+                                    {
+                                        logger.LogDebug("Playlist ownership changing from {OldOwner} to {NewOwner}", existingPlaylist.OwnerUserId, playlistUser.Id);
+                                        existingPlaylist.OwnerUserId = playlistUser.Id;
+                                    }
+                                    
                                     // Check if we need to update the playlist due to public/private setting change
                                     // Use OpenAccess property instead of Shares.Any() as revealed by debugging
                                     var openAccessProperty = existingPlaylist.GetType().GetProperty("OpenAccess");

@@ -55,15 +55,40 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             try
             {
-                // Use Microsoft.Extensions.Logging.Abstractions.NullLogger to avoid LoggerFactory resource leaks
-                // Since PlaylistService operations are logged at the controller level, this is acceptable
-                var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<PlaylistService>.Instance;
-                return new PlaylistService(_userManager, _libraryManager, _playlistManager, _userDataManager, logger, _providerManager);
+                // Use a wrapper logger that implements ILogger<PlaylistService>
+                var playlistServiceLogger = new PlaylistServiceLogger(_logger);
+                return new PlaylistService(_userManager, _libraryManager, _playlistManager, _userDataManager, playlistServiceLogger, _providerManager);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to create PlaylistService");
                 throw;
+            }
+        }
+
+        // Wrapper class to adapt the controller logger for PlaylistService
+        private class PlaylistServiceLogger : ILogger<PlaylistService>
+        {
+            private readonly ILogger _logger;
+
+            public PlaylistServiceLogger(ILogger logger)
+            {
+                _logger = logger;
+            }
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+            {
+                _logger.Log(logLevel, eventId, state, exception, formatter);
+            }
+
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return _logger.IsEnabled(logLevel);
+            }
+
+            public IDisposable BeginScope<TState>(TState state)
+            {
+                return _logger.BeginScope(state);
             }
         }
 
@@ -489,18 +514,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     _logger.LogDebug("Playlist ownership changing from user {OldUserId} to {NewUserId} for playlist '{PlaylistName}'", 
                         originalUserId, newUserId, existingPlaylist.Name);
                     
-                    // Delete the old playlist from the original user
-                    var oldPlaylistName = $"{existingPlaylist.Name} [Smart]";
-                    DeleteJellyfinPlaylist(oldPlaylistName, originalUserId);
+                    // Note: Ownership changes will be handled by the PlaylistService during refresh
+                    // The playlist will be updated in place rather than recreated
                 }
                 else if (nameChanging)
                 {
                     _logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}' for user {UserId}", 
                         existingPlaylist.Name, playlist.Name, originalUserId);
                     
-                    // Delete the old playlist with the old name
-                    var oldPlaylistName = $"{existingPlaylist.Name} [Smart]";
-                    DeleteJellyfinPlaylist(oldPlaylistName, originalUserId);
+                    // Note: Name changes will be handled by the PlaylistService during refresh
+                    // The playlist will be updated in place rather than recreated
                 }
 
                 playlist.Id = id;

@@ -96,12 +96,81 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     };
                 }).ToArray();
 
-                // Add [Smart] suffix to distinguish from regular playlists
+                // Try to find existing playlist by name, with fallback for name changes
+                Playlist existingPlaylist = null;
                 var smartPlaylistName = dto.Name + " [Smart]";
-                var existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                
+                _logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}", smartPlaylistName, user.Id);
+                
+                // First try to find by name
+                existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                if (existingPlaylist != null)
+                {
+                    _logger.LogDebug("Found existing playlist by name: {PlaylistName}", smartPlaylistName);
+                }
+                else
+                {
+                    _logger.LogDebug("No playlist found by name: {PlaylistName}", smartPlaylistName);
+                    
+                    // For name changes, try to find any playlist that might be the one we're looking for
+                    // by checking if there's only one playlist and it has the old name pattern
+                    var allPlaylistsQuery = new InternalItemsQuery()
+                    {
+                        IncludeItemTypes = [BaseItemKind.Playlist],
+                        Recursive = true
+                    };
+                    
+                    var allPlaylists = _libraryManager.GetItemsResult(allPlaylistsQuery).Items.OfType<Playlist>().ToList();
+                    
+                    // If there's only one playlist, it's likely the one we want to update
+                    if (allPlaylists.Count == 1)
+                    {
+                        var singlePlaylist = allPlaylists[0];
+                        _logger.LogDebug("Found single playlist '{PlaylistName}' (ID: {PlaylistId}) - assuming this is the one to update", 
+                            singlePlaylist.Name, singlePlaylist.Id);
+                        existingPlaylist = singlePlaylist;
+                    }
+                    else if (allPlaylists.Count > 1)
+                    {
+                        _logger.LogDebug("Found multiple playlists - cannot determine which one to update:");
+                        foreach (var playlist in allPlaylists)
+                        {
+                            _logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
+                        }
+                    }
+                }
                 
                 if (existingPlaylist != null)
                 {
+                    _logger.LogDebug("Processing existing playlist: {PlaylistName} (ID: {PlaylistId})", existingPlaylist.Name, existingPlaylist.Id);
+                    
+                    // Check if the playlist name needs to be updated
+                    var currentName = existingPlaylist.Name;
+                    var expectedName = smartPlaylistName;
+                    var nameChanged = currentName != expectedName;
+                    
+                    if (nameChanged)
+                    {
+                        _logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}'", currentName, expectedName);
+                        existingPlaylist.Name = expectedName;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Playlist name unchanged: '{Name}'", currentName);
+                    }
+                    
+                    // Check if ownership needs to be updated
+                    var ownershipChanged = existingPlaylist.OwnerUserId != user.Id;
+                    if (ownershipChanged)
+                    {
+                        _logger.LogDebug("Playlist ownership changing from {OldOwner} to {NewOwner}", existingPlaylist.OwnerUserId, user.Id);
+                        existingPlaylist.OwnerUserId = user.Id;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Playlist ownership unchanged: {OwnerId}", existingPlaylist.OwnerUserId);
+                    }
+                    
                     // Check if we need to update the playlist due to public/private setting change
                     // Use OpenAccess property instead of Shares.Any() as revealed by debugging
                     var openAccessProperty = existingPlaylist.GetType().GetProperty("OpenAccess");
@@ -144,6 +213,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
+                    _logger.LogDebug("No existing playlist found - creating new playlist: {PlaylistName}", smartPlaylistName);
                     // Create new playlist
                     await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, cancellationToken);
                 }
@@ -500,14 +570,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private Playlist GetPlaylist(User user, string name)
         {
+            _logger.LogDebug("GetPlaylist: Searching for playlist '{PlaylistName}' for user '{UserName}'", name, user.Username);
+            
+            // Use the same approach as DeleteJellyfinPlaylist function
             var query = new InternalItemsQuery(user)
             {
                 IncludeItemTypes = [BaseItemKind.Playlist],
                 Recursive = true,
                 Name = name
             };
+
+            var existingPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+            if (existingPlaylist != null)
+            {
+                _logger.LogDebug("GetPlaylist: Found playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
+                    existingPlaylist.Name, existingPlaylist.Id, user.Username);
+                return existingPlaylist;
+            }
             
-            return _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+            _logger.LogDebug("GetPlaylist: No playlist found with name '{PlaylistName}' for user '{UserName}'", name, user.Username);
+            return null;
         }
 
         private IEnumerable<BaseItem> GetAllUserMedia(User user)
