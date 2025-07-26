@@ -20,7 +20,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - [📦 How to Install](#-how-to-install)
 - [🚀 Roadmap](#-roadmap)
 - [🛠️ Development](#️-development)
-- [🔧 Advanced Configuration](#️-advanced-configuration)
+- [🔧 Advanced Configuration](#-advanced-configuration)
 - [🙏 Credits](#-credits)
 - [⚠️ Disclaimer](#️-disclaimer)
 
