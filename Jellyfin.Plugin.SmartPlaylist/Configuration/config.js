@@ -2192,6 +2192,15 @@
             page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            
+            // Load playlist naming configuration
+
+            page.querySelector('#playlistNamePrefix').value = config.PlaylistNamePrefix || '';
+            page.querySelector('#playlistNameSuffix').value = config.PlaylistNameSuffix !== undefined ? config.PlaylistNameSuffix : '[Smart]';
+            
+            // Update preview
+            updatePlaylistNamePreview(page);
+            
             Dashboard.hideLoadingMsg();
         }).catch(() => {
             Dashboard.hideLoadingMsg();
@@ -2213,6 +2222,11 @@
                 const parsedValue = parseInt(defaultMaxItemsInput);
                 config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
             }
+            
+            // Save playlist naming configuration
+            config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
+            config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value;
+            
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
@@ -2446,6 +2460,44 @@
         setTimeout(scrollToActiveTab, 100);
     }
 
+    // Helper function to update the live preview of playlist names
+    function updatePlaylistNamePreview(page) {
+        const prefix = page.querySelector('#playlistNamePrefix').value;
+        const suffix = page.querySelector('#playlistNameSuffix').value;
+        const previewText = page.querySelector('#previewText');
+        
+        const exampleName = 'My Awesome Playlist';
+        let finalName = '';
+        
+        if (prefix) {
+            finalName += prefix + ' ';
+        }
+        finalName += exampleName;
+        if (suffix) {
+            finalName += ' ' + suffix;
+        }
+        
+        previewText.textContent = finalName;
+    }
+
+    // Helper function to setup playlist naming event listeners
+    function setupPlaylistNamingListeners(page, signal) {
+        const prefixInput = page.querySelector('#playlistNamePrefix');
+        const suffixInput = page.querySelector('#playlistNameSuffix');
+        
+        if (prefixInput) {
+            prefixInput.addEventListener('input', () => {
+                updatePlaylistNamePreview(page);
+            }, getEventListenerOptions(signal));
+        }
+        
+        if (suffixInput) {
+            suffixInput.addEventListener('input', () => {
+                updatePlaylistNamePreview(page);
+            }, getEventListenerOptions(signal));
+        }
+    }
+
     function setupEventListeners(page) {
         // Create AbortController for page event listeners
         const pageAbortController = createAbortController();
@@ -2453,6 +2505,9 @@
         
         // Store controller on the page for cleanup
         page._pageAbortController = pageAbortController;
+        
+        // Setup playlist naming event listeners
+        setupPlaylistNamingListeners(page, pageSignal);
         
         page.addEventListener('click', function (e) {
             const target = e.target;

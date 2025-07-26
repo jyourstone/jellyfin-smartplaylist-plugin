@@ -48,6 +48,45 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
         private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
 
+        /// <summary>
+        /// Formats playlist name based on plugin configuration settings.
+        /// </summary>
+        /// <param name="playlistName">The base playlist name</param>
+        /// <returns>The formatted playlist name</returns>
+        private static string FormatPlaylistName(string playlistName)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    // Fallback to default behavior if configuration is not available
+                    return playlistName + " [Smart]";
+                }
+
+                var prefix = config.PlaylistNamePrefix ?? "";
+                var suffix = config.PlaylistNameSuffix ?? "[Smart]";
+
+                var result = "";
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    result += prefix + " ";
+                }
+                result += playlistName;
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    result += " " + suffix;
+                }
+
+                return result;
+            }
+            catch (Exception)
+            {
+                // Fallback to default behavior if any error occurs
+                return playlistName + " [Smart]";
+            }
+        }
+
         public async Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
             // This is the internal method that assumes the lock is already held
@@ -98,10 +137,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
                 // Try to find existing playlist by Jellyfin playlist ID first, then by name
                 Playlist existingPlaylist = null;
-                var smartPlaylistName = dto.Name + " [Smart]";
                 
-                _logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
-                    smartPlaylistName, user.Id, dto.JellyfinPlaylistId);
+                _logger.LogDebug("Looking for playlist: User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
+                    user.Id, dto.JellyfinPlaylistId);
                 
                 // First try to find by Jellyfin playlist ID (most reliable)
                 if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
@@ -118,22 +156,23 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                 }
                 
-                // Fallback to name-based lookup (for backward compatibility)
+                // Fallback to name-based lookup using OLD format (for backward compatibility)
                 if (existingPlaylist == null)
                 {
-                    // Try to find by the new name first
-                    existingPlaylist = GetPlaylist(user, smartPlaylistName);
+                    // Use the old hardcoded format for finding existing playlists
+                    var oldFormatName = dto.Name + " [Smart]";
+                    existingPlaylist = GetPlaylist(user, oldFormatName);
                     if (existingPlaylist != null)
                     {
-                        _logger.LogDebug("Found existing playlist by new name: {PlaylistName}", smartPlaylistName);
+                        _logger.LogDebug("Found existing playlist by old format name: {PlaylistName}", oldFormatName);
                     }
                     else
                     {
-                        _logger.LogDebug("No playlist found by new name: {PlaylistName}", smartPlaylistName);
+                        _logger.LogDebug("No playlist found by old format name: {PlaylistName}", oldFormatName);
                         
-                        // Could not find playlist by name - this might indicate a name change or missing playlist
-                        _logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate a name change or the playlist was deleted.", 
-                            smartPlaylistName, user.Username);
+                        // Could not find playlist by name - this might indicate a missing playlist
+                        _logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate the playlist was deleted.", 
+                            oldFormatName, user.Username);
                         
                         // Log available playlists for debugging (only when debug or trace logging is enabled)
                         if (_logger.IsEnabled(LogLevel.Debug))
@@ -160,6 +199,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                     }
                 }
+                
+                // Now that we've found the existing playlist (or not), apply the new naming format
+                var smartPlaylistName = FormatPlaylistName(dto.Name);
                 
                 if (existingPlaylist != null)
                 {

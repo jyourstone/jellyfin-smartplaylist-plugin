@@ -88,6 +88,45 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
+        /// Formats playlist name based on plugin configuration settings.
+        /// </summary>
+        /// <param name="playlistName">The base playlist name</param>
+        /// <returns>The formatted playlist name</returns>
+        private static string FormatPlaylistName(string playlistName)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    // Fallback to default behavior if configuration is not available
+                    return playlistName + " [Smart]";
+                }
+
+                var prefix = config.PlaylistNamePrefix ?? "";
+                var suffix = config.PlaylistNameSuffix ?? "[Smart]";
+
+                var result = "";
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    result += prefix + " ";
+                }
+                result += playlistName;
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    result += " " + suffix;
+                }
+
+                return result;
+            }
+            catch (Exception)
+            {
+                // Fallback to default behavior if any error occurs
+                return playlistName + " [Smart]";
+            }
+        }
+
+        /// <summary>
         /// Gets a user-friendly label for a field name.
         /// </summary>
         /// <param name="fieldName">The field name</param>
@@ -356,7 +395,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     var user = _userManager.GetUserById(createdPlaylist.UserId);
                     if (user != null)
                     {
-                        var smartPlaylistName = createdPlaylist.Name + " [Smart]";
+                        var smartPlaylistName = FormatPlaylistName(createdPlaylist.Name);
                         var query = new InternalItemsQuery(user)
                         {
                             IncludeItemTypes = [BaseItemKind.Playlist],
