@@ -11,39 +11,21 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
-using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Playlists;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
+namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
-    /// Basic DirectoryService implementation for playlist metadata refresh.
-    /// Provides empty/safe implementations to avoid NullReferenceExceptions.
+    /// Class RefreshPlaylists.
     /// </summary>
-    public class BasicDirectoryService : IDirectoryService
-    {
-        public List<FileSystemMetadata> GetDirectories(string path) => [];
-        public List<FileSystemMetadata> GetFiles(string path) => [];
-        public FileSystemMetadata[] GetFileSystemEntries(string path) => [];
-        public FileSystemMetadata GetFile(string path) => null;
-        public FileSystemMetadata GetDirectory(string path) => null;
-        public FileSystemMetadata GetFileSystemEntry(string path) => null;
-        public IReadOnlyList<string> GetFilePaths(string path) => [];
-        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => [];
-        public bool IsAccessible(string path) => false;
-    }
-
-    /// <summary>
-    /// Class RefreshAllPlaylists.
-    /// </summary>
-    public class RefreshAllPlaylists(
+    public class RefreshPlaylists(
         IUserManager userManager,
         ILibraryManager libraryManager,
         IPlaylistManager playlistManager,
         IUserDataManager userDataManager,
-        ILogger<RefreshAllPlaylists> logger,
+        ILogger<RefreshPlaylists> logger,
         IServerApplicationPaths serverApplicationPaths,
         IProviderManager providerManager) : IScheduledTask
     {
@@ -55,7 +37,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
         /// </summary>
         /// <param name="playlistName">The base playlist name</param>
         /// <returns>The formatted playlist name</returns>
-        private static string FormatPlaylistName(string playlistName)
+        public static string FormatPlaylistName(string playlistName)
         {
             try
             {

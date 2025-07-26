@@ -1822,7 +1822,7 @@
             contentType: 'application/json'
         }).then(() => {
             Dashboard.hideLoadingMsg();
-            const action = deleteJellyfinPlaylist ? 'deleted' : 'configuration deleted and [Smart] suffix removed';
+            const action = deleteJellyfinPlaylist ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
             showNotification('Playlist "' + playlistName + '" ' + action + ' successfully.', 'success');
             loadPlaylistList(page);
         }).catch(err => {
@@ -2193,13 +2193,21 @@
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             
-            // Load playlist naming configuration
-
-            page.querySelector('#playlistNamePrefix').value = config.PlaylistNamePrefix || '';
-            page.querySelector('#playlistNameSuffix').value = config.PlaylistNameSuffix !== undefined ? config.PlaylistNameSuffix : '[Smart]';
+            // Load playlist naming configuration - only if elements exist (settings tab)
+            const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
+            if (playlistNamePrefix) {
+                playlistNamePrefix.value = config.PlaylistNamePrefix || '';
+            }
             
-            // Update preview
-            updatePlaylistNamePreview(page);
+            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+            if (playlistNameSuffix) {
+                playlistNameSuffix.value = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
+            }
+            
+            // Update preview - only if elements exist
+            if (playlistNamePrefix && playlistNameSuffix) {
+                updatePlaylistNamePreview(page);
+            }
             
             Dashboard.hideLoadingMsg();
         }).catch(() => {

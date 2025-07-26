@@ -53,6 +53,7 @@ The web interface is organized into three tabs:
     -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
+    -   Configure custom prefix and suffix for playlist names.
     -   Manually trigger a refresh for all smart playlists.
 
 #### Flexible Deletion Options
@@ -60,9 +61,20 @@ The web interface is organized into three tabs:
 When deleting a smart playlist, you can choose whether to also delete the corresponding Jellyfin playlist:
 
 - **Delete both (default)**: Removes both the smart playlist configuration and the Jellyfin playlist
-- **Delete configuration only**: Keeps the Jellyfin playlist and removes the "[Smart]" suffix, making it a regular manually managed playlist
+- **Delete configuration only**: Keeps the Jellyfin playlist and removes the custom prefix/suffix (if any), making it a regular manually managed playlist
 
 This is useful when you for example want to populate a playlist automatically once, then manage it manually.
+
+#### Custom Playlist Naming
+
+You can customize how smart playlist names appear in Jellyfin by configuring a prefix and/or suffix in the Settings tab:
+
+- **Prefix**: Text added before the playlist name (e.g., "My " → "My Action Movies")
+- **Suffix**: Text added after the playlist name (e.g., " - Smart" → "Action Movies - Smart")
+- **Both**: Use both prefix and suffix (e.g., "My " + " - Smart" → "My Action Movies - Smart")
+- **None**: Leave both empty for no prefix/suffix
+
+The naming configuration applies to all new smart playlists. When you delete a smart playlist but keep the Jellyfin playlist, the custom prefix/suffix will be automatically removed.
 
 ### Automatic Updates
 
