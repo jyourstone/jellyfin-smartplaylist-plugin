@@ -12,6 +12,29 @@ This plugin allows you to create dynamic playlists based on a set of rules, whic
 
 Requires Jellyfin version `10.10.0` and newer.
 
+## 📋 Table of Contents
+
+- [✨ Features](#-features)
+- [⚙️ Configuration](#️-configuration)
+  - [Using the Web Interface](#using-the-web-interface)
+  - [Flexible Deletion Options](#flexible-deletion-options)
+  - [Custom Playlist Naming](#custom-playlist-naming)
+  - [Automatic Updates](#automatic-updates)
+- [📋 Overview](#-overview)
+- [Enhanced Music Tagging](#enhanced-music-tagging)
+- [📦 How to Install](#-how-to-install)
+- [🚀 Roadmap](#-roadmap)
+- [🛠️ Development](#️-development)
+- [🔧 Advanced Configuration](#️-advanced-configuration)
+  - [Available Fields](#available-fields)
+  - [Available Operators](#available-operators)
+  - [Sorting Options](#sorting-options)
+  - [Max Items](#max-items)
+  - [Rule Logic](#rule-logic)
+  - [Manual Configuration](#manual-configuration-advanced-users)
+- [🙏 Credits](#-credits)
+- [⚠️ Disclaimer](#️-disclaimer)
+
 ## ✨ Features
 
 - 🚀 **Modern Jellyfin Support** - Built for newer Jellyfin versions with improved compatibility.
