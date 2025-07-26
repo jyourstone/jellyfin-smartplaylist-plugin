@@ -450,6 +450,8 @@
             const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
             const defaultMakePublic = config.DefaultMakePublic || false;
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            const defaultPlaylistNamePrefix = config.PlaylistNamePrefix || '';
+            const defaultPlaylistNameSuffix = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
@@ -468,6 +470,21 @@
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
             }
+            
+            // Populate playlist naming configuration fields
+            const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
+            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+            if (playlistNamePrefix) {
+                playlistNamePrefix.value = defaultPlaylistNamePrefix;
+            }
+            if (playlistNameSuffix) {
+                playlistNameSuffix.value = defaultPlaylistNameSuffix;
+            }
+            
+            // Update preview if both elements exist
+            if (playlistNamePrefix && playlistNameSuffix) {
+                updatePlaylistNamePreview(page);
+            }
         }).catch(() => {
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
@@ -485,6 +502,21 @@
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, 'Ascending'); 
+            }
+            
+            // Populate playlist naming configuration fields with defaults even if config fails
+            const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
+            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+            if (playlistNamePrefix) {
+                playlistNamePrefix.value = '';
+            }
+            if (playlistNameSuffix) {
+                playlistNameSuffix.value = '[Smart]';
+            }
+            
+            // Update preview if both elements exist
+            if (playlistNamePrefix && playlistNameSuffix) {
+                updatePlaylistNamePreview(page);
             }
         });
     }
@@ -1822,7 +1854,7 @@
             contentType: 'application/json'
         }).then(() => {
             Dashboard.hideLoadingMsg();
-            const action = deleteJellyfinPlaylist ? 'deleted' : 'configuration deleted and [Smart] suffix removed';
+            const action = deleteJellyfinPlaylist ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
             showNotification('Playlist "' + playlistName + '" ' + action + ' successfully.', 'success');
             loadPlaylistList(page);
         }).catch(err => {
@@ -2192,6 +2224,7 @@
             page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            
             Dashboard.hideLoadingMsg();
         }).catch(() => {
             Dashboard.hideLoadingMsg();
@@ -2213,6 +2246,11 @@
                 const parsedValue = parseInt(defaultMaxItemsInput);
                 config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
             }
+            
+            // Save playlist naming configuration
+            config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
+            config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value;
+            
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
@@ -2446,6 +2484,44 @@
         setTimeout(scrollToActiveTab, 100);
     }
 
+    // Helper function to update the live preview of playlist names
+    function updatePlaylistNamePreview(page) {
+        const prefix = page.querySelector('#playlistNamePrefix').value;
+        const suffix = page.querySelector('#playlistNameSuffix').value;
+        const previewText = page.querySelector('#previewText');
+        
+        const exampleName = 'My Awesome Playlist';
+        let finalName = '';
+        
+        if (prefix) {
+            finalName += prefix + ' ';
+        }
+        finalName += exampleName;
+        if (suffix) {
+            finalName += ' ' + suffix;
+        }
+        
+        previewText.textContent = finalName;
+    }
+
+    // Helper function to setup playlist naming event listeners
+    function setupPlaylistNamingListeners(page, signal) {
+        const prefixInput = page.querySelector('#playlistNamePrefix');
+        const suffixInput = page.querySelector('#playlistNameSuffix');
+        
+        if (prefixInput) {
+            prefixInput.addEventListener('input', () => {
+                updatePlaylistNamePreview(page);
+            }, getEventListenerOptions(signal));
+        }
+        
+        if (suffixInput) {
+            suffixInput.addEventListener('input', () => {
+                updatePlaylistNamePreview(page);
+            }, getEventListenerOptions(signal));
+        }
+    }
+
     function setupEventListeners(page) {
         // Create AbortController for page event listeners
         const pageAbortController = createAbortController();
@@ -2453,6 +2529,9 @@
         
         // Store controller on the page for cleanup
         page._pageAbortController = pageAbortController;
+        
+        // Setup playlist naming event listeners
+        setupPlaylistNamingListeners(page, pageSignal);
         
         page.addEventListener('click', function (e) {
             const target = e.target;

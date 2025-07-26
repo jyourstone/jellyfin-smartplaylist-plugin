@@ -189,7 +189,7 @@
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel" for="playlistName">Playlist Name</label>
                             <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
-                            <div class="fieldDescription">The name of the playlist that will be created in Jellyfin. The suffix [Smart] will always be added.</div>
+                            <div class="fieldDescription">The name of the playlist that will be created in Jellyfin. The suffix/prefix provided in Settings will always be added.</div>
                         </div>
                        
                         <div class="inputContainer" style="margin-bottom: 1em;">
@@ -321,7 +321,29 @@
                             <div class="fieldDescription">Default maximum number of items for new smart playlists. Set to 0 for no limit.</div>
                         </div>
 
+                        <h3 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h3>
+                        <div class="input-group" style="display: flex; gap: 2em;">
+                            <div class="inputContainer flex-grow">
+                                <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
+                                <input type="text" is="emby-input" id="playlistNamePrefix" class="emby-input">
+                                <div class="fieldDescription">Text to add before the playlist name. Leave blank for no prefix.</div>
+                            </div>
+                            <div class="inputContainer flex-grow">
+                                <label class="inputLabel" for="playlistNameSuffix">Suffix Text</label>
+                                <input type="text" is="emby-input" id="playlistNameSuffix" class="emby-input">
+                                <div class="fieldDescription">Text to add after the playlist name. Leave blank for no suffix.</div>
+                            </div>
+                        </div>
 
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <label class="inputLabel">Preview</label>
+                            <div id="playlistNamePreview" style="padding: 0.5em; background-color: #2a2a2a; border: 1px solid #555; border-radius: 4px; font-family: monospace; max-width: 400px;">
+                                <span style="color: #888;">Example: </span><span id="previewText">My Awesome Playlist</span>
+                            </div>
+                            <div class="fieldDescription">Live preview of how playlist names will appear in Jellyfin. You can use both prefix and suffix, or just one, or neither.</div>
+                        </div>
+
+                        <div>After you have changed this setting, you need to refresh all playlists for it to take effect.</div>
 
                         <div style="margin-top: 2em;">
                             <button type="button" is="emby-button" id="saveSettingsBtn" class="button-submit emby-button block">Save Settings</button>

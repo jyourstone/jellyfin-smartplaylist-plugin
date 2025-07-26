@@ -11,44 +11,36 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
-using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Playlists;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
+namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
-    /// Basic DirectoryService implementation for playlist metadata refresh.
-    /// Provides empty/safe implementations to avoid NullReferenceExceptions.
+    /// Class RefreshPlaylists.
     /// </summary>
-    public class BasicDirectoryService : IDirectoryService
-    {
-        public List<FileSystemMetadata> GetDirectories(string path) => [];
-        public List<FileSystemMetadata> GetFiles(string path) => [];
-        public FileSystemMetadata[] GetFileSystemEntries(string path) => [];
-        public FileSystemMetadata GetFile(string path) => null;
-        public FileSystemMetadata GetDirectory(string path) => null;
-        public FileSystemMetadata GetFileSystemEntry(string path) => null;
-        public IReadOnlyList<string> GetFilePaths(string path) => [];
-        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => [];
-        public bool IsAccessible(string path) => false;
-    }
-
-    /// <summary>
-    /// Class RefreshAllPlaylists.
-    /// </summary>
-    public class RefreshAllPlaylists(
+    public class RefreshPlaylists(
         IUserManager userManager,
         ILibraryManager libraryManager,
         IPlaylistManager playlistManager,
         IUserDataManager userDataManager,
-        ILogger<RefreshAllPlaylists> logger,
+        ILogger<RefreshPlaylists> logger,
         IServerApplicationPaths serverApplicationPaths,
         IProviderManager providerManager) : IScheduledTask
     {
         // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
         private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
+
+        /// <summary>
+        /// Formats playlist name based on plugin configuration settings.
+        /// </summary>
+        /// <param name="playlistName">The base playlist name</param>
+        /// <returns>The formatted playlist name</returns>
+        public static string FormatPlaylistName(string playlistName)
+        {
+            return PlaylistNameFormatter.FormatPlaylistName(playlistName);
+        }
 
         /// <summary>
         /// Gets the name of the task.
@@ -220,10 +212,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
 
                                 // Try to find existing playlist by Jellyfin playlist ID first, then by name
                                 Playlist existingPlaylist = null;
-                                var smartPlaylistName = dto.Name + " [Smart]";
                                 
-                                logger.LogDebug("Looking for playlist: Name={PlaylistName}, User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
-                                    smartPlaylistName, playlistUser.Id, dto.JellyfinPlaylistId);
+                                logger.LogDebug("Looking for playlist: User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
+                                    playlistUser.Id, dto.JellyfinPlaylistId);
                                 
                                 // First try to find by Jellyfin playlist ID (most reliable)
                                 if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
@@ -240,21 +231,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                     }
                                 }
                                 
-                                // Fallback to name-based lookup (for backward compatibility)
+                                // Fallback to name-based lookup using OLD format (for backward compatibility)
                                 if (existingPlaylist == null)
                                 {
-                                    existingPlaylist = GetPlaylist(playlistUser, smartPlaylistName);
+                                    // Use the old hardcoded format for finding existing playlists
+                                    var oldFormatName = dto.Name + " [Smart]";
+                                    existingPlaylist = GetPlaylist(playlistUser, oldFormatName);
                                     if (existingPlaylist != null)
                                     {
-                                        logger.LogDebug("Found existing playlist by new name: {PlaylistName}", smartPlaylistName);
+                                        logger.LogDebug("Found existing playlist by old format name: {PlaylistName}", oldFormatName);
                                     }
                                     else
                                     {
-                                        logger.LogDebug("No playlist found by new name: {PlaylistName}", smartPlaylistName);
+                                        logger.LogDebug("No playlist found by old format name: {PlaylistName}", oldFormatName);
                                         
-                                        // Could not find playlist by name - this might indicate a name change or missing playlist
-                                        logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate a name change or the playlist was deleted.", 
-                                            smartPlaylistName, playlistUser.Username);
+                                        // Could not find playlist by name - this might indicate a missing playlist
+                                        logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate the playlist was deleted.", 
+                                            oldFormatName, playlistUser.Username);
                                         
                                         // Log available playlists for debugging
                                         var userPlaylistsQuery = new InternalItemsQuery(playlistUser)
@@ -278,6 +271,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.ScheduleTasks
                                         }
                                     }
                                 }
+                                
+                                // Now that we've found the existing playlist (or not), apply the new naming format
+                                var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(dto.Name);
                                 
                                 if (existingPlaylist != null)
                                 {

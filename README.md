@@ -24,7 +24,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
 - 🎵 **All Media Types** - Works with movies, series, episodes, and music
 
-## Configuration
+## ⚙️ Configuration
 
 SmartPlaylist now features a modern web-based configuration interface through the plugin settings page! No more manual JSON editing required.
 
@@ -53,6 +53,7 @@ The web interface is organized into three tabs:
     -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
+    -   Configure custom prefix and suffix for playlist names.
     -   Manually trigger a refresh for all smart playlists.
 
 #### Flexible Deletion Options
@@ -60,9 +61,20 @@ The web interface is organized into three tabs:
 When deleting a smart playlist, you can choose whether to also delete the corresponding Jellyfin playlist:
 
 - **Delete both (default)**: Removes both the smart playlist configuration and the Jellyfin playlist
-- **Delete configuration only**: Keeps the Jellyfin playlist and removes the "[Smart]" suffix, making it a regular manually managed playlist
+- **Delete configuration only**: Keeps the Jellyfin playlist and removes the custom prefix/suffix (if any), making it a regular manually managed playlist
 
 This is useful when you for example want to populate a playlist automatically once, then manage it manually.
+
+#### Custom Playlist Naming
+
+You can customize how smart playlist names appear in Jellyfin by configuring a prefix and/or suffix in the Settings tab:
+
+- **Prefix**: Text added before the playlist name (e.g., "My " → "My Action Movies")
+- **Suffix**: Text added after the playlist name (e.g., " - Smart" → "Action Movies - Smart")
+- **Both**: Use both prefix and suffix (e.g., "My " + " - Smart" → "My Action Movies - Smart")
+- **None**: Leave both empty for no prefix/suffix
+
+The naming configuration applies to all new smart playlists. When you delete a smart playlist but keep the Jellyfin playlist, the custom prefix/suffix will be automatically removed.
 
 ### Automatic Updates
 
@@ -70,7 +82,7 @@ Smart playlists automatically refresh when:
 - The "Refresh all SmartPlaylists" scheduled task runs
 - You manually trigger the task from the Jellyfin dashboard
 
-## Overview
+## 📋 Overview
 
 This plugin creates smart playlists that automatically updates based on rules you define, such as:
 
@@ -91,7 +103,7 @@ For example, create playlists for:
 - **Running playlist** (tracks with BPM 140-160 AND genre "Dance")
 - **Favorite relaxing music** (tracks with mood "Chill" AND marked as favorite)
 
-## How to Install
+## 📦 How to Install
 
 ### From Repository
 Add this repository URL to your Jellyfin plugin catalog:
@@ -109,12 +121,12 @@ Here are some of the planned features for future updates. Feel free to contribut
 - **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
 - **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 
-## Development
+## 🛠️ Development
 
 ### Building Locally
 For local development, see the [dev folder](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/tree/master/dev)
 
-## Advanced Configuration
+## 🔧 Advanced Configuration
 
 ### Available Fields
 
@@ -217,10 +229,10 @@ You can optionally set a maximum number of items for your smart playlist. This i
 
 For advanced users who prefer JSON configuration, playlist files are stored in the `data/smartplaylists` directory. See `example.playlist.json` for the file format.
 
-## Credits
+## 🙏 Credits
 
 This project is a fork of the original SmartPlaylist plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
 
-## Disclaimer
+## ⚠️ Disclaimer
 
 The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware. If you find a bug, it was probably the AI's fault. If you like a feature, the AI will begrudgingly accept your praise. Use at your own risk!

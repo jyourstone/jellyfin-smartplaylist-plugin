@@ -23,5 +23,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         /// Gets or sets the default maximum number of items for new playlists.
         /// </summary>
         public int DefaultMaxItems { get; set; } = 500;
+
+        /// <summary>
+        /// Gets or sets the prefix text to add to playlist names.
+        /// Leave empty to not add a prefix.
+        /// </summary>
+        public string PlaylistNamePrefix { get; set; } = "";
+
+        /// <summary>
+        /// Gets or sets the suffix text to add to playlist names.
+        /// Leave empty to not add a suffix.
+        /// </summary>
+        public string PlaylistNameSuffix { get; set; } = "[Smart]";
     }
 } 

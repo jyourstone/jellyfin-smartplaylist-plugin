@@ -87,6 +87,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             }
         }
 
+
+
         /// <summary>
         /// Gets a user-friendly label for a field name.
         /// </summary>
@@ -356,7 +358,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     var user = _userManager.GetUserById(createdPlaylist.UserId);
                     if (user != null)
                     {
-                        var smartPlaylistName = createdPlaylist.Name + " [Smart]";
+                        var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(createdPlaylist.Name);
                         var query = new InternalItemsQuery(user)
                         {
                             IncludeItemTypes = [BaseItemKind.Playlist],
@@ -583,7 +585,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
                 else
                 {
-                    // Remove the [Smart] suffix from the playlist name
+                    // Remove the suffix/prefix from the playlist name
                     await playlistService.RemoveSmartSuffixAsync(playlist);
                     _logger.LogInformation("Deleted smart playlist configuration: {PlaylistName}", playlist.Name);
                 }
