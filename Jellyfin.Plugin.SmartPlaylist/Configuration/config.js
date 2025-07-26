@@ -450,6 +450,8 @@
             const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
             const defaultMakePublic = config.DefaultMakePublic || false;
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            const defaultPlaylistNamePrefix = config.PlaylistNamePrefix || '';
+            const defaultPlaylistNameSuffix = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
@@ -468,6 +470,21 @@
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
             }
+            
+            // Populate playlist naming configuration fields
+            const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
+            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+            if (playlistNamePrefix) {
+                playlistNamePrefix.value = defaultPlaylistNamePrefix;
+            }
+            if (playlistNameSuffix) {
+                playlistNameSuffix.value = defaultPlaylistNameSuffix;
+            }
+            
+            // Update preview if both elements exist
+            if (playlistNamePrefix && playlistNameSuffix) {
+                updatePlaylistNamePreview(page);
+            }
         }).catch(() => {
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
@@ -485,6 +502,21 @@
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, 'Ascending'); 
+            }
+            
+            // Populate playlist naming configuration fields with defaults even if config fails
+            const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
+            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+            if (playlistNamePrefix) {
+                playlistNamePrefix.value = '';
+            }
+            if (playlistNameSuffix) {
+                playlistNameSuffix.value = '[Smart]';
+            }
+            
+            // Update preview if both elements exist
+            if (playlistNamePrefix && playlistNameSuffix) {
+                updatePlaylistNamePreview(page);
             }
         });
     }
@@ -2192,22 +2224,6 @@
             page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
-            
-            // Load playlist naming configuration - only if elements exist (settings tab)
-            const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
-            if (playlistNamePrefix) {
-                playlistNamePrefix.value = config.PlaylistNamePrefix || '';
-            }
-            
-            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
-            if (playlistNameSuffix) {
-                playlistNameSuffix.value = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
-            }
-            
-            // Update preview - only if elements exist
-            if (playlistNamePrefix && playlistNameSuffix) {
-                updatePlaylistNamePreview(page);
-            }
             
             Dashboard.hideLoadingMsg();
         }).catch(() => {

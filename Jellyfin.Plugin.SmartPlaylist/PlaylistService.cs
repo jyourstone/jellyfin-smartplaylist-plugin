@@ -21,7 +21,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// </summary>
     public interface IPlaylistService
     {
-        Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
@@ -48,7 +48,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
         private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
 
-
+        /// <summary>
+        /// Formats a playlist name with specific prefix and suffix values.
+        /// </summary>
+        /// <param name="baseName">The base playlist name</param>
+        /// <param name="prefix">The prefix to add (can be null or empty)</param>
+        /// <param name="suffix">The suffix to add (can be null or empty)</param>
+        /// <returns>The formatted playlist name</returns>
+        private static string FormatPlaylistNameWithSettings(string baseName, string prefix, string suffix)
+        {
+            var formatted = baseName;
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                formatted = prefix + " " + formatted;
+            }
+            if (!string.IsNullOrEmpty(suffix))
+            {
+                formatted = formatted + " " + suffix;
+            }
+            return formatted.Trim();
+        }
 
         /// <summary>
         /// Core method to process a single playlist refresh. This is the shared logic used by both
@@ -246,7 +265,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        public async Task<string> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
             // This is the internal method that assumes the lock is already held
             var stopwatch = Stopwatch.StartNew();
@@ -262,7 +281,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (user == null)
                 {
                     _logger.LogWarning("No user found for playlist '{PlaylistName}'. Skipping.", dto.Name);
-                    return string.Empty;
+                    return (false, "No user found for playlist", string.Empty);
                 }
 
                 var allUserMedia = GetAllUserMedia(user).ToArray();
@@ -272,14 +291,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 stopwatch.Stop();
                 _logger.LogDebug("Single playlist refresh completed in {ElapsedMs}ms: {Message}", stopwatch.ElapsedMilliseconds, message);
                 
-                return jellyfinPlaylistId;
+                return (success, message, jellyfinPlaylistId);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 _logger.LogError(ex, "Error in RefreshSinglePlaylistAsync for '{PlaylistName}' after {ElapsedMs}ms: {ErrorMessage}", 
                     dto.Name, stopwatch.ElapsedMilliseconds, ex.Message);
-                return $"Error refreshing playlist '{dto.Name}': {ex.Message}";
+                return (false, $"Error refreshing playlist '{dto.Name}': {ex.Message}", string.Empty);
             }
         }
 
@@ -295,8 +314,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     try
                     {
                         _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
-                        var playlistId = await RefreshSinglePlaylistAsync(dto, cancellationToken);
-                        return (true, "Playlist refreshed successfully", playlistId);
+                        var (success, message, playlistId) = await RefreshSinglePlaylistAsync(dto, cancellationToken);
+                        return (success, message, playlistId);
                     }
                     finally
                     {
@@ -487,17 +506,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             var suffix = config.PlaylistNameSuffix ?? "[Smart]";
                             
                             var baseName = dto.Name;
-                            var expectedName = "";
-                            
-                            if (!string.IsNullOrEmpty(prefix))
-                            {
-                                expectedName += prefix + " ";
-                            }
-                            expectedName += baseName;
-                            if (!string.IsNullOrEmpty(suffix))
-                            {
-                                expectedName += " " + suffix;
-                            }
+                            var expectedName = FormatPlaylistNameWithSettings(baseName, prefix, suffix);
                             
                             // If the playlist name matches this pattern, remove the prefix and suffix
                             if (oldName == expectedName)

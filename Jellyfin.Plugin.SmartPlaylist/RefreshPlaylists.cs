@@ -62,7 +62,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     result += " " + suffix;
                 }
 
-                return result;
+                return result.Trim();
             }
             catch (Exception)
             {
