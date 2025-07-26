@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     {
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
+        Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(SmartPlaylistDto dto, User user, BaseItem[] allUserMedia, Func<SmartPlaylistDto, Task> saveCallback = null, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
@@ -51,6 +52,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
 
         /// <summary>
+        /// Core method to process a single playlist refresh with cached media.
+        /// This method is used by both single playlist refresh and batch processing.
+        /// </summary>
+        /// <param name="dto">The playlist DTO to process</param>
+        /// <param name="user">The user for this playlist (already resolved)</param>
+        /// <param name="allUserMedia">All media items for the user (can be cached)</param>
+        /// <param name="saveCallback">Optional callback to save the DTO when JellyfinPlaylistId is updated</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Tuple of (success, message, jellyfinPlaylistId)</returns>
+        public async Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(
+            SmartPlaylistDto dto, 
+            User user, 
+            BaseItem[] allUserMedia, 
+            Func<SmartPlaylistDto, Task> saveCallback = null,
+            CancellationToken cancellationToken = default)
+        {
+            return await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, cancellationToken);
+        }
+
+        /// <summary>
         /// Core method to process a single playlist refresh. This is the shared logic used by both
         /// single playlist refresh and batch playlist refresh operations.
         /// </summary>
@@ -58,6 +79,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <param name="user">The user for this playlist (already resolved)</param>
         /// <param name="allUserMedia">All media items for the user (can be cached)</param>
         /// <param name="logger">Logger to use for this operation</param>
+        /// <param name="saveCallback">Optional callback to save the DTO when JellyfinPlaylistId is updated</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Tuple of (success, message, jellyfinPlaylistId)</returns>
         private async Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshAsync(
@@ -65,6 +87,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             User user, 
             BaseItem[] allUserMedia, 
             ILogger logger, 
+            Func<SmartPlaylistDto, Task> saveCallback = null,
             CancellationToken cancellationToken = default)
         {
             try
@@ -117,6 +140,38 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     else
                     {
                         logger.LogDebug("No playlist found by Jellyfin playlist ID: {JellyfinPlaylistId}", dto.JellyfinPlaylistId);
+                    }
+                }
+                
+                // Fallback to name-based lookup using OLD format (for backward compatibility)
+                if (existingPlaylist == null)
+                {
+                    // Use the old hardcoded format for finding existing playlists
+                    var oldFormatName = dto.Name + " [Smart]";
+                    existingPlaylist = GetPlaylistByName(user, oldFormatName);
+                    if (existingPlaylist != null)
+                    {
+                        logger.LogDebug("Found existing playlist by old format name: {PlaylistName}", oldFormatName);
+                        
+                        // Save the Jellyfin playlist ID now that we found it
+                        dto.JellyfinPlaylistId = existingPlaylist.Id.ToString();
+                        if (saveCallback != null)
+                        {
+                            try
+                            {
+                                await saveCallback(dto);
+                                logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for playlist found by name fallback {PlaylistName}", 
+                                    existingPlaylist.Id, dto.Name);
+                            }
+                            catch (Exception saveEx)
+                            {
+                                logger.LogWarning(saveEx, "Failed to save playlist DTO after name fallback for {PlaylistName}, but continuing with operation", dto.Name);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        logger.LogDebug("No playlist found by old format name: {PlaylistName}", oldFormatName);
                     }
                 }
                 
@@ -194,6 +249,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // Update the DTO with the new Jellyfin playlist ID
                     dto.JellyfinPlaylistId = newPlaylistId;
                     
+                    // Save the DTO if a callback is provided
+                    if (saveCallback != null)
+                    {
+                        try
+                        {
+                            await saveCallback(dto);
+                            logger.LogDebug("Saved playlist DTO with new Jellyfin playlist ID {JellyfinPlaylistId} for playlist {PlaylistName}", 
+                                newPlaylistId, dto.Name);
+                        }
+                        catch (Exception saveEx)
+                        {
+                            logger.LogWarning(saveEx, "Failed to save playlist DTO for {PlaylistName}, but continuing with operation", dto.Name);
+                        }
+                    }
+                    
                     logger.LogDebug("Successfully created new playlist: {PlaylistName} with {ItemCount} items", 
                         smartPlaylistName, newLinkedChildren.Length);
                     
@@ -228,7 +298,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
                 var allUserMedia = GetAllUserMedia(user).ToArray();
                 
-                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, cancellationToken);
+                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, cancellationToken);
                 
                 stopwatch.Stop();
                 _logger.LogDebug("Single playlist refresh completed in {ElapsedMs}ms: {Message}", stopwatch.ElapsedMilliseconds, message);
@@ -630,6 +700,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogWarning("Failed to retrieve newly created playlist with ID {PlaylistId}", result.Id);
                 return string.Empty;
             }
+        }
+
+        private Playlist GetPlaylistByName(User user, string name)
+        {
+            var query = new InternalItemsQuery(user)
+            {
+                IncludeItemTypes = [BaseItemKind.Playlist],
+                Recursive = true,
+                Name = name
+            };
+            
+            return _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
         }
 
         private User GetPlaylistUser(SmartPlaylistDto playlist)

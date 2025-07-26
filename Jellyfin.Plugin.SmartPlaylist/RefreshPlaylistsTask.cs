@@ -1,0 +1,394 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
+using Jellyfin.Data.Entities;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Playlists;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Tasks;
+using Microsoft.Extensions.Logging;
+
+namespace Jellyfin.Plugin.SmartPlaylist
+{
+    /// <summary>
+    /// Class RefreshPlaylistsTask.
+    /// </summary>
+    public class RefreshPlaylistsTask(
+        IUserManager userManager,
+        ILibraryManager libraryManager,
+        ILogger<RefreshPlaylistsTask> logger,
+        IServerApplicationPaths serverApplicationPaths,
+        IPlaylistManager playlistManager,
+        IUserDataManager userDataManager,
+        IProviderManager providerManager) : IScheduledTask
+    {
+        // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
+        private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
+
+        private PlaylistService GetPlaylistService()
+        {
+            try
+            {
+                // Use a wrapper logger that implements ILogger<PlaylistService>
+                var playlistServiceLogger = new PlaylistServiceLogger(logger);
+                return new PlaylistService(userManager, libraryManager, playlistManager, userDataManager, playlistServiceLogger, providerManager);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to create PlaylistService");
+                throw;
+            }
+        }
+
+        // Wrapper class to adapt the refresh task logger for PlaylistService
+        private class PlaylistServiceLogger(ILogger logger) : ILogger<PlaylistService>
+        {
+            public IDisposable BeginScope<TState>(TState state) => logger.BeginScope(state);
+            public bool IsEnabled(LogLevel logLevel) => logger.IsEnabled(logLevel);
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter) 
+                => logger.Log(logLevel, eventId, state, exception, formatter);
+        }
+
+        /// <summary>
+        /// Formats playlist name based on plugin configuration settings.
+        /// </summary>
+        /// <param name="playlistName">The base playlist name</param>
+        /// <returns>The formatted playlist name</returns>
+        public static string FormatPlaylistName(string playlistName)
+        {
+            return PlaylistNameFormatter.FormatPlaylistName(playlistName);
+        }
+
+        /// <summary>
+        /// Gets the name of the task.
+        /// </summary>
+        /// <value>The name.</value>
+        public string Name => "Refresh all SmartPlaylists";
+
+        /// <summary>
+        /// Gets the description.
+        /// </summary>
+        /// <value>The description.</value>
+        public string Description => "Refresh all SmartPlaylists";
+
+        /// <summary>
+        /// Gets the category.
+        /// </summary>
+        /// <value>The category.</value>
+        public string Category => "Library";
+
+        public string Key => "RefreshSmartPlaylists";
+
+        /// <summary>
+        /// Executes the task.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <param name="progress">The progress.</param>
+        /// <returns>Task.</returns>
+        public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            
+            // Declare cache variables outside try block so they're accessible in finally
+            Dictionary<Guid, BaseItem[]> userMediaCache = [];
+            Dictionary<Guid, (int MediaCount, int PlaylistCount)> userCacheStats = [];
+            
+            // Acquire the global refresh lock for the duration of the scheduled task
+            using var refreshLock = await PlaylistService.AcquireRefreshLockAsync(cancellationToken);
+            
+            try
+            {
+                logger.LogDebug("Starting SmartPlaylist refresh task (acquired global refresh lock)");
+
+                // Create playlist store
+                var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
+                var plStore = new SmartPlaylistStore(fileSystem, userManager);
+
+                var dtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
+                logger.LogInformation("Found {Count} smart playlists to process", dtos.Length);
+                
+                // Log disabled playlists for informational purposes
+                var disabledPlaylists = dtos.Where(dto => !dto.Enabled).ToList();
+                if (disabledPlaylists.Count > 0)
+                {
+                    var disabledNames = string.Join(", ", disabledPlaylists.Select(p => $"'{p.Name}'"));
+                    logger.LogDebug("Skipping {DisabledCount} disabled playlists: {DisabledNames}", disabledPlaylists.Count, disabledNames);
+                }
+                
+                // OPTIMIZATION: Cache media per user to avoid repeated fetching
+                // Variables moved outside try block for cleanup in finally
+                
+                // Pre-process to resolve users and group playlists by actual user (not dto.UserId)
+                // This ensures cache keys match the users that will actually be used during processing
+                var resolvedPlaylists = new List<(SmartPlaylistDto dto, User user)>();
+                var enabledPlaylists = dtos.Where(dto => dto.Enabled).ToList();
+                
+                logger.LogDebug("Resolving users for {PlaylistCount} enabled playlists", enabledPlaylists.Count);
+                
+                foreach (var dto in enabledPlaylists)
+                {
+                    var user = await GetPlaylistUserAsync(dto);
+                    if (user != null)
+                    {
+                        resolvedPlaylists.Add((dto, user));
+                    }
+                    else
+                    {
+                        logger.LogWarning("User not found for playlist '{PlaylistName}'. Skipping.", dto.Name);
+                    }
+                }
+                
+                // Group by actual resolved user ID
+                var playlistsByUser = resolvedPlaylists
+                    .GroupBy(p => p.user.Id)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+                
+                logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} playlists after user resolution", 
+                    playlistsByUser.Count, resolvedPlaylists.Count);
+                
+                // Fetch media for each user once
+                foreach (var (userId, userPlaylistPairs) in playlistsByUser)
+                {
+                    var user = userPlaylistPairs.First().user; // All pairs have the same user
+                    
+                    var mediaFetchStopwatch = Stopwatch.StartNew();
+                    var allUserMedia = GetAllUserMedia(user).ToArray();
+                    mediaFetchStopwatch.Stop();
+                    
+                    userMediaCache[userId] = allUserMedia;
+                    userCacheStats[userId] = (allUserMedia.Length, userPlaylistPairs.Count);
+                    
+                    logger.LogDebug("Cached {MediaCount} media items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
+                        allUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylistPairs.Count);
+                }
+                
+                // Process playlists using cached media
+                var processedCount = 0;
+                var totalPlaylists = resolvedPlaylists.Count;
+                
+                // OPTIMIZATION: Process playlists in parallel batches for better performance
+                var maxConcurrency = Environment.ProcessorCount; // Use available CPU cores
+                logger.LogDebug("Using parallel processing with max concurrency of {MaxConcurrency} (CPU cores)", maxConcurrency);
+                
+                foreach (var (userId, userPlaylistPairs) in playlistsByUser)
+                {
+                    var user = userPlaylistPairs.First().user; // All pairs have the same user
+                    var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
+                    
+                    var allUserMedia = userMediaCache[userId]; // Guaranteed to exist
+                    logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
+                        userPlaylists.Count, user.Username, allUserMedia.Length);
+                    
+                    // Process playlists in parallel batches
+                    var batchSize = Math.Max(1, maxConcurrency);
+                    for (int i = 0; i < userPlaylists.Count; i += batchSize)
+                    {
+                        var batch = userPlaylists.Skip(i).Take(batchSize).ToList();
+                        logger.LogDebug("Processing batch {BatchNumber} with {BatchSize} playlists for user '{Username}'", 
+                            (i / batchSize) + 1, batch.Count, user.Username);
+                        
+                        var tasks = batch.Select(async dto =>
+                        {
+                            var playlistStopwatch = Stopwatch.StartNew();
+                            try
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                
+                                // User is already resolved - use the cached user instead of re-resolving
+                                var playlistUser = user;
+                                
+                                // Validate that the playlist user is valid
+                                if (playlistUser.Id == Guid.Empty)
+                                {
+                                    logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
+                                    return false; // Return failure status
+                                }
+                                
+                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached media ({MediaCount} items)", 
+                                    dto.Name, dto.ExpressionSets?.Count ?? 0, allUserMedia.Length);
+                                
+                                // Use the PlaylistService for actual processing
+                                var playlistService = GetPlaylistService();
+                                var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
+                                    dto, 
+                                    playlistUser, 
+                                    allUserMedia, 
+                                    async (updatedDto) => await plStore.SaveAsync(updatedDto), // Save callback for when JellyfinPlaylistId is updated
+                                    cancellationToken);
+                                
+                                playlistStopwatch.Stop();
+                                if (success)
+                                {
+                                    logger.LogDebug("Playlist {PlaylistName} processed successfully in {ElapsedTime}ms: {Message}", 
+                                        dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
+                                }
+                                else
+                                {
+                                    logger.LogWarning("Playlist {PlaylistName} processing failed after {ElapsedTime}ms: {Message}", 
+                                        dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
+                                }
+                                
+                                return success;
+                            }
+                            catch (Exception ex)
+                            {
+                                playlistStopwatch.Stop();
+                                logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
+                                return false; // Return failure status, but don't propagate exception
+                            }
+                        });
+                        
+                        // Wait for all tasks in this batch to complete and collect results
+                        var results = await Task.WhenAll(tasks);
+                        
+                        // Log batch completion summary
+                        var successCount = results.Count(r => r);
+                        var failureCount = results.Count(r => !r);
+                        if (failureCount > 0)
+                        {
+                            logger.LogWarning("Batch {BatchNumber} completed with {SuccessCount} successes and {FailureCount} failures", 
+                                (i / batchSize) + 1, successCount, failureCount);
+                        }
+                        else
+                        {
+                            logger.LogDebug("Batch {BatchNumber} completed successfully with {SuccessCount} playlists", 
+                                (i / batchSize) + 1, successCount);
+                        }
+                        
+                        // Update progress after each batch
+                        processedCount += batch.Count;
+                        progress?.Report((double)processedCount / totalPlaylists * 100);
+                    }
+                }
+
+                // Log optimization summary
+                var totalMediaFetches = userCacheStats.Count;
+                var totalMediaItems = userCacheStats.Values.Sum(s => s.MediaCount);
+                var totalPlaylistsProcessed = userCacheStats.Values.Sum(s => s.PlaylistCount);
+                var estimatedSavings = totalPlaylistsProcessed - totalMediaFetches;
+                
+                logger.LogDebug("BATCH PROCESSING SUMMARY: Fetched media {FetchCount} times for {UserCount} users, processed {PlaylistCount} playlists. Estimated {Savings} fewer media fetches than sequential processing.", 
+                    totalMediaFetches, userCacheStats.Count, totalPlaylistsProcessed, estimatedSavings);
+
+                progress?.Report(100);
+                stopwatch.Stop();
+                logger.LogDebug("SmartPlaylist refresh task completed successfully in {TotalTime}ms", stopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                throw;
+            }
+            finally
+            {
+                // Clean up memory - explicitly clear the cache to free memory from large media collections
+                // This prevents memory leaks when processing large libraries with thousands of media items
+                if (userMediaCache != null)
+                {
+                    logger.LogDebug("Cleaning up media cache containing {CacheSize} user collections", userMediaCache.Count);
+                    userMediaCache.Clear();
+                }
+                
+                userCacheStats.Clear();
+            }
+        }
+
+
+
+        /// <summary>
+        /// Gets the default triggers.
+        /// </summary>
+        /// <returns>IEnumerable{TaskTriggerInfo}.</returns>
+        public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
+        {
+            return
+            [
+                new TaskTriggerInfo
+                {
+                    Type =  TaskTriggerInfo.TriggerInterval,
+                    IntervalTicks = TimeSpan.FromHours(1).Ticks
+                }
+            ];
+        }
+
+
+
+        private IEnumerable<BaseItem> GetAllUserMedia(User user)
+        {
+            var query = new InternalItemsQuery(user)
+            {
+                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series],
+                Recursive = true
+            };
+
+            return libraryManager.GetItemsResult(query).Items;
+        }
+
+        /// <summary>
+        /// Gets the user for a playlist, handling migration from old User field to new UserId field.
+        /// </summary>
+        /// <param name="playlist">The playlist.</param>
+        /// <returns>The user, or null if not found.</returns>
+        private async Task<User> GetPlaylistUserAsync(SmartPlaylistDto playlist)
+        {
+            // If new UserId field is set and not empty, use it
+            if (playlist.UserId != Guid.Empty)
+            {
+                return userManager.GetUserById(playlist.UserId);
+            }
+
+            // Legacy migration: if old User field is set, try to find the user and migrate
+#pragma warning disable CS0618 // Type or member is obsolete
+            if (!string.IsNullOrEmpty(playlist.User))
+            {
+                var user = userManager.GetUserByName(playlist.User);
+                if (user != null)
+                {
+                    logger.LogDebug("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
+                        playlist.Name, playlist.User, user.Id);
+                    
+                    // Update the playlist with the User ID and save it
+                    playlist.UserId = user.Id;
+                    playlist.User = null; // Clear the old field
+                    
+                    try
+                    {
+                        // Use semaphore to prevent concurrent migration saves (rare but can cause file corruption)
+                        await _migrationSemaphore.WaitAsync();
+                        try
+                        {
+                            var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
+                            var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
+                            await playlistStore.SaveAsync(playlist);
+                            logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
+                        }
+                        finally
+                        {
+                            _migrationSemaphore.Release();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to save migrated playlist '{PlaylistName}', but will continue with operation", playlist.Name);
+                    }
+                    
+                    return user;
+                }
+                else
+                {
+                    logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
+                }
+            }
+#pragma warning restore CS0618 // Type or member is obsolete
+
+            return null;
+        }
+    }
+}
