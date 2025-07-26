@@ -17,7 +17,6 @@ Requires Jellyfin version `10.10.0` and newer.
 - [✨ Features](#-features)
 - [⚙️ Configuration](#️-configuration)
 - [📋 Overview](#-overview)
-- [🎵 Enhanced Music Tagging](#enhanced-music-tagging)
 - [📦 How to Install](#-how-to-install)
 - [🚀 Roadmap](#-roadmap)
 - [🛠️ Development](#️-development)
@@ -108,7 +107,7 @@ This plugin creates smart playlists that automatically updates based on rules yo
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
 
-### 🎵 Enhanced Music Tagging
+### Enhanced Music Tagging
 
 For even more powerful music playlist creation, combine this plugin with the **[MusicTags plugin](https://github.com/jyourstone/jellyfin-musictags-plugin)**. The MusicTags plugin extracts custom tags from your audio files (like "BPM", "Mood", "Key", etc.) and makes them available as tags in Jellyfin. You can then use these extracted tags in SmartPlaylist rules to create dynamic playlists based on the actual content of your music files.
 
