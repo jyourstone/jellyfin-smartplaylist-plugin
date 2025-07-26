@@ -39,36 +39,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <returns>The formatted playlist name</returns>
         public static string FormatPlaylistName(string playlistName)
         {
-            try
-            {
-                var config = Plugin.Instance?.Configuration;
-                if (config == null)
-                {
-                    // Fallback to default behavior if configuration is not available
-                    return playlistName + " [Smart]";
-                }
-
-                var prefix = config.PlaylistNamePrefix ?? "";
-                var suffix = config.PlaylistNameSuffix ?? "[Smart]";
-
-                var result = "";
-                if (!string.IsNullOrEmpty(prefix))
-                {
-                    result += prefix + " ";
-                }
-                result += playlistName;
-                if (!string.IsNullOrEmpty(suffix))
-                {
-                    result += " " + suffix;
-                }
-
-                return result.Trim();
-            }
-            catch (Exception)
-            {
-                // Fallback to default behavior if any error occurs
-                return playlistName + " [Smart]";
-            }
+            return PlaylistNameFormatter.FormatPlaylistName(playlistName);
         }
 
         /// <summary>
@@ -302,7 +273,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 }
                                 
                                 // Now that we've found the existing playlist (or not), apply the new naming format
-                                var smartPlaylistName = FormatPlaylistName(dto.Name);
+                                var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(dto.Name);
                                 
                                 if (existingPlaylist != null)
                                 {

@@ -358,7 +358,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     var user = _userManager.GetUserById(createdPlaylist.UserId);
                     if (user != null)
                     {
-                        var smartPlaylistName = RefreshPlaylists.FormatPlaylistName(createdPlaylist.Name);
+                        var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(createdPlaylist.Name);
                         var query = new InternalItemsQuery(user)
                         {
                             IncludeItemTypes = [BaseItemKind.Playlist],

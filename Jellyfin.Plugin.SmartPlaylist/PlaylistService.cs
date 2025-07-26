@@ -48,26 +48,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
         private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
 
-        /// <summary>
-        /// Formats a playlist name with specific prefix and suffix values.
-        /// </summary>
-        /// <param name="baseName">The base playlist name</param>
-        /// <param name="prefix">The prefix to add (can be null or empty)</param>
-        /// <param name="suffix">The suffix to add (can be null or empty)</param>
-        /// <returns>The formatted playlist name</returns>
-        private static string FormatPlaylistNameWithSettings(string baseName, string prefix, string suffix)
-        {
-            var formatted = baseName;
-            if (!string.IsNullOrEmpty(prefix))
-            {
-                formatted = prefix + " " + formatted;
-            }
-            if (!string.IsNullOrEmpty(suffix))
-            {
-                formatted = formatted + " " + suffix;
-            }
-            return formatted.Trim();
-        }
+
 
         /// <summary>
         /// Core method to process a single playlist refresh. This is the shared logic used by both
@@ -118,7 +99,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     };
                 }).ToArray();
 
-                // Try to find existing playlist by Jellyfin playlist ID first, then by name
+                // Try to find existing playlist by Jellyfin playlist ID first, then by current naming format, then by old format
                 Playlist existingPlaylist = null;
                 
                 logger.LogDebug("Looking for playlist: User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}", 
@@ -139,52 +120,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                 }
                 
-                // Fallback to name-based lookup using OLD format (for backward compatibility)
-                if (existingPlaylist == null)
-                {
-                    // Use the old hardcoded format for finding existing playlists
-                    var oldFormatName = dto.Name + " [Smart]";
-                    existingPlaylist = GetPlaylist(user, oldFormatName);
-                    if (existingPlaylist != null)
-                    {
-                        logger.LogDebug("Found existing playlist by old format name: {PlaylistName}", oldFormatName);
-                    }
-                    else
-                    {
-                        logger.LogDebug("No playlist found by old format name: {PlaylistName}", oldFormatName);
-                        
-                        // Could not find playlist by name - this might indicate a missing playlist
-                        logger.LogWarning("Could not find playlist '{PlaylistName}' for user '{UserName}'. This might indicate the playlist was deleted.", 
-                            oldFormatName, user.Username);
-                        
-                        // Log available playlists for debugging (only when debug or trace logging is enabled)
-                        if (logger.IsEnabled(LogLevel.Debug))
-                        {
-                            var userPlaylistsQuery = new InternalItemsQuery(user)
-                            {
-                                IncludeItemTypes = [BaseItemKind.Playlist],
-                                Recursive = true
-                            };
-                            
-                            var userPlaylists = _libraryManager.GetItemsResult(userPlaylistsQuery).Items.OfType<Playlist>().ToList();
-                            if (userPlaylists.Count > 0)
-                            {
-                                logger.LogDebug("Available playlists for user '{UserName}':", user.Username);
-                                foreach (var playlist in userPlaylists)
-                                {
-                                    logger.LogDebug("  - '{PlaylistName}' (ID: {PlaylistId})", playlist.Name, playlist.Id);
-                                }
-                            }
-                            else
-                            {
-                                logger.LogDebug("No playlists found for user '{UserName}'", user.Username);
-                            }
-                        }
-                    }
-                }
-                
                 // Now that we've found the existing playlist (or not), apply the new naming format
-                var smartPlaylistName = RefreshPlaylists.FormatPlaylistName(dto.Name);
+                var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(dto.Name);
                 
                 if (existingPlaylist != null)
                 {
@@ -481,7 +418,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         oldName, existingPlaylist.Id, user.Username);
                     
                     // Get the current smart playlist name format to see what needs to be removed
-                    var currentSmartName = RefreshPlaylists.FormatPlaylistName(dto.Name);
+                    var currentSmartName = PlaylistNameFormatter.FormatPlaylistName(dto.Name);
                     
                     // Check if the playlist name matches the current smart format
                     if (oldName == currentSmartName)
@@ -506,7 +443,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             var suffix = config.PlaylistNameSuffix ?? "[Smart]";
                             
                             var baseName = dto.Name;
-                            var expectedName = FormatPlaylistNameWithSettings(baseName, prefix, suffix);
+                            var expectedName = PlaylistNameFormatter.FormatPlaylistNameWithSettings(baseName, prefix, suffix);
                             
                             // If the playlist name matches this pattern, remove the prefix and suffix
                             if (oldName == expectedName)
@@ -717,31 +654,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             return null;
         }
-
-        private Playlist GetPlaylist(User user, string name)
-        {
-            _logger.LogDebug("GetPlaylist: Searching for playlist '{PlaylistName}' for user '{UserName}'", name, user.Username);
-            
-            // Use the same approach as DeleteJellyfinPlaylist function
-            var query = new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = [BaseItemKind.Playlist],
-                Recursive = true,
-                Name = name
-            };
-
-            var existingPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
-            if (existingPlaylist != null)
-            {
-                _logger.LogDebug("GetPlaylist: Found playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'", 
-                    existingPlaylist.Name, existingPlaylist.Id, user.Username);
-                return existingPlaylist;
-            }
-            
-            _logger.LogDebug("GetPlaylist: No playlist found with name '{PlaylistName}' for user '{UserName}'", name, user.Username);
-            return null;
-        }
-
         private IEnumerable<BaseItem> GetAllUserMedia(User user)
         {
             var query = new InternalItemsQuery(user)
