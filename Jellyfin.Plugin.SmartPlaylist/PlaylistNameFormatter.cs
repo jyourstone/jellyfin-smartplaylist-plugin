@@ -8,6 +8,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public static class PlaylistNameFormatter
     {
         /// <summary>
+        /// Default suffix used when no configuration is available or configured.
+        /// </summary>
+        private const string DefaultSuffix = "[Smart]";
+
+        /// <summary>
         /// Formats a playlist name based on plugin configuration settings.
         /// </summary>
         /// <param name="playlistName">The base playlist name</param>
@@ -20,18 +25,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (config == null)
                 {
                     // Fallback to default behavior if configuration is not available
-                    return playlistName + " [Smart]";
+                    return FormatPlaylistNameWithSettings(playlistName, "", DefaultSuffix);
                 }
 
                 var prefix = config.PlaylistNamePrefix ?? "";
-                var suffix = config.PlaylistNameSuffix ?? "[Smart]";
+                var suffix = config.PlaylistNameSuffix ?? DefaultSuffix;
 
                 return FormatPlaylistNameWithSettings(playlistName, prefix, suffix);
             }
             catch (Exception)
             {
                 // Fallback to default behavior if any error occurs
-                return playlistName + " [Smart]";
+                return FormatPlaylistNameWithSettings(playlistName, "", DefaultSuffix);
             }
         }
 

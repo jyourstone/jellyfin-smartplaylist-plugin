@@ -152,7 +152,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     bool isCurrentlyPublic = false;
                     if (openAccessProperty != null)
                     {
-                        isCurrentlyPublic = (bool)openAccessProperty.GetValue(existingPlaylist);
+                        isCurrentlyPublic = (bool)(openAccessProperty.GetValue(existingPlaylist) ?? false);
+                    }
+                    else
+                    {
+                        // Fallback to share manipulation check when OpenAccess property is not available
+                        isCurrentlyPublic = existingPlaylist.Shares.Any();
                     }
                     
                     var publicStatusChanged = isCurrentlyPublic != dto.Public;
