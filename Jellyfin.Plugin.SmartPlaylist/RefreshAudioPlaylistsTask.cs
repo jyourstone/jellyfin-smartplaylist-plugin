@@ -68,7 +68,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 new TaskTriggerInfo
                 {
                     Type = TaskTriggerInfo.TriggerDaily,
-                    TimeOfDayTicks = TimeSpan.FromHours(2.5).Ticks // 2:30 AM
+                    TimeOfDayTicks = TimeSpan.FromHours(3.5).Ticks // 3:30 AM
                 }
             ];
         }

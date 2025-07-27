@@ -93,8 +93,10 @@ The naming configuration applies to all new smart playlists. When you delete a s
 Smart playlists automatically refresh using scheduled tasks:
 
 #### **Scheduled Tasks**
-- **🎵 Audio SmartPlaylists**: Runs by default daily at **2:30 AM**
+- **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM**
 - **🎬 Video SmartPlaylists**: Runs by default **hourly**
+
+These tasks can be configured in the Jellyfin admin dashboard.
 
 #### **Manual Refresh**
 - Use the **"Refresh All Playlists"** button in the Settings tab to trigger both tasks immediately

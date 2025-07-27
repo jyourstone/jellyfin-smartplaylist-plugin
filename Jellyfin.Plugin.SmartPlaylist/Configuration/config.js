@@ -1852,7 +1852,7 @@
         
         apiClient.ajax({
             type: 'POST',
-            url: apiClient.getUrl('Plugins/SmartPlaylist/' + playlistId + '/refresh'),
+            url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '/refresh'),
             contentType: 'application/json'
         }).then(() => {
             Dashboard.hideLoadingMsg();

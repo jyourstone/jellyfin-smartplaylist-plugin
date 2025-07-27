@@ -37,7 +37,7 @@ Jellyfin's custom element system has timing issues when `is="emby-input"` is use
 
 #### The Solution
 
-**Always use ONLY `class="emby-input"` for styling input elements:**
+**Do NOT use `is="emby-input"` for styling input elements:**
 
 ```html
 <!-- ✅ CORRECT - Works perfectly -->
@@ -48,25 +48,3 @@ Jellyfin's custom element system has timing issues when `is="emby-input"` is use
 <input type="text" is="emby-input" id="myInput" class="emby-input">
 <input type="number" is="emby-input" id="myNumber" class="emby-input">
 ```
-
-#### Checkbox Label Rules
-
-When checkboxes are **nested inside labels**, do NOT use `for` attributes:
-
-```html
-<!-- ✅ CORRECT - Automatic association through nesting -->
-<label class="checkboxLabel">
-    <input type="checkbox" is="emby-checkbox" id="myCheckbox" class="emby-checkbox">
-    <span>Label Text</span>
-</label>
-
-<!-- ❌ WRONG - Causes htmlFor conflicts -->
-<label class="checkboxLabel" for="myCheckbox">
-    <input type="checkbox" is="emby-checkbox" id="myCheckbox" class="emby-checkbox">
-    <span>Label Text</span>
-</label>
-```
-
-#### Root Cause
-
-The `is="emby-input"` attribute triggers Jellyfin's custom element upgrade process, which tries to set `htmlFor` properties on elements that may not be ready for association during initialization. Using only `class="emby-input"` provides the same styling without the custom element timing issues.
