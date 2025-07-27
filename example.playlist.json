@@ -33,5 +33,6 @@
     "Movie"
   ],
   "Enabled": true,
-  "MaxItems": 500
+  "MaxItems": 500,
+  "MaxPlayTimeMinutes": 60
 }
