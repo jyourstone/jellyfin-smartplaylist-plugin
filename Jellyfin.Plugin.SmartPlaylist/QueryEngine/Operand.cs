@@ -23,7 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public double DateModified { get; set; } = 0;
         public double ReleaseDate { get; set; } = 0;
         public List<string> Tags { get; set; } = [];
-        public int RuntimeMinutes { get; set; } = 0;
+        public double RuntimeMinutes { get; set; } = 0;
         public int PlayCount { get; set; } = 0;
         public string OfficialRating { get; set; } = "";
         public bool IsFavorite { get; set; } = false;

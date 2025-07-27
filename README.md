@@ -235,12 +235,23 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 
 ### Max Items
 
-You can optionally set a maximum number of items for your smart playlist. This is useful for:
+You can optionally set a maximum number of items for your smart playlist. This is for example useful for:
 - Limiting large playlists to a manageable size
 - Creating "Top 10" or "Best of" style playlists
 - Improving performance for very large libraries
 
 **Note**: Setting this to unlimited (0) might cause performance issues or even crashes for very large playlists.
+
+### Max Play Time
+
+You can optionally set a maximum play time in minutes for your smart playlist. This is for example useful for:
+- Creating workout playlists that match your exercise duration
+- Setting up Pomodoro-style work sessions with music
+- Ensuring playlists fit within specific time constraints
+
+**How it works**: The plugin calculates the total runtime of items in the playlist and stops adding items when the time limit is reached. The last item that would exceed the limit is not included, ensuring the playlist stays within your specified duration.
+
+**Note**: This feature works with all media types (movies, TV shows, music) and uses the actual runtime of each item. For music, this means the exact duration of each track.
 
 ### Rule Logic
 

@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Data.Enums;
 using Jellyfin.Data.Entities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
@@ -19,36 +18,25 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// <summary>
     /// Abstract base class for playlist refresh tasks.
     /// </summary>
-    public abstract class RefreshPlaylistsTaskBase : IScheduledTask
+    public abstract class RefreshPlaylistsTaskBase(
+        IUserManager userManager,
+        ILibraryManager libraryManager,
+        ILogger logger,
+        IServerApplicationPaths serverApplicationPaths,
+        IPlaylistManager playlistManager,
+        IUserDataManager userDataManager,
+        IProviderManager providerManager) : IScheduledTask
     {
-        protected readonly IUserManager userManager;
-        protected readonly ILibraryManager libraryManager;
-        protected readonly ILogger logger;
-        protected readonly IServerApplicationPaths serverApplicationPaths;
-        protected readonly IPlaylistManager playlistManager;
-        protected readonly IUserDataManager userDataManager;
-        protected readonly IProviderManager providerManager;
+        protected readonly IUserManager userManager = userManager;
+        protected readonly ILibraryManager libraryManager = libraryManager;
+        protected readonly ILogger logger = logger;
+        protected readonly IServerApplicationPaths serverApplicationPaths = serverApplicationPaths;
+        protected readonly IPlaylistManager playlistManager = playlistManager;
+        protected readonly IUserDataManager userDataManager = userDataManager;
+        protected readonly IProviderManager providerManager = providerManager;
 
         // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
         private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
-
-        protected RefreshPlaylistsTaskBase(
-            IUserManager userManager,
-            ILibraryManager libraryManager,
-            ILogger logger,
-            IServerApplicationPaths serverApplicationPaths,
-            IPlaylistManager playlistManager,
-            IUserDataManager userDataManager,
-            IProviderManager providerManager)
-        {
-            this.userManager = userManager;
-            this.libraryManager = libraryManager;
-            this.logger = logger;
-            this.serverApplicationPaths = serverApplicationPaths;
-            this.playlistManager = playlistManager;
-            this.userDataManager = userDataManager;
-            this.providerManager = providerManager;
-        }
 
         private PlaylistService GetPlaylistService()
         {

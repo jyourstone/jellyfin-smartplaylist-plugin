@@ -450,6 +450,7 @@
             const defaultSortOrder = config.DefaultSortOrder || 'Ascending';
             const defaultMakePublic = config.DefaultMakePublic || false;
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             const defaultPlaylistNamePrefix = config.PlaylistNamePrefix || '';
             const defaultPlaylistNameSuffix = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
             
@@ -459,6 +460,10 @@
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
                 maxItemsElement.value = defaultMaxItems;
+            }
+            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+            if (maxPlayTimeMinutesElement) {
+                maxPlayTimeMinutesElement.value = defaultMaxPlayTimeMinutes;
             }
             
             // Populate settings tab dropdowns with current configuration values
@@ -492,6 +497,10 @@
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
                 maxItemsElement.value = 500;
+            }
+            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+            if (maxPlayTimeMinutesElement) {
+                maxPlayTimeMinutesElement.value = 0;
             }
             
             // Populate settings tab dropdowns with defaults even if config fails
@@ -1161,6 +1170,16 @@
                 maxItems = isNaN(parsedValue) ? 500 : parsedValue;
             }
 
+            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+            const maxPlayTimeMinutesInput = maxPlayTimeMinutesElement?.value || '';
+            let maxPlayTimeMinutes;
+            if (maxPlayTimeMinutesInput === '') {
+                maxPlayTimeMinutes = 0;
+            } else {
+                const parsedValue = parseInt(maxPlayTimeMinutesInput);
+                maxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
+            }
+
             // Get selected user ID from dropdown
             const userId = page.querySelector('#playlistUser').value;
             
@@ -1177,7 +1196,8 @@
                 Enabled: isEnabled,
                 UserId: userId,
                 MediaTypes: selectedMediaTypes,
-                MaxItems: maxItems
+                MaxItems: maxItems,
+                MaxPlayTimeMinutes: maxPlayTimeMinutes
             };
 
             // Add ID if in edit mode
@@ -1261,6 +1281,10 @@
             if (maxItemsElement) {
                 maxItemsElement.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             }
+            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+            if (maxPlayTimeMinutesElement) {
+                maxPlayTimeMinutesElement.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            }
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
             page.querySelector('#sortOrder').value = 'Ascending';
@@ -1269,6 +1293,10 @@
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
                 maxItemsElement.value = 500;
+            }
+            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+            if (maxPlayTimeMinutesElement) {
+                maxPlayTimeMinutesElement.value = 0;
             }
         });
         
@@ -1547,6 +1575,9 @@
                     // Format Max Items display
                     const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
                     
+                    // Format Max Play Time display
+                    const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+                    
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
                         '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                         '<div class="field-description">' +
@@ -1556,6 +1587,7 @@
                         '<strong>Rules:</strong><br>' + rulesHtml + 
                         '<strong>Sort:</strong> ' + sortName + '<br>' +
                         '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
+                        '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
@@ -1819,6 +1851,9 @@
             // Format Max Items display
             const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
             
+            // Format Max Play Time display
+            const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+            
             html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
                 '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
                 '<div class="field-description">' +
@@ -1828,6 +1863,7 @@
                 '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
                 '<strong>Sort:</strong> ' + sortName + '<br>' +
                 '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
+                '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
                 '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                 '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
@@ -1845,7 +1881,7 @@
         container.innerHTML = html;
     }
 
-    function refreshPlaylist(page, playlistId, playlistName) {
+    function refreshPlaylist(playlistId, playlistName) {
         const apiClient = getApiClient();
         
         Dashboard.showLoadingMsg();
@@ -2048,6 +2084,16 @@
                     console.warn('Max Items element not found when trying to populate edit form');
                 }
                 
+                // Handle MaxPlayTimeMinutes with backward compatibility for existing playlists
+                // Default to 0 (unlimited) for old playlists that didn't have this setting
+                const maxPlayTimeMinutesValue = (playlist.MaxPlayTimeMinutes !== undefined && playlist.MaxPlayTimeMinutes !== null) ? playlist.MaxPlayTimeMinutes : 0;
+                const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+                if (maxPlayTimeMinutesElement) {
+                    maxPlayTimeMinutesElement.value = maxPlayTimeMinutesValue;
+                } else {
+                    console.warn('Max Play Time Minutes element not found when trying to populate edit form');
+                }
+                
                 // Set media types
                 const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
                 if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
@@ -2246,6 +2292,7 @@
             
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            page.querySelector('#defaultMaxPlayTimeMinutes').value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             
             Dashboard.hideLoadingMsg();
         }).catch(() => {
@@ -2267,6 +2314,14 @@
             } else {
                 const parsedValue = parseInt(defaultMaxItemsInput);
                 config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
+            }
+            
+            const defaultMaxPlayTimeMinutesInput = page.querySelector('#defaultMaxPlayTimeMinutes').value;
+            if (defaultMaxPlayTimeMinutesInput === '') {
+                config.DefaultMaxPlayTimeMinutes = 0;
+            } else {
+                const parsedValue = parseInt(defaultMaxPlayTimeMinutesInput);
+                config.DefaultMaxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
             }
             
             // Save playlist naming configuration
@@ -2589,7 +2644,7 @@
             }
             if (target.closest('.refresh-playlist-btn')) {
                 const button = target.closest('.refresh-playlist-btn');
-                refreshPlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                refreshPlaylist(button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
             }
             if (target.closest('.enable-playlist-btn')) {
                 const button = target.closest('.enable-playlist-btn');

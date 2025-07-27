@@ -16,20 +16,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// <summary>
     /// Scheduled task for refreshing audio/music smart playlists.
     /// </summary>
-    public class RefreshAudioPlaylistsTask : RefreshPlaylistsTaskBase
+    public class RefreshAudioPlaylistsTask(
+        IUserManager userManager,
+        ILibraryManager libraryManager,
+        ILogger<RefreshAudioPlaylistsTask> logger,
+        IServerApplicationPaths serverApplicationPaths,
+        IPlaylistManager playlistManager,
+        IUserDataManager userDataManager,
+        IProviderManager providerManager) : RefreshPlaylistsTaskBase(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
     {
-        public RefreshAudioPlaylistsTask(
-            IUserManager userManager,
-            ILibraryManager libraryManager,
-            ILogger<RefreshAudioPlaylistsTask> logger,
-            IServerApplicationPaths serverApplicationPaths,
-            IPlaylistManager playlistManager,
-            IUserDataManager userDataManager,
-            IProviderManager providerManager)
-            : base(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
-        {
-        }
-
         public override string Name => "Refresh Audio SmartPlaylists";
         public override string Description => "Refresh all audio/music SmartPlaylists";
         public override string Key => "RefreshAudioSmartPlaylists";

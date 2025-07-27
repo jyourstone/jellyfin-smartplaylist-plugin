@@ -4,7 +4,6 @@ using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
-using System.Linq;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -43,8 +42,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
-                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ?
-                    (int)TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0,
+                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0.0,
                 // Initialize user data properties with fallback values
                 PlayCount = isPlayed ? 1 : 0,
                 IsFavorite = false

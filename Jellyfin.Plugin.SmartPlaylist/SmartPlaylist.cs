@@ -21,6 +21,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<string> MediaTypes { get; set; }
         public List<ExpressionSet> ExpressionSets { get; set; }
         public int MaxItems { get; set; }
+        public int MaxPlayTimeMinutes { get; set; }
 
         // OPTIMIZATION: Static cache for compiled rules to avoid recompilation
         private static readonly ConcurrentDictionary<string, List<List<Func<Operand, bool>>>> _ruleCache = new();
@@ -41,6 +42,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             Order = OrderFactory.CreateOrder(dto.Order.Name);
             MediaTypes = dto.MediaTypes ?? [];
             MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
+            MaxPlayTimeMinutes = dto.MaxPlayTimeMinutes ?? 0; // Default to 0 (unlimited) for backwards compatibility
 
             if (dto.ExpressionSets != null && dto.ExpressionSets.Count > 0)
             {
@@ -546,42 +548,35 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug("Playlist filtering for '{PlaylistName}' completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
                     Name,stopwatch.ElapsedMilliseconds, totalItems, results.Count);
                 
-                // Apply ordering and max items limit with error handling
+                // Apply ordering and limits with error handling
                 try
                 {
                     var orderedResults = Order?.OrderBy(results) ?? results;
                     
-                    // Apply max items logic with performance optimization
-                    if (MaxItems > 0)
+                    // Apply limits (items and/or time)
+                    if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
                     {
+                        var limitedResults = ApplyLimits(orderedResults, libraryManager, user, userDataManager, logger);
+                        
                         if (Order is RandomOrder)
                         {
-                            // For random order, we need to process all items first, then take max items
-                            // The RandomOrder.OrderBy already handles the randomization
-                            var limitedResults = orderedResults.Take(MaxItems);
-                            
-                            logger?.LogInformation("Applied random order and limited playlist '{PlaylistName}' to {MaxItems} items from {TotalItems} total items", 
-                                Name, MaxItems, orderedResults.Count());
-                            
-                            return limitedResults.Select(x => x.Id);
+                            logger?.LogDebug("Applied random order and limited playlist '{PlaylistName}' to {LimitedCount} items from {TotalItems} total items", 
+                                Name, limitedResults.Count, orderedResults.Count());
                         }
                         else
                         {
-                            // Performance optimization: Take max items without randomization (deterministic order)
-                            var limitedResults = orderedResults.Take(MaxItems);
-                            
-                            logger?.LogInformation("Limited playlist '{PlaylistName}' to {MaxItems} items from {TotalItems} total items (deterministic order)", 
-                                Name, MaxItems, orderedResults.Count());
-                            
-                            return limitedResults.Select(x => x.Id);
+                            logger?.LogDebug("Limited playlist '{PlaylistName}' to {LimitedCount} items from {TotalItems} total items (deterministic order)", 
+                                Name, limitedResults.Count, orderedResults.Count());
                         }
+                        
+                        return limitedResults.Select(x => x.Id);
                     }
                     else
                     {
-                        // No max items limit - return all ordered results
+                        // No limits - return all ordered results
                         if (Order is RandomOrder)
                         {
-                            logger?.LogInformation("Applied random order to playlist '{PlaylistName}' with {TotalItems} items (no limit)", 
+                            logger?.LogDebug("Applied random order to playlist '{PlaylistName}' with {TotalItems} items (no limit)", 
                                 Name, orderedResults.Count());
                         }
                         
@@ -590,7 +585,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 catch (Exception ex)
                 {
-                    logger?.LogError(ex, "Error applying ordering and max items to playlist '{PlaylistName}'. Returning unordered results.", Name);
+                    logger?.LogError(ex, "Error applying ordering and limits to playlist '{PlaylistName}'. Returning unordered results.", Name);
                     return results.Select(x => x.Id);
                 }
             }
@@ -601,6 +596,78 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     Name, stopwatch.ElapsedMilliseconds);
                 return [];
             }
+        }
+
+        /// <summary>
+        /// Applies item count and time-based limits to a collection of items.
+        /// </summary>
+        /// <param name="items">The ordered items to limit</param>
+        /// <param name="libraryManager">Library manager for operand creation</param>
+        /// <param name="user">User for operand creation</param>
+        /// <param name="userDataManager">User data manager for operand creation</param>
+        /// <param name="logger">Optional logger for debugging</param>
+        /// <returns>The limited collection of items</returns>
+        private List<BaseItem> ApplyLimits(IEnumerable<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger = null)
+        {
+            var itemsList = items.ToList();
+            if (itemsList.Count == 0) return itemsList;
+
+            var limitedItems = new List<BaseItem>();
+            var totalMinutes = 0.0;
+            var itemCount = 0;
+
+            foreach (var item in itemsList)
+            {
+                // Check item count limit
+                if (MaxItems > 0 && itemCount >= MaxItems)
+                {
+                    logger?.LogDebug("Reached item count limit ({MaxItems}) for playlist '{PlaylistName}'", MaxItems, Name);
+                    break;
+                }
+
+                // Get runtime for this item
+                var itemMinutes = 0.0;
+                if (MaxPlayTimeMinutes > 0)
+                {
+                    try
+                    {
+                        // Use the same runtime extraction logic as in Factory.cs
+                        if (item.RunTimeTicks.HasValue)
+                        {
+                            // Use exact TotalMinutes as double for precise calculation
+                            itemMinutes = TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalMinutes;
+                        }
+                        else
+                        {
+                            // Fallback: try to get runtime from Operand extraction
+                            var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false, []);
+                            itemMinutes = operand.RuntimeMinutes;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error getting runtime for item '{ItemName}' in playlist '{PlaylistName}'. Assuming 0 minutes.", item.Name, Name);
+                        itemMinutes = 0.0;
+                    }
+                }
+
+                // Check time limit
+                if (MaxPlayTimeMinutes > 0 && totalMinutes + itemMinutes > MaxPlayTimeMinutes)
+                {
+                    logger?.LogDebug("Reached time limit ({MaxTime} minutes) for playlist '{PlaylistName}' at {CurrentTime:F1} minutes. Next item '{ItemName}' ({ItemMinutes:F1} minutes) would exceed limit.", MaxPlayTimeMinutes, Name, totalMinutes, item.Name, itemMinutes);
+                    break;
+                }
+
+                // Add item to results
+                limitedItems.Add(item);
+                totalMinutes += itemMinutes;
+                itemCount++;
+            }
+
+            logger?.LogInformation("Applied limits to playlist '{PlaylistName}': {ItemCount} items, {TotalMinutes:F1} minutes (MaxItems: {MaxItems}, MaxTime: {MaxTime} minutes)", 
+                Name, itemCount, totalMinutes, MaxItems, MaxPlayTimeMinutes);
+
+            return limitedItems;
         }
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,

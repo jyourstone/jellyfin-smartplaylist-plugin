@@ -14,20 +14,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// <summary>
     /// Scheduled task for refreshing video smart playlists (movies, series, episodes).
     /// </summary>
-    public class RefreshVideoPlaylistsTask : RefreshPlaylistsTaskBase
+    public class RefreshVideoPlaylistsTask(
+        IUserManager userManager,
+        ILibraryManager libraryManager,
+        ILogger<RefreshVideoPlaylistsTask> logger,
+        IServerApplicationPaths serverApplicationPaths,
+        IPlaylistManager playlistManager,
+        IUserDataManager userDataManager,
+        IProviderManager providerManager) : RefreshPlaylistsTaskBase(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
     {
-        public RefreshVideoPlaylistsTask(
-            IUserManager userManager,
-            ILibraryManager libraryManager,
-            ILogger<RefreshVideoPlaylistsTask> logger,
-            IServerApplicationPaths serverApplicationPaths,
-            IPlaylistManager playlistManager,
-            IUserDataManager userDataManager,
-            IProviderManager providerManager)
-            : base(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
-        {
-        }
-
         public override string Name => "Refresh Video SmartPlaylists";
         public override string Description => "Refresh all video SmartPlaylists (movies, series, episodes)";
         public override string Key => "RefreshVideoSmartPlaylists";

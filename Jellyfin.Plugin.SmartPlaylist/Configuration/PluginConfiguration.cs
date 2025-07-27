@@ -25,6 +25,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         public int DefaultMaxItems { get; set; } = 500;
 
         /// <summary>
+        /// Gets or sets the default maximum play time in minutes for new playlists.
+        /// </summary>
+        public int DefaultMaxPlayTimeMinutes { get; set; } = 0;
+
+        /// <summary>
         /// Gets or sets the prefix text to add to playlist names.
         /// Leave empty to not add a prefix.
         /// </summary>
