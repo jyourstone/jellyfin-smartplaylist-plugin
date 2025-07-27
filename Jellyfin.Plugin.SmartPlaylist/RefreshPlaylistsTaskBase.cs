@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -17,19 +17,38 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
-    /// Class RefreshPlaylistsTask.
+    /// Abstract base class for playlist refresh tasks.
     /// </summary>
-    public class RefreshPlaylistsTask(
-        IUserManager userManager,
-        ILibraryManager libraryManager,
-        ILogger<RefreshPlaylistsTask> logger,
-        IServerApplicationPaths serverApplicationPaths,
-        IPlaylistManager playlistManager,
-        IUserDataManager userDataManager,
-        IProviderManager providerManager) : IScheduledTask
+    public abstract class RefreshPlaylistsTaskBase : IScheduledTask
     {
+        protected readonly IUserManager userManager;
+        protected readonly ILibraryManager libraryManager;
+        protected readonly ILogger logger;
+        protected readonly IServerApplicationPaths serverApplicationPaths;
+        protected readonly IPlaylistManager playlistManager;
+        protected readonly IUserDataManager userDataManager;
+        protected readonly IProviderManager providerManager;
+
         // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
         private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
+
+        protected RefreshPlaylistsTaskBase(
+            IUserManager userManager,
+            ILibraryManager libraryManager,
+            ILogger logger,
+            IServerApplicationPaths serverApplicationPaths,
+            IPlaylistManager playlistManager,
+            IUserDataManager userDataManager,
+            IProviderManager providerManager)
+        {
+            this.userManager = userManager;
+            this.libraryManager = libraryManager;
+            this.logger = logger;
+            this.serverApplicationPaths = serverApplicationPaths;
+            this.playlistManager = playlistManager;
+            this.userDataManager = userDataManager;
+            this.providerManager = providerManager;
+        }
 
         private PlaylistService GetPlaylistService()
         {
@@ -65,25 +84,35 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return PlaylistNameFormatter.FormatPlaylistName(playlistName);
         }
 
-        /// <summary>
-        /// Gets the name of the task.
-        /// </summary>
-        /// <value>The name.</value>
-        public string Name => "Refresh all SmartPlaylists";
-
-        /// <summary>
-        /// Gets the description.
-        /// </summary>
-        /// <value>The description.</value>
-        public string Description => "Refresh all SmartPlaylists";
-
+        // Abstract properties that must be implemented by derived classes
+        public abstract string Name { get; }
+        public abstract string Description { get; }
+        public abstract string Key { get; }
+        
         /// <summary>
         /// Gets the category.
         /// </summary>
         /// <value>The category.</value>
         public string Category => "Library";
 
-        public string Key => "RefreshSmartPlaylists";
+        /// <summary>
+        /// Filters playlists based on media type for the specific task implementation.
+        /// </summary>
+        /// <param name="playlists">All available playlists</param>
+        /// <returns>Filtered playlists for this task type</returns>
+        protected abstract IEnumerable<SmartPlaylistDto> FilterPlaylistsByMediaType(IEnumerable<SmartPlaylistDto> playlists);
+
+        /// <summary>
+        /// Gets media items optimized for the specific task type.
+        /// </summary>
+        /// <param name="user">The user</param>
+        /// <returns>Media items relevant to this task type</returns>
+        protected abstract IEnumerable<BaseItem> GetRelevantUserMedia(User user);
+
+        /// <summary>
+        /// Gets the media types this task handles (for logging purposes).
+        /// </summary>
+        protected abstract string GetHandledMediaTypes();
 
         /// <summary>
         /// Executes the task.
@@ -104,17 +133,29 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             try
             {
-                logger.LogDebug("Starting SmartPlaylist refresh task (acquired global refresh lock)");
+                logger.LogDebug("Starting {TaskType} refresh task (acquired global refresh lock)", GetType().Name);
 
                 // Create playlist store
                 var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
                 var plStore = new SmartPlaylistStore(fileSystem, userManager);
 
-                var dtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-                logger.LogInformation("Found {Count} smart playlists to process", dtos.Length);
+                var allDtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
+                
+                // Filter playlists by media type for this specific task
+                var relevantDtos = FilterPlaylistsByMediaType(allDtos).ToArray();
+                
+                logger.LogInformation("Found {RelevantCount} relevant playlists out of {TotalCount} total (handling {MediaTypes})", 
+                    relevantDtos.Length, allDtos.Length, GetHandledMediaTypes());
+                
+                if (relevantDtos.Length == 0)
+                {
+                    logger.LogDebug("No relevant playlists found for {TaskType}, exiting early", GetType().Name);
+                    progress?.Report(100);
+                    return;
+                }
                 
                 // Log disabled playlists for informational purposes
-                var disabledPlaylists = dtos.Where(dto => !dto.Enabled).ToList();
+                var disabledPlaylists = relevantDtos.Where(dto => !dto.Enabled).ToList();
                 if (disabledPlaylists.Count > 0)
                 {
                     var disabledNames = string.Join(", ", disabledPlaylists.Select(p => $"'{p.Name}'"));
@@ -127,7 +168,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Pre-process to resolve users and group playlists by actual user (not dto.UserId)
                 // This ensures cache keys match the users that will actually be used during processing
                 var resolvedPlaylists = new List<(SmartPlaylistDto dto, User user)>();
-                var enabledPlaylists = dtos.Where(dto => dto.Enabled).ToList();
+                var enabledPlaylists = relevantDtos.Where(dto => dto.Enabled).ToList();
                 
                 logger.LogDebug("Resolving users for {PlaylistCount} enabled playlists", enabledPlaylists.Count);
                 
@@ -152,20 +193,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} playlists after user resolution", 
                     playlistsByUser.Count, resolvedPlaylists.Count);
                 
-                // Fetch media for each user once
+                // Fetch media for each user once (optimized for this task type)
                 foreach (var (userId, userPlaylistPairs) in playlistsByUser)
                 {
                     var user = userPlaylistPairs.First().user; // All pairs have the same user
                     
                     var mediaFetchStopwatch = Stopwatch.StartNew();
-                    var allUserMedia = GetAllUserMedia(user).ToArray();
+                    var relevantUserMedia = GetRelevantUserMedia(user).ToArray();
                     mediaFetchStopwatch.Stop();
                     
-                    userMediaCache[userId] = allUserMedia;
-                    userCacheStats[userId] = (allUserMedia.Length, userPlaylistPairs.Count);
+                    userMediaCache[userId] = relevantUserMedia;
+                    userCacheStats[userId] = (relevantUserMedia.Length, userPlaylistPairs.Count);
                     
-                    logger.LogDebug("Cached {MediaCount} media items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
-                        allUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylistPairs.Count);
+                    logger.LogDebug("Cached {MediaCount} {MediaTypes} items for user '{Username}' ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
+                        relevantUserMedia.Length, GetHandledMediaTypes(), user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylistPairs.Count);
                 }
                 
                 // Process playlists using cached media
@@ -181,9 +222,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var user = userPlaylistPairs.First().user; // All pairs have the same user
                     var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
                     
-                    var allUserMedia = userMediaCache[userId]; // Guaranteed to exist
-                    logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
-                        userPlaylists.Count, user.Username, allUserMedia.Length);
+                    var relevantUserMedia = userMediaCache[userId]; // Guaranteed to exist
+                    logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached {MediaTypes} media ({MediaCount} items)", 
+                        userPlaylists.Count, user.Username, GetHandledMediaTypes(), relevantUserMedia.Length);
                     
                     // Process playlists in parallel batches
                     var batchSize = Math.Max(1, maxConcurrency);
@@ -210,15 +251,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     return false; // Return failure status
                                 }
                                 
-                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached media ({MediaCount} items)", 
-                                    dto.Name, dto.ExpressionSets?.Count ?? 0, allUserMedia.Length);
+                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached {MediaTypes} media ({MediaCount} items)", 
+                                    dto.Name, dto.ExpressionSets?.Count ?? 0, GetHandledMediaTypes(), relevantUserMedia.Length);
                                 
                                 // Use the PlaylistService for actual processing
                                 var playlistService = GetPlaylistService();
                                 var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                     dto, 
                                     playlistUser, 
-                                    allUserMedia, 
+                                    relevantUserMedia, 
                                     async (updatedDto) => await plStore.SaveAsync(updatedDto), // Save callback for when JellyfinPlaylistId is updated
                                     cancellationToken);
                                 
@@ -273,17 +314,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var totalPlaylistsProcessed = userCacheStats.Values.Sum(s => s.PlaylistCount);
                 var estimatedSavings = totalPlaylistsProcessed - totalMediaFetches;
                 
-                logger.LogDebug("BATCH PROCESSING SUMMARY: Fetched media {FetchCount} times for {UserCount} users, processed {PlaylistCount} playlists. Estimated {Savings} fewer media fetches than sequential processing.", 
-                    totalMediaFetches, userCacheStats.Count, totalPlaylistsProcessed, estimatedSavings);
+                logger.LogDebug("BATCH PROCESSING SUMMARY ({TaskType}): Fetched {MediaTypes} media {FetchCount} times for {UserCount} users, processed {PlaylistCount} playlists. Estimated {Savings} fewer media fetches than sequential processing.", 
+                    GetType().Name, GetHandledMediaTypes(), totalMediaFetches, userCacheStats.Count, totalPlaylistsProcessed, estimatedSavings);
 
                 progress?.Report(100);
                 stopwatch.Stop();
-                logger.LogDebug("SmartPlaylist refresh task completed successfully in {TotalTime}ms", stopwatch.ElapsedMilliseconds);
+                logger.LogDebug("{TaskType} refresh task completed successfully in {TotalTime}ms", GetType().Name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                logger.LogError(ex, "Error occurred during SmartPlaylist refresh task after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                logger.LogError(ex, "Error occurred during {TaskType} refresh task after {ElapsedTime}ms", GetType().Name, stopwatch.ElapsedMilliseconds);
                 throw;
             }
             finally
@@ -300,35 +341,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-
-
         /// <summary>
         /// Gets the default triggers.
         /// </summary>
         /// <returns>IEnumerable{TaskTriggerInfo}.</returns>
-        public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
+        public virtual IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
             return
             [
                 new TaskTriggerInfo
                 {
-                    Type =  TaskTriggerInfo.TriggerInterval,
+                    Type = TaskTriggerInfo.TriggerInterval,
                     IntervalTicks = TimeSpan.FromHours(1).Ticks
                 }
             ];
-        }
-
-
-
-        private IEnumerable<BaseItem> GetAllUserMedia(User user)
-        {
-            var query = new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series],
-                Recursive = true
-            };
-
-            return libraryManager.GetItemsResult(query).Items;
         }
 
         /// <summary>
@@ -391,4 +417,4 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return null;
         }
     }
-}
+} 

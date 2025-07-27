@@ -1561,6 +1561,7 @@
                         '</div>' +
                         '<div style="margin-top: 1em;">' +
                         '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Refresh</button>' +
                         (isEnabled ? 
                             '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
                             '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
@@ -1832,6 +1833,7 @@
                 '</div>' +
                 '<div style="margin-top: 1em;">' +
                 '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Refresh</button>' +
                 (isEnabled ? 
                     '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
                     '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
@@ -1841,6 +1843,25 @@
                 '</div>';
         }
         container.innerHTML = html;
+    }
+
+    function refreshPlaylist(page, playlistId, playlistName) {
+        const apiClient = getApiClient();
+        
+        Dashboard.showLoadingMsg();
+        
+        apiClient.ajax({
+            type: 'POST',
+            url: apiClient.getUrl('Plugins/SmartPlaylist/' + playlistId + '/refresh'),
+            contentType: 'application/json'
+        }).then(() => {
+            Dashboard.hideLoadingMsg();
+            showNotification('Playlist "' + playlistName + '" has been refreshed successfully.', 'success');
+        }).catch((err) => {
+            Dashboard.hideLoadingMsg();
+            console.error('Error refreshing playlist:', err);
+            handleApiError(err, 'Failed to refresh playlist');
+        });
     }
 
     function deletePlaylist(page, playlistId, playlistName) {
@@ -2222,6 +2243,7 @@
         getApiClient().getPluginConfiguration(getPluginId()).then(config => {
             page.querySelector('#defaultSortBy').value = config.DefaultSortBy || 'Name';
             page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
+            
             page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
             page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             
@@ -2274,7 +2296,7 @@
             contentType: 'application/json'
         }).then(() => {
             Dashboard.hideLoadingMsg();
-            showNotification('Smart playlist refresh task has been triggered. Playlists will be updated shortly.', 'success');
+            showNotification('SmartPlaylist refresh tasks have been triggered. All smart playlists will be updated shortly.', 'success');
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);
@@ -2322,6 +2344,8 @@
         `;
         document.head.appendChild(style);
     }
+
+
 
     function initPage(page) {
         // Check if this specific page is already initialized
@@ -2562,6 +2586,10 @@
             if (target.closest('.edit-playlist-btn')) {
                 const button = target.closest('.edit-playlist-btn');
                 editPlaylist(page, button.getAttribute('data-playlist-id'));
+            }
+            if (target.closest('.refresh-playlist-btn')) {
+                const button = target.closest('.refresh-playlist-btn');
+                refreshPlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
             }
             if (target.closest('.enable-playlist-btn')) {
                 const button = target.closest('.enable-playlist-btn');

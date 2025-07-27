@@ -31,7 +31,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - ✏️ **Edit Playlists** - Modify existing smart playlists directly from the UI.
 - 👥 **User Selection** - Choose which user should own a playlist with an intuitive dropdown, making it easy to create playlists for different family members.
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. 
-- 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled task).
+- 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled tasks).
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
 - 🎵 **All Media Types** - Works with movies, series, episodes, and music
@@ -90,9 +90,16 @@ The naming configuration applies to all new smart playlists. When you delete a s
 
 ### Automatic Updates
 
-Smart playlists automatically refresh when:
-- The "Refresh all SmartPlaylists" scheduled task runs
-- You manually trigger the task from the Jellyfin dashboard
+Smart playlists automatically refresh using scheduled tasks:
+
+#### **Scheduled Tasks**
+- **🎵 Audio SmartPlaylists**: Runs by default daily at **2:30 AM**
+- **🎬 Video SmartPlaylists**: Runs by default **hourly**
+
+#### **Manual Refresh**
+- Use the **"Refresh All Playlists"** button in the Settings tab to trigger both tasks immediately
+- Use the **"Refresh"** button next to each playlist in the Manage Playlists tab to refresh individual playlists
+- Individual tasks can also be triggered separately from the Jellyfin admin dashboard
 
 ## 📋 Overview
 

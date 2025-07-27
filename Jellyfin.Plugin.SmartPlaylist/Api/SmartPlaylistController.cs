@@ -125,20 +125,42 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             try
             {
-                var refreshTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshSmartPlaylists");
-                if (refreshTask != null)
+                // Find both audio and video refresh tasks
+                var audioTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshAudioSmartPlaylists");
+                var videoTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshVideoSmartPlaylists");
+                
+                bool anyTaskTriggered = false;
+                
+                if (audioTask != null)
                 {
-                    _logger.LogInformation("Triggering SmartPlaylist refresh task");
-                    _taskManager.Execute(refreshTask, new TaskOptions());
+                    _logger.LogInformation("Triggering Audio SmartPlaylist refresh task");
+                    _taskManager.Execute(audioTask, new TaskOptions());
+                    anyTaskTriggered = true;
                 }
                 else
                 {
-                    _logger.LogWarning("Smart playlist refresh task not found");
+                    _logger.LogWarning("Audio SmartPlaylist refresh task not found");
+                }
+                
+                if (videoTask != null)
+                {
+                    _logger.LogInformation("Triggering Video SmartPlaylist refresh task");
+                    _taskManager.Execute(videoTask, new TaskOptions());
+                    anyTaskTriggered = true;
+                }
+                else
+                {
+                    _logger.LogWarning("Video SmartPlaylist refresh task not found");
+                }
+                
+                if (!anyTaskTriggered)
+                {
+                    _logger.LogWarning("No SmartPlaylist refresh tasks found");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error triggering SmartPlaylist refresh task");
+                _logger.LogError(ex, "Error triggering SmartPlaylist refresh tasks");
             }
         }
 
@@ -847,7 +869,50 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
-        /// Trigger a refresh of all smart playlists.
+        /// Trigger a refresh of a specific smart playlist.
+        /// </summary>
+        /// <param name="id">The playlist ID.</param>
+        /// <returns>Success message.</returns>
+        [HttpPost("{id}/refresh")]
+        public async Task<ActionResult> TriggerSinglePlaylistRefresh([FromRoute, Required] string id)
+        {
+            try
+            {
+                if (!Guid.TryParse(id, out var guidId))
+                {
+                    return BadRequest("Invalid playlist ID format");
+                }
+                
+                var playlistStore = GetPlaylistStore();
+                var playlist = await playlistStore.GetSmartPlaylistAsync(guidId);
+                if (playlist == null)
+                {
+                    return NotFound("Smart playlist not found");
+                }
+                
+                var playlistService = GetPlaylistService();
+                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist);
+                
+                if (success)
+                {
+                    _logger.LogInformation("Successfully refreshed single playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                    return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to refresh single playlist: {PlaylistId} - {PlaylistName}. Error: {ErrorMessage}", id, playlist.Name, message);
+                    return BadRequest(new { message });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing single smart playlist {PlaylistId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error refreshing smart playlist");
+            }
+        }
+
+        /// <summary>
+        /// Trigger a refresh of all smart playlists (both audio and video).
         /// </summary>
         /// <returns>Success message.</returns>
         [HttpPost("refresh")]
@@ -860,9 +925,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 if (success)
                 {
-                    // If we got the lock, trigger the actual scheduled task
+                    // If we got the lock, trigger the actual scheduled tasks
                     TriggerPlaylistRefresh();
-                    return Ok(new { message = "Smart playlist refresh task triggered successfully" });
+                    return Ok(new { message = "Smart playlist refresh tasks triggered successfully" });
                 }
                 else
                 {
