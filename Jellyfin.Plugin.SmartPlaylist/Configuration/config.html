@@ -242,7 +242,7 @@
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistMaxItems">Max Items</label>
-                            <input type="number" is="emby-input" id="playlistMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <input type="number" id="playlistMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
                             <div class="fieldDescription">Maximum number of items in this playlist. Set to 0 for no limit.</div>
                         </div>
 
@@ -317,20 +317,21 @@
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="defaultMaxItems">Default Max Items</label>
-                            <input type="number" is="emby-input" id="defaultMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <input type="number" id="defaultMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
                             <div class="fieldDescription">Default maximum number of items for new smart playlists. Set to 0 for no limit.</div>
                         </div>
 
                         <h3 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h3>
+                        
                         <div class="input-group" style="display: flex; gap: 2em;">
                             <div class="inputContainer flex-grow">
                                 <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
-                                <input type="text" is="emby-input" id="playlistNamePrefix" class="emby-input">
+                                <input type="text" id="playlistNamePrefix" class="emby-input">
                                 <div class="fieldDescription">Text to add before the playlist name. Leave blank for no prefix.</div>
                             </div>
                             <div class="inputContainer flex-grow">
                                 <label class="inputLabel" for="playlistNameSuffix">Suffix Text</label>
-                                <input type="text" is="emby-input" id="playlistNameSuffix" class="emby-input">
+                                <input type="text" id="playlistNameSuffix" class="emby-input">
                                 <div class="fieldDescription">Text to add after the playlist name. Leave blank for no suffix.</div>
                             </div>
                         </div>
