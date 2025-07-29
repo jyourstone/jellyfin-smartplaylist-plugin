@@ -149,6 +149,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("Album");
             allFields.Add("AudioLanguages");
             allFields.Add("OfficialRating");
+            allFields.Add("Overview");
             allFields.Add("FileName");
             allFields.Add("FolderPath");
             allFields.Add("MediaType");

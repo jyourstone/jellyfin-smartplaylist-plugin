@@ -17,6 +17,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public string MediaType { get; set; } = "";
         public string ItemType { get; set; } = "";
         public string Album { get; set; } = "";
+        public string Overview { get; set; } = "";
         public double DateCreated { get; set; } = 0;
         public double DateLastRefreshed { get; set; } = 0;
         public double DateLastSaved { get; set; } = 0;

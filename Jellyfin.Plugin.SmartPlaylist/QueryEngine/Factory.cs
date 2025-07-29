@@ -164,6 +164,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
+            
+            // Extract Overview property using reflection
+            try
+            {
+                var overviewProperty = baseItem.GetType().GetProperty("Overview");
+                if (overviewProperty != null)
+                {
+                    var overviewValue = overviewProperty.GetValue(baseItem) as string;
+                    operand.Overview = overviewValue ?? "";
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Failed to extract Overview for item {Name}", baseItem.Name);
+                operand.Overview = "";
+            }
+            
             operand.DateCreated = SafeToUnixTimeSeconds(baseItem.DateCreated);
             operand.DateLastRefreshed = SafeToUnixTimeSeconds(baseItem.DateLastRefreshed);
             operand.DateLastSaved = SafeToUnixTimeSeconds(baseItem.DateLastSaved);

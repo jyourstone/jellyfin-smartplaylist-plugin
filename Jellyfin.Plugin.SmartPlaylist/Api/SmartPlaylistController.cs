@@ -112,6 +112,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 "PlayCount" => "Play Count",
                 "ItemType" => "Media Type",
                 "OfficialRating" => "Parental Rating",
+                "Overview" => "Overview",
                 "AudioLanguages" => "Audio Languages",
                 "FileName" => "File Name",
                 "FolderPath" => "Folder Path",
@@ -639,6 +640,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "AudioLanguages", Label = "Audio Languages" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
+                    new { Value = "Overview", Label = "Overview" },
                     new { Value = "ProductionYear", Label = "Production Year" }
                 },
                 RatingsPlaybackFields = new[]
