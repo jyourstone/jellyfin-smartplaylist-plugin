@@ -1,8 +1,8 @@
 # Jellyfin SmartPlaylist Plugin
 <div align="center">
     <p>
-        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="350"/></br>
-        <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Total GitHub Downloads" src="https://img.shields.io/github/downloads/jyourstone/jellyfin-smartplaylist-plugin/total"/></img></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/jyourstone/jellyfin-smartplaylist-plugin"/></img></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Build and Release" src="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/actions/workflows/release.yml/badge.svg"/></img></a> <a href="https://jellyfin.org/"><img alt="Jellyfin Version" src="https://img.shields.io/badge/Jellyfin-10.10-blue.svg"/></img></a>
+        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="350"/><br />
+        <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Total GitHub Downloads" src="https://img.shields.io/github/downloads/jyourstone/jellyfin-smartplaylist-plugin/total"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/jyourstone/jellyfin-smartplaylist-plugin"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Build and Release" src="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/actions/workflows/release.yml/badge.svg"/></a> <a href="https://jellyfin.org/"><img alt="Jellyfin Version" src="https://img.shields.io/badge/Jellyfin-10.10-blue.svg"/></a>
     </p>        
 </div>
 
@@ -267,4 +267,4 @@ This project is a fork of the original SmartPlaylist plugin created by **[ankeny
 
 ## ⚠️ Disclaimer
 
-The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware. If you find a bug, it was probably the AI's fault. If you like a feature, the AI will begrudgingly accept your praise. Use at your own risk!
+The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware.
