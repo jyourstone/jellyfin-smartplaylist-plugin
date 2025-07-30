@@ -642,7 +642,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "Name", Label = "Name" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
                     new { Value = "Overview", Label = "Overview" },
-                    new { Value = "ProductionYear", Label = "Production Year" }
+                    new { Value = "ProductionYear", Label = "Production Year" },
+                    new { Value = "ReleaseDate", Label = "Release Date" }
+                    // Note: ItemType (Media Type) is intentionally excluded from UI fields
+                    // because users select media type (Audio/Video) before creating rules
                 },
                 RatingsPlaybackFields = new[]
                 {
@@ -650,15 +653,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "CriticRating", Label = "Critic Rating" },
                     new { Value = "IsFavorite", Label = "Is Favorite" },
                     new { Value = "IsPlayed", Label = "Is Played" },
+                    new { Value = "LastPlayedDate", Label = "Last Played" },
                     new { Value = "NextUnwatched", Label = "Next Unwatched" },
                     new { Value = "PlayCount", Label = "Play Count" },
                     new { Value = "RuntimeMinutes", Label = "Runtime (Minutes)" }
                 },
-                DateFields = FieldDefinitions.DateFields.Select(field => new { Value = field, Label = GetFieldLabel(field) }).ToArray(),
+
                 FileFields = new[]
                 {
                     new { Value = "FileName", Label = "File Name" },
-                    new { Value = "FolderPath", Label = "Folder Path" }
+                    new { Value = "FolderPath", Label = "Folder Path" },
+                    new { Value = "DateModified", Label = "Date Modified" }
+                },
+                LibraryFields = new[]
+                {
+                    new { Value = "DateCreated", Label = "Date Added to Library" },
+                    new { Value = "DateLastRefreshed", Label = "Last Metadata Refresh" },
+                    new { Value = "DateLastSaved", Label = "Last Database Save" }
                 },
                 CollectionFields = new[]
                 {

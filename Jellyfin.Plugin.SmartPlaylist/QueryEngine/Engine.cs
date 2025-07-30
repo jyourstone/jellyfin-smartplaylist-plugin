@@ -255,6 +255,30 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             logger?.LogDebug("SmartPlaylist handling date field {Field} with value {Value}", r.MemberName, r.TargetValue);
             
+            // Special handling for LastPlayedDate: exclude items that have never been played (value = -1)
+            if (r.MemberName == "LastPlayedDate")
+            {
+                var neverPlayedCheck = System.Linq.Expressions.Expression.NotEqual(
+                    left, 
+                    System.Linq.Expressions.Expression.Constant(-1.0)
+                );
+                
+                // Build the main date expression using the standard logic below
+                var mainExpression = BuildStandardDateExpression(r, left, logger);
+                
+                // Combine: (LastPlayedDate != -1) AND (main date condition)
+                return System.Linq.Expressions.Expression.AndAlso(neverPlayedCheck, mainExpression);
+            }
+            
+            return BuildStandardDateExpression(r, left, logger);
+        }
+        
+        /// <summary>
+        /// Builds standard date expressions without special handling for never-played items.
+        /// </summary>
+        private static BinaryExpression BuildStandardDateExpression(Expression r, MemberExpression left, ILogger logger)
+        {
+            
             // Handle NewerThan and OlderThan operators first
             if (r.Operator == "NewerThan" || r.Operator == "OlderThan")
             {

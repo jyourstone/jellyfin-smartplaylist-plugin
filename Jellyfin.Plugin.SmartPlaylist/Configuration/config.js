@@ -14,10 +14,10 @@
     const FIELD_TYPES = {
         LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
-        DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'],
+        DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
-        USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched']
+        USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
     // Centralized styling configuration
@@ -380,7 +380,7 @@
         const groupConfig = [
             { key: 'ContentFields', label: 'Content' },
             { key: 'RatingsPlaybackFields', label: 'Ratings & Playback' },
-            { key: 'DateFields', label: 'Dates' },
+            { key: 'LibraryFields', label: 'Library' },
             { key: 'FileFields', label: 'File Info' },
             { key: 'CollectionFields', label: 'Collections' }
         ];
