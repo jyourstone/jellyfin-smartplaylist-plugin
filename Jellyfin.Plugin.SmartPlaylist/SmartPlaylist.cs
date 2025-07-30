@@ -381,27 +381,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return [];
                 }
                 
-                // Apply media type pre-filtering first for performance
-                if (MediaTypes != null && MediaTypes.Count > 0)
-                {
-                    try
-                    {
-                        var originalCount = itemCount;
-                        items = items.Where(item => item != null && MediaTypes.Contains(item.GetType().Name));
-                        var filteredCount = items.Count();
-                        logger?.LogDebug("Media type pre-filtering reduced items from {OriginalCount} to {FilteredCount} (filtering for: {MediaTypes})", 
-                            originalCount, filteredCount, string.Join(", ", MediaTypes));
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogWarning(ex, "Error during media type pre-filtering for playlist '{PlaylistName}'. Continuing without pre-filtering.", Name);
-                        // Continue without pre-filtering
-                    }
-                }
-                else
-                {
-                    logger?.LogDebug("No media type pre-filtering applied (no MediaTypes specified)");
-                }
+                // Media type filtering is now handled at the API level in PlaylistService.GetAllUserMedia()
+                // This provides significant performance improvements by filtering at the database level
+                logger?.LogDebug("Processing {ItemCount} items (already filtered by media type at API level)", itemCount);
                 
                 var results = new List<BaseItem>();
 
