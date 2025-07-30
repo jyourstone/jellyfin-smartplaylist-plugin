@@ -34,6 +34,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 "PlayCount" => "GetPlayCountByUser", 
                 "IsFavorite" => "GetIsFavoriteByUser",
                 "NextUnwatched" => "GetNextUnwatchedByUser",
+                "LastPlayedDate" => "GetLastPlayedDateByUser",
                 _ => MemberName
             };
         }
@@ -46,6 +47,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 "PlayCount" => true,
                 "IsFavorite" => true,
                 "NextUnwatched" => true,
+                "LastPlayedDate" => true,
                 _ => false
             };
         }

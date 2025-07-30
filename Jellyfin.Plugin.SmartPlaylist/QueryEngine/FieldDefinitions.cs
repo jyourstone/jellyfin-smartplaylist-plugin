@@ -16,7 +16,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "DateLastRefreshed", 
             "DateLastSaved",
             "DateModified",
-            "ReleaseDate"
+            "ReleaseDate",
+            "LastPlayedDate"
         ];
 
         /// <summary>
@@ -70,7 +71,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "IsPlayed",
             "IsFavorite", 
             "PlayCount",
-            "NextUnwatched"
+            "NextUnwatched",
+            "LastPlayedDate"
         ];
 
         /// <summary>

@@ -175,19 +175,27 @@ For local development, see the [dev folder](https://github.com/jyourstone/jellyf
 
 The web interface provides access to all available fields for creating playlist rules:
 
-#### **Content Fields**
-- **Name** - Title of the media item
-- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Music`)
-- **Audio Languages** - The audio language of the movie/TV show.
+#### **Content**
 - **Album** - Album name (for music)
-- **Folder Path** - Location in your library
+- **Audio Languages** - The audio language of the movie/TV show
+- **Name** - Title of the media item
+- **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
+- **Overview** - Description/summary of the content
+- **Production Year** - Original production year
+- **Release Date** - Original release date of the media
 
-#### **Playback Fields**
-- **Is Played** - Whether the item has been watched/listened to
+#### **Ratings & Playback**
+- **Community Rating** - User ratings (0-10)
+- **Critic Rating** - Professional critic ratings
 - **Is Favorite** - Whether the item is marked as a favorite
-- **Play Count** - Number of times the item has been played
+- **Is Played** - Whether the item has been watched/listened to
+- **Last Played** - When the item was last played (user-specific). Items never played by a user are excluded from all Last Played filtering
 - **Next Unwatched** - Shows only the next unwatched episode in chronological order for TV series
+- **Play Count** - Number of times the item has been played
+- **Runtime (Minutes)** - Duration of the content in minutes
+
 > **Note:** These playback fields can optionally be set to a specific user. This allows you to create rules like "Is Played by user X" or "Is Favorite for user X AND for user Y".
+> 
 > **Next Unwatched**: This field is specifically designed for creating "Continue Watching" style playlists. For TV series, it identifies the next episode a user should watch based on their viewing history:
 > - If a user has watched Season 1 completely and Season 2 episodes 1-3, it shows Season 2 Episode 4
 > - For completely unwatched series, it shows Season 1 Episode 1 (configurable)
@@ -196,33 +204,36 @@ The web interface provides access to all available fields for creating playlist 
 > - **Include unwatched series**: Optional setting to include/exclude Season 1 Episode 1 of completely unwatched series
 > - **⚠️ Note**: Specials (Season 0 episodes) are automatically excluded from the "Next Unwatched" logic to focus on the main storyline
 
-#### **Content Info**
-- **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
-- **Runtime (Minutes)** - Duration of the content in minutes
+#### **File Info**
+- **Date Modified** - Last file modification date
+- **File Name** - Name of the media file
+- **Folder Path** - Location in your library
 
-#### **Ratings & Dates**
-- **Community Rating** - User ratings (0-10)
-- **Critic Rating** - Professional critic ratings
-- **Production Year** - Original production year
-- **Release Date** - Original release date of the media
-- **Date Created** - When added to your library
-- **Date Last Refreshed** - Last metadata update
-- **Date Last Saved** - Last saved to database
-- **Date Modified** - Last file modification
+#### **Library**
+- **Date Added to Library** - When added to your Jellyfin library
+- **Last Metadata Refresh** - When Jellyfin last updated metadata from online sources
+- **Last Database Save** - When the item's data was last saved to Jellyfin's database
+
+#### **Collections**
+- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
+- **Genres** - Content genres
+- **Studios** - Production studios
+- **Tags** - Custom tags assigned to media items
+- **Artists** - Track-level artists *for music*
+- **Album Artists** - Album-level primary artists *for music*
 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")
 > - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
 > 
+> **Last Played Examples**:
+> - **"Music not played in the last month"**: `Last Played Older Than 1 month` (only items played more than a month ago, excludes never-played)
+> - **"Recently played favorites"**: `Last Played Newer Than 7 days AND Is Favorite = True`
+> - **"Movies watched this year"**: `Last Played After 2024-01-01`
+> - **"Content not played by specific user in 6 months"**: `Last Played Older Than 6 months (for User: John)` (only items played more than 6 months ago)
+> - **"Never played content"**: Use the field `Is Played` instead, as Last Played rules exclude never-played items by design
+> 
 > **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
-
-#### **Metadata**
-- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
-- **Artists** - Track-level artists *for music*
-- **Album Artists** - Album-level primary artists *for music*
-- **Genres** - Content genres
-- **Studios** - Production studios
-- **Tags** - Custom tags assigned to media items
 
 > **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** field is designed for movies/TV and contains cast/crew information rather than music performers.
 

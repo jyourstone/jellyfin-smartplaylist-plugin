@@ -114,6 +114,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     {
                         operand.PlayCount = userData.PlayCount;
                         operand.IsFavorite = userData.IsFavorite;
+                        
+                        // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
+                        if (userData.LastPlayedDate.HasValue)
+                        {
+                            operand.LastPlayedDate = SafeToUnixTimeSeconds(userData.LastPlayedDate.Value);
+                        }
+                        else
+                        {
+                            operand.LastPlayedDate = -1; // Never played - use -1 as sentinel value
+                        }
+                    }
+                    else
+                    {
+                        // Fallback when userData is null - treat as never played
+                        operand.LastPlayedDate = -1;
                     }
                     // If userData is null, keep the fallback values we set above
                 }
@@ -179,12 +194,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                     {
                                         operand.PlayCountByUser[userId] = targetUserData.PlayCount;
                                         operand.IsFavoriteByUser[userId] = targetUserData.IsFavorite;
-                                    }
-                                    else
-                                    {
-                                        // Fallback values
-                                        operand.PlayCountByUser[userId] = userIsPlayed ? 1 : 0;
-                                        operand.IsFavoriteByUser[userId] = false;
+                                        
+                                        // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
+                                        if (targetUserData.LastPlayedDate.HasValue)
+                                        {
+                                            operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(targetUserData.LastPlayedDate.Value);
+                                        }
+                                                                else
+                        {
+                            operand.LastPlayedDateByUser[userId] = -1; // Never played - use -1 as sentinel value
+                        }
+                    }
+                    else
+                    {
+                        // Fallback values when targetUserData is null
+                        operand.PlayCountByUser[userId] = userIsPlayed ? 1 : 0;
+                        operand.IsFavoriteByUser[userId] = false;
+                        operand.LastPlayedDateByUser[userId] = -1; // Never played - use -1 as sentinel value
                                     }
                                 }
                                 else
