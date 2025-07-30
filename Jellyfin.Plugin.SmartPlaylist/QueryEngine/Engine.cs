@@ -115,6 +115,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 return BuildUserSpecificIntegerExpression(r, methodCall, logger);
             }
+            else if (returnType == typeof(double) && r.MemberName == "LastPlayedDate")
+            {
+                return BuildUserSpecificLastPlayedDateExpression(r, methodCall, logger);
+            }
             else
             {
                 logger?.LogError("SmartPlaylist unsupported return type '{ReturnType}' for user-specific method '{Method}'", returnType.Name, methodName);
@@ -194,6 +198,121 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for integer user-specific field '{Field}'", r.Operator, r.MemberName);
                 throw new ArgumentException($"Operator '{r.Operator}' is not supported for integer user-specific field '{r.MemberName}'. Supported operators: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual");
             }
+        }
+
+        /// <summary>
+        /// Builds expressions for user-specific LastPlayedDate fields with special "never played" handling.
+        /// </summary>
+        private static BinaryExpression BuildUserSpecificLastPlayedDateExpression(Expression r, System.Linq.Expressions.Expression methodCall, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist handling user-specific LastPlayedDate field {Field} with value {Value}", r.MemberName, r.TargetValue);
+            
+            // Create the "never played" check: methodCall != -1
+            var neverPlayedCheck = System.Linq.Expressions.Expression.NotEqual(
+                methodCall, 
+                System.Linq.Expressions.Expression.Constant(-1.0)
+            );
+            
+            // Build the main date expression using a simplified version for method calls
+            var mainExpression = BuildDateExpressionForMethodCall(r, methodCall, logger);
+            
+            // Combine: (methodCall != -1) AND (main date condition)
+            return System.Linq.Expressions.Expression.AndAlso(neverPlayedCheck, mainExpression);
+        }
+
+        /// <summary>
+        /// Builds date expressions for method calls (user-specific LastPlayedDate).
+        /// </summary>
+        private static BinaryExpression BuildDateExpressionForMethodCall(Expression r, System.Linq.Expressions.Expression methodCall, ILogger logger)
+        {
+            // Handle relative date operators
+            if (r.Operator == "NewerThan" || r.Operator == "OlderThan")
+            {
+                return BuildRelativeDateExpressionForMethodCall(r, methodCall, logger);
+            }
+            
+            if (string.IsNullOrWhiteSpace(r.TargetValue))
+            {
+                logger?.LogError("SmartPlaylist date comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                throw new ArgumentException($"Date comparison requires a valid date value for field '{r.MemberName}', but got: '{r.TargetValue}'");
+            }
+            
+            // Convert date string to Unix timestamp
+            double targetTimestamp;
+            try
+            {
+                targetTimestamp = ConvertDateStringToUnixTimestamp(r.TargetValue);
+                logger?.LogDebug("SmartPlaylist converted date '{DateString}' to Unix timestamp {Timestamp}", r.TargetValue, targetTimestamp);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "SmartPlaylist date conversion failed for field '{Field}' with value '{Value}'", r.MemberName, r.TargetValue);
+                throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
+            }
+            
+            // Handle basic date operators
+            var right = System.Linq.Expressions.Expression.Constant(targetTimestamp);
+            
+            return r.Operator switch
+            {
+                "After" => System.Linq.Expressions.Expression.GreaterThan(methodCall, right),
+                "Before" => System.Linq.Expressions.Expression.LessThan(methodCall, right),
+                _ when Enum.TryParse(r.Operator, out ExpressionType dateBinary) => 
+                    System.Linq.Expressions.Expression.MakeBinary(dateBinary, methodCall, right),
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: After, Before, NewerThan, OlderThan, Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual")
+            };
+        }
+
+        /// <summary>
+        /// Builds relative date expressions for method calls (NewerThan, OlderThan).
+        /// </summary>
+        private static BinaryExpression BuildRelativeDateExpressionForMethodCall(Expression r, System.Linq.Expressions.Expression methodCall, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist handling '{Operator}' for user-specific field {Field} with value {Value}", r.Operator, r.MemberName, r.TargetValue);
+            
+            // Use shared helper to parse relative date and get cutoff timestamp
+            var cutoffTimestamp = ParseRelativeDateAndGetCutoffTimestamp(r, logger);
+            var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
+            
+            if (r.Operator == "NewerThan")
+            {
+                // methodCall >= cutoffTimestamp (more recent than cutoff)
+                return System.Linq.Expressions.Expression.GreaterThanOrEqual(methodCall, cutoffConstant);
+            }
+            else
+            {
+                // methodCall < cutoffTimestamp (older than cutoff)
+                return System.Linq.Expressions.Expression.LessThan(methodCall, cutoffConstant);
+            }
+        }
+
+        /// <summary>
+        /// Parses relative date string (e.g., "3:days", "1:month") and returns cutoff timestamp.
+        /// </summary>
+        private static double ParseRelativeDateAndGetCutoffTimestamp(Expression r, ILogger logger)
+        {
+            // Parse value as number:unit
+            var parts = (r.TargetValue ?? "").Split(':');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out int num) || num <= 0)
+            {
+                logger?.LogError("SmartPlaylist '{Operator}' requires value in format number:unit, got: '{Value}'", r.Operator, r.TargetValue);
+                throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
+            }
+            
+            string unit = parts[1].ToLowerInvariant();
+            DateTimeOffset cutoffDate = unit switch
+            {
+                "days" => DateTimeOffset.UtcNow.AddDays(-num),
+                "weeks" => DateTimeOffset.UtcNow.AddDays(-num * 7),
+                "months" => DateTimeOffset.UtcNow.AddMonths(-num),
+                "years" => DateTimeOffset.UtcNow.AddYears(-num),
+                _ => throw new ArgumentException($"Unknown unit '{unit}' for '{r.Operator}'")
+            };
+            
+            var cutoffTimestamp = (double)cutoffDate.ToUnixTimeSeconds();
+            logger?.LogDebug("SmartPlaylist '{Operator}' cutoff: {CutoffDate} (timestamp: {Timestamp})", r.Operator, cutoffDate, cutoffTimestamp);
+            
+            return cutoffTimestamp;
         }
 
         /// <summary>
@@ -353,26 +472,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             logger?.LogDebug("SmartPlaylist handling '{Operator}' for field {Field} with value {Value}", r.Operator, r.MemberName, r.TargetValue);
             
-            // Parse value as number:unit
-            var parts = (r.TargetValue ?? "").Split(':');
-            if (parts.Length != 2 || !int.TryParse(parts[0], out int num) || num <= 0)
-            {
-                logger?.LogError("SmartPlaylist '{Operator}' requires value in format number:unit, got: '{Value}'", r.Operator, r.TargetValue);
-                throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
-            }
-            
-            string unit = parts[1].ToLowerInvariant();
-            DateTimeOffset cutoffDate = unit switch
-            {
-                "days" => DateTimeOffset.UtcNow.AddDays(-num),
-                "weeks" => DateTimeOffset.UtcNow.AddDays(-num * 7),
-                "months" => DateTimeOffset.UtcNow.AddMonths(-num),
-                "years" => DateTimeOffset.UtcNow.AddYears(-num),
-                _ => throw new ArgumentException($"Unknown unit '{unit}' for '{r.Operator}'")
-            };
-            
-            var cutoffTimestamp = (double)cutoffDate.ToUnixTimeSeconds();
-            logger?.LogDebug("SmartPlaylist '{Operator}' cutoff: {CutoffDate} (timestamp: {Timestamp})", r.Operator, cutoffDate, cutoffTimestamp);
+            // Use shared helper to parse relative date and get cutoff timestamp
+            var cutoffTimestamp = ParseRelativeDateAndGetCutoffTimestamp(r, logger);
             var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
             
             if (r.Operator == "NewerThan")
