@@ -43,6 +43,44 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Sets fallback values for user-specific data when userData is unavailable or invalid.
+        /// </summary>
+        /// <param name="operand">The operand to populate</param>
+        /// <param name="userId">The user ID (as string)</param>
+        /// <param name="isPlayed">The IsPlayed value to use</param>
+        private static void SetUserDataFallbacks(Operand operand, string userId, bool isPlayed)
+        {
+            operand.IsPlayedByUser[userId] = isPlayed;
+            operand.PlayCountByUser[userId] = isPlayed ? 1 : 0;
+            operand.IsFavoriteByUser[userId] = false;
+            operand.LastPlayedDateByUser[userId] = -1; // Never played
+        }
+
+        /// <summary>
+        /// Populates user-specific data from userData into the operand.
+        /// </summary>
+        /// <param name="operand">The operand to populate</param>
+        /// <param name="userId">The user ID (as string)</param>
+        /// <param name="isPlayed">The IsPlayed value</param>
+        /// <param name="userData">The userData object to extract from</param>
+        private static void PopulateUserData(Operand operand, string userId, bool isPlayed, dynamic userData)
+        {
+            operand.IsPlayedByUser[userId] = isPlayed;
+            operand.PlayCountByUser[userId] = userData.PlayCount;
+            operand.IsFavoriteByUser[userId] = userData.IsFavorite;
+            
+            // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
+            if (userData.LastPlayedDate.HasValue)
+            {
+                operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(userData.LastPlayedDate.Value);
+            }
+            else
+            {
+                operand.LastPlayedDateByUser[userId] = -1; // Never played - use -1 as sentinel value
+            }
+        }
+
+        /// <summary>
         /// Safely extracts an integer value from a property, handling both nullable and non-nullable int properties.
         /// </summary>
         /// <param name="value">The property value to convert</param>
@@ -62,6 +100,232 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Extracts audio languages from media streams.
+        /// </summary>
+        private static void ExtractAudioLanguages(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.AudioLanguages = [];
+            try
+            {
+                // Try multiple approaches to access media stream information
+                List<object> mediaStreams = [];
+                
+                // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                var baseItemType = baseItem.GetType();
+                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
+                
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Approach 2: Look for MediaSources property (with caching)
+                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
+                    {
+                        foreach (var source in sourceEnum)
+                        {
+                            try
+                            {
+                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                if (streamsProperty != null)
+                                {
+                                    var streams = streamsProperty.GetValue(source);
+                                    if (streams is IEnumerable<object> streamList)
+                                    {
+                                        mediaStreams.AddRange(streamList);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
+                            }
+                        }
+                    }
+                }
+                
+                // Process found streams
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        var languageProperty = stream.GetType().GetProperty("Language");
+                        
+                        if (typeProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            var language = languageProperty?.GetValue(stream) as string;
+                            
+                            // Check if it's an audio stream
+                            if (streamType != null && streamType.ToString() == "Audio")
+                            {
+                                if (!string.IsNullOrEmpty(language) && !operand.AudioLanguages.Contains(language))
+                                {
+                                    operand.AudioLanguages.Add(language);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract audio languages for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Extracts people (actors, directors, producers, etc.) associated with the item.
+        /// </summary>
+        private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
+        {
+            operand.People = [];
+            try
+            {
+                // Cache the GetPeople method lookup for better performance
+                var getPeopleMethod = _getPeopleMethodCache;
+                if (getPeopleMethod == null)
+                {
+                    lock (_getPeopleMethodLock)
+                    {
+                        if (_getPeopleMethodCache == null)
+                        {
+                            _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
+                        }
+                        getPeopleMethod = _getPeopleMethodCache;
+                    }
+                }
+                
+                if (getPeopleMethod != null)
+                {
+                    // Use InternalPeopleQuery to get people associated with this item
+                    var peopleQuery = new InternalPeopleQuery
+                    {
+                        ItemId = baseItem.Id
+                    };
+                    
+                    var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
+                    
+                    if (result is IEnumerable<object> peopleEnum)
+                    {
+                        foreach (var person in peopleEnum)
+                        {
+                            if (person != null)
+                            {
+                                var nameProperty = person.GetType().GetProperty("Name");
+                                if (nameProperty != null)
+                                {
+                                    var name = nameProperty.GetValue(person) as string;
+                                    if (!string.IsNullOrEmpty(name) && !operand.People.Contains(name))
+                                    {
+                                        operand.People.Add(name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract people for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Extracts artists and album artists for music items.
+        /// </summary>
+        private static void ExtractArtists(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.Artists = [];
+            operand.AlbumArtists = [];
+            
+            try
+            {
+                // Try to extract Artist property
+                var artistProperty = baseItem.GetType().GetProperty("Artist");
+                if (artistProperty != null)
+                {
+                    var artistValue = artistProperty.GetValue(baseItem) as string;
+                    if (!string.IsNullOrEmpty(artistValue))
+                    {
+                        operand.Artists.Add(artistValue);
+                    }
+                }
+                
+                // Try to extract Artists property (collection)
+                var artistsProperty = baseItem.GetType().GetProperty("Artists");
+                if (artistsProperty != null)
+                {
+                    var artistsValue = artistsProperty.GetValue(baseItem);
+                    if (artistsValue is IEnumerable<string> artistsCollection)
+                    {
+                        foreach (var artist in artistsCollection)
+                        {
+                            if (!string.IsNullOrEmpty(artist) && !operand.Artists.Contains(artist))
+                            {
+                                operand.Artists.Add(artist);
+                            }
+                        }
+                    }
+                }
+                
+                // Try to extract AlbumArtist property
+                var albumArtistProperty = baseItem.GetType().GetProperty("AlbumArtist");
+                if (albumArtistProperty != null)
+                {
+                    var albumArtistValue = albumArtistProperty.GetValue(baseItem) as string;
+                    if (!string.IsNullOrEmpty(albumArtistValue))
+                    {
+                        operand.AlbumArtists.Add(albumArtistValue);
+                    }
+                }
+                
+                // Try to extract AlbumArtists property (collection)
+                var albumArtistsProperty = baseItem.GetType().GetProperty("AlbumArtists");
+                if (albumArtistsProperty != null)
+                {
+                    var albumArtistsValue = albumArtistsProperty.GetValue(baseItem);
+                    if (albumArtistsValue is IEnumerable<string> albumArtistsCollection)
+                    {
+                        foreach (var albumArtist in albumArtistsCollection)
+                        {
+                            if (!string.IsNullOrEmpty(albumArtist) && !operand.AlbumArtists.Contains(albumArtist))
+                            {
+                                operand.AlbumArtists.Add(albumArtist);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract artists for item {Name}", baseItem.Name);
             }
         }
 
@@ -109,27 +373,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     if (userData != null)
                     {
                         // Populate user-specific data for playlist owner
-                        operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
-                        operand.PlayCountByUser[user.Id.ToString()] = userData.PlayCount;
-                        operand.IsFavoriteByUser[user.Id.ToString()] = userData.IsFavorite;
-                        
-                        // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
-                        if (userData.LastPlayedDate.HasValue)
-                        {
-                            operand.LastPlayedDateByUser[user.Id.ToString()] = SafeToUnixTimeSeconds(userData.LastPlayedDate.Value);
-                        }
-                        else
-                        {
-                            operand.LastPlayedDateByUser[user.Id.ToString()] = -1; // Never played - use -1 as sentinel value
-                        }
+                        PopulateUserData(operand, user.Id.ToString(), isPlayed, userData);
                     }
                     else
                     {
                         // Fallback when userData is null - treat as never played for playlist owner
-                        operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
-                        operand.PlayCountByUser[user.Id.ToString()] = 0;
-                        operand.IsFavoriteByUser[user.Id.ToString()] = false;
-                        operand.LastPlayedDateByUser[user.Id.ToString()] = -1;
+                        SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
                     }
                 }
                 else
@@ -186,19 +435,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         else
                         {
                             // UserData is null - set fallback values for playlist owner
-                            operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
-                            operand.PlayCountByUser[user.Id.ToString()] = 0;
-                            operand.IsFavoriteByUser[user.Id.ToString()] = false;
-                            operand.LastPlayedDateByUser[user.Id.ToString()] = -1;
+                            SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
                         }
                     }
                     else
                     {
                         // UserData property not found - set fallback values for playlist owner
-                        operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
-                        operand.PlayCountByUser[user.Id.ToString()] = 0;
-                        operand.IsFavoriteByUser[user.Id.ToString()] = false;
-                        operand.LastPlayedDateByUser[user.Id.ToString()] = -1;
+                        SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
                     }
                 }
             }
@@ -229,25 +472,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                     var targetUserData = userDataManager.GetUserData(targetUser, baseItem);
                                     if (targetUserData != null)
                                     {
-                                        operand.PlayCountByUser[userId] = targetUserData.PlayCount;
-                                        operand.IsFavoriteByUser[userId] = targetUserData.IsFavorite;
-                                        
-                                        // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
-                                        if (targetUserData.LastPlayedDate.HasValue)
-                                        {
-                                            operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(targetUserData.LastPlayedDate.Value);
-                                        }
-                                                                else
-                        {
-                            operand.LastPlayedDateByUser[userId] = -1; // Never played - use -1 as sentinel value
-                        }
-                    }
-                    else
-                    {
-                        // Fallback values when targetUserData is null
-                        operand.PlayCountByUser[userId] = userIsPlayed ? 1 : 0;
-                        operand.IsFavoriteByUser[userId] = false;
-                        operand.LastPlayedDateByUser[userId] = -1; // Never played - use -1 as sentinel value
+                                        PopulateUserData(operand, userId, userIsPlayed, targetUserData);
+                                    }
+                                    else
+                                    {
+                                        // Fallback values when targetUserData is null
+                                        SetUserDataFallbacks(operand, userId, userIsPlayed);
                                     }
                                 }
                                 else
@@ -315,225 +545,27 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 System.IO.Path.GetFileName(baseItem.Path) ?? "" : "";
             
             // Extract audio languages from media streams - only when needed for performance
-                            operand.AudioLanguages = [];
             if (extractAudioLanguages)
             {
-                try
-                {
-                    // Try multiple approaches to access media stream information
-                    List<object> mediaStreams = [];
-                    
-                    // Approach 1: Try GetMediaStreams method if it exists (with caching)
-                    var baseItemType = baseItem.GetType();
-                    var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
-                    
-                    if (getMediaStreamsMethod != null)
-                    {
-                        try
-                        {
-                            var result = getMediaStreamsMethod.Invoke(baseItem, null);
-                            if (result is IEnumerable<object> streamEnum)
-                            {
-                                mediaStreams.AddRange(streamEnum);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
-                        }
-                    }
-                    
-                    // Approach 2: Look for MediaSources property (with caching)
-                                            var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
-                    
-                    if (mediaSourcesProperty != null)
-                    {
-                        var mediaSources = mediaSourcesProperty.GetValue(baseItem);
-                        if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
-                        {
-                            foreach (var source in sourceEnum)
-                            {
-                                try
-                                {
-                                    var streamsProperty = source.GetType().GetProperty("MediaStreams");
-                                    if (streamsProperty != null)
-                                    {
-                                        var streams = streamsProperty.GetValue(source);
-                                        if (streams is IEnumerable<object> streamList)
-                                        {
-                                            mediaStreams.AddRange(streamList);
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Process found streams
-                    foreach (var stream in mediaStreams)
-                    {
-                        try
-                        {
-                            var typeProperty = stream.GetType().GetProperty("Type");
-                            var languageProperty = stream.GetType().GetProperty("Language");
-                            var titleProperty = stream.GetType().GetProperty("Title");
-                            var displayTitleProperty = stream.GetType().GetProperty("DisplayTitle");
-                            
-                            if (typeProperty != null)
-                            {
-                                var streamType = typeProperty.GetValue(stream);
-                                var language = languageProperty?.GetValue(stream) as string;
-                                var title = titleProperty?.GetValue(stream) as string;
-                                var displayTitle = displayTitleProperty?.GetValue(stream) as string;
-                                
-                                // Check if it's an audio stream
-                                if (streamType != null && streamType.ToString() == "Audio")
-                                {
-                                    if (!string.IsNullOrEmpty(language) && !operand.AudioLanguages.Contains(language))
-                                    {
-                                        operand.AudioLanguages.Add(language);
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger?.LogWarning(ex, "Failed to extract audio languages for item {Name}", baseItem.Name);
-                }
+                ExtractAudioLanguages(operand, baseItem, logger);
+            }
+            else
+            {
+                operand.AudioLanguages = [];
             }
             
             // Extract all people (actors, directors, producers, etc.) - only when needed for performance
-            operand.People = [];
             if (extractPeople)
             {
-                try
-                {
-                    // Cache the GetPeople method lookup for better performance
-                    var getPeopleMethod = _getPeopleMethodCache;
-                    if (getPeopleMethod == null)
-                    {
-                        lock (_getPeopleMethodLock)
-                        {
-                            if (_getPeopleMethodCache == null)
-                            {
-                                _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
-                            }
-                            getPeopleMethod = _getPeopleMethodCache;
-                        }
-                    }
-                    
-                    if (getPeopleMethod != null)
-                    {
-                        // Use InternalPeopleQuery to get people associated with this item
-                        var peopleQuery = new InternalPeopleQuery
-                        {
-                            ItemId = baseItem.Id
-                        };
-                        
-                        var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
-                        
-                        if (result is IEnumerable<object> peopleEnum)
-                        {
-                            foreach (var person in peopleEnum)
-                            {
-                                if (person != null)
-                                {
-                                    var nameProperty = person.GetType().GetProperty("Name");
-                                    if (nameProperty != null)
-                                    {
-                                        var name = nameProperty.GetValue(person) as string;
-                                        if (!string.IsNullOrEmpty(name) && !operand.People.Contains(name))
-                                        {
-                                            operand.People.Add(name);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger?.LogWarning(ex, "Failed to extract people for item {Name}", baseItem.Name);
-                }
+                ExtractPeople(operand, baseItem, libraryManager, logger);
+            }
+            else
+            {
+                operand.People = [];
             }
             
             // Extract artists and album artists for music items (cheap operations, always extract)
-            operand.Artists = [];
-            operand.AlbumArtists = [];
-            
-            try
-            {
-                // Try to extract Artist property
-                var artistProperty = baseItem.GetType().GetProperty("Artist");
-                if (artistProperty != null)
-                {
-                    var artistValue = artistProperty.GetValue(baseItem) as string;
-                    if (!string.IsNullOrEmpty(artistValue))
-                    {
-                        operand.Artists.Add(artistValue);
-                    }
-                }
-                
-                // Try to extract Artists property (collection)
-                var artistsProperty = baseItem.GetType().GetProperty("Artists");
-                if (artistsProperty != null)
-                {
-                    var artistsValue = artistsProperty.GetValue(baseItem);
-                    if (artistsValue is IEnumerable<string> artistsCollection)
-                    {
-                        foreach (var artist in artistsCollection)
-                        {
-                            if (!string.IsNullOrEmpty(artist) && !operand.Artists.Contains(artist))
-                            {
-                                operand.Artists.Add(artist);
-                            }
-                        }
-                    }
-                }
-                
-                // Try to extract AlbumArtist property
-                var albumArtistProperty = baseItem.GetType().GetProperty("AlbumArtist");
-                if (albumArtistProperty != null)
-                {
-                    var albumArtistValue = albumArtistProperty.GetValue(baseItem) as string;
-                    if (!string.IsNullOrEmpty(albumArtistValue))
-                    {
-                        operand.AlbumArtists.Add(albumArtistValue);
-                    }
-                }
-                
-                // Try to extract AlbumArtists property (collection)
-                var albumArtistsProperty = baseItem.GetType().GetProperty("AlbumArtists");
-                if (albumArtistsProperty != null)
-                {
-                    var albumArtistsValue = albumArtistsProperty.GetValue(baseItem);
-                    if (albumArtistsValue is IEnumerable<string> albumArtistsCollection)
-                    {
-                        foreach (var albumArtist in albumArtistsCollection)
-                        {
-                            if (!string.IsNullOrEmpty(albumArtist) && !operand.AlbumArtists.Contains(albumArtist))
-                            {
-                                operand.AlbumArtists.Add(albumArtist);
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogWarning(ex, "Failed to extract artists for item {Name}", baseItem.Name);
-            }
+            ExtractArtists(operand, baseItem, logger);
             
             // Extract NextUnwatched status for each user - only when needed for performance
             operand.NextUnwatchedByUser = [];

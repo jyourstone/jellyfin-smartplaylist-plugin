@@ -102,7 +102,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 try
                                 {
-                                    var compiledRule = Engine.CompileRule<Operand>(expr, UserId.ToString(), logger);
+                                    // Validate UserId before converting to string to prevent runtime errors
+                                    var userIdString = UserId != Guid.Empty ? UserId.ToString() : null;
+                                    if (string.IsNullOrEmpty(userIdString))
+                                    {
+                                        logger?.LogError("SmartPlaylist '{PlaylistName}' has no valid owner user ID. Cannot compile rules.", Name);
+                                        continue; // Skip this rule set
+                                    }
+                                    
+                                    var compiledRule = Engine.CompileRule<Operand>(expr, userIdString, logger);
                                     if (compiledRule != null)
                                     {
                                         compiledRules.Add(compiledRule);
