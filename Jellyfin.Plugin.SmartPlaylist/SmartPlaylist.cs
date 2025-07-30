@@ -637,7 +637,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         else
                         {
                             // Fallback: try to get runtime from Operand extraction
-                            var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false, false, true, []);
+                            var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                {
+                    ExtractAudioLanguages = false,
+                    ExtractPeople = false,
+                    ExtractNextUnwatched = false,
+                    IncludeUnwatchedSeries = true,
+                    AdditionalUserIds = []
+                }, new OperandFactory.RefreshCache());
                             itemMinutes = operand.RuntimeMinutes;
                         }
                     }
@@ -756,7 +763,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, refreshCache);
+                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                {
+                                    ExtractAudioLanguages = needsAudioLanguages,
+                                    ExtractPeople = needsPeople,
+                                    ExtractNextUnwatched = needsNextUnwatched,
+                                    IncludeUnwatchedSeries = includeUnwatchedSeries,
+                                    AdditionalUserIds = additionalUserIds
+                                }, refreshCache);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -815,7 +829,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             try
                             {
                                 // Phase 1: Extract non-expensive properties and check non-expensive rules
-                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, false, false, false, true, []);
+                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                {
+                                    ExtractAudioLanguages = false,
+                                    ExtractPeople = false,
+                                    ExtractNextUnwatched = false,
+                                    IncludeUnwatchedSeries = true,
+                                    AdditionalUserIds = []
+                                }, refreshCache);
                                 
                                 // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
                                 bool passesNonExpensiveRules = false;
@@ -853,7 +874,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     continue;
                                 
                                 // Phase 2: Extract expensive data and check complete rules
-                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, refreshCache);
+                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                {
+                                    ExtractAudioLanguages = needsAudioLanguages,
+                                    ExtractPeople = needsPeople,
+                                    ExtractNextUnwatched = needsNextUnwatched,
+                                    IncludeUnwatchedSeries = includeUnwatchedSeries,
+                                    AdditionalUserIds = additionalUserIds
+                                }, refreshCache);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -942,7 +970,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, refreshCache);
+                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                        {
+                            ExtractAudioLanguages = needsAudioLanguages,
+                            ExtractPeople = needsPeople,
+                            ExtractNextUnwatched = needsNextUnwatched,
+                            IncludeUnwatchedSeries = includeUnwatchedSeries,
+                            AdditionalUserIds = additionalUserIds
+                        }, refreshCache);
                         
                         bool matches = false;
                         if (!hasAnyRules) {

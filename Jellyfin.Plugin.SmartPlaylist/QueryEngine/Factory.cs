@@ -65,38 +65,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
         }
 
-        // Returns a specific operand povided a baseitem, user, and library manager object.
-        public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true, 
-            RefreshCache cache = null)
-        {
-            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, new MediaTypeExtractionOptions
-            {
-                ExtractAudioLanguages = extractAudioLanguages,
-                ExtractPeople = extractPeople,
-                ExtractNextUnwatched = extractNextUnwatched,
-                IncludeUnwatchedSeries = includeUnwatchedSeries,
-                AdditionalUserIds = []
-            }, cache ?? new RefreshCache());
-        }
-        
-        // Overload that supports extracting user data for multiple users
-        public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true,
-            List<string> additionalUserIds = null, 
-            RefreshCache cache = null)
-        {
-            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, new MediaTypeExtractionOptions
-            {
-                ExtractAudioLanguages = extractAudioLanguages,
-                ExtractPeople = extractPeople,
-                ExtractNextUnwatched = extractNextUnwatched,
-                IncludeUnwatchedSeries = includeUnwatchedSeries,
-                AdditionalUserIds = additionalUserIds ?? []
-            }, cache ?? new RefreshCache());
-        }
-        
-        // New cleaner overload using parameters object
+        // Clean API using options object - no more boolean flag proliferation!
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager, ILogger logger, MediaTypeExtractionOptions options,
             RefreshCache cache)
