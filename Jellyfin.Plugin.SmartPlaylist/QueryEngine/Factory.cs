@@ -68,26 +68,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true, 
-#pragma warning disable IDE0060 // Remove unused parameter
             RefreshCache cache = null)
-#pragma warning restore IDE0060 // Remove unused parameter
         {
             return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, new MediaTypeExtractionOptions
             {
                 ExtractAudioLanguages = extractAudioLanguages,
                 ExtractPeople = extractPeople,
                 ExtractNextUnwatched = extractNextUnwatched,
-                IncludeUnwatchedSeries = includeUnwatchedSeries
-            });
+                IncludeUnwatchedSeries = includeUnwatchedSeries,
+                AdditionalUserIds = []
+            }, cache ?? new RefreshCache());
         }
         
         // Overload that supports extracting user data for multiple users
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true,
             List<string> additionalUserIds = null, 
-#pragma warning disable IDE0060 // Remove unused parameter
             RefreshCache cache = null)
-#pragma warning restore IDE0060 // Remove unused parameter
         {
             return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, new MediaTypeExtractionOptions
             {
@@ -96,13 +93,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 ExtractNextUnwatched = extractNextUnwatched,
                 IncludeUnwatchedSeries = includeUnwatchedSeries,
                 AdditionalUserIds = additionalUserIds ?? []
-            });
+            }, cache ?? new RefreshCache());
         }
         
         // New cleaner overload using parameters object
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager, ILogger logger, MediaTypeExtractionOptions options,
-            RefreshCache cache = null)
+            RefreshCache cache)
         {
             // Validate options parameter to avoid NullReferenceException
             if (options == null)
@@ -513,8 +510,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 try
                 {
                     // Only process episodes - other item types cannot be "next unwatched"
-                    // Use proper type checking instead of fragile string comparison
-                    if (baseItem.GetType().Name == "Episode")
+                    // Check ItemType which is already populated above, avoiding repeated reflection calls
+                    if (operand.ItemType == "Episode")
                     {
                         var episodeType = baseItem.GetType();
                         
@@ -585,19 +582,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <returns>Array of all episodes in the series</returns>
         private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
         {
-            // Use per-refresh cache or create if null
-            if (cache == null)
-            {
-                logger?.LogDebug("No cache provided, fetching episodes directly for series {SeriesId}", seriesId);
-                var query = new InternalItemsQuery(user)
-                {
-                    IncludeItemTypes = [BaseItemKind.Episode],
-                    ParentId = seriesId,
-                    Recursive = true
-                };
-                return [.. libraryManager.GetItemsResult(query).Items];
-            }
-
             if (cache.SeriesEpisodes.TryGetValue(seriesId, out var cachedEpisodes))
             {
                 logger?.LogDebug("Using cached episodes for series {SeriesId} ({EpisodeCount} episodes)", seriesId, cachedEpisodes.Length);
@@ -641,13 +625,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Create cache key combining series, user, and settings
             var cacheKey = $"{seriesId}|{user.Id}|{includeUnwatchedSeries}";
             
-            // Use per-refresh cache or calculate directly if null
-            if (cache == null)
-            {
-                logger?.LogDebug("No cache provided, calculating next unwatched episode directly for series {SeriesId}, user {UserId}", seriesId, user.Id);
-                return CalculateNextUnwatchedEpisode(allEpisodes, currentEpisode, user, currentSeason, currentEpisodeNumber, includeUnwatchedSeries, logger);
-            }
-
             if (cache.NextUnwatched.TryGetValue(cacheKey, out var cachedResult))
             {
                 logger?.LogDebug("Using cached next unwatched calculation for series {SeriesId}, user {UserId}", seriesId, user.Id);
