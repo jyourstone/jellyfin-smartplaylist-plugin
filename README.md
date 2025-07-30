@@ -231,7 +231,7 @@ The web interface provides access to all available fields for creating playlist 
 > - **"Recently played favorites"**: `Last Played Newer Than 7 days AND Is Favorite = True`
 > - **"Movies watched this year"**: `Last Played After 2024-01-01`
 > - **"Content not played by specific user in 6 months"**: `Last Played Older Than 6 months (for User: John)` (only items played more than 6 months ago)
-> - **"Never played content"**: Use `Is Played` instead, as Last Played rules exclude never-played items by design
+> - **"Never played content"**: Use the field `Is Played` instead, as Last Played rules exclude never-played items by design
 > 
 > **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
 

@@ -23,7 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public double DateLastSaved { get; set; } = 0;
         public double DateModified { get; set; } = 0;
         public double ReleaseDate { get; set; } = 0;
-        public double LastPlayedDate { get; set; } = 0;
+        public double LastPlayedDate { get; set; } = -1;
         public List<string> Tags { get; set; } = [];
         public double RuntimeMinutes { get; set; } = 0;
         public int PlayCount { get; set; } = 0;
@@ -68,7 +68,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         
         public double GetLastPlayedDateByUser(string userId)
         {
-            return LastPlayedDateByUser.TryGetValue(userId, out var value) ? value : 0;
+            return LastPlayedDateByUser.TryGetValue(userId, out var value) ? value : -1;
         }
     }
 }
