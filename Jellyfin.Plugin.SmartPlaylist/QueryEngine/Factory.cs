@@ -89,7 +89,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var operand = new Operand(baseItem.Name)
             {
                 Genres = [.. baseItem.Genres],
-                IsPlayed = isPlayed,
                 Studios = [.. baseItem.Studios],
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
@@ -98,10 +97,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
-                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0.0,
-                // Initialize user data properties with fallback values
-                PlayCount = isPlayed ? 1 : 0,
-                IsFavorite = false
+                RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0.0
             };
 
             // Try to access user data properly
@@ -112,44 +108,52 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     var userData = userDataManager.GetUserData(user, baseItem);
                     if (userData != null)
                     {
-                        operand.PlayCount = userData.PlayCount;
-                        operand.IsFavorite = userData.IsFavorite;
+                        // Populate user-specific data for playlist owner
+                        operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
+                        operand.PlayCountByUser[user.Id.ToString()] = userData.PlayCount;
+                        operand.IsFavoriteByUser[user.Id.ToString()] = userData.IsFavorite;
                         
                         // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
                         if (userData.LastPlayedDate.HasValue)
                         {
-                            operand.LastPlayedDate = SafeToUnixTimeSeconds(userData.LastPlayedDate.Value);
+                            operand.LastPlayedDateByUser[user.Id.ToString()] = SafeToUnixTimeSeconds(userData.LastPlayedDate.Value);
                         }
                         else
                         {
-                            operand.LastPlayedDate = -1; // Never played - use -1 as sentinel value
+                            operand.LastPlayedDateByUser[user.Id.ToString()] = -1; // Never played - use -1 as sentinel value
                         }
                     }
                     else
                     {
-                        // Fallback when userData is null - treat as never played
-                        operand.LastPlayedDate = -1;
+                        // Fallback when userData is null - treat as never played for playlist owner
+                        operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
+                        operand.PlayCountByUser[user.Id.ToString()] = 0;
+                        operand.IsFavoriteByUser[user.Id.ToString()] = false;
+                        operand.LastPlayedDateByUser[user.Id.ToString()] = -1;
                     }
-                    // If userData is null, keep the fallback values we set above
                 }
                 else
                 {
-                    // Fallback approach - try reflection
+                    // Fallback approach - try reflection and populate dictionaries for playlist owner
                     var userDataProperty = baseItem.GetType().GetProperty("UserData");
                     if (userDataProperty != null)
                     {
                         var userData = userDataProperty.GetValue(baseItem);
                         if (userData != null)
                         {
+                            // Use the pre-calculated IsPlayed value for playlist owner
+                            operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
+                            
                             var playCountProp = userData.GetType().GetProperty("PlayCount");
                             var isFavoriteProp = userData.GetType().GetProperty("IsFavorite");
+                            var lastPlayedDateProp = userData.GetType().GetProperty("LastPlayedDate");
                             
                             if (playCountProp != null)
                             {
                                 var playCountValue = playCountProp.GetValue(userData);
                                 if (playCountValue != null)
                                 {
-                                    operand.PlayCount = (int)playCountValue;
+                                    operand.PlayCountByUser[user.Id.ToString()] = (int)playCountValue;
                                 }
                             }
                             
@@ -158,10 +162,43 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 var isFavoriteValue = isFavoriteProp.GetValue(userData);
                                 if (isFavoriteValue != null)
                                 {
-                                    operand.IsFavorite = (bool)isFavoriteValue;
+                                    operand.IsFavoriteByUser[user.Id.ToString()] = (bool)isFavoriteValue;
                                 }
                             }
+                            
+                            if (lastPlayedDateProp != null)
+                            {
+                                var lastPlayedDateValue = lastPlayedDateProp.GetValue(userData);
+                                if (lastPlayedDateValue is DateTime lastPlayedDate && lastPlayedDate != DateTime.MinValue)
+                                {
+                                    operand.LastPlayedDateByUser[user.Id.ToString()] = SafeToUnixTimeSeconds(lastPlayedDate);
+                                }
+                                else
+                                {
+                                    operand.LastPlayedDateByUser[user.Id.ToString()] = -1; // Never played
+                                }
+                            }
+                            else
+                            {
+                                operand.LastPlayedDateByUser[user.Id.ToString()] = -1; // Never played - property not found
+                            }
                         }
+                        else
+                        {
+                            // UserData is null - set fallback values for playlist owner
+                            operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
+                            operand.PlayCountByUser[user.Id.ToString()] = 0;
+                            operand.IsFavoriteByUser[user.Id.ToString()] = false;
+                            operand.LastPlayedDateByUser[user.Id.ToString()] = -1;
+                        }
+                    }
+                    else
+                    {
+                        // UserData property not found - set fallback values for playlist owner
+                        operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
+                        operand.PlayCountByUser[user.Id.ToString()] = 0;
+                        operand.IsFavoriteByUser[user.Id.ToString()] = false;
+                        operand.LastPlayedDateByUser[user.Id.ToString()] = -1;
                     }
                 }
             }
@@ -530,7 +567,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 
                                 // First, calculate NextUnwatched for the main user (playlist owner)
                                 var mainUserNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
-                                operand.NextUnwatched = mainUserNextUnwatched;
                                 operand.NextUnwatchedByUser[user.Id.ToString()] = mainUserNextUnwatched;
                                 
                                 // Then check for additional users

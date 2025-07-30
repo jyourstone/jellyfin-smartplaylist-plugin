@@ -102,7 +102,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 try
                                 {
-                                    var compiledRule = Engine.CompileRule<Operand>(expr, logger);
+                                    var compiledRule = Engine.CompileRule<Operand>(expr, UserId.ToString(), logger);
                                     if (compiledRule != null)
                                     {
                                         compiledRules.Add(compiledRule);

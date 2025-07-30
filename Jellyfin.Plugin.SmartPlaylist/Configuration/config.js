@@ -663,10 +663,10 @@
                 unitSelect.appendChild(placeholderOption);
                 
                 [
-                    { value: 'days', label: 'Days' },
-                    { value: 'weeks', label: 'Weeks' },
-                    { value: 'months', label: 'Months' },
-                    { value: 'years', label: 'Years' }
+                    { value: 'days', label: 'Day(s)' },
+                    { value: 'weeks', label: 'Week(s)' },
+                    { value: 'months', label: 'Month(s)' },
+                    { value: 'years', label: 'Year(s)' }
                 ].forEach(opt => {
                     const option = document.createElement('option');
                     option.value = opt.value;

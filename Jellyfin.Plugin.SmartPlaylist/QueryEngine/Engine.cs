@@ -38,20 +38,45 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             });
         }
         
-        private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, ILogger logger = null)
+        /// <summary>
+        /// Determines if a field is user-specific and should always use method calls.
+        /// </summary>
+        private static bool IsUserDataField(string memberName)
         {
-            // Handle user-specific expressions first
-            if (r.IsUserSpecific)
+            return memberName switch
             {
-                if (r.UserSpecificField == null)
+                "IsPlayed" => true,
+                "PlayCount" => true,
+                "IsFavorite" => true,
+                "NextUnwatched" => true,
+                "LastPlayedDate" => true,
+                _ => false
+            };
+        }
+        
+        private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, string defaultUserId, ILogger logger = null)
+        {
+            // Check if this is a user-specific field that should always use method calls
+            if (IsUserDataField(r.MemberName))
+            {
+                // Use the specified user ID or default to playlist owner
+                var effectiveUserId = r.UserId ?? defaultUserId;
+                if (string.IsNullOrEmpty(effectiveUserId))
                 {
-                    logger?.LogError("SmartPlaylist user-specific expression for unsupported field '{Field}' with UserId '{UserId}'", r.MemberName, r.UserId);
-                    throw new ArgumentException($"Field '{r.MemberName}' does not support user-specific queries. Supported user-specific fields are: IsPlayed, PlayCount, IsFavorite.");
+                    logger?.LogError("SmartPlaylist user-specific field '{Field}' requires a valid user ID", r.MemberName);
+                    throw new ArgumentException($"User-specific field '{r.MemberName}' requires a valid user ID, but no user ID was provided and no default user ID is available.");
                 }
-                return BuildUserSpecificExpression<T>(r, param, logger);
+                
+                // Create a new expression with the effective user ID for consistent processing
+                var userSpecificExpression = new Expression(r.MemberName, r.Operator, r.TargetValue)
+                {
+                    UserId = effectiveUserId
+                };
+                
+                return BuildUserSpecificExpression<T>(userSpecificExpression, param, logger);
             }
 
-            // Get the property/field expression
+            // Get the property/field expression for non-user-specific fields
             var left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
             var tProp = left.Type;
             
@@ -716,10 +741,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
         }
 
-        public static Func<T, bool> CompileRule<T>(Expression r, ILogger logger = null)
+        public static Func<T, bool> CompileRule<T>(Expression r, string defaultUserId, ILogger logger = null)
         {
             var paramUser = System.Linq.Expressions.Expression.Parameter(typeof(T));
-            var expr = BuildExpr<T>(r, paramUser, logger);
+            var expr = BuildExpr<T>(r, paramUser, defaultUserId, logger);
             return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(expr, paramUser).Compile();
         }
 
