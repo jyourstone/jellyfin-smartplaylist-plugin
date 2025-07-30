@@ -109,12 +109,34 @@ This plugin creates smart playlists that automatically updates based on rules yo
 
 - **Unplayed movies** from specific genres
 - **Recently added** series or episodes
+- **Next unwatched episodes** for "Continue Watching" playlists
 - **High-rated** content from certain years
 - **Music** from specific artists or albums
 - **Tagged content** like "Christmas", "Kids", or "Documentaries"
 - And much more!
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
+
+### Common Use Cases
+
+Here are some popular playlist types you can create:
+
+#### **TV Shows & Movies**
+- **Continue Watching** - Next Unwatched = True (shows next episodes to watch for each series)
+- **Family Movie Night** - Next Unwatched = True AND Parental Rating = "PG" or "G"
+- **Unwatched Action Movies** - Is Played = False AND Genre contains "Action"
+- **Recent Additions** - Date Created newer than "2 weeks"
+- **Holiday Classics** - Tags contains "Christmas" AND Production Year before "2000"
+
+#### **Music**
+- **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
+- **Discover New Music** - Play Count = 0 AND Date Created newer than "1 month"
+- **Top Rated Favorites** - Is Favorite = True AND Community Rating greater than 8
+
+#### **Advanced Examples**
+- **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only
+- **Kids' Shows Progress** - Next Unwatched = True AND Tags contains "Kids"
+- **Foreign Language Practice** - Audio Languages matches "(?i)(ger|fra|spa)" AND Is Played = False
 
 ### Enhanced Music Tagging
 
@@ -164,7 +186,15 @@ The web interface provides access to all available fields for creating playlist 
 - **Is Played** - Whether the item has been watched/listened to
 - **Is Favorite** - Whether the item is marked as a favorite
 - **Play Count** - Number of times the item has been played
+- **Next Unwatched** - Shows only the next unwatched episode in chronological order for TV series
 > **Note:** These playback fields can optionally be set to a specific user. This allows you to create rules like "Is Played by user X" or "Is Favorite for user X AND for user Y".
+
+> **Next Unwatched**: This field is specifically designed for creating "Continue Watching" style playlists. For TV series, it identifies the next episode a user should watch based on their viewing history:
+> - If a user has watched Season 1 completely and Season 2 episodes 1-3, it shows Season 2 Episode 4
+> - For completely unwatched series, it shows Season 1 Episode 1 (configurable)
+> - If a user skipped an episode, that skipped episode becomes the "next unwatched"
+> - For multiple series in a playlist, it shows the next unwatched episode from ALL series
+> - **Include unwatched series**: Optional setting to include/exclude Season 1 Episode 1 of completely unwatched series
 
 #### **Content Info**
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)

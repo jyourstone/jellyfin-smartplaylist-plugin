@@ -109,6 +109,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 "RuntimeMinutes" => "Runtime (Minutes)",
                 "IsPlayed" => "Is Played",
                 "IsFavorite" => "Is Favorite",
+                "NextUnwatched" => "Next Unwatched",
                 "PlayCount" => "Play Count",
                 "ItemType" => "Media Type",
                 "OfficialRating" => "Parental Rating",
@@ -649,6 +650,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "CriticRating", Label = "Critic Rating" },
                     new { Value = "IsFavorite", Label = "Is Favorite" },
                     new { Value = "IsPlayed", Label = "Is Played" },
+                    new { Value = "NextUnwatched", Label = "Next Unwatched" },
                     new { Value = "PlayCount", Label = "Play Count" },
                     new { Value = "RuntimeMinutes", Label = "Runtime (Minutes)" }
                 },

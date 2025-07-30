@@ -28,6 +28,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public int PlayCount { get; set; } = 0;
         public string OfficialRating { get; set; } = "";
         public bool IsFavorite { get; set; } = false;
+        public bool NextUnwatched { get; set; } = false;
         public List<string> AudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
         
@@ -40,6 +41,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public Dictionary<string, bool> IsPlayedByUser { get; set; } = [];
         public Dictionary<string, int> PlayCountByUser { get; set; } = [];
         public Dictionary<string, bool> IsFavoriteByUser { get; set; } = [];
+        public Dictionary<string, bool> NextUnwatchedByUser { get; set; } = [];
         
         // Helper methods to check user-specific data
         public bool GetIsPlayedByUser(string userId)
@@ -55,6 +57,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public bool GetIsFavoriteByUser(string userId)
         {
             return IsFavoriteByUser.TryGetValue(userId, out var value) && value;
+        }
+        
+        public bool GetNextUnwatchedByUser(string userId)
+        {
+            return NextUnwatchedByUser.TryGetValue(userId, out var value) && value;
         }
     }
 }

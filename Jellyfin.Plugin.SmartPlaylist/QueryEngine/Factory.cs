@@ -1,9 +1,11 @@
 using System;
+using System.Linq;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
+using Jellyfin.Data.Enums;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -17,14 +19,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false)
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true)
         {
-            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, extractAudioLanguages, extractPeople, []);
+            return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, extractAudioLanguages, extractPeople, extractNextUnwatched, includeUnwatchedSeries, []);
         }
         
         // Overload that supports extracting user data for multiple users
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, 
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true,
             List<string> additionalUserIds = null)
         {
             // Cache the IsPlayed result to avoid multiple expensive calls
@@ -424,6 +426,66 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogWarning(ex, "Failed to extract artists for item {Name}", baseItem.Name);
             }
             
+            // Extract NextUnwatched status for each user - only when needed for performance
+            operand.NextUnwatchedByUser = [];
+            if (extractNextUnwatched)
+            {
+                try
+                {
+                    // Only process episodes - other item types cannot be "next unwatched"
+                    if (baseItem.GetType().Name == "Episode")
+                    {
+                        // Get series (parent) of this episode
+                        var seriesIdProperty = baseItem.GetType().GetProperty("SeriesId");
+                        var parentIndexProperty = baseItem.GetType().GetProperty("ParentIndexNumber");
+                        var indexProperty = baseItem.GetType().GetProperty("IndexNumber");
+                        
+                        if (seriesIdProperty != null && parentIndexProperty != null && indexProperty != null)
+                        {
+                            var seriesId = seriesIdProperty.GetValue(baseItem);
+                            var seasonNumber = parentIndexProperty.GetValue(baseItem) as int?;
+                            var episodeNumber = indexProperty.GetValue(baseItem) as int?;
+                            
+                            if (seriesId != null && seasonNumber.HasValue && episodeNumber.HasValue)
+                            {
+                                // Get all episodes in this series
+                                var query = new InternalItemsQuery(user)
+                                {
+                                    IncludeItemTypes = [BaseItemKind.Episode],
+                                    ParentId = (Guid)seriesId,
+                                    Recursive = true
+                                };
+                                
+                                var allEpisodes = libraryManager.GetItemsResult(query).Items;
+                                
+                                // First, calculate NextUnwatched for the main user (playlist owner)
+                                var mainUserNextUnwatched = IsNextUnwatchedEpisode(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, logger);
+                                operand.NextUnwatched = mainUserNextUnwatched;
+                                operand.NextUnwatchedByUser[user.Id.ToString()] = mainUserNextUnwatched;
+                                
+                                // Then check for additional users
+                                if (additionalUserIds != null)
+                                {
+                                    foreach (var userId in additionalUserIds)
+                                    {
+                                        var targetUser = GetUserById(userDataManager, Guid.Parse(userId));
+                                        if (targetUser != null)
+                                        {
+                                            var isNextUnwatched = IsNextUnwatchedEpisode(allEpisodes, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, logger);
+                                            operand.NextUnwatchedByUser[userId] = isNextUnwatched;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed to extract NextUnwatched status for item {Name}", baseItem.Name);
+                }
+            }
+            
             return operand;
         }
 
@@ -483,6 +545,77 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
                 throw new InvalidOperationException($"Reflection failed while trying to access user manager: {ex.Message}", ex);
+            }
+        }
+        
+        /// <summary>
+        /// Determines if the given episode is the "next unwatched" episode for a user.
+        /// This means it's the first unwatched episode in the series when episodes are sorted by season/episode number.
+        /// </summary>
+        /// <param name="allEpisodes">All episodes in the series</param>
+        /// <param name="currentEpisode">The episode to check</param>
+        /// <param name="user">The user to check watch status for</param>
+        /// <param name="currentSeason">Season number of the current episode</param>
+        /// <param name="currentEpisodeNumber">Episode number of the current episode</param>
+        /// <param name="includeUnwatchedSeries">If false, excludes episodes from completely unwatched series</param>
+        /// <param name="logger">Logger instance</param>
+        /// <returns>True if this episode is the next unwatched episode for the user</returns>
+        private static bool IsNextUnwatchedEpisode(IEnumerable<BaseItem> allEpisodes, BaseItem currentEpisode, User user, int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, ILogger logger)
+        {
+            try
+            {
+                // Create a list of episode info with season/episode numbers
+                var episodeInfos = new List<(BaseItem Episode, int Season, int EpisodeNum, bool IsWatched)>();
+                
+                foreach (var episode in allEpisodes)
+                {
+                    var parentIndexProperty = episode.GetType().GetProperty("ParentIndexNumber");
+                    var indexProperty = episode.GetType().GetProperty("IndexNumber");
+                    
+                    if (parentIndexProperty != null && indexProperty != null)
+                    {
+                        var seasonNum = parentIndexProperty.GetValue(episode) as int?;
+                        var episodeNum = indexProperty.GetValue(episode) as int?;
+                        
+                        if (seasonNum.HasValue && episodeNum.HasValue)
+                        {
+                            var isWatched = episode.IsPlayed(user);
+                            episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
+                        }
+                    }
+                }
+                
+                // Sort episodes by season then episode number
+                var sortedEpisodes = episodeInfos.OrderBy(e => e.Season).ThenBy(e => e.EpisodeNum).ToList();
+                
+                // Find the first unwatched episode
+                var firstUnwatched = sortedEpisodes.FirstOrDefault(e => !e.IsWatched);
+                
+                if (firstUnwatched.Episode != null)
+                {
+                    // If includeUnwatchedSeries is false, check if this is a completely unwatched series
+                    if (!includeUnwatchedSeries)
+                    {
+                        // If ALL episodes are unwatched, this is a completely unwatched series - exclude it
+                        if (sortedEpisodes.All(e => !e.IsWatched))
+                        {
+                            return false;
+                        }
+                    }
+                    
+                    // Check if the current episode is the first unwatched episode
+                    return firstUnwatched.Season == currentSeason && 
+                           firstUnwatched.EpisodeNum == currentEpisodeNumber &&
+                           firstUnwatched.Episode.Id == currentEpisode.Id;
+                }
+                
+                // If all episodes are watched, no episode is "next unwatched"
+                return false;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to determine next unwatched episode status");
+                return false;
             }
         }
         

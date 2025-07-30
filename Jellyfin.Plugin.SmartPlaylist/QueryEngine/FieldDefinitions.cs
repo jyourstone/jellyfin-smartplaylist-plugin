@@ -50,7 +50,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static readonly HashSet<string> BooleanFields =
         [
             "IsPlayed",
-            "IsFavorite"
+            "IsFavorite",
+            "NextUnwatched"
         ];
 
         /// <summary>
@@ -68,7 +69,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         [
             "IsPlayed",
             "IsFavorite", 
-            "PlayCount"
+            "PlayCount",
+            "NextUnwatched"
         ];
 
         /// <summary>
