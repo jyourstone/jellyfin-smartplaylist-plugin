@@ -34,6 +34,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _parentIndexPropertyCache = new();
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _indexPropertyCache = new();
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _seriesIdPropertyCache = new();
+        
+        // Per-refresh cache classes for better performance within single playlist processing
+        public class RefreshCache
+        {
+            public Dictionary<Guid, BaseItem[]> SeriesEpisodes { get; } = [];
+            public Dictionary<string, (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
+        }
 
         /// <summary>
         /// Safely extracts an integer value from a property, handling both nullable and non-nullable int properties.
@@ -60,7 +67,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true)
+            IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true, 
+#pragma warning disable IDE0060 // Remove unused parameter
+            RefreshCache cache = null)
+#pragma warning restore IDE0060 // Remove unused parameter
         {
             return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, new MediaTypeExtractionOptions
             {
@@ -74,7 +84,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         // Overload that supports extracting user data for multiple users
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager = null, ILogger logger = null, bool extractAudioLanguages = false, bool extractPeople = false, bool extractNextUnwatched = false, bool includeUnwatchedSeries = true,
-            List<string> additionalUserIds = null)
+            List<string> additionalUserIds = null, 
+#pragma warning disable IDE0060 // Remove unused parameter
+            RefreshCache cache = null)
+#pragma warning restore IDE0060 // Remove unused parameter
         {
             return GetMediaType(libraryManager, baseItem, user, userDataManager, logger, new MediaTypeExtractionOptions
             {
@@ -88,7 +101,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         
         // New cleaner overload using parameters object
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager, ILogger logger, MediaTypeExtractionOptions options)
+            IUserDataManager userDataManager, ILogger logger, MediaTypeExtractionOptions options,
+            RefreshCache cache = null)
         {
             // Validate options parameter to avoid NullReferenceException
             if (options == null)
@@ -519,20 +533,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             // Safely convert SeriesId to Guid and validate all required properties
                             if (seriesId is Guid seriesGuid && seasonNumber.HasValue && episodeNumber.HasValue)
                             {
-                                // Get all episodes in this series
-                                // Note: Using SeriesId as ParentId - this works for standard episodes but may need
-                                // adjustment for special cases like virtual or merged series
-                                var query = new InternalItemsQuery(user)
-                                {
-                                    IncludeItemTypes = [BaseItemKind.Episode],
-                                    ParentId = seriesGuid,
-                                    Recursive = true
-                                };
-                                
-                                var allEpisodes = libraryManager.GetItemsResult(query).Items;
+                                // Get all episodes in this series - use cache to avoid redundant database queries
+                                var allEpisodes = GetCachedSeriesEpisodes(seriesGuid, user, libraryManager, cache, logger);
                                 
                                 // First, calculate NextUnwatched for the main user (playlist owner)
-                                var mainUserNextUnwatched = IsNextUnwatchedEpisode(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, logger);
+                                var mainUserNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
                                 operand.NextUnwatched = mainUserNextUnwatched;
                                 operand.NextUnwatchedByUser[user.Id.ToString()] = mainUserNextUnwatched;
                                 
@@ -546,7 +551,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                             var targetUser = GetUserById(userDataManager, userGuid);
                                             if (targetUser != null)
                                             {
-                                                var isNextUnwatched = IsNextUnwatchedEpisode(allEpisodes, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, logger);
+                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
                                                 operand.NextUnwatchedByUser[userId] = isNextUnwatched;
                                             }
                                         }
@@ -567,6 +572,195 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             return operand;
+        }
+
+        /// <summary>
+        /// Gets all episodes for a series, using cache to avoid redundant database queries.
+        /// </summary>
+        /// <param name="seriesId">The series ID to get episodes for</param>
+        /// <param name="user">User for the query context</param>
+        /// <param name="libraryManager">Library manager for database queries</param>
+        /// <param name="cache">Per-refresh cache to store results</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>Array of all episodes in the series</returns>
+        private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
+        {
+            // Use per-refresh cache or create if null
+            if (cache == null)
+            {
+                logger?.LogDebug("No cache provided, fetching episodes directly for series {SeriesId}", seriesId);
+                var query = new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = [BaseItemKind.Episode],
+                    ParentId = seriesId,
+                    Recursive = true
+                };
+                return [.. libraryManager.GetItemsResult(query).Items];
+            }
+
+            if (cache.SeriesEpisodes.TryGetValue(seriesId, out var cachedEpisodes))
+            {
+                logger?.LogDebug("Using cached episodes for series {SeriesId} ({EpisodeCount} episodes)", seriesId, cachedEpisodes.Length);
+                return cachedEpisodes;
+            }
+
+            logger?.LogDebug("Fetching episodes for series {SeriesId} from database (cache miss)", seriesId);
+            
+            // Note: Using SeriesId as ParentId - this works for standard episodes but may need
+            // adjustment for special cases like virtual or merged series
+            var episodeQuery = new InternalItemsQuery(user)
+            {
+                IncludeItemTypes = [BaseItemKind.Episode],
+                ParentId = seriesId,
+                Recursive = true
+            };
+            
+            var episodes = libraryManager.GetItemsResult(episodeQuery).Items.ToArray();
+            logger?.LogDebug("Cached {EpisodeCount} episodes for series {SeriesId}", episodes.Length, seriesId);
+            
+            cache.SeriesEpisodes[seriesId] = episodes;
+            return episodes;
+        }
+
+        /// <summary>
+        /// Determines if the current episode is the next unwatched episode for a user, with caching.
+        /// </summary>
+        /// <param name="allEpisodes">All episodes in the series</param>
+        /// <param name="currentEpisode">The episode to check</param>
+        /// <param name="user">The user to check watch status for</param>
+        /// <param name="currentSeason">Current episode's season number</param>
+        /// <param name="currentEpisodeNumber">Current episode's episode number</param>
+        /// <param name="includeUnwatchedSeries">Whether to include completely unwatched series</param>
+        /// <param name="seriesId">The series ID for cache key generation</param>
+        /// <param name="cache">Per-refresh cache to store calculation results</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>True if this episode is the next unwatched episode for the user</returns>
+        private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
+            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, ILogger logger)
+        {
+            // Create cache key combining series, user, and settings
+            var cacheKey = $"{seriesId}|{user.Id}|{includeUnwatchedSeries}";
+            
+            // Use per-refresh cache or calculate directly if null
+            if (cache == null)
+            {
+                logger?.LogDebug("No cache provided, calculating next unwatched episode directly for series {SeriesId}, user {UserId}", seriesId, user.Id);
+                return CalculateNextUnwatchedEpisode(allEpisodes, currentEpisode, user, currentSeason, currentEpisodeNumber, includeUnwatchedSeries, logger);
+            }
+
+            if (cache.NextUnwatched.TryGetValue(cacheKey, out var cachedResult))
+            {
+                logger?.LogDebug("Using cached next unwatched calculation for series {SeriesId}, user {UserId}", seriesId, user.Id);
+                
+                // Check if the current episode matches the cached next unwatched episode
+                return cachedResult.NextEpisodeId.HasValue && 
+                       cachedResult.NextEpisodeId.Value == currentEpisode.Id &&
+                       cachedResult.Season == currentSeason && 
+                       cachedResult.Episode == currentEpisodeNumber;
+            }
+            
+            logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId} (cache miss)", seriesId, user.Id);
+            
+            // Calculate the next unwatched episode
+            var result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
+            
+            // Cache the result for future use within this refresh
+            cache.NextUnwatched[cacheKey] = result;
+            
+            // Check if the current episode matches the calculated next unwatched episode
+            return result.NextEpisodeId.HasValue && 
+                   result.NextEpisodeId.Value == currentEpisode.Id &&
+                   result.Season == currentSeason && 
+                   result.Episode == currentEpisodeNumber;
+        }
+
+        /// <summary>
+        /// Calculates the next unwatched episode for a series and user (simple boolean check).
+        /// </summary>
+        private static bool CalculateNextUnwatchedEpisode(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
+            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, ILogger logger)
+        {
+            var (NextEpisodeId, Season, Episode) = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
+            
+            return NextEpisodeId.HasValue && 
+                   NextEpisodeId.Value == currentEpisode.Id &&
+                   Season == currentSeason && 
+                   Episode == currentEpisodeNumber;
+        }
+
+        /// <summary>
+        /// Calculates the next unwatched episode info for a series and user (returns episode details).
+        /// </summary>
+        private static (Guid? NextEpisodeId, int Season, int Episode) CalculateNextUnwatchedEpisodeInfo(BaseItem[] allEpisodes, User user, 
+            bool includeUnwatchedSeries, ILogger logger)
+        {
+            try
+            {
+                // Use the original logic to find the next unwatched episode
+                var episodeList = allEpisodes.ToList();
+                
+                // Cache IsPlayed results for all episodes to avoid repeated expensive calls
+                var isPlayedCache = new Dictionary<BaseItem, bool>();
+                foreach (var episode in episodeList)
+                {
+                    isPlayedCache[episode] = episode.IsPlayed(user);
+                }
+                
+                // Create a list of episode info with season/episode numbers (excluding season 0 specials)
+                var episodeInfos = new List<(BaseItem Episode, int Season, int EpisodeNum, bool IsWatched)>();
+                
+                foreach (var episode in episodeList)
+                {
+                    var episodeType = episode.GetType();
+                    
+                    // Use cached property lookups for better performance with thread-safe access
+                    var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
+                    var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
+                    
+                    if (parentIndexProperty != null && indexProperty != null)
+                    {
+                        // Safe extraction of season and episode numbers - handle both nullable and non-nullable int properties
+                        var seasonNum = ExtractIntValue(parentIndexProperty.GetValue(episode));
+                        var episodeNum = ExtractIntValue(indexProperty.GetValue(episode));
+                        
+                        // Skip season 0 (specials) and only include episodes with valid season/episode numbers
+                        if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
+                        {
+                            var isWatched = isPlayedCache[episode];
+                            episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
+                        }
+                    }
+                }
+                
+                // Sort episodes by season, then episode number
+                var sortedEpisodes = episodeInfos.OrderBy(e => e.Season).ThenBy(e => e.EpisodeNum).ToList();
+                
+                // Find the first unwatched episode
+                var (Episode, Season, EpisodeNum, IsWatched) = sortedEpisodes.FirstOrDefault(e => !e.IsWatched);
+                
+                if (Episode != null)
+                {
+                    // If includeUnwatchedSeries is false, check if this is a completely unwatched series
+                    if (!includeUnwatchedSeries)
+                    {
+                        // If ALL episodes are unwatched, this is a completely unwatched series - exclude it
+                        if (sortedEpisodes.All(e => !e.IsWatched))
+                        {
+                            return (null, 0, 0); // No next unwatched episode
+                        }
+                    }
+                    
+                    return (Episode.Id, Season, EpisodeNum);
+                }
+                
+                // If all episodes are watched, no episode is "next unwatched"
+                return (null, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to calculate next unwatched episode info");
+                return (null, 0, 0);
+            }
         }
 
         /// <summary>
@@ -627,95 +821,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 throw new InvalidOperationException($"Reflection failed while trying to access user manager: {ex.Message}", ex);
             }
         }
-        
-        /// <summary>
-        /// Determines if the given episode is the "next unwatched" episode for a user.
-        /// This means it's the first unwatched episode in the series when episodes are sorted by season/episode number.
-        /// </summary>
-        /// <param name="allEpisodes">All episodes in the series</param>
-        /// <param name="currentEpisode">The episode to check</param>
-        /// <param name="user">The user to check watch status for</param>
-        /// <param name="currentSeason">Season number of the current episode</param>
-        /// <param name="currentEpisodeNumber">Episode number of the current episode</param>
-        /// <param name="includeUnwatchedSeries">If false, excludes episodes from completely unwatched series</param>
-        /// <param name="logger">Logger instance</param>
-        /// <returns>True if this episode is the next unwatched episode for the user</returns>
-        private static bool IsNextUnwatchedEpisode(IEnumerable<BaseItem> allEpisodes, BaseItem currentEpisode, User user, int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, ILogger logger)
-        {
-            try
-            {
-                var episodeList = allEpisodes.ToList();
-                
-                // Cache IsPlayed results for all episodes to avoid repeated expensive calls
-                var isPlayedCache = new Dictionary<BaseItem, bool>();
-                foreach (var episode in episodeList)
-                {
-                    isPlayedCache[episode] = episode.IsPlayed(user);
-                }
-                
-                // Create a list of episode info with season/episode numbers (excluding season 0 specials)
-                var episodeInfos = new List<(BaseItem Episode, int Season, int EpisodeNum, bool IsWatched)>();
-                
-                foreach (var episode in episodeList)
-                {
-                    var episodeType = episode.GetType();
-                    
-                                                    // Use cached property lookups for better performance with thread-safe access
-                                var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
-                                var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
-                    
-                    if (parentIndexProperty != null && indexProperty != null)
-                    {
-                                                            // Safe extraction of season and episode numbers - handle both nullable and non-nullable int properties
-                                    var seasonNum = ExtractIntValue(parentIndexProperty.GetValue(episode));
-                                    var episodeNum = ExtractIntValue(indexProperty.GetValue(episode));
-                        
-                        // Skip season 0 (specials) and only include episodes with valid season/episode numbers
-                        if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
-                        {
-                            var isWatched = isPlayedCache[episode];
-                            episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
-                        }
-                    }
-                }
-                
-                // Sort episodes by season then episode number (simple sorting, no air date)
-                var sortedEpisodes = episodeInfos
-                    .OrderBy(e => e.Season)
-                    .ThenBy(e => e.EpisodeNum)
-                    .ToList();
-                
-                // Find the first unwatched episode
-                var (Episode, Season, EpisodeNum, IsWatched) = sortedEpisodes.FirstOrDefault(e => !e.IsWatched);
-                
-                if (Episode != null)
-                {
-                    // If includeUnwatchedSeries is false, check if this is a completely unwatched series
-                    if (!includeUnwatchedSeries)
-                    {
-                        // If ALL episodes are unwatched, this is a completely unwatched series - exclude it
-                        if (sortedEpisodes.All(e => !e.IsWatched))
-                        {
-                            return false;
-                        }
-                    }
-                    
-                    // Check if the current episode is the first unwatched episode
-                    return Season == currentSeason && 
-                           EpisodeNum == currentEpisodeNumber &&
-                           Episode.Id == currentEpisode.Id;
-                }
-                
-                // If all episodes are watched, no episode is "next unwatched"
-                return false;
-            }
-            catch (Exception ex)
-            {
-                logger?.LogWarning(ex, "Failed to determine next unwatched episode status");
-                return false;
-            }
-        }
-        
+
         /// <summary>
         /// Safely converts a DateTime to Unix timestamp, handling invalid dates.
         /// Treats the DateTime as UTC to ensure consistency with other date handling in the plugin.

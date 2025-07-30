@@ -683,6 +683,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 if (needsAudioLanguages || needsPeople || needsNextUnwatched)
                 {
+                    // Create per-refresh cache for performance optimization within this chunk
+                    var refreshCache = new OperandFactory.RefreshCache();
+                    
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
                     var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
@@ -753,7 +756,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds);
+                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, refreshCache);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -850,7 +853,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     continue;
                                 
                                 // Phase 2: Extract expensive data and check complete rules
-                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds);
+                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, refreshCache);
                                 
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
@@ -928,6 +931,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var results = new List<BaseItem>();
             
+            // Create per-refresh cache for performance optimization within this simple processing
+            var refreshCache = new OperandFactory.RefreshCache();
+            
             try
             {
                 foreach (var item in items)
@@ -936,7 +942,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds);
+                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, refreshCache);
                         
                         bool matches = false;
                         if (!hasAnyRules) {
