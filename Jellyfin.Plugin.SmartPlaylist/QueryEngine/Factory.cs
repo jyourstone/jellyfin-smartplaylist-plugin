@@ -66,6 +66,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
             IUserDataManager userDataManager, ILogger logger, MediaTypeExtractionOptions options)
         {
+            // Validate options parameter to avoid NullReferenceException
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options), "MediaTypeExtractionOptions cannot be null");
+            }
+            
             // Extract options for easier access
             var extractAudioLanguages = options.ExtractAudioLanguages;
             var extractPeople = options.ExtractPeople;  
@@ -506,13 +512,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             var seasonNumber = parentIndexProperty.GetValue(baseItem) as int?;
                             var episodeNumber = indexProperty.GetValue(baseItem) as int?;
                             
-                            if (seriesId != null && seasonNumber.HasValue && episodeNumber.HasValue)
+                            // Safely convert SeriesId to Guid and validate all required properties
+                            if (seriesId is Guid seriesGuid && seasonNumber.HasValue && episodeNumber.HasValue)
                             {
                                 // Get all episodes in this series
+                                // Note: Using SeriesId as ParentId - this works for standard episodes but may need
+                                // adjustment for special cases like virtual or merged series
                                 var query = new InternalItemsQuery(user)
                                 {
                                     IncludeItemTypes = [BaseItemKind.Episode],
-                                    ParentId = (Guid)seriesId,
+                                    ParentId = seriesGuid,
                                     Recursive = true
                                 };
                                 

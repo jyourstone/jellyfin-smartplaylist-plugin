@@ -188,13 +188,13 @@ The web interface provides access to all available fields for creating playlist 
 - **Play Count** - Number of times the item has been played
 - **Next Unwatched** - Shows only the next unwatched episode in chronological order for TV series
 > **Note:** These playback fields can optionally be set to a specific user. This allows you to create rules like "Is Played by user X" or "Is Favorite for user X AND for user Y".
-
 > **Next Unwatched**: This field is specifically designed for creating "Continue Watching" style playlists. For TV series, it identifies the next episode a user should watch based on their viewing history:
 > - If a user has watched Season 1 completely and Season 2 episodes 1-3, it shows Season 2 Episode 4
 > - For completely unwatched series, it shows Season 1 Episode 1 (configurable)
 > - If a user skipped an episode, that skipped episode becomes the "next unwatched"
 > - For multiple series in a playlist, it shows the next unwatched episode from ALL series
 > - **Include unwatched series**: Optional setting to include/exclude Season 1 Episode 1 of completely unwatched series
+> - **⚠️ Note**: Specials (Season 0 episodes) are automatically excluded from the "Next Unwatched" logic to focus on the main storyline
 
 #### **Content Info**
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
