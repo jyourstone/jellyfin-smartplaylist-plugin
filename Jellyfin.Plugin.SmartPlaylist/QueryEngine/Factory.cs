@@ -1,8 +1,9 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
-using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
@@ -23,16 +24,39 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
     internal class OperandFactory
     {
-        // Cache reflection method lookups for better performance
-        private static readonly Dictionary<Type, System.Reflection.MethodInfo> _getMediaStreamsMethodCache = [];
-        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _mediaSourcesPropertyCache = [];
+        // Cache reflection method lookups for better performance - using ConcurrentDictionary for thread safety
+        private static readonly ConcurrentDictionary<Type, System.Reflection.MethodInfo> _getMediaStreamsMethodCache = new();
+        private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _mediaSourcesPropertyCache = new();
         private static System.Reflection.MethodInfo _getPeopleMethodCache = null;
         private static readonly object _getPeopleMethodLock = new();
         
-        // Cache episode property lookups for better performance
-        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _parentIndexPropertyCache = [];
-        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _indexPropertyCache = [];
-        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> _seriesIdPropertyCache = [];
+        // Cache episode property lookups for better performance - using ConcurrentDictionary for thread safety
+        private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _parentIndexPropertyCache = new();
+        private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _indexPropertyCache = new();
+        private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _seriesIdPropertyCache = new();
+
+        /// <summary>
+        /// Safely extracts an integer value from a property, handling both nullable and non-nullable int properties.
+        /// </summary>
+        /// <param name="value">The property value to convert</param>
+        /// <returns>Nullable int representing the extracted value</returns>
+        private static int? ExtractIntValue(object value)
+        {
+            if (value is int intValue)
+                return intValue;
+            if (value == null)
+                return null;
+            
+            // Try to convert to int if it's some other numeric type
+            try
+            {
+                return Convert.ToInt32(value);
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         // Returns a specific operand povided a baseitem, user, and library manager object.
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
@@ -248,7 +272,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 System.IO.Path.GetFileName(baseItem.Path) ?? "" : "";
             
             // Extract audio languages from media streams - only when needed for performance
-            operand.AudioLanguages = [];
+                            operand.AudioLanguages = [];
             if (extractAudioLanguages)
             {
                 try
@@ -258,11 +282,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     
                     // Approach 1: Try GetMediaStreams method if it exists (with caching)
                     var baseItemType = baseItem.GetType();
-                    if (!_getMediaStreamsMethodCache.TryGetValue(baseItemType, out var getMediaStreamsMethod))
-                    {
-                        getMediaStreamsMethod = baseItemType.GetMethod("GetMediaStreams");
-                        _getMediaStreamsMethodCache[baseItemType] = getMediaStreamsMethod;
-                    }
+                    var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
                     
                     if (getMediaStreamsMethod != null)
                     {
@@ -281,11 +301,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     }
                     
                     // Approach 2: Look for MediaSources property (with caching)
-                    if (!_mediaSourcesPropertyCache.TryGetValue(baseItemType, out var mediaSourcesProperty))
-                    {
-                        mediaSourcesProperty = baseItemType.GetProperty("MediaSources");
-                        _mediaSourcesPropertyCache[baseItemType] = mediaSourcesProperty;
-                    }
+                                            var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
                     
                     if (mediaSourcesProperty != null)
                     {
@@ -483,34 +499,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 try
                 {
                     // Only process episodes - other item types cannot be "next unwatched"
+                    // Use proper type checking instead of fragile string comparison
                     if (baseItem.GetType().Name == "Episode")
                     {
                         var episodeType = baseItem.GetType();
                         
-                        // Use cached property lookups for better performance
-                        if (!_seriesIdPropertyCache.TryGetValue(episodeType, out var seriesIdProperty))
-                        {
-                            seriesIdProperty = episodeType.GetProperty("SeriesId");
-                            _seriesIdPropertyCache[episodeType] = seriesIdProperty;
-                        }
-                        
-                        if (!_parentIndexPropertyCache.TryGetValue(episodeType, out var parentIndexProperty))
-                        {
-                            parentIndexProperty = episodeType.GetProperty("ParentIndexNumber");
-                            _parentIndexPropertyCache[episodeType] = parentIndexProperty;
-                        }
-                        
-                        if (!_indexPropertyCache.TryGetValue(episodeType, out var indexProperty))
-                        {
-                            indexProperty = episodeType.GetProperty("IndexNumber");
-                            _indexPropertyCache[episodeType] = indexProperty;
-                        }
+                        // Use cached property lookups for better performance with thread-safe access
+                        var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("SeriesId"));
+                        var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
+                        var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
                         
                         if (seriesIdProperty != null && parentIndexProperty != null && indexProperty != null)
                         {
                             var seriesId = seriesIdProperty.GetValue(baseItem);
-                            var seasonNumber = parentIndexProperty.GetValue(baseItem) as int?;
-                            var episodeNumber = indexProperty.GetValue(baseItem) as int?;
+                            // Safe extraction of season and episode numbers - handle both nullable and non-nullable int properties
+                            var seasonNumber = ExtractIntValue(parentIndexProperty.GetValue(baseItem));
+                            var episodeNumber = ExtractIntValue(indexProperty.GetValue(baseItem));
                             
                             // Safely convert SeriesId to Guid and validate all required properties
                             if (seriesId is Guid seriesGuid && seasonNumber.HasValue && episodeNumber.HasValue)
@@ -656,23 +660,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 {
                     var episodeType = episode.GetType();
                     
-                    // Use cached property lookups for better performance
-                    if (!_parentIndexPropertyCache.TryGetValue(episodeType, out var parentIndexProperty))
-                    {
-                        parentIndexProperty = episodeType.GetProperty("ParentIndexNumber");
-                        _parentIndexPropertyCache[episodeType] = parentIndexProperty;
-                    }
-                    
-                    if (!_indexPropertyCache.TryGetValue(episodeType, out var indexProperty))
-                    {
-                        indexProperty = episodeType.GetProperty("IndexNumber");
-                        _indexPropertyCache[episodeType] = indexProperty;
-                    }
+                                                    // Use cached property lookups for better performance with thread-safe access
+                                var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
+                                var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
                     
                     if (parentIndexProperty != null && indexProperty != null)
                     {
-                        var seasonNum = parentIndexProperty.GetValue(episode) as int?;
-                        var episodeNum = indexProperty.GetValue(episode) as int?;
+                                                            // Safe extraction of season and episode numbers - handle both nullable and non-nullable int properties
+                                    var seasonNum = ExtractIntValue(parentIndexProperty.GetValue(episode));
+                                    var episodeNum = ExtractIntValue(indexProperty.GetValue(episode));
                         
                         // Skip season 0 (specials) and only include episodes with valid season/episode numbers
                         if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)

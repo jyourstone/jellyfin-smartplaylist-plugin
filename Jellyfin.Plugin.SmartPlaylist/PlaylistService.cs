@@ -639,7 +639,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var ownerId = playlist.OwnerUserId;
                     var newShare = new MediaBrowser.Model.Entities.PlaylistUserPermissions(ownerId, false);
                     
-                    playlist.Shares = [.. playlist.Shares, newShare];
+                    var currentShares = playlist.Shares?.ToList() ?? [];
+                    currentShares.Add(newShare);
+                    playlist.Shares = currentShares;
                 }
                 else if (!isPublic && playlist.Shares.Any())
                 {
