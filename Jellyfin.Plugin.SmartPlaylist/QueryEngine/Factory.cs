@@ -63,20 +63,88 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <param name="userId">The user ID (as string)</param>
         /// <param name="isPlayed">The IsPlayed value</param>
         /// <param name="userData">The userData object to extract from</param>
-        private static void PopulateUserData(Operand operand, string userId, bool isPlayed, dynamic userData)
+        private static void PopulateUserData(Operand operand, string userId, bool isPlayed, object userData)
         {
             operand.IsPlayedByUser[userId] = isPlayed;
-            operand.PlayCountByUser[userId] = userData.PlayCount;
-            operand.IsFavoriteByUser[userId] = userData.IsFavorite;
             
-            // Extract LastPlayedDate if available, otherwise use -1 (represents "never played")
-            if (userData.LastPlayedDate.HasValue)
+            // Use reflection to safely extract properties from userData
+            var userDataType = userData.GetType();
+            
+            // Extract PlayCount
+            var playCountProp = userDataType.GetProperty("PlayCount");
+            if (playCountProp != null)
             {
-                operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(userData.LastPlayedDate.Value);
+                var playCountValue = playCountProp.GetValue(userData);
+                operand.PlayCountByUser[userId] = playCountValue != null ? (int)playCountValue : 0;
             }
             else
             {
-                operand.LastPlayedDateByUser[userId] = -1; // Never played - use -1 as sentinel value
+                operand.PlayCountByUser[userId] = 0;
+            }
+            
+            // Extract IsFavorite
+            var isFavoriteProp = userDataType.GetProperty("IsFavorite");
+            if (isFavoriteProp != null)
+            {
+                var isFavoriteValue = isFavoriteProp.GetValue(userData);
+                operand.IsFavoriteByUser[userId] = isFavoriteValue != null && (bool)isFavoriteValue;
+            }
+            else
+            {
+                operand.IsFavoriteByUser[userId] = false;
+            }
+            
+            // Extract LastPlayedDate - handle both nullable and non-nullable DateTime
+            var lastPlayedDateProp = userDataType.GetProperty("LastPlayedDate");
+            if (lastPlayedDateProp != null)
+            {
+                var lastPlayedDateValue = lastPlayedDateProp.GetValue(userData);
+                if (lastPlayedDateValue != null)
+                {
+                    // Handle nullable DateTime
+                    if (lastPlayedDateValue is DateTime dateTime && dateTime != DateTime.MinValue)
+                    {
+                        operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(dateTime);
+                    }
+                    // Handle nullable DateTime (DateTime?)
+                    else if (lastPlayedDateValue.GetType().IsGenericType && 
+                             lastPlayedDateValue.GetType().GetGenericTypeDefinition() == typeof(Nullable<>) &&
+                             lastPlayedDateValue.GetType().GetGenericArguments()[0] == typeof(DateTime))
+                    {
+                        var nullableDateTimeProp = lastPlayedDateValue.GetType().GetProperty("HasValue");
+                        var valueProp = lastPlayedDateValue.GetType().GetProperty("Value");
+                        
+                        if (nullableDateTimeProp != null && valueProp != null)
+                        {
+                            bool hasValue = (bool)nullableDateTimeProp.GetValue(lastPlayedDateValue);
+                            if (hasValue)
+                            {
+                                var dateValue = (DateTime)valueProp.GetValue(lastPlayedDateValue);
+                                operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(dateValue);
+                            }
+                            else
+                            {
+                                operand.LastPlayedDateByUser[userId] = -1; // Never played
+                            }
+                        }
+                        else
+                        {
+                            operand.LastPlayedDateByUser[userId] = -1; // Never played
+                        }
+                    }
+                    else
+                    {
+                        operand.LastPlayedDateByUser[userId] = -1; // Never played - unhandled type
+                    }
+                }
+                else
+                {
+                    operand.LastPlayedDateByUser[userId] = -1; // Never played - null value
+                }
+            }
+            else
+            {
+                operand.LastPlayedDateByUser[userId] = -1; // Never played - property not found
             }
         }
 
@@ -390,47 +458,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         var userData = userDataProperty.GetValue(baseItem);
                         if (userData != null)
                         {
-                            // Use the pre-calculated IsPlayed value for playlist owner
-                            operand.IsPlayedByUser[user.Id.ToString()] = isPlayed;
-                            
-                            var playCountProp = userData.GetType().GetProperty("PlayCount");
-                            var isFavoriteProp = userData.GetType().GetProperty("IsFavorite");
-                            var lastPlayedDateProp = userData.GetType().GetProperty("LastPlayedDate");
-                            
-                            if (playCountProp != null)
-                            {
-                                var playCountValue = playCountProp.GetValue(userData);
-                                if (playCountValue != null)
-                                {
-                                    operand.PlayCountByUser[user.Id.ToString()] = (int)playCountValue;
-                                }
-                            }
-                            
-                            if (isFavoriteProp != null)
-                            {
-                                var isFavoriteValue = isFavoriteProp.GetValue(userData);
-                                if (isFavoriteValue != null)
-                                {
-                                    operand.IsFavoriteByUser[user.Id.ToString()] = (bool)isFavoriteValue;
-                                }
-                            }
-                            
-                            if (lastPlayedDateProp != null)
-                            {
-                                var lastPlayedDateValue = lastPlayedDateProp.GetValue(userData);
-                                if (lastPlayedDateValue is DateTime lastPlayedDate && lastPlayedDate != DateTime.MinValue)
-                                {
-                                    operand.LastPlayedDateByUser[user.Id.ToString()] = SafeToUnixTimeSeconds(lastPlayedDate);
-                                }
-                                else
-                                {
-                                    operand.LastPlayedDateByUser[user.Id.ToString()] = -1; // Never played
-                                }
-                            }
-                            else
-                            {
-                                operand.LastPlayedDateByUser[user.Id.ToString()] = -1; // Never played - property not found
-                            }
+                            // Use our helper method to populate user data consistently
+                            PopulateUserData(operand, user.Id.ToString(), isPlayed, userData);
                         }
                         else
                         {

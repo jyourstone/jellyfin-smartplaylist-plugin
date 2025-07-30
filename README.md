@@ -54,17 +54,20 @@ The web interface is organized into three tabs:
 1.  **Create Playlist**: This is where you build new playlists.
     -   Define the rules for including items.
     -   Choose the sort order.
-    -   Set the maximum number of items (defaults to 500).
     -   Select which user should own the playlist.
+    -   Set the maximum number of items (defaults to 500).
+    -   Set the maximum play time for the playlist (defaults to unlimited)
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
     -   Enable or disable playlists to show or hide them in Jellyfin.
+    -   Refresh individual playlists.
     -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
+    -   Set the default max items and max play time for new playlists.
     -   Configure custom prefix and suffix for playlist names.
     -   Manually trigger a refresh for all smart playlists.
 
