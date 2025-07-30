@@ -283,15 +283,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Handle date equality specially - compare date ranges instead of exact timestamps
             if (r.Operator == "Equal")
             {
-                return (BinaryExpression)BuildDateEqualityExpression(r, left, logger);
+                return BuildDateEqualityExpression(r, left, logger);
             }
             else if (r.Operator == "NotEqual")
             {
-                return (BinaryExpression)BuildDateInequalityExpression(r, left, logger);
+                return BuildDateInequalityExpression(r, left, logger);
             }
             else if (r.Operator == "WithinLastDays")
             {
-                return (BinaryExpression)BuildWithinLastDaysExpression(r, left, logger);
+                return BuildWithinLastDaysExpression(r, left, logger);
             }
             else if (r.Operator == "After")
             {

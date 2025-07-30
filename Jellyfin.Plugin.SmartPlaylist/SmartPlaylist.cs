@@ -930,8 +930,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             try
             {
-                logger?.LogDebug("No expensive fields required, using simple filtering");
-                
                 foreach (var item in items)
                 {
                     if (item == null) continue;

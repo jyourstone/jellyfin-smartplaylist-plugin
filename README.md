@@ -126,7 +126,7 @@ Here are some popular playlist types you can create:
 - **Family Movie Night** - Next Unwatched = True AND Parental Rating = "PG" or "G"
 - **Unwatched Action Movies** - Is Played = False AND Genre contains "Action"
 - **Recent Additions** - Date Created newer than "2 weeks"
-- **Holiday Classics** - Tags contains "Christmas" AND Production Year before "2000"
+- **Holiday Classics** - Tags contain "Christmas" AND Production Year before "2000"
 
 #### **Music**
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
@@ -135,8 +135,8 @@ Here are some popular playlist types you can create:
 
 #### **Advanced Examples**
 - **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only
-- **Kids' Shows Progress** - Next Unwatched = True AND Tags contains "Kids"
-- **Foreign Language Practice** - Audio Languages matches "(?i)(ger|fra|spa)" AND Is Played = False
+- **Kids' Shows Progress** - Next Unwatched = True AND Tags contain "Kids"
+- **Foreign Language Practice** - Audio Languages match "(?i)(ger|fra|spa)" AND Is Played = False
 
 ### Enhanced Music Tagging
 
