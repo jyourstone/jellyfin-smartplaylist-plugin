@@ -683,20 +683,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
-        /// Calculates the next unwatched episode for a series and user (simple boolean check).
-        /// </summary>
-        private static bool CalculateNextUnwatchedEpisode(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
-            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, ILogger logger)
-        {
-            var (NextEpisodeId, Season, Episode) = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
-            
-            return NextEpisodeId.HasValue && 
-                   NextEpisodeId.Value == currentEpisode.Id &&
-                   Season == currentSeason && 
-                   Episode == currentEpisodeNumber;
-        }
-
-        /// <summary>
         /// Calculates the next unwatched episode info for a series and user (returns episode details).
         /// </summary>
         private static (Guid? NextEpisodeId, int Season, int Episode) CalculateNextUnwatchedEpisodeInfo(BaseItem[] allEpisodes, User user, 

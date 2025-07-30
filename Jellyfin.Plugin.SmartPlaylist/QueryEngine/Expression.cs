@@ -39,7 +39,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             };
         }
         
-        private static bool IsUserSpecificField(string memberName)
+        public static bool IsUserSpecificField(string memberName)
         {
             return memberName switch
             {

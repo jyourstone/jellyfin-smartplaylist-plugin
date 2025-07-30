@@ -4,7 +4,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
-using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -87,42 +86,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             }
         }
 
-
-
-        /// <summary>
-        /// Gets a user-friendly label for a field name.
-        /// </summary>
-        /// <param name="fieldName">The field name</param>
-        /// <returns>The user-friendly label</returns>
-        private static string GetFieldLabel(string fieldName)
-        {
-            return fieldName switch
-            {
-                "DateCreated" => "Date Created",
-                "DateLastRefreshed" => "Date Last Refreshed",
-                "DateLastSaved" => "Date Last Saved",
-                "DateModified" => "Date Modified",
-                "ReleaseDate" => "Release Date",
-                "ProductionYear" => "Production Year",
-                "CommunityRating" => "Community Rating",
-                "CriticRating" => "Critic Rating",
-                "RuntimeMinutes" => "Runtime (Minutes)",
-                "IsPlayed" => "Is Played",
-                "IsFavorite" => "Is Favorite",
-                "NextUnwatched" => "Next Unwatched",
-                "PlayCount" => "Play Count",
-                "ItemType" => "Media Type",
-                "OfficialRating" => "Parental Rating",
-                "Overview" => "Overview",
-                "AudioLanguages" => "Audio Languages",
-                "FileName" => "File Name",
-                "FolderPath" => "Folder Path",
-                "Tags" => "Tags",
-                "Artists" => "Artists",
-                "AlbumArtists" => "Album Artists",
-                _ => fieldName
-            };
-        }
         private void TriggerPlaylistRefresh()
         {
             try

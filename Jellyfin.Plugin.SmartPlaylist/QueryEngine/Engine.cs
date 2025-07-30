@@ -38,26 +38,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             });
         }
         
-        /// <summary>
-        /// Determines if a field is user-specific and should always use method calls.
-        /// </summary>
-        private static bool IsUserDataField(string memberName)
-        {
-            return memberName switch
-            {
-                "IsPlayed" => true,
-                "PlayCount" => true,
-                "IsFavorite" => true,
-                "NextUnwatched" => true,
-                "LastPlayedDate" => true,
-                _ => false
-            };
-        }
-        
         private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, string defaultUserId, ILogger logger = null)
         {
             // Check if this is a user-specific field that should always use method calls
-            if (IsUserDataField(r.MemberName))
+            if (Expression.IsUserSpecificField(r.MemberName))
             {
                 // Use the specified user ID or default to playlist owner
                 var effectiveUserId = r.UserId ?? defaultUserId;
@@ -67,10 +51,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     throw new ArgumentException($"User-specific field '{r.MemberName}' requires a valid user ID, but no user ID was provided and no default user ID is available.");
                 }
                 
-                // Create a new expression with the effective user ID for consistent processing
+                // Create a new expression with all properties copied and effective user ID set
                 var userSpecificExpression = new Expression(r.MemberName, r.Operator, r.TargetValue)
                 {
-                    UserId = effectiveUserId
+                    UserId = effectiveUserId,
+                    IncludeUnwatchedSeries = r.IncludeUnwatchedSeries
                 };
                 
                 return BuildUserSpecificExpression<T>(userSpecificExpression, param, logger);
