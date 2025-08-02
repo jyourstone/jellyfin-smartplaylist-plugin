@@ -12,6 +12,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string UserId { get; set; } = null;
         
+        // NextUnwatched-specific option - only serialize when meaningful
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IncludeUnwatchedSeries { get; set; } = null;
+        
         // Helper property to check if this is a user-specific expression
         // Only serialize when UserId is not null
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -29,17 +33,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 "IsPlayed" => "GetIsPlayedByUser",
                 "PlayCount" => "GetPlayCountByUser", 
                 "IsFavorite" => "GetIsFavoriteByUser",
+                "NextUnwatched" => "GetNextUnwatchedByUser",
+                "LastPlayedDate" => "GetLastPlayedDateByUser",
                 _ => MemberName
             };
         }
         
-        private static bool IsUserSpecificField(string memberName)
+        public static bool IsUserSpecificField(string memberName)
         {
             return memberName switch
             {
                 "IsPlayed" => true,
                 "PlayCount" => true,
                 "IsFavorite" => true,
+                "NextUnwatched" => true,
+                "LastPlayedDate" => true,
                 _ => false
             };
         }

@@ -16,7 +16,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "DateLastRefreshed", 
             "DateLastSaved",
             "DateModified",
-            "ReleaseDate"
+            "ReleaseDate",
+            "LastPlayedDate"
         ];
 
         /// <summary>
@@ -50,7 +51,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static readonly HashSet<string> BooleanFields =
         [
             "IsPlayed",
-            "IsFavorite"
+            "IsFavorite",
+            "NextUnwatched"
         ];
 
         /// <summary>
@@ -68,7 +70,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         [
             "IsPlayed",
             "IsFavorite", 
-            "PlayCount"
+            "PlayCount",
+            "NextUnwatched",
+            "LastPlayedDate"
         ];
 
         /// <summary>
@@ -149,6 +153,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("Album");
             allFields.Add("AudioLanguages");
             allFields.Add("OfficialRating");
+            allFields.Add("Overview");
             allFields.Add("FileName");
             allFields.Add("FolderPath");
             allFields.Add("MediaType");

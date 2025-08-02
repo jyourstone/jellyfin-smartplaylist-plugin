@@ -1,9 +1,9 @@
 # Jellyfin SmartPlaylist Plugin
-
 <div align="center">
     <p>
-        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="350"/>
-    </p>
+        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="350"/><br />
+        <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Total GitHub Downloads" src="https://img.shields.io/github/downloads/jyourstone/jellyfin-smartplaylist-plugin/total"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/jyourstone/jellyfin-smartplaylist-plugin"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Build and Release" src="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/actions/workflows/release.yml/badge.svg"/></a> <a href="https://jellyfin.org/"><img alt="Jellyfin Version" src="https://img.shields.io/badge/Jellyfin-10.10-blue.svg"/></a>
+    </p>        
 </div>
 
 A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin.
@@ -54,17 +54,20 @@ The web interface is organized into three tabs:
 1.  **Create Playlist**: This is where you build new playlists.
     -   Define the rules for including items.
     -   Choose the sort order.
-    -   Set the maximum number of items (defaults to 500).
     -   Select which user should own the playlist.
+    -   Set the maximum number of items (defaults to 500).
+    -   Set the maximum play time for the playlist (defaults to unlimited)
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
     -   Enable or disable playlists to show or hide them in Jellyfin.
+    -   Refresh individual playlists.
     -   Delete playlists you no longer need with flexible deletion options.
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
+    -   Set the default max items and max play time for new playlists.
     -   Configure custom prefix and suffix for playlist names.
     -   Manually trigger a refresh for all smart playlists.
 
@@ -109,12 +112,34 @@ This plugin creates smart playlists that automatically updates based on rules yo
 
 - **Unplayed movies** from specific genres
 - **Recently added** series or episodes
+- **Next unwatched episodes** for "Continue Watching" playlists
 - **High-rated** content from certain years
 - **Music** from specific artists or albums
 - **Tagged content** like "Christmas", "Kids", or "Documentaries"
 - And much more!
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
+
+### Common Use Cases
+
+Here are some popular playlist types you can create:
+
+#### **TV Shows & Movies**
+- **Continue Watching** - Next Unwatched = True (shows next episodes to watch for each series)
+- **Family Movie Night** - Next Unwatched = True AND Parental Rating = "PG" or "G"
+- **Unwatched Action Movies** - Is Played = False AND Genre contains "Action"
+- **Recent Additions** - Date Created newer than "2 weeks"
+- **Holiday Classics** - Tags contain "Christmas" AND Production Year before "2000"
+
+#### **Music**
+- **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
+- **Discover New Music** - Play Count = 0 AND Date Created newer than "1 month"
+- **Top Rated Favorites** - Is Favorite = True AND Community Rating greater than 8
+
+#### **Advanced Examples**
+- **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only
+- **Kids' Shows Progress** - Next Unwatched = True AND Tags contain "Kids"
+- **Foreign Language Practice** - Audio Languages match "(?i)(ger|fra|spa)" AND Is Played = False
 
 ### Enhanced Music Tagging
 
@@ -153,46 +178,65 @@ For local development, see the [dev folder](https://github.com/jyourstone/jellyf
 
 The web interface provides access to all available fields for creating playlist rules:
 
-#### **Content Fields**
-- **Name** - Title of the media item
-- **Media Type** - The type of item (e.g., `Movie`, `Episode`, `Series`, `Music`)
-- **Audio Languages** - The audio language of the movie/TV show.
+#### **Content**
 - **Album** - Album name (for music)
-- **Folder Path** - Location in your library
-
-#### **Playback Fields**
-- **Is Played** - Whether the item has been watched/listened to
-- **Is Favorite** - Whether the item is marked as a favorite
-- **Play Count** - Number of times the item has been played
-> **Note:** These playback fields can optionally be set to a specific user. This allows you to create rules like "Is Played by user X" or "Is Favorite for user X AND for user Y".
-
-#### **Content Info**
+- **Audio Languages** - The audio language of the movie/TV show
+- **Name** - Title of the media item
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
-- **Runtime (Minutes)** - Duration of the content in minutes
-
-#### **Ratings & Dates**
-- **Community Rating** - User ratings (0-10)
-- **Critic Rating** - Professional critic ratings
+- **Overview** - Description/summary of the content
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
-- **Date Created** - When added to your library
-- **Date Last Refreshed** - Last metadata update
-- **Date Last Saved** - Last saved to database
-- **Date Modified** - Last file modification
+
+#### **Ratings & Playback**
+- **Community Rating** - User ratings (0-10)
+- **Critic Rating** - Professional critic ratings
+- **Is Favorite** - Whether the item is marked as a favorite
+- **Is Played** - Whether the item has been watched/listened to
+- **Last Played** - When the item was last played (user-specific). Items never played by a user are excluded from all Last Played filtering
+- **Next Unwatched** - Shows only the next unwatched episode in chronological order for TV series
+- **Play Count** - Number of times the item has been played
+- **Runtime (Minutes)** - Duration of the content in minutes
+
+> **Note:** These playback fields can optionally be set to a specific user. This allows you to create rules like "Is Played by user X" or "Is Favorite for user X AND for user Y".
+> 
+> **Next Unwatched**: This field is specifically designed for creating "Continue Watching" style playlists. For TV series, it identifies the next episode a user should watch based on their viewing history:
+> - If a user has watched Season 1 completely and Season 2 episodes 1-3, it shows Season 2 Episode 4
+> - For completely unwatched series, it shows Season 1 Episode 1 (configurable)
+> - If a user skipped an episode, that skipped episode becomes the "next unwatched"
+> - For multiple series in a playlist, it shows the next unwatched episode from ALL series
+> - **Include unwatched series**: Optional setting to include/exclude Season 1 Episode 1 of completely unwatched series
+> - **⚠️ Note**: Specials (Season 0 episodes) are automatically excluded from the "Next Unwatched" logic to focus on the main storyline
+
+#### **File Info**
+- **Date Modified** - Last file modification date
+- **File Name** - Name of the media file
+- **Folder Path** - Location in your library
+
+#### **Library**
+- **Date Added to Library** - When added to your Jellyfin library
+- **Last Metadata Refresh** - When Jellyfin last updated metadata from online sources
+- **Last Database Save** - When the item's data was last saved to Jellyfin's database
+
+#### **Collections**
+- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
+- **Genres** - Content genres
+- **Studios** - Production studios
+- **Tags** - Custom tags assigned to media items
+- **Artists** - Track-level artists *for music*
+- **Album Artists** - Album-level primary artists *for music*
 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")
 > - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
 > 
+> **Last Played Examples**:
+> - **"Music not played in the last month"**: `Last Played Older Than 1 month` (only items played more than a month ago, excludes never-played)
+> - **"Recently played favorites"**: `Last Played Newer Than 7 days AND Is Favorite = True`
+> - **"Movies watched this year"**: `Last Played After 2024-01-01`
+> - **"Content not played by specific user in 6 months"**: `Last Played Older Than 6 months (for User: John)` (only items played more than 6 months ago)
+> - **"Never played content"**: Use the field `Is Played` instead, as Last Played rules exclude never-played items by design
+> 
 > **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
-
-#### **Metadata**
-- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
-- **Artists** - Track-level artists *for music*
-- **Album Artists** - Album-level primary artists *for music*
-- **Genres** - Content genres
-- **Studios** - Production studios
-- **Tags** - Custom tags assigned to media items
 
 > **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** field is designed for movies/TV and contains cast/crew information rather than music performers.
 
@@ -267,4 +311,4 @@ This project is a fork of the original SmartPlaylist plugin created by **[ankeny
 
 ## ⚠️ Disclaimer
 
-The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware. If you find a bug, it was probably the AI's fault. If you like a feature, the AI will begrudgingly accept your praise. Use at your own risk!
+The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware.

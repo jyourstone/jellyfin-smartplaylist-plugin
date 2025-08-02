@@ -14,10 +14,10 @@
     const FIELD_TYPES = {
         LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
-        DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate'],
-        BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite'],
+        DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
+        BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
-        USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount']
+        USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
     // Centralized styling configuration
@@ -380,7 +380,7 @@
         const groupConfig = [
             { key: 'ContentFields', label: 'Content' },
             { key: 'RatingsPlaybackFields', label: 'Ratings & Playback' },
-            { key: 'DateFields', label: 'Dates' },
+            { key: 'LibraryFields', label: 'Library' },
             { key: 'FileFields', label: 'File Info' },
             { key: 'CollectionFields', label: 'Collections' }
         ];
@@ -608,6 +608,8 @@
                 boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
             } else if (fieldValue === 'IsFavorite') {
                 boolOptions = [ { Value: "true", Label: "Yes (Favorite)" }, { Value: "false", Label: "No (Not Favorite)" } ];
+            } else if (fieldValue === 'NextUnwatched') {
+                boolOptions = [ { Value: "true", Label: "Yes (Next to Watch)" }, { Value: "false", Label: "No (Not Next)" } ];
             } else {
                 boolOptions = [ { Value: "true", Label: "Yes" }, { Value: "false", Label: "No" } ];
             }
@@ -661,10 +663,10 @@
                 unitSelect.appendChild(placeholderOption);
                 
                 [
-                    { value: 'days', label: 'Days' },
-                    { value: 'weeks', label: 'Weeks' },
-                    { value: 'months', label: 'Months' },
-                    { value: 'years', label: 'Years' }
+                    { value: 'days', label: 'Day(s)' },
+                    { value: 'weeks', label: 'Week(s)' },
+                    { value: 'months', label: 'Month(s)' },
+                    { value: 'years', label: 'Year(s)' }
                 ].forEach(opt => {
                     const option = document.createElement('option');
                     option.value = opt.value;
@@ -812,12 +814,21 @@
                     <button type="button" class="rule-action-btn delete-btn" title="Remove rule">×</button>
                 </div>
             </div>
-            <div class="rule-user-selector" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">
+            <div class="rule-user-selector" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
                 <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
                     Check for specific user (optional):
                 </label>
                 <select is="emby-select" class="emby-select rule-user-select" style="width: 100%;">
                     <option value="">Default (playlist owner)</option>
+                </select>
+            </div>
+            <div class="rule-nextunwatched-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Include unwatched series:
+                </label>
+                <select is="emby-select" class="emby-select rule-nextunwatched-select" style="width: 100%;">
+                    <option value="true">Yes - Include first episodes of unwatched series</option>
+                    <option value="false">No - Only show next episodes from started series</option>
                 </select>
             </div>`;
         
@@ -846,12 +857,16 @@
             loadUsersForRule(userSelect, true);
         }
         
+        // Initialize NextUnwatched options visibility
+        updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
+        
         // Add event listeners with AbortController signal (if supported)
         const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
             setValueInput(fieldSelect.value, valueContainer);
             updateOperatorOptions(fieldSelect.value, operatorSelect);
             updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
+            updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
@@ -1131,6 +1146,17 @@
                         // If no user is selected or default is selected, the expression works as before
                         // (for the playlist owner - backwards compatibility)
                         
+                        // Check for NextUnwatched specific options
+                        const nextUnwatchedSelect = rule.querySelector('.rule-nextunwatched-select');
+                        if (nextUnwatchedSelect && memberName === 'NextUnwatched') {
+                            // Convert string to boolean and only include if it's explicitly false
+                            const includeUnwatchedSeries = nextUnwatchedSelect.value === 'true';
+                            if (!includeUnwatchedSeries) {
+                                expression.IncludeUnwatchedSeries = false;
+                            }
+                            // If true (default), don't include the parameter to save space
+                        }
+                        
                         expressions.push(expression);
                     }
                 });
@@ -1320,6 +1346,24 @@
                 const userSelect = userSelectorDiv.querySelector('.rule-user-select');
                 if (userSelect) {
                     userSelect.value = '';
+                }
+            }
+        }
+    }
+    
+    function updateNextUnwatchedOptionsVisibility(ruleRow, fieldValue) {
+        const isNextUnwatchedField = fieldValue === 'NextUnwatched';
+        const nextUnwatchedOptionsDiv = ruleRow.querySelector('.rule-nextunwatched-options');
+        
+        if (nextUnwatchedOptionsDiv) {
+            if (isNextUnwatchedField) {
+                nextUnwatchedOptionsDiv.style.display = 'block';
+            } else {
+                nextUnwatchedOptionsDiv.style.display = 'none';
+                // Reset to default when hiding
+                const nextUnwatchedSelect = nextUnwatchedOptionsDiv.querySelector('.rule-nextunwatched-select');
+                if (nextUnwatchedSelect) {
+                    nextUnwatchedSelect.value = 'true'; // Default to including unwatched series
                 }
             }
         }
@@ -1552,6 +1596,7 @@
                                     }
                                     let value = rule.TargetValue;
                                     if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                                    if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
                                     
                                     // Check if this rule has a specific user
                                     let userInfo = '';
@@ -1562,7 +1607,13 @@
                                         }
                                     }
                                     
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + '</span>';
+                                    // Check for NextUnwatched specific options
+                                    let nextUnwatchedInfo = '';
+                                    if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
+                                        nextUnwatchedInfo = ' (excluding unwatched series)';
+                                    }
+                                    
+                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
                                 }
                                 
                                 rulesHtml += '</div>';
@@ -1828,6 +1879,7 @@
                             }
                             let value = rule.TargetValue;
                             if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                            if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
                             
                             // Check if this rule has a specific user
                             let userInfo = '';
@@ -1838,7 +1890,13 @@
                                 }
                             }
                             
-                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + '</span>';
+                            // Check for NextUnwatched specific options
+                            let nextUnwatchedInfo = '';
+                            if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
+                                nextUnwatchedInfo = ' (excluding unwatched series)';
+                            }
+                            
+                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
                         }
                         
                         rulesHtml += '</div>';
@@ -2179,6 +2237,7 @@
                                 // Update UI elements based on the loaded rule data
                                 setValueInput(expression.MemberName, valueContainer);
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
+                                updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName);
                                 
                                 // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
@@ -2214,6 +2273,17 @@
                                         loadUsersForRule(userSelect, true).then(() => {
                                             userSelect.value = expression.UserId;
                                         });
+                                    }
+                                }
+                                
+                                // Set NextUnwatched options if this is a NextUnwatched rule
+                                if (expression.MemberName === 'NextUnwatched') {
+                                    const nextUnwatchedSelect = currentRule.querySelector('.rule-nextunwatched-select');
+                                    if (nextUnwatchedSelect) {
+                                        // Set the value based on the IncludeUnwatchedSeries parameter
+                                        // Default to true if not specified (backwards compatibility)
+                                        const includeValue = expression.IncludeUnwatchedSeries !== false ? 'true' : 'false';
+                                        nextUnwatchedSelect.value = includeValue;
                                     }
                                 }
                                 

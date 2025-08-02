@@ -296,7 +296,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return (false, "No user found for playlist", string.Empty);
                 }
 
-                var allUserMedia = GetAllUserMedia(user).ToArray();
+                var allUserMedia = GetAllUserMedia(user, dto.MediaTypes).ToArray();
                 
                 var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, cancellationToken);
                 
@@ -639,7 +639,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var ownerId = playlist.OwnerUserId;
                     var newShare = new MediaBrowser.Model.Entities.PlaylistUserPermissions(ownerId, false);
                     
-                    playlist.Shares = [.. playlist.Shares, newShare];
+                    var currentShares = playlist.Shares?.ToList() ?? [];
+                    currentShares.Add(newShare);
+                    playlist.Shares = currentShares;
                 }
                 else if (!isPublic && playlist.Shares.Any())
                 {
@@ -741,15 +743,60 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             return null;
         }
-        private IEnumerable<BaseItem> GetAllUserMedia(User user)
+        private IEnumerable<BaseItem> GetAllUserMedia(User user, List<string> mediaTypes = null)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series],
+                IncludeItemTypes = GetBaseItemKindsFromMediaTypes(mediaTypes),
                 Recursive = true
             };
 
             return _libraryManager.GetItemsResult(query).Items;
+        }
+
+        /// <summary>
+        /// Maps string media types to BaseItemKind enums for API-level filtering
+        /// </summary>
+        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string> mediaTypes)
+        {
+            // If no media types specified, return all supported types (backward compatibility)
+            if (mediaTypes == null || mediaTypes.Count == 0)
+            {
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series];
+            }
+
+            var baseItemKinds = new List<BaseItemKind>();
+            
+            foreach (var mediaType in mediaTypes)
+            {
+                switch (mediaType)
+                {
+                    case "Movie":
+                        baseItemKinds.Add(BaseItemKind.Movie);
+                        break;
+                    case "Audio":
+                        baseItemKinds.Add(BaseItemKind.Audio);
+                        break;
+                    case "Episode":
+                        baseItemKinds.Add(BaseItemKind.Episode);
+                        break;
+                    case "Series":
+                        baseItemKinds.Add(BaseItemKind.Series);
+                        break;
+                    default:
+                        _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
+                        break;
+                }
+            }
+
+            // Fallback to all types if no valid media types were found
+            if (baseItemKinds.Count == 0)
+            {
+                _logger?.LogWarning("No valid media types found, falling back to all supported types");
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series];
+            }
+
+            return [.. baseItemKinds];
         }
 
         private async Task RefreshPlaylistMetadataAsync(Playlist playlist, CancellationToken cancellationToken)
