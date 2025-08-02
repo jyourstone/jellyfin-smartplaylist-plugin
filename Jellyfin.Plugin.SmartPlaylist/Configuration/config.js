@@ -1517,6 +1517,17 @@
         }
         page._loadingPlaylists = true;
         
+        // Disable search input while loading
+        const searchInput = page.querySelector('#playlistSearchInput');
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
+        if (searchInput) {
+            searchInput.disabled = true;
+            searchInput.placeholder = 'Loading playlists...';
+        }
+        if (clearSearchBtn) {
+            clearSearchBtn.style.display = 'none';
+        }
+        
         container.innerHTML = '<p>Loading playlists...</p>';
         
         apiClient.ajax({
@@ -1657,11 +1668,23 @@
             } else {
                 container.innerHTML = '<div class="inputContainer"><p>No smart playlists found.</p></div>';
             }
+            
+            // Re-enable search input after loading is complete
+            if (searchInput) {
+                searchInput.disabled = false;
+                searchInput.placeholder = 'Search playlists...';
+            }
             page._loadingPlaylists = false;
         }).catch(err => {
             console.error('Error loading playlists:', err);
             let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
             container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+            
+            // Re-enable search input even on error
+            if (searchInput) {
+                searchInput.disabled = false;
+                searchInput.placeholder = 'Search playlists...';
+            }
             page._loadingPlaylists = false;
         });
     }
@@ -1763,7 +1786,16 @@
 
     async function applySearchFilter(page) {
         const searchInput = page.querySelector('#playlistSearchInput');
-        if (!searchInput || !page._allPlaylists) return;
+        if (!searchInput || !page._allPlaylists) {
+            console.log('Cannot search: no playlists loaded or no search input');
+            return;
+        }
+        
+        // Don't search while loading playlists
+        if (page._loadingPlaylists) {
+            console.log('Cannot search: playlists are currently loading');
+            return;
+        }
         
         const searchTerm = searchInput.value.trim().toLowerCase();
         
@@ -1936,6 +1968,7 @@
                 '</div>' +
                 '</div>';
         }
+        
         container.innerHTML = html;
     }
 
