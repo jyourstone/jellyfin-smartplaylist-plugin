@@ -576,7 +576,7 @@
             option.textContent = opt.Label;
             operatorSelect.appendChild(option);
         });
-        if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed' || fieldValue === 'IsFavorite') { operatorSelect.value = 'Equal'; }
+        if (fieldValue === 'ItemType' || FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) { operatorSelect.value = 'Equal'; }
     }
 
     function setValueInput(fieldValue, valueContainer) {
