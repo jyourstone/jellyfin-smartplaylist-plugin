@@ -135,6 +135,7 @@ Here are some popular playlist types you can create:
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
 - **Discover New Music** - Play Count = 0 AND Date Created newer than "1 month"
 - **Top Rated Favorites** - Is Favorite = True AND Community Rating greater than 8
+- **Rediscover Music** - Last Played older than 6 months
 
 #### **Advanced Examples**
 - **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only
