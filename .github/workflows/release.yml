@@ -153,7 +153,7 @@ jobs:
           body: ${{ steps.get_release_notes.outputs.release_notes }}
           files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
           draft: false
-          prerelease: false
+          prerelease: true
           generate_release_notes: false
           token: ${{ secrets.PAT }}
 
@@ -167,7 +167,7 @@ jobs:
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
-          TARGET_ABI="10.10.0"
+          TARGET_ABI="10.11.0"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
           CHANGELOG="${{ steps.get_release_notes.outputs.release_notes }}"
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
