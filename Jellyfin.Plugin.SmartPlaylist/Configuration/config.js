@@ -278,6 +278,21 @@
         });
     };
 
+    // Helper function to manage search input state
+    const setSearchInputState = (page, disabled, placeholder = 'Search playlists...') => {
+        const searchInput = page.querySelector('#playlistSearchInput');
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
+        
+        if (searchInput) {
+            searchInput.disabled = disabled;
+            searchInput.placeholder = placeholder;
+        }
+        
+        if (clearSearchBtn) {
+            clearSearchBtn.style.display = disabled ? 'none' : 'block';
+        }
+    };
+
     // Helper functions for page-specific state
     function getPageEditState(page) {
         return {
@@ -439,9 +454,15 @@
         });
     }
 
-    function populateStaticSelects(page) {
+    // Initialize page elements including media type checkboxes
+    const initializePageElements = (page) => {
         // Generate media type checkboxes from the mediaTypes array
         generateMediaTypeCheckboxes(page);
+    };
+
+    function populateStaticSelects(page) {
+        // Initialize page elements
+        initializePageElements(page);
         
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
@@ -1325,9 +1346,6 @@
         
         rulesContainer.innerHTML = '';
         
-        // Generate media type checkboxes before clearing their selections
-        generateMediaTypeCheckboxes(page);
-        
         // Clear media type selections
         const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
         mediaTypesSelect.forEach(checkbox => {
@@ -1555,15 +1573,7 @@
         page._loadingPlaylists = true;
         
         // Disable search input while loading
-        const searchInput = page.querySelector('#playlistSearchInput');
-        const clearSearchBtn = page.querySelector('#clearSearchBtn');
-        if (searchInput) {
-            searchInput.disabled = true;
-            searchInput.placeholder = 'Loading playlists...';
-        }
-        if (clearSearchBtn) {
-            clearSearchBtn.style.display = 'none';
-        }
+        setSearchInputState(page, true, 'Loading playlists...');
         
         container.innerHTML = '<p>Loading playlists...</p>';
         
@@ -1707,10 +1717,7 @@
             }
             
             // Re-enable search input after loading is complete
-            if (searchInput) {
-                searchInput.disabled = false;
-                searchInput.placeholder = 'Search playlists...';
-            }
+            setSearchInputState(page, false);
             page._loadingPlaylists = false;
         }).catch(err => {
             console.error('Error loading playlists:', err);
@@ -1718,10 +1725,7 @@
             container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
             
             // Re-enable search input even on error
-            if (searchInput) {
-                searchInput.disabled = false;
-                searchInput.placeholder = 'Search playlists...';
-            }
+            setSearchInputState(page, false);
             page._loadingPlaylists = false;
         });
     }
@@ -1824,13 +1828,11 @@
     async function applySearchFilter(page) {
         const searchInput = page.querySelector('#playlistSearchInput');
         if (!searchInput || !page._allPlaylists) {
-            console.log('Cannot search: no playlists loaded or no search input');
             return;
         }
         
         // Don't search while loading playlists
         if (page._loadingPlaylists) {
-            console.log('Cannot search: playlists are currently loading');
             return;
         }
         
@@ -2186,11 +2188,6 @@
         }).then(playlist => {
             Dashboard.hideLoadingMsg();
             
-            // Debug logging to see what we received
-            // console.log('Playlist data received:', playlist);
-            // console.log('Playlist name:', playlist ? playlist.Name : 'playlist is null/undefined');
-            // console.log('Playlist keys:', playlist ? Object.keys(playlist) : 'no keys');
-            
             if (!playlist) {
                 showNotification('No playlist data received from server.');
                 return;
@@ -2221,9 +2218,6 @@
                 } else {
                     console.warn('Max Play Time Minutes element not found when trying to populate edit form');
                 }
-                
-                // Generate media type checkboxes before setting their values
-                generateMediaTypeCheckboxes(page);
                 
                 // Set media types
                 const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
