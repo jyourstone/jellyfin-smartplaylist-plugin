@@ -245,7 +245,7 @@
         { Value: "Series", Label: "Series" }, 
         { Value: "Episode", Label: "Episode" }, 
         { Value: "Audio", Label: "Audio (Music)" },
-        { Value: "Music Video", Label: "Music Video" } 
+        { Value: "MusicVideo", Label: "Music Video" } 
     ];
 
     // Helper functions for page-specific state
