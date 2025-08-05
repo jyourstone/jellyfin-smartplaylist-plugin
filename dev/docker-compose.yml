@@ -13,7 +13,7 @@ services:
       - ./jellyfin-data/cache:/cache
       - ./media/movies:/movies # You can place some movie files here for testing.
       - ./media/shows:/shows # You can place some tv/episode files here for testing.
-      - ./media/musicvideos:/musicvideos # You can place some music files here for testing.
+      - ./media/musicvideos:/musicvideos # You can place some music video files here for testing.
       - ./media/music:/music # You can place some music files here for testing.
       - ../build_output:/config/plugins/SmartPlaylist # Mount the build output directly into the plugins directory.
     restart: "unless-stopped" 

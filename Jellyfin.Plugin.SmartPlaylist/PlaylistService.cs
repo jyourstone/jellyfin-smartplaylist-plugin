@@ -762,7 +762,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series];
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo];
             }
 
             var baseItemKinds = new List<BaseItemKind>();
