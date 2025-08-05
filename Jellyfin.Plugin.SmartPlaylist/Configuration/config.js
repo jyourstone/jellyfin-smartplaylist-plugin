@@ -248,6 +248,36 @@
         { Value: "MusicVideo", Label: "Music Video" } 
     ];
 
+    // Generate media type checkboxes from the mediaTypes array
+    function generateMediaTypeCheckboxes(page) {
+        const container = page.querySelector('#media-types-container');
+        if (!container) return;
+        
+        // Clear existing content
+        container.innerHTML = '';
+        
+        // Generate checkboxes for each media type
+        mediaTypes.forEach(mediaType => {
+            const label = document.createElement('label');
+            label.className = 'checkboxLabel';
+            label.setAttribute('for', `mediaType${mediaType.Value}`);
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.id = `mediaType${mediaType.Value}`;
+            checkbox.className = 'emby-checkbox media-type-checkbox';
+            checkbox.value = mediaType.Value;
+            
+            const span = document.createElement('span');
+            span.textContent = mediaType.Label;
+            
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            container.appendChild(label);
+        });
+    }
+
     // Helper functions for page-specific state
     function getPageEditState(page) {
         return {
@@ -410,6 +440,9 @@
     }
 
     function populateStaticSelects(page) {
+        // Generate media type checkboxes from the mediaTypes array
+        generateMediaTypeCheckboxes(page);
+        
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
             { Value: 'ProductionYear', Label: 'Production Year' },
@@ -1291,6 +1324,9 @@
         allRules.forEach(rule => cleanupRuleEventListeners(rule));
         
         rulesContainer.innerHTML = '';
+        
+        // Generate media type checkboxes before clearing their selections
+        generateMediaTypeCheckboxes(page);
         
         // Clear media type selections
         const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
@@ -2185,6 +2221,9 @@
                 } else {
                     console.warn('Max Play Time Minutes element not found when trying to populate edit form');
                 }
+                
+                // Generate media type checkboxes before setting their values
+                generateMediaTypeCheckboxes(page);
                 
                 // Set media types
                 const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
