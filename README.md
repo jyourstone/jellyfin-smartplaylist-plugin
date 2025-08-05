@@ -34,7 +34,7 @@ Requires Jellyfin version `10.11.0-rc3`.
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled tasks).
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
-- 🎵 **All Media Types** - Works with movies, series, episodes, and music
+- 🎵 **Media Types** - Works with movies, series, episodes, music, and music videos.
 
 ## ⚙️ Configuration
 
@@ -135,6 +135,7 @@ Here are some popular playlist types you can create:
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
 - **Discover New Music** - Play Count = 0 AND Date Created newer than "1 month"
 - **Top Rated Favorites** - Is Favorite = True AND Community Rating greater than 8
+- **Rediscover Music** - Last Played older than 6 months
 
 #### **Advanced Examples**
 - **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only

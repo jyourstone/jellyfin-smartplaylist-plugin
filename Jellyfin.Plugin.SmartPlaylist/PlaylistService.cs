@@ -762,7 +762,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series];
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo];
             }
 
             var baseItemKinds = new List<BaseItemKind>();
@@ -783,6 +783,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     case "Series":
                         baseItemKinds.Add(BaseItemKind.Series);
                         break;
+                    case "MusicVideo":
+                        baseItemKinds.Add(BaseItemKind.MusicVideo);
+                        break;
                     default:
                         _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
                         break;
@@ -793,7 +796,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (baseItemKinds.Count == 0)
             {
                 _logger?.LogWarning("No valid media types found, falling back to all supported types");
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series];
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo];
             }
 
             return [.. baseItemKinds];

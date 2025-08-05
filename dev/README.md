@@ -41,6 +41,7 @@ Make sure you have the following installed on your system:
     - Place movie files in `dev/media/movies/`  
     - Place TV show files in `dev/media/shows/`
     - Place music files in `dev/media/music/`  
+    - Place music video files in `dev/media/musicvideos/`  
 
 ## Notes
 

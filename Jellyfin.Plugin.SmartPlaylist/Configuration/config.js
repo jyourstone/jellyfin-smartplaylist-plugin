@@ -244,8 +244,54 @@
         { Value: "Movie", Label: "Movie" }, 
         { Value: "Series", Label: "Series" }, 
         { Value: "Episode", Label: "Episode" }, 
-        { Value: "Audio", Label: "Audio (Music)" } 
+        { Value: "Audio", Label: "Audio (Music)" },
+        { Value: "MusicVideo", Label: "Music Video" } 
     ];
+
+    // Generate media type checkboxes from the mediaTypes array
+    const generateMediaTypeCheckboxes = (page) => {
+        const container = page.querySelector('#media-types-container');
+        if (!container) return;
+        
+        // Clear existing content
+        container.innerHTML = '';
+        
+        // Generate checkboxes for each media type
+        mediaTypes.forEach(mediaType => {
+            const label = document.createElement('label');
+            label.className = 'checkboxLabel';
+            label.setAttribute('for', `mediaType${mediaType.Value}`);
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.id = `mediaType${mediaType.Value}`;
+            checkbox.className = 'emby-checkbox media-type-checkbox';
+            checkbox.value = mediaType.Value;
+            
+            const span = document.createElement('span');
+            span.textContent = mediaType.Label;
+            
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            container.appendChild(label);
+        });
+    };
+
+    // Helper function to manage search input state
+    const setSearchInputState = (page, disabled, placeholder = 'Search playlists...') => {
+        const searchInput = page.querySelector('#playlistSearchInput');
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
+        
+        if (searchInput) {
+            searchInput.disabled = disabled;
+            searchInput.placeholder = placeholder;
+        }
+        
+        if (clearSearchBtn) {
+            clearSearchBtn.style.display = disabled ? 'none' : 'block';
+        }
+    };
 
     // Helper functions for page-specific state
     function getPageEditState(page) {
@@ -408,7 +454,16 @@
         });
     }
 
+    // Initialize page elements including media type checkboxes
+    const initializePageElements = (page) => {
+        // Generate media type checkboxes from the mediaTypes array
+        generateMediaTypeCheckboxes(page);
+    };
+
     function populateStaticSelects(page) {
+        // Initialize page elements
+        initializePageElements(page);
+        
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
             { Value: 'ProductionYear', Label: 'Production Year' },
@@ -576,7 +631,7 @@
             option.textContent = opt.Label;
             operatorSelect.appendChild(option);
         });
-        if (fieldValue === 'ItemType' || fieldValue === 'IsPlayed' || fieldValue === 'IsFavorite') { operatorSelect.value = 'Equal'; }
+        if (fieldValue === 'ItemType' || FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) { operatorSelect.value = 'Equal'; }
     }
 
     function setValueInput(fieldValue, valueContainer) {
@@ -1517,6 +1572,9 @@
         }
         page._loadingPlaylists = true;
         
+        // Disable search input while loading
+        setSearchInputState(page, true, 'Loading playlists...');
+        
         container.innerHTML = '<p>Loading playlists...</p>';
         
         apiClient.ajax({
@@ -1657,11 +1715,17 @@
             } else {
                 container.innerHTML = '<div class="inputContainer"><p>No smart playlists found.</p></div>';
             }
+            
+            // Re-enable search input after loading is complete
+            setSearchInputState(page, false);
             page._loadingPlaylists = false;
         }).catch(err => {
             console.error('Error loading playlists:', err);
             let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
             container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+            
+            // Re-enable search input even on error
+            setSearchInputState(page, false);
             page._loadingPlaylists = false;
         });
     }
@@ -1763,7 +1827,14 @@
 
     async function applySearchFilter(page) {
         const searchInput = page.querySelector('#playlistSearchInput');
-        if (!searchInput || !page._allPlaylists) return;
+        if (!searchInput || !page._allPlaylists) {
+            return;
+        }
+        
+        // Don't search while loading playlists
+        if (page._loadingPlaylists) {
+            return;
+        }
         
         const searchTerm = searchInput.value.trim().toLowerCase();
         
@@ -1936,6 +2007,7 @@
                 '</div>' +
                 '</div>';
         }
+        
         container.innerHTML = html;
     }
 
@@ -2115,11 +2187,6 @@
             return response.json();
         }).then(playlist => {
             Dashboard.hideLoadingMsg();
-            
-            // Debug logging to see what we received
-            // console.log('Playlist data received:', playlist);
-            // console.log('Playlist name:', playlist ? playlist.Name : 'playlist is null/undefined');
-            // console.log('Playlist keys:', playlist ? Object.keys(playlist) : 'no keys');
             
             if (!playlist) {
                 showNotification('No playlist data received from server.');

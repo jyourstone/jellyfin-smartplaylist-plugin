@@ -194,23 +194,8 @@
                        
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel">Media Types</label>
-                            <div class="media-type-flex">
-                                <label class="checkboxLabel" for="mediaTypeMovie">
-                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeMovie" class="emby-checkbox media-type-checkbox" value="Movie">
-                                    <span>Movies</span>
-                                </label>
-                                <label class="checkboxLabel" for="mediaTypeSeries">
-                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeSeries" class="emby-checkbox media-type-checkbox" value="Series">
-                                    <span>Series</span>
-                                </label>
-                                <label class="checkboxLabel" for="mediaTypeEpisode">
-                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeEpisode" class="emby-checkbox media-type-checkbox" value="Episode">
-                                    <span>Episodes</span>
-                                </label>
-                                <label class="checkboxLabel" for="mediaTypeAudio">
-                                    <input type="checkbox" is="emby-checkbox" id="mediaTypeAudio" class="emby-checkbox media-type-checkbox" value="Audio">
-                                    <span>Music</span>
-                                </label>
+                            <div id="media-types-container" class="media-type-flex">
+                                <!-- Media type checkboxes will be generated here -->
                             </div>
                             <div class="fieldDescription">Select the types of media items to include in your playlist. Episodes are individual TV show episodes, while Series are the show containers (shows as a whole). At least one type must be selected.</div>
                         </div>
