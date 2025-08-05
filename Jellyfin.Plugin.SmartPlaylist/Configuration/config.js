@@ -249,7 +249,7 @@
     ];
 
     // Generate media type checkboxes from the mediaTypes array
-    function generateMediaTypeCheckboxes(page) {
+    const generateMediaTypeCheckboxes = (page) => {
         const container = page.querySelector('#media-types-container');
         if (!container) return;
         
@@ -276,7 +276,7 @@
             label.appendChild(span);
             container.appendChild(label);
         });
-    }
+    };
 
     // Helper functions for page-specific state
     function getPageEditState(page) {

@@ -34,7 +34,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled tasks).
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
-- 🎵 **All Media Types** - Works with movies, series, episodes, music, and music videos
+- 🎵 **Media Types** - Works with movies, series, episodes, music, and music videos.
 
 ## ⚙️ Configuration
 
