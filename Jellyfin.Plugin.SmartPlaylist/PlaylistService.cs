@@ -229,7 +229,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                     
                     // Update the playlist items
-                    await UpdatePlaylistPublicStatusAsync(existingPlaylist, dto.Public, newLinkedChildren, cancellationToken);
+                    await UpdatePlaylistPublicStatusAsync(existingPlaylist, dto.Public, newLinkedChildren, dto, cancellationToken);
                     
                     // Refresh metadata
                     await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken);
@@ -244,7 +244,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // Create new playlist
                     logger.LogDebug("Creating new playlist: {PlaylistName}", smartPlaylistName);
                     
-                    var newPlaylistId = await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, cancellationToken);
+                    var newPlaylistId = await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, dto, cancellationToken);
                     
                     // Update the DTO with the new Jellyfin playlist ID
                     dto.JellyfinPlaylistId = newPlaylistId;
@@ -612,7 +612,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private async Task UpdatePlaylistPublicStatusAsync(Playlist playlist, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
+        private async Task UpdatePlaylistPublicStatusAsync(Playlist playlist, bool isPublic, LinkedChild[] linkedChildren, SmartPlaylistDto dto, CancellationToken cancellationToken)
         {
                             _logger.LogDebug("Updating playlist {PlaylistName} public status to {PublicStatus} and items to {ItemCount}",
                     playlist.Name, isPublic ? "public" : "private", linkedChildren.Length);
@@ -653,6 +653,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Save the changes
             await playlist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             
+            // Set the appropriate MediaType based on playlist content
+            var mediaType = DeterminePlaylistMediaType(dto);
+            SetPlaylistMediaType(playlist, mediaType);
+            
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : playlist.Shares.Any();
@@ -663,7 +667,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             await RefreshPlaylistMetadataAsync(playlist, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<string> CreateNewPlaylistAsync(string playlistName, Guid userId, bool isPublic, LinkedChild[] linkedChildren, CancellationToken cancellationToken)
+        private async Task<string> CreateNewPlaylistAsync(string playlistName, Guid userId, bool isPublic, LinkedChild[] linkedChildren, SmartPlaylistDto dto, CancellationToken cancellationToken)
         {
             _logger.LogDebug("Creating new smart playlist {PlaylistName} with {ItemCount} items and {PublicStatus} status", 
                 playlistName, linkedChildren.Length, isPublic ? "public" : "private");
@@ -691,6 +695,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                
+                // Set the appropriate MediaType based on playlist content
+                var mediaType = DeterminePlaylistMediaType(dto);
+                SetPlaylistMediaType(newPlaylist, mediaType);
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
@@ -849,6 +857,125 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 stopwatch.Stop();
                 _logger.LogWarning(ex, "Failed to refresh metadata for playlist {PlaylistName} after {ElapsedTime}ms. Cover image may not be generated.", playlist.Name, stopwatch.ElapsedMilliseconds);
+            }
+        }
+
+        /// <summary>
+        /// Determines the appropriate MediaType based on playlist content.
+        /// </summary>
+        /// <param name="dto">The smart playlist DTO</param>
+        /// <returns>"Video" for video content, "Audio" for audio content</returns>
+        private string DeterminePlaylistMediaType(SmartPlaylistDto dto)
+        {
+            if (dto.MediaTypes?.Count > 0)
+            {
+                // Check if it's audio-only
+                if (dto.MediaTypes.All(mt => mt == "Audio"))
+                {
+                    _logger.LogDebug("Playlist {PlaylistName} contains only Audio content, setting MediaType to Audio", dto.Name);
+                    return "Audio";
+                }
+                
+                bool hasVideoContent = dto.MediaTypes.Any(mt => mt is "Movie" or "Series" or "Episode" or "MusicVideo");
+                bool hasAudioContent = dto.MediaTypes.Any(mt => mt == "Audio");
+                
+                if (hasVideoContent && !hasAudioContent)
+                {
+                    _logger.LogDebug("Playlist {PlaylistName} contains only video content, setting MediaType to Video", dto.Name);
+                    return "Video";
+                }
+            }
+            
+            // Default to Audio for mixed/unknown content (Jellyfin standard)
+            _logger.LogDebug("Playlist {PlaylistName} has mixed/unknown content, defaulting to Audio", dto.Name);
+            return "Audio";
+        }
+
+        /// <summary>
+        /// Sets the MediaType of a Jellyfin playlist using reflection (similar to IsPublic implementation).
+        /// </summary>
+        /// <param name="playlist">The playlist object</param>
+        /// <param name="mediaType">The media type to set ("Video" or "Audio")</param>
+        private void SetPlaylistMediaType(Playlist playlist, string mediaType)
+        {
+            try
+            {
+                var playlistMediaTypeProperty = playlist.GetType().GetProperty("PlaylistMediaType");
+                
+                if (playlistMediaTypeProperty != null && playlistMediaTypeProperty.CanWrite)
+                {
+                    var currentValue = playlistMediaTypeProperty.GetValue(playlist)?.ToString() ?? "null";
+                    _logger.LogDebug("Current PlaylistMediaType value for playlist {PlaylistName}: {CurrentValue}", playlist.Name, currentValue);
+                    
+                    // Convert string to MediaType enum if needed
+                    object mediaTypeValue;
+                    if (playlistMediaTypeProperty.PropertyType == typeof(string))
+                    {
+                        mediaTypeValue = mediaType;
+                    }
+                    else if (playlistMediaTypeProperty.PropertyType.IsEnum)
+                    {
+                        // Try to parse as enum (e.g., MediaType.Video, MediaType.Audio)
+                        if (Enum.TryParse(playlistMediaTypeProperty.PropertyType, mediaType, true, out var enumValue))
+                        {
+                            mediaTypeValue = enumValue;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Could not parse {MediaType} as {EnumType} for playlist {PlaylistName}", mediaType, playlistMediaTypeProperty.PropertyType.Name, playlist.Name);
+                            return;
+                        }
+                    }
+                    else if (playlistMediaTypeProperty.PropertyType.IsGenericType && playlistMediaTypeProperty.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    {
+                        // Handle nullable enum (MediaType?)
+                        var underlyingType = Nullable.GetUnderlyingType(playlistMediaTypeProperty.PropertyType);
+                        if (underlyingType != null && underlyingType.IsEnum)
+                        {
+                            if (Enum.TryParse(underlyingType, mediaType, true, out var enumValue))
+                            {
+                                mediaTypeValue = enumValue;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Could not parse {MediaType} as nullable {EnumType} for playlist {PlaylistName}", mediaType, underlyingType.Name, playlist.Name);
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            mediaTypeValue = mediaType;
+                        }
+                    }
+                    else
+                    {
+                        mediaTypeValue = mediaType;
+                    }
+                    
+                    try
+                    {
+                        _logger.LogDebug("Setting playlist {PlaylistName} PlaylistMediaType to {Value} (Type: {ValueType})", 
+                            playlist.Name, mediaTypeValue, mediaTypeValue?.GetType()?.Name ?? "null");
+                        
+                        playlistMediaTypeProperty.SetValue(playlist, mediaTypeValue);
+                        
+                        var newValue = playlistMediaTypeProperty.GetValue(playlist)?.ToString() ?? "null";
+                        _logger.LogDebug("Successfully set playlist {PlaylistName} PlaylistMediaType from {OldValue} to {NewValue}", 
+                            playlist.Name, currentValue, newValue);
+                    }
+                    catch (Exception setEx)
+                    {
+                        _logger.LogError(setEx, "Failed to set PlaylistMediaType property on playlist {PlaylistName}", playlist.Name);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("PlaylistMediaType property not found or not writable on playlist {PlaylistName}. This requires a custom Jellyfin build with MediaType support.", playlist.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting playlist {PlaylistName} MediaType to {MediaType}", playlist.Name, mediaType);
             }
         }
 
