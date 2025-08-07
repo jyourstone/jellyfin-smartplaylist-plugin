@@ -970,7 +970,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 else
                 {
-                    _logger.LogWarning("PlaylistMediaType property not found or not writable on playlist {PlaylistName}. This requires a custom Jellyfin build with MediaType support.", playlist.Name);
+                    _logger.LogWarning("PlaylistMediaType property not found or not writable on playlist {PlaylistName}.", playlist.Name);
                 }
             }
             catch (Exception ex)
