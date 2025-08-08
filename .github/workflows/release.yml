@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+env:
+  DOTNET_VERSION: 8.0.x
+  PRERELEASE_STR: false
+  TARGET_ABI: 10.10.0
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,14 +18,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # We need to fetch all history and tags for the commit message
           fetch-depth: 0
-          
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
-          
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
       - name: Setup jq
         run: sudo apt-get install -y jq
 
@@ -31,7 +35,9 @@ jobs:
         run: |
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
           echo "Building version: $VERSION"
-          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release --no-restore -o ./build_output /p:Version=$VERSION /p:AssemblyVersion=$VERSION
+          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj \
+            --configuration Release --no-restore -o ./build_output \
+            /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
       - name: Create Plugin Zip
         run: |
@@ -42,150 +48,56 @@ jobs:
           zip -X ../Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip *
           cd ..
 
-      - name: Get Release Notes
-        id: get_release_notes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-          echo "Getting release notes for tag: ${{ github.ref_name }}"
-          
-          # Ensure we have the complete tag information
-          echo "=== Debug: Git repository state ==="
-          git remote -v
-          git branch -a
-          git tag -l | head -10
-          echo "Current HEAD: $(git rev-parse HEAD)"
-          echo "Tag ${{ github.ref_name }} points to: $(git rev-parse ${{ github.ref_name }} 2>/dev/null || echo 'NOT FOUND')"
-          
-          # Explicitly fetch all tags with annotations
-          echo "=== Fetching tags explicitly ==="
-          git fetch --tags --force
-          
-          # Re-check tag information after explicit fetch
-          echo "=== Debug: After explicit tag fetch ==="
-          git tag -l | grep "${{ github.ref_name }}" || echo "Tag not found in local tags"
-          
-          # Check if tag exists and what type it is
-          if git rev-parse --verify "${{ github.ref_name }}" >/dev/null 2>&1; then
-            TAG_OBJECT_TYPE=$(git cat-file -t "${{ github.ref_name }}" 2>/dev/null || echo "unknown")
-            echo "Tag ${{ github.ref_name }} exists, object type: $TAG_OBJECT_TYPE"
-          else
-            echo "ERROR: Tag ${{ github.ref_name }} not found after fetch"
-            exit 1
-          fi
-          
-          # Try to get tag annotation message
-          TAG_MESSAGE=""
-          
-          # Method 1: If it's an annotated tag, use cat-file
-          if [ "$TAG_OBJECT_TYPE" = "tag" ]; then
-            echo "=== Method 1: Getting annotated tag message with cat-file ==="
-            TAG_MESSAGE=$(git cat-file -p "${{ github.ref_name }}" | sed '1,/^$/d' | sed '/^-----BEGIN PGP SIGNATURE-----/,$d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            echo "Result from cat-file: '$TAG_MESSAGE'"
-          fi
-          
-          # Method 2: Try git tag -l --format (works for both annotated and lightweight)
-          if [ -z "$TAG_MESSAGE" ]; then
-            echo "=== Method 2: Using git tag -l --format ==="
-            TAG_MESSAGE=$(git tag -l --format='%(contents)' "${{ github.ref_name }}" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            echo "Result from git tag format: '$TAG_MESSAGE'"
-          fi
-          
-          # Method 3: Try git for-each-ref
-          if [ -z "$TAG_MESSAGE" ]; then
-            echo "=== Method 3: Using git for-each-ref ==="
-            TAG_MESSAGE=$(git for-each-ref --format='%(contents)' "refs/tags/${{ github.ref_name }}" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            echo "Result from for-each-ref: '$TAG_MESSAGE'"
-          fi
-          
-          # Method 4: Use GitHub API as fallback
-          if [ -z "$TAG_MESSAGE" ]; then
-            echo "=== Method 4: Using GitHub API as fallback ==="
-            API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/${{ github.repository }}/git/tags/$(git rev-parse ${{ github.ref_name }})" 2>/dev/null || echo "")
-            
-            if [ -n "$API_RESPONSE" ]; then
-              TAG_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.message // empty' 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-              echo "Result from GitHub API: '$TAG_MESSAGE'"
-            fi
-          fi
-          
-          # Clean up and validate the message
-          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          echo "=== Final cleaned tag message: '$TAG_MESSAGE' ==="
-          
-          # Set the release notes
-          if [ -n "$TAG_MESSAGE" ] && [ "$TAG_MESSAGE" != "null" ]; then
-            echo "✅ Using tag annotation as release notes"
-            RELEASE_NOTES="$TAG_MESSAGE"
-          else
-            echo "⚠️  No tag annotation found, using default message"
-            
-            # Try to get the commit message as ultimate fallback
-            COMMIT_MESSAGE=$(git log -1 --pretty=%B "${{ github.ref_name }}" 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -n "$COMMIT_MESSAGE" ]; then
-              RELEASE_NOTES="Release ${{ github.ref_name }}"
-              RELEASE_NOTES="$RELEASE_NOTES"$'\n\n'"Changes in this release:"
-              RELEASE_NOTES="$RELEASE_NOTES"$'\n'"- $COMMIT_MESSAGE"
-              RELEASE_NOTES="$RELEASE_NOTES"$'\n\n'"For detailed changes, please see the commit history."
-            else
-              RELEASE_NOTES="Release ${{ github.ref_name }} - Please see the commit history for changes in this release."
-            fi
-          fi
-          
-          echo "=== Final release notes ==="
-          echo "$RELEASE_NOTES"
-          echo "=========================="
-
-          # Set the output using the multiline format
-          {
-            echo 'release_notes<<EOM'
-            echo "$RELEASE_NOTES"
-            echo 'EOM'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create Release
+      - name: Create Release (auto notes from PRs)
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
-          body: ${{ steps.get_release_notes.outputs.release_notes }}
           files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
           draft: false
-          prerelease: false
-          generate_release_notes: false
+          # convert "true"/"false" string to boolean
+          prerelease: ${{ fromJSON(env.PRERELEASE_STR) }}
+          generate_release_notes: true
           token: ${{ secrets.PAT }}
+
+      - name: Read Release Body
+        id: read_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+        run: |
+          set -e
+          resp=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                 "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}")
+          body=$(echo "$resp" | jq -r '.body // ""')
+          {
+            echo 'body<<EOM'
+            echo "$body"
+            echo 'EOM'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Update External Manifest
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
-          # 1. Set up variables
           VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
           ASSEMBLY_VERSION="${VERSION}"
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
-          TARGET_ABI="10.10.0"
+          TARGET_ABI="${{ env.TARGET_ABI }}"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
-          CHANGELOG="${{ steps.get_release_notes.outputs.release_notes }}"
+          CHANGELOG="${{ steps.read_release.outputs.body }}"
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
           PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
 
-          # 2. Clone the manifest repository
           git clone https://x-access-token:${{ secrets.PAT }}@github.com/${MANIFEST_REPO}.git manifest-repo
           cd manifest-repo
-          
           MANIFEST_FILE="manifest.json"
 
-          # 3. Create manifest file if it does not exist
           if [ ! -f "$MANIFEST_FILE" ]; then
-            echo "Creating new manifest file: $MANIFEST_FILE"
             echo "[]" > "$MANIFEST_FILE"
           fi
 
-          # 4. Create the JSON entry for the new version
           NEW_PACKAGE=$(jq -n \
             --arg version "$ASSEMBLY_VERSION" \
             --arg abi "$TARGET_ABI" \
@@ -195,9 +107,7 @@ jobs:
             --arg timestamp "$TIMESTAMP" \
             '{version: $version, targetAbi: $abi, sourceUrl: $url, checksum: $checksum, changelog: $changelog, timestamp: $timestamp}')
 
-          # 5. Check if the plugin entry exists. If not, create it.
           if ! jq -e --arg guid "$PLUGIN_GUID" 'any(.[]; .guid == $guid)' "$MANIFEST_FILE" > /dev/null; then
-            echo "Plugin with GUID $PLUGIN_GUID not found in manifest. Creating a new entry."
             PLUGIN_ENTRY=$(jq -n \
               --arg name "SmartPlaylist" \
               --arg guid "$PLUGIN_GUID" \
@@ -207,17 +117,15 @@ jobs:
               --arg owner "jyourstone" \
               --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" \
               '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
-            jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp_manifest.json && mv tmp_manifest.json "$MANIFEST_FILE"
+            jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
           fi
 
-          # 6. Find the plugin by GUID and prepend the new version
           jq --argjson new_package "$NEW_PACKAGE" --arg guid "$PLUGIN_GUID" \
             '(.[] | select(.guid == $guid).versions) |= [$new_package] + .' \
             "$MANIFEST_FILE" > tmp_manifest.json && mv tmp_manifest.json "$MANIFEST_FILE"
 
-          # 7. Commit and push the changes
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add manifest.json
           git commit -m "Update manifest for SmartPlaylist v${VERSION}"
-          git push 
+          git push
