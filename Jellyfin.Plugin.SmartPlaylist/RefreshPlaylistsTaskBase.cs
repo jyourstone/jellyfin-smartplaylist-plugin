@@ -316,7 +316,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                         logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
                                             media.Length, mediaTypesKey, user.Username);
                                         return media;
-                                    })
+                                    }, LazyThreadSafetyMode.ExecutionAndPublication)
                                 ).Value;
                                 
                                 logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
