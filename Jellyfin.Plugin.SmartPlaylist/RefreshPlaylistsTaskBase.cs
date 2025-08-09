@@ -40,14 +40,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return new MediaTypesKey(sorted);
         }
 
-        public bool Equals(MediaTypesKey other)
-        {
-            // Handle null arrays (default struct case) and use SequenceEqual for cleaner comparison
-            var thisArray = _sortedTypes ?? [];
-            var otherArray = other._sortedTypes ?? [];
-            
-            return thisArray.AsSpan().SequenceEqual(otherArray.AsSpan());
-        }
+                    public bool Equals(MediaTypesKey other)
+            {
+                // Handle null arrays (default struct case) and use SequenceEqual for cleaner comparison
+                var thisArray = _sortedTypes ?? [];
+                var otherArray = other._sortedTypes ?? [];
+                
+                return thisArray.AsSpan().SequenceEqual(otherArray.AsSpan());
+            }
 
 
 
@@ -310,6 +310,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
                                 var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes);
                                 var mediaTypesForClosure = dto.MediaTypes; // Avoid capturing entire dto in closure
+                                // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
+                                // where failures typically indicate serious issues that should fail fast
+                                // rather than retry repeatedly during the same scheduled task execution.
                                 var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
                                     new Lazy<BaseItem[]>(() =>
                                     {
