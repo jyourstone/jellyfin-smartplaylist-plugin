@@ -244,10 +244,19 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 // Use the PlaylistService for actual processing
                                 var playlistService = GetPlaylistService();
+                                
+                                // Get media specifically for this playlist's media types (not the cached generic media)
+                                // This ensures Movie playlists only get movies, not episodes/series
+                                var playlistSpecificMedia = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
+                                
+                                logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
+                                    dto.Name, dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None", 
+                                    playlistSpecificMedia.Length, relevantUserMedia.Length);
+                                
                                 var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                     dto, 
                                     playlistUser, 
-                                    relevantUserMedia, 
+                                    playlistSpecificMedia, // Use playlist-specific media instead of generic cached media
                                     async (updatedDto) => await plStore.SaveAsync(updatedDto), // Save callback for when JellyfinPlaylistId is updated
                                     cancellationToken);
                                 

@@ -29,6 +29,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message)> TryRefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
+        IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes);
     }
 
     public class PlaylistService(
@@ -751,6 +752,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             return null;
         }
+        public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes)
+        {
+            return GetAllUserMedia(user, mediaTypes);
+        }
+
         private IEnumerable<BaseItem> GetAllUserMedia(User user, List<string> mediaTypes = null)
         {
             var query = new InternalItemsQuery(user)
