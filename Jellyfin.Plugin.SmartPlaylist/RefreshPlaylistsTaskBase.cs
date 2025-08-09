@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// <summary>
     /// Cache key for media types to avoid string collision issues
     /// </summary>
-    internal readonly record struct MediaTypesKey
+    internal readonly record struct MediaTypesKey : IEquatable<MediaTypesKey>
     {
         private readonly string[] _sortedTypes;
 
@@ -37,6 +37,32 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             var sorted = mediaTypes.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             return new MediaTypesKey(sorted);
+        }
+
+        public bool Equals(MediaTypesKey other)
+        {
+            if (_sortedTypes.Length != other._sortedTypes.Length)
+                return false;
+
+            for (int i = 0; i < _sortedTypes.Length; i++)
+            {
+                if (!string.Equals(_sortedTypes[i], other._sortedTypes[i], StringComparison.Ordinal))
+                    return false;
+            }
+
+            return true;
+        }
+
+
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            foreach (var type in _sortedTypes)
+            {
+                hash.Add(type, StringComparer.Ordinal);
+            }
+            return hash.ToHashCode();
         }
 
         public override string ToString()
