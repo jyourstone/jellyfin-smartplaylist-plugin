@@ -41,24 +41,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public bool Equals(MediaTypesKey other)
         {
-            if (_sortedTypes.Length != other._sortedTypes.Length)
-                return false;
-
-            for (int i = 0; i < _sortedTypes.Length; i++)
-            {
-                if (!string.Equals(_sortedTypes[i], other._sortedTypes[i], StringComparison.Ordinal))
-                    return false;
-            }
-
-            return true;
+            // Handle null arrays (default struct case) and use SequenceEqual for cleaner comparison
+            var thisArray = _sortedTypes ?? [];
+            var otherArray = other._sortedTypes ?? [];
+            
+            return thisArray.AsSpan().SequenceEqual(otherArray.AsSpan());
         }
 
 
 
         public override int GetHashCode()
         {
+            // Handle null array (default struct case)
+            var array = _sortedTypes ?? [];
+            
             var hash = new HashCode();
-            foreach (var type in _sortedTypes)
+            foreach (var type in array)
             {
                 hash.Add(type, StringComparer.Ordinal);
             }
@@ -67,7 +65,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override string ToString()
         {
-            return _sortedTypes.Length == 0 ? "(empty)" : string.Join(",", _sortedTypes);
+            // Handle null array (default struct case)
+            var array = _sortedTypes ?? [];
+            return array.Length == 0 ? "(empty)" : string.Join(",", array);
         }
     }
 
@@ -273,6 +273,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
                     var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, BaseItem[]>();
                     
+                    // OPTIMIZATION: Create PlaylistService once per user, not once per playlist
+                    var playlistService = GetPlaylistService();
+                    
                     // Process playlists in parallel batches
                     var batchSize = Math.Max(1, maxConcurrency);
                     for (int i = 0; i < userPlaylists.Count; i += batchSize)
@@ -300,9 +303,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached {MediaTypes} media ({MediaCount} items)", 
                                     dto.Name, dto.ExpressionSets?.Count ?? 0, GetHandledMediaTypes(), relevantUserMedia.Length);
-                                
-                                // Use the PlaylistService for actual processing
-                                var playlistService = GetPlaylistService();
                                 
                                 // OPTIMIZATION: Get media specifically for this playlist's media types using cache
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
