@@ -35,7 +35,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 return new MediaTypesKey([]);
             }
 
-            var sorted = mediaTypes.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            // Deduplicate to ensure identical cache keys for equivalent content (e.g., ["Movie", "Movie"] = ["Movie"])
+            var sorted = mediaTypes.Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
             return new MediaTypesKey(sorted);
         }
 
@@ -271,7 +272,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         userPlaylists.Count, user.Username, GetHandledMediaTypes(), relevantUserMedia.Length);
                     
                     // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
-                    var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, BaseItem[]>();
+                    // Use Lazy<T> to ensure value factory executes only once per key, even under concurrent access
+                    var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>();
                     
                     // OPTIMIZATION: Create PlaylistService once per user, not once per playlist
                     var playlistService = GetPlaylistService();
@@ -308,12 +310,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
                                 var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes);
                                 var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
-                                {
-                                    var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
-                                    logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
-                                        media.Length, mediaTypesKey, user.Username);
-                                    return media;
-                                });
+                                    new Lazy<BaseItem[]>(() =>
+                                    {
+                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
+                                        logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
+                                            media.Length, mediaTypesKey, user.Username);
+                                        return media;
+                                    })
+                                ).Value;
                                 
                                 logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
                                     dto.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
