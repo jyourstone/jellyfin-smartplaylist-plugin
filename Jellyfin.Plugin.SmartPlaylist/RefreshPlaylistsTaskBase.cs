@@ -309,10 +309,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 // OPTIMIZATION: Get media specifically for this playlist's media types using cache
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
                                 var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes);
+                                var mediaTypesForClosure = dto.MediaTypes; // Avoid capturing entire dto in closure
                                 var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
                                     new Lazy<BaseItem[]>(() =>
                                     {
-                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
+                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, mediaTypesForClosure).ToArray();
                                         logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
                                             media.Length, mediaTypesKey, user.Username);
                                         return media;
