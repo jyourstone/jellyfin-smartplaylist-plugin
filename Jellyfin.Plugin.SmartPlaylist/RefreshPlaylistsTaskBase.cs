@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -214,6 +215,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached {MediaTypes} media ({MediaCount} items)", 
                         userPlaylists.Count, user.Username, GetHandledMediaTypes(), relevantUserMedia.Length);
                     
+                    // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
+                    var userMediaTypeCache = new ConcurrentDictionary<string, BaseItem[]>();
+                    
                     // Process playlists in parallel batches
                     var batchSize = Math.Max(1, maxConcurrency);
                     for (int i = 0; i < userPlaylists.Count; i += batchSize)
@@ -245,13 +249,19 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 // Use the PlaylistService for actual processing
                                 var playlistService = GetPlaylistService();
                                 
-                                // Get media specifically for this playlist's media types (not the cached generic media)
-                                // This ensures Movie playlists only get movies, not episodes/series
-                                var playlistSpecificMedia = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
+                                // OPTIMIZATION: Get media specifically for this playlist's media types using cache
+                                // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
+                                var mediaTypesKey = dto.MediaTypes != null ? string.Join(",", dto.MediaTypes.OrderBy(x => x)) : "";
+                                var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
+                                {
+                                    var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
+                                    logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
+                                        media.Length, mediaTypesKey, user.Username);
+                                    return media;
+                                });
                                 
                                 logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
-                                    dto.Name, dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None", 
-                                    playlistSpecificMedia.Length, relevantUserMedia.Length);
+                                    dto.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
                                 
                                 var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                     dto, 
