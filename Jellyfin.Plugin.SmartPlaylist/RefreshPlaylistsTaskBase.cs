@@ -17,6 +17,35 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
+    /// Cache key for media types to avoid string collision issues
+    /// </summary>
+    internal readonly record struct MediaTypesKey
+    {
+        private readonly string[] _sortedTypes;
+
+        private MediaTypesKey(string[] sortedTypes)
+        {
+            _sortedTypes = sortedTypes;
+        }
+
+        public static MediaTypesKey Create(List<string> mediaTypes)
+        {
+            if (mediaTypes == null || mediaTypes.Count == 0)
+            {
+                return new MediaTypesKey([]);
+            }
+
+            var sorted = mediaTypes.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            return new MediaTypesKey(sorted);
+        }
+
+        public override string ToString()
+        {
+            return _sortedTypes.Length == 0 ? "(empty)" : string.Join(",", _sortedTypes);
+        }
+    }
+
+    /// <summary>
     /// Abstract base class for playlist refresh tasks.
     /// </summary>
     public abstract class RefreshPlaylistsTaskBase(
@@ -216,7 +245,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         userPlaylists.Count, user.Username, GetHandledMediaTypes(), relevantUserMedia.Length);
                     
                     // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
-                    var userMediaTypeCache = new ConcurrentDictionary<string, BaseItem[]>();
+                    var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, BaseItem[]>();
                     
                     // Process playlists in parallel batches
                     var batchSize = Math.Max(1, maxConcurrency);
@@ -251,7 +280,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 // OPTIMIZATION: Get media specifically for this playlist's media types using cache
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
-                                var mediaTypesKey = dto.MediaTypes != null ? string.Join(",", dto.MediaTypes.OrderBy(x => x)) : "";
+                                var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes);
                                 var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
                                 {
                                     var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, dto.MediaTypes).ToArray();
