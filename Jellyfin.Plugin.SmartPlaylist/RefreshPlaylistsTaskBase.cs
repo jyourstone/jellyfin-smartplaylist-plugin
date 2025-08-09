@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -15,6 +16,62 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
+    /// <summary>
+    /// Cache key for media types to avoid string collision issues
+    /// </summary>
+    internal readonly record struct MediaTypesKey : IEquatable<MediaTypesKey>
+    {
+        private readonly string[] _sortedTypes;
+
+        private MediaTypesKey(string[] sortedTypes)
+        {
+            _sortedTypes = sortedTypes;
+        }
+
+        public static MediaTypesKey Create(List<string> mediaTypes)
+        {
+            if (mediaTypes == null || mediaTypes.Count == 0)
+            {
+                return new MediaTypesKey([]);
+            }
+
+            // Deduplicate to ensure identical cache keys for equivalent content (e.g., ["Movie", "Movie"] = ["Movie"])
+            var sorted = mediaTypes.Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            return new MediaTypesKey(sorted);
+        }
+
+                    public bool Equals(MediaTypesKey other)
+            {
+                // Handle null arrays (default struct case) and use SequenceEqual for cleaner comparison
+                var thisArray = _sortedTypes ?? [];
+                var otherArray = other._sortedTypes ?? [];
+                
+                return thisArray.AsSpan().SequenceEqual(otherArray.AsSpan());
+            }
+
+
+
+        public override int GetHashCode()
+        {
+            // Handle null array (default struct case)
+            var array = _sortedTypes ?? [];
+            
+            var hash = new HashCode();
+            foreach (var type in array)
+            {
+                hash.Add(type, StringComparer.Ordinal);
+            }
+            return hash.ToHashCode();
+        }
+
+        public override string ToString()
+        {
+            // Handle null array (default struct case)
+            var array = _sortedTypes ?? [];
+            return array.Length == 0 ? "(empty)" : string.Join(",", array);
+        }
+    }
+
     /// <summary>
     /// Abstract base class for playlist refresh tasks.
     /// </summary>
@@ -214,6 +271,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached {MediaTypes} media ({MediaCount} items)", 
                         userPlaylists.Count, user.Username, GetHandledMediaTypes(), relevantUserMedia.Length);
                     
+                    // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
+                    // Use Lazy<T> to ensure value factory executes only once per key, even under concurrent access
+                    var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>();
+                    
+                    // OPTIMIZATION: Create PlaylistService once per user, not once per playlist
+                    var playlistService = GetPlaylistService();
+                    
                     // Process playlists in parallel batches
                     var batchSize = Math.Max(1, maxConcurrency);
                     for (int i = 0; i < userPlaylists.Count; i += batchSize)
@@ -242,12 +306,30 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached {MediaTypes} media ({MediaCount} items)", 
                                     dto.Name, dto.ExpressionSets?.Count ?? 0, GetHandledMediaTypes(), relevantUserMedia.Length);
                                 
-                                // Use the PlaylistService for actual processing
-                                var playlistService = GetPlaylistService();
+                                // OPTIMIZATION: Get media specifically for this playlist's media types using cache
+                                // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
+                                var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes);
+                                var mediaTypesForClosure = dto.MediaTypes; // Avoid capturing entire dto in closure
+                                // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
+                                // where failures typically indicate serious issues that should fail fast
+                                // rather than retry repeatedly during the same scheduled task execution.
+                                var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
+                                    new Lazy<BaseItem[]>(() =>
+                                    {
+                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, mediaTypesForClosure).ToArray();
+                                        logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
+                                            media.Length, mediaTypesKey, user.Username);
+                                        return media;
+                                    }, LazyThreadSafetyMode.ExecutionAndPublication)
+                                ).Value;
+                                
+                                logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
+                                    dto.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
+                                
                                 var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                     dto, 
                                     playlistUser, 
-                                    relevantUserMedia, 
+                                    playlistSpecificMedia, // Use playlist-specific media instead of generic cached media
                                     async (updatedDto) => await plStore.SaveAsync(updatedDto), // Save callback for when JellyfinPlaylistId is updated
                                     cancellationToken);
                                 

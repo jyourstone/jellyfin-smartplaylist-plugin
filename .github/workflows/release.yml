@@ -87,6 +87,8 @@ jobs:
           TARGET_ABI="${{ env.TARGET_ABI }}"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
           CHANGELOG="${{ steps.read_release.outputs.body }}"
+          # Sanitize changelog: remove trailing "by @user in <link>" fragments GitHub adds
+          CLEAN_CHANGELOG=$(echo "$CHANGELOG" | sed -E 's/[[:space:]]*by @[[:alnum:]-]+ in https?:\/\/[^[:space:]]+//g')
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
           PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
 
@@ -103,7 +105,7 @@ jobs:
             --arg abi "$TARGET_ABI" \
             --arg url "$DOWNLOAD_URL" \
             --arg checksum "$CHECKSUM" \
-            --arg changelog "$CHANGELOG" \
+            --arg changelog "$CLEAN_CHANGELOG" \
             --arg timestamp "$TIMESTAMP" \
             '{version: $version, targetAbi: $abi, sourceUrl: $url, checksum: $checksum, changelog: $changelog, timestamp: $timestamp}')
 
