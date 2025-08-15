@@ -595,33 +595,27 @@
             allowedOperators = availableFields.Operators.filter(op => allowedOperatorValues.includes(op.Value));
         } else {
             // Fallback to the old logic if FieldOperators is not available
+            // Define common operator sets to avoid duplication
+            const stringListOperators = ['Contains', 'NotContains', 'IsIn', 'IsNotIn', 'MatchRegex'];
+            const stringOperators = ['Equal', 'NotEqual', 'Contains', 'NotContains', 'IsIn', 'IsNotIn', 'MatchRegex'];
+            const numericOperators = ['Equal', 'NotEqual', 'GreaterThan', 'LessThan', 'GreaterThanOrEqual', 'LessThanOrEqual'];
+            const booleanOperators = ['Equal', 'NotEqual'];
+            
             if (FIELD_TYPES.LIST_FIELDS.includes(fieldValue)) {
-                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                allowedOperators = availableFields.Operators.filter(op => stringListOperators.includes(op.Value));
             } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
                 // Numeric fields should NOT include date-specific operators
-                allowedOperators = availableFields.Operators.filter(op => 
-                    op.Value === 'Equal' || 
-                    op.Value === 'NotEqual' || 
-                    op.Value === 'GreaterThan' || 
-                    op.Value === 'LessThan' || 
-                    op.Value === 'GreaterThanOrEqual' || 
-                    op.Value === 'LessThanOrEqual'
-                );
+                allowedOperators = availableFields.Operators.filter(op => numericOperators.includes(op.Value));
             } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
                 // Date fields: exclude string operators and numeric-specific operators, include date-specific operators
                 allowedOperators = availableFields.Operators.filter(op => 
-                    op.Value !== 'Contains' && 
-                    op.Value !== 'NotContains' && 
-                    op.Value !== 'MatchRegex' &&
-                    op.Value !== 'GreaterThan' &&
-                    op.Value !== 'LessThan' &&
-                    op.Value !== 'GreaterThanOrEqual' &&
-                    op.Value !== 'LessThanOrEqual'
+                    !stringListOperators.includes(op.Value) && 
+                    !numericOperators.includes(op.Value)
                 );
             } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
-                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
+                allowedOperators = availableFields.Operators.filter(op => booleanOperators.includes(op.Value));
             } else { // Default to string fields
-                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                allowedOperators = availableFields.Operators.filter(op => stringOperators.includes(op.Value));
             }
         }
 
@@ -1562,7 +1556,82 @@
         }
     }
 
-    function loadPlaylistList(page) {
+    // Helper function to generate rules HTML for playlist display
+    async function generatePlaylistRulesHtml(playlist, apiClient) {
+        let rulesHtml = '';
+        if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+            for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
+                const expressionSet = playlist.ExpressionSets[groupIndex];
+                if (groupIndex > 0) {
+                    rulesHtml += '<strong style="color: #888;">OR</strong><br>';
+                }
+                
+                if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                    rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
+                    
+                    for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
+                        const rule = expressionSet.Expressions[ruleIndex];
+                        if (ruleIndex > 0) {
+                            rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
+                        }
+                        
+                        let fieldName = rule.MemberName;
+                        if (fieldName === 'ItemType') fieldName = 'Media Type';
+                        let operator = rule.Operator;
+                        switch(operator) {
+                            case 'Equal': operator = 'equals'; break;
+                            case 'NotEqual': operator = 'not equals'; break;
+                            case 'Contains': operator = 'contains'; break;
+                            case 'NotContains': operator = "not contains"; break;
+                            case 'IsIn': operator = 'is in'; break;
+                            case 'IsNotIn': operator = 'is not in'; break;
+                            case 'GreaterThan': operator = '>'; break;
+                            case 'LessThan': operator = '<'; break;
+                            case 'After': operator = 'after'; break;
+                            case 'Before': operator = 'before'; break;
+                            case 'GreaterThanOrEqual': operator = '>='; break;
+                            case 'LessThanOrEqual': operator = '<='; break;
+                            case 'MatchRegex': operator = 'matches regex'; break;
+                        }
+                        let value = rule.TargetValue;
+                        if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                        if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
+                        
+                        // Check if this rule has a specific user
+                        let userInfo = '';
+                        if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
+                            const userName = await resolveUserIdToName(apiClient, rule.UserId);
+                            if (userName) {
+                                userInfo = ' for user "' + userName + '"';
+                            }
+                        }
+                        
+                        // Check for NextUnwatched specific options
+                        let nextUnwatchedInfo = '';
+                        if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
+                            nextUnwatchedInfo = ' (excluding unwatched series)';
+                        }
+                        
+                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
+                    }
+                    
+                    rulesHtml += '</div>';
+                }
+            }
+        } else {
+            rulesHtml = '<em>No rules defined</em><br>';
+        }
+        return rulesHtml;
+    }
+
+    // Helper function to format playlist display values
+    function formatPlaylistDisplayValues(playlist) {
+        const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
+        const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+        return { maxItemsDisplay, maxPlayTimeDisplay };
+    }
+
+    async function loadPlaylistList(page) {
         const apiClient = getApiClient();
         const container = page.querySelector('#playlist-list-container');
         
@@ -1619,73 +1688,9 @@
                     const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
                         playlist.MediaTypes.join(', ') : 'All Types';
                     
-                    let rulesHtml = '';
-                    if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-                        for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
-                            const expressionSet = playlist.ExpressionSets[groupIndex];
-                            if (groupIndex > 0) {
-                                rulesHtml += '<strong style="color: #888;">OR</strong><br>';
-                            }
-                            
-                            if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                                rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
-                                
-                                for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
-                                    const rule = expressionSet.Expressions[ruleIndex];
-                                    if (ruleIndex > 0) {
-                                        rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
-                                    }
-                                    
-                                    let fieldName = rule.MemberName;
-                                    if (fieldName === 'ItemType') fieldName = 'Media Type';
-                                    let operator = rule.Operator;
-                                    switch(operator) {
-                                        case 'Equal': operator = 'equals'; break;
-                                        case 'NotEqual': operator = 'not equals'; break;
-                                        case 'Contains': operator = 'contains'; break;
-                                        case 'NotContains': operator = "not contains"; break;
-                                        case 'GreaterThan': operator = '>'; break;
-                                        case 'LessThan': operator = '<'; break;
-                                        case 'After': operator = 'after'; break;
-                                        case 'Before': operator = 'before'; break;
-                                        case 'GreaterThanOrEqual': operator = '>='; break;
-                                        case 'LessThanOrEqual': operator = '<='; break;
-                                        case 'MatchRegex': operator = 'matches regex'; break;
-                                    }
-                                    let value = rule.TargetValue;
-                                    if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                                    if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
-                                    
-                                    // Check if this rule has a specific user
-                                    let userInfo = '';
-                                    if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
-                                        const userName = await resolveUserIdToName(apiClient, rule.UserId);
-                                        if (userName) {
-                                            userInfo = ' for user "' + userName + '"';
-                                        }
-                                    }
-                                    
-                                    // Check for NextUnwatched specific options
-                                    let nextUnwatchedInfo = '';
-                                    if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
-                                        nextUnwatchedInfo = ' (excluding unwatched series)';
-                                    }
-                                    
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
-                                }
-                                
-                                rulesHtml += '</div>';
-                            }
-                        }
-                    } else {
-                        rulesHtml = '<em>No rules defined</em><br>';
-                    }
-                    
-                    // Format Max Items display
-                    const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
-                    
-                    // Format Max Play Time display
-                    const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+                    // Use helper functions to generate rules HTML and format display values
+                    const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
+                    const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
                     
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
                         '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
@@ -1915,73 +1920,9 @@
             const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
                 playlist.MediaTypes.join(', ') : 'All Types';
             
-            let rulesHtml = '';
-            if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-                for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
-                    const expressionSet = playlist.ExpressionSets[groupIndex];
-                    if (groupIndex > 0) {
-                        rulesHtml += '<strong style="color: #888;">OR</strong><br>';
-                    }
-                    
-                    if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 1px; background: rgba(255,255,255,0.02);">';
-                        
-                        for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
-                            const rule = expressionSet.Expressions[ruleIndex];
-                            if (ruleIndex > 0) {
-                                rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
-                            }
-                            
-                            let fieldName = rule.MemberName;
-                            if (fieldName === 'ItemType') fieldName = 'Media Type';
-                            let operator = rule.Operator;
-                            switch(operator) {
-                                case 'Equal': operator = 'equals'; break;
-                                case 'NotEqual': operator = 'not equals'; break;
-                                case 'Contains': operator = 'contains'; break;
-                                case 'NotContains': operator = "not contains"; break;
-                                case 'GreaterThan': operator = '>'; break;
-                                case 'LessThan': operator = '<'; break;
-                                case 'After': operator = 'after'; break;
-                                case 'Before': operator = 'before'; break;
-                                case 'GreaterThanOrEqual': operator = '>='; break;
-                                case 'LessThanOrEqual': operator = '<='; break;
-                                case 'MatchRegex': operator = 'matches regex'; break;
-                            }
-                            let value = rule.TargetValue;
-                            if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                            if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
-                            
-                            // Check if this rule has a specific user
-                            let userInfo = '';
-                            if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
-                                const userName = await resolveUserIdToName(apiClient, rule.UserId);
-                                if (userName) {
-                                    userInfo = ' for user "' + userName + '"';
-                                }
-                            }
-                            
-                            // Check for NextUnwatched specific options
-                            let nextUnwatchedInfo = '';
-                            if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
-                                nextUnwatchedInfo = ' (excluding unwatched series)';
-                            }
-                            
-                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
-                        }
-                        
-                        rulesHtml += '</div>';
-                    }
-                }
-            } else {
-                rulesHtml = '<em>No rules defined</em>';
-            }
-            
-            // Format Max Items display
-            const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
-            
-            // Format Max Play Time display
-            const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+            // Use helper functions to generate rules HTML and format display values
+            const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
+            const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
             
             html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
                 '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
