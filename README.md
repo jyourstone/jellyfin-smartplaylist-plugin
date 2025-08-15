@@ -262,12 +262,12 @@ The **IsIn** and **IsNotIn** operators provide an easy way to check multiple val
 - **Whitespace handling**: Spaces around semicolons are automatically trimmed
 
 **Examples:**
-- `Genre is not in "horror; thriller"` excludes:
+- `Genre is not in horror;thriller` excludes:
   - ❌ "Horror" 
   - ❌ "Psychological Thriller"
   - ❌ "Horror Comedy"
 
-- `Studio is in "disney; warner; universal"` matches:
+- `Studio is in disney; warner; universal` matches:
   - ✅ "Walt Disney Studios"
   - ✅ "Warner Bros. Pictures" 
   - ✅ "Universal Pictures"
