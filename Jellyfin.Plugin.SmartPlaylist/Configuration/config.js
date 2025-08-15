@@ -3013,6 +3013,10 @@
                     updateHiddenInput(valueContainer);
                     hideAddOptionDropdown(valueContainer);
                 }
+            } else if (e.key === 'Backspace' && input.value === '') {
+                // Remove last tag when backspace is pressed on empty input
+                e.preventDefault();
+                removeLastTag(valueContainer);
             }
         });
         
@@ -3180,6 +3184,21 @@
         
         const tags = Array.from(valueContainer.querySelectorAll('.tag-item span')).map(span => span.textContent);
         hiddenInput.value = tags.join(';');    
+    }
+    
+    /**
+     * Removes the last tag from the container
+     */
+    function removeLastTag(valueContainer) {
+        const tagContainer = valueContainer.querySelector('.tag-input-container');
+        if (!tagContainer) return;
+        
+        const tags = tagContainer.querySelectorAll('.tag-item');
+        if (tags.length > 0) {
+            const lastTag = tags[tags.length - 1];
+            lastTag.remove();
+            updateHiddenInput(valueContainer);
+        }
     }
 
 })();
