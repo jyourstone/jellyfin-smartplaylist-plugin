@@ -645,19 +645,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 },
                 Operators = new[]
                 {
-                    new { Value = "Equal", Label = "Equals" },
-                    new { Value = "NotEqual", Label = "Not Equals" },
-                    new { Value = "Contains", Label = "Contains" },
-                    new { Value = "NotContains", Label = "Not Contains" },
-                    new { Value = "GreaterThan", Label = "Greater Than" },
-                    new { Value = "LessThan", Label = "Less Than" },
-                    new { Value = "GreaterThanOrEqual", Label = "Greater Than or Equal" },
-                    new { Value = "LessThanOrEqual", Label = "Less Than or Equal" },
-                    new { Value = "MatchRegex", Label = "Matches Regex (.NET syntax)" },
-                    new { Value = "After", Label = "After" },
-                    new { Value = "Before", Label = "Before" },
-                    new { Value = "NewerThan", Label = "Newer Than" },
-                    new { Value = "OlderThan", Label = "Older Than" }
+                    new { Value = "Equal", Label = "equals" },
+                    new { Value = "NotEqual", Label = "not equals" },
+                    new { Value = "Contains", Label = "contains" },
+                    new { Value = "NotContains", Label = "not contains" },
+                    new { Value = "IsIn", Label = "is in" },
+                    new { Value = "IsNotIn", Label = "is not in" },
+                    new { Value = "GreaterThan", Label = "greater than" },
+                    new { Value = "LessThan", Label = "less than" },
+                    new { Value = "GreaterThanOrEqual", Label = "greater than or equal" },
+                    new { Value = "LessThanOrEqual", Label = "less than or equal" },
+                    new { Value = "MatchRegex", Label = "matches regex (.NET syntax)" },
+                    new { Value = "After", Label = "after" },
+                    new { Value = "Before", Label = "before" },
+                    new { Value = "NewerThan", Label = "newer than" },
+                    new { Value = "OlderThan", Label = "older than" }
                 },
                 OrderOptions = new[]
                 {
