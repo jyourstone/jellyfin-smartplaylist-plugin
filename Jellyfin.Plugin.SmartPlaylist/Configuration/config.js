@@ -2979,12 +2979,12 @@
         tagContainer.className = 'tag-input-container';
         tagContainer.style.cssText = 'width: 100%; min-height: 38px; border: none; border-radius: 0; background: #292929; padding: 0.5em; display: flex; flex-wrap: wrap; gap: 0.5em; align-items: flex-start; box-sizing: border-box; align-content: flex-start;';
         
-        // Create the input field with standard Jellyfin styling - dynamic sizing
+        // Create the input field with standard Jellyfin styling
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'emby-input tag-input-field';
         input.placeholder = 'Type a value and press Enter';
-        input.style.cssText = 'border: none; background: transparent; color: #fff; flex: 0 0 auto; width: 20px; min-width: 20px; max-width: 200px; outline: none; font-size: 0.9em; font-family: inherit; white-space: nowrap; transition: width 0.2s ease;';
+        input.style.cssText = 'border: none; background: transparent; color: #fff; flex: 1; min-width: 200px; outline: none; font-size: 0.9em; font-family: inherit;';
         input.setAttribute('data-input-type', 'tag-input');
         
         // Set placeholder color
@@ -3019,13 +3019,6 @@
         input.addEventListener('input', function() {
             const value = input.value.trim();
             
-            // Hide placeholder when typing
-            if (input.value.length > 0) {
-                input.placeholder = '';
-            } else {
-                input.placeholder = 'Type a value and press Enter';
-            }
-            
             if (value) {
                 // Check if value contains semicolon
                 if (value.includes(';')) {
@@ -3047,17 +3040,7 @@
             }
         });
         
-        input.addEventListener('focus', function() {
-            // Expand input when focused for better typing experience
-            this.style.width = '200px';
-            this.style.minWidth = '200px';
-        });
-        
         input.addEventListener('blur', function() {
-            // Contract input when not focused to save space
-            this.style.width = '20px';
-            this.style.minWidth = '20px';
-            
             // Small delay to allow clicking on the dropdown
             setTimeout(() => hideAddOptionDropdown(valueContainer), 150);
         });
@@ -3159,7 +3142,7 @@
         
         optionText.addEventListener('click', function() {
             addTagToContainer(valueContainer, value);
-            const input = valueContainer.querySelector('.tag-input-field');
+            const input = tagContainer.querySelector('.tag-input-field');
             if (input) input.value = '';
             hideAddOptionDropdown(valueContainer);
         });
@@ -3196,36 +3179,7 @@
         if (!hiddenInput) return;
         
         const tags = Array.from(valueContainer.querySelectorAll('.tag-item span')).map(span => span.textContent);
-        hiddenInput.value = tags.join(';');
-        
-        // Debug: Log layout information
-        debugTagLayout(valueContainer);
+        hiddenInput.value = tags.join(';');    
     }
-    
-    /**
-     * Debug function to understand tag layout
-     */
-    function debugTagLayout(valueContainer) {
-        const tagContainer = valueContainer.querySelector('.tag-input-container');
-        if (!tagContainer) return;
-        
-        const containerRect = tagContainer.getBoundingClientRect();
-        const tags = tagContainer.querySelectorAll('.tag-item');
-        
-        console.log('Tag Container Layout Debug:');
-        console.log('Container width:', containerRect.width, 'px');
-        console.log('Container height:', containerRect.height, 'px');
-        console.log('Number of tags:', tags.length);
-        
-        let totalTagWidth = 0;
-        tags.forEach((tag, index) => {
-            const tagRect = tag.getBoundingClientRect();
-            totalTagWidth += tagRect.width;
-            console.log(`Tag ${index + 1} (${tag.querySelector('span').textContent}):`, tagRect.width, 'px wide');
-        });
-        
-        console.log('Total tag width:', totalTagWidth, 'px');
-        console.log('Available space:', containerRect.width - totalTagWidth - 20, 'px (accounting for padding and gaps)');
-        console.log('---');
-    }
+
 })();
