@@ -597,6 +597,7 @@
             // Fallback to the old logic if FieldOperators is not available
             // Define common operator sets to avoid duplication
             const stringListOperators = ['Contains', 'NotContains', 'IsIn', 'IsNotIn', 'MatchRegex'];
+            const stringOperators = ['Equal', 'NotEqual', 'Contains', 'NotContains', 'IsIn', 'IsNotIn', 'MatchRegex'];
             const numericOperators = ['Equal', 'NotEqual', 'GreaterThan', 'LessThan', 'GreaterThanOrEqual', 'LessThanOrEqual'];
             const booleanOperators = ['Equal', 'NotEqual'];
             
@@ -614,7 +615,7 @@
             } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
                 allowedOperators = availableFields.Operators.filter(op => booleanOperators.includes(op.Value));
             } else { // Default to string fields
-                allowedOperators = availableFields.Operators.filter(op => stringListOperators.includes(op.Value));
+                allowedOperators = availableFields.Operators.filter(op => stringOperators.includes(op.Value));
             }
         }
 
@@ -1630,7 +1631,7 @@
         return { maxItemsDisplay, maxPlayTimeDisplay };
     }
 
-    function loadPlaylistList(page) {
+    async function loadPlaylistList(page) {
         const apiClient = getApiClient();
         const container = page.querySelector('#playlist-list-container');
         
