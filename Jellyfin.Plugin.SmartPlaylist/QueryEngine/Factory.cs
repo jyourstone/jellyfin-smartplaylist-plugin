@@ -543,6 +543,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
             
+            // Extract CollectionName property using reflection
+            try
+            {
+                var collectionNameProperty = baseItem.GetType().GetProperty("CollectionName");
+                if (collectionNameProperty != null)
+                {
+                    var collectionNameValue = collectionNameProperty.GetValue(baseItem) as string;
+                    operand.CollectionName = collectionNameValue ?? "";
+                }
+                else
+                {
+                    operand.CollectionName = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Failed to extract CollectionName for item {Name}", baseItem.Name);
+                operand.CollectionName = "";
+            }
+            
             // Extract Overview property using reflection
             try
             {
@@ -824,8 +844,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="userDataManager">The user data manager instance.</param>
         /// <param name="userId">The user ID to look up.</param>
-        /// <returns>The user if found, otherwise null.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when reflection fails to access the user manager.</exception>
+        /// <returns>The user object if found, null otherwise.</returns>
         public static User GetUserById(IUserDataManager userDataManager, Guid userId)
         {
             if (userDataManager == null)
