@@ -25,6 +25,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         public static readonly HashSet<string> ListFields =
         [
+            "Collections",
             "People",
             "Genres", 
             "Studios",

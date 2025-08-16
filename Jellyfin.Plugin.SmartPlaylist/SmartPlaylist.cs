@@ -398,6 +398,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Check if any rules use expensive fields to avoid unnecessary extraction
                 var needsAudioLanguages = false;
                 var needsPeople = false;
+                var needsCollections = false;
                 var needsNextUnwatched = false;
                 var includeUnwatchedSeries = true; // Default to true for backwards compatibility
                 var additionalUserIds = new List<string>();
@@ -413,6 +414,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         needsPeople = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
                             .Any(expr => expr?.MemberName == "People");
+                        
+                        needsCollections = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Any(expr => expr?.MemberName == "Collections");
                         
                         needsNextUnwatched = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
@@ -531,7 +536,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -649,6 +654,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     ExtractAudioLanguages = false,
                     ExtractPeople = false,
+                    ExtractCollections = false,
                     ExtractNextUnwatched = false,
                     IncludeUnwatchedSeries = true,
                     AdditionalUserIds = []
@@ -683,7 +689,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsNextUnwatched, bool includeUnwatchedSeries,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool includeUnwatchedSeries,
             List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
@@ -696,7 +702,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople || needsNextUnwatched)
+                if (needsAudioLanguages || needsPeople || needsCollections || needsNextUnwatched)
                 {
                     // Create per-refresh cache for performance optimization within this chunk
                     var refreshCache = new OperandFactory.RefreshCache();
@@ -705,8 +711,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
                     var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
 
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, NextUnwatched: {NextUnwatchedNeeded})",
-                        needsAudioLanguages, needsPeople, needsNextUnwatched);
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded})",
+                        needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched);
                     
                     
                     try
@@ -728,7 +734,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     var compiledRule = compiledRules[setIndex][exprIndex];
                                     
-                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People" || expr.MemberName == "NextUnwatched")
+                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People" || expr.MemberName == "Collections" || expr.MemberName == "NextUnwatched")
                                     {
                                         expensiveRules.Add(compiledRule);
                                         logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
@@ -757,7 +763,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -775,6 +781,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     ExtractAudioLanguages = needsAudioLanguages,
                                     ExtractPeople = needsPeople,
+                                    ExtractCollections = needsCollections,
                                     ExtractNextUnwatched = needsNextUnwatched,
                                     IncludeUnwatchedSeries = includeUnwatchedSeries,
                                     AdditionalUserIds = additionalUserIds
@@ -792,6 +799,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     {
                                         logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
                                             item.Name, operand.People?.Count ?? 0, operand.People != null ? string.Join(", ", operand.People.Take(5)) : "none");
+                                    }
+                                    if (needsCollections)
+                                    {
+                                        logger?.LogDebug("Item '{Name}': Found {Count} collections: [{Collections}]", 
+                                            item.Name, operand.Collections?.Count ?? 0, operand.Collections != null ? string.Join(", ", operand.Collections) : "none");
                                     }
                                     if (needsNextUnwatched)
                                     {
@@ -841,6 +853,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     ExtractAudioLanguages = false,
                                     ExtractPeople = false,
+                                    ExtractCollections = false,
                                     ExtractNextUnwatched = false,
                                     IncludeUnwatchedSeries = true,
                                     AdditionalUserIds = []
@@ -886,6 +899,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     ExtractAudioLanguages = needsAudioLanguages,
                                     ExtractPeople = needsPeople,
+                                    ExtractCollections = needsCollections,
                                     ExtractNextUnwatched = needsNextUnwatched,
                                     IncludeUnwatchedSeries = includeUnwatchedSeries,
                                     AdditionalUserIds = additionalUserIds
@@ -903,6 +917,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     {
                                         logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
                                             item.Name, fullOperand.People?.Count ?? 0, fullOperand.People != null ? string.Join(", ", fullOperand.People.Take(5)) : "none");
+                                    }
+                                    if (needsCollections)
+                                    {
+                                        logger?.LogDebug("Item '{Name}': Found {Count} collections: [{Collections}]", 
+                                            item.Name, fullOperand.Collections?.Count ?? 0, fullOperand.Collections != null ? string.Join(", ", fullOperand.Collections) : "none");
                                     }
                                     if (needsNextUnwatched)
                                     {
@@ -940,7 +959,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
                 }
                 
                 return results;
@@ -962,7 +981,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// Simple item processing fallback method with error handling.
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsNextUnwatched, bool includeUnwatchedSeries,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool includeUnwatchedSeries,
             List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
             var results = new List<BaseItem>();
@@ -982,6 +1001,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             ExtractAudioLanguages = needsAudioLanguages,
                             ExtractPeople = needsPeople,
+                            ExtractCollections = needsCollections,
                             ExtractNextUnwatched = needsNextUnwatched,
                             IncludeUnwatchedSeries = includeUnwatchedSeries,
                             AdditionalUserIds = additionalUserIds

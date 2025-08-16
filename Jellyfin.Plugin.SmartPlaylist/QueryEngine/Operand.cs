@@ -32,6 +32,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public List<string> Artists { get; set; } = [];
         public List<string> AlbumArtists { get; set; } = [];
         
+        // Collections field - indicates which collections this item belongs to  
+        public List<string> Collections { get; set; } = [];
+        
         // User-specific data - Store user ID -> data mappings
         // These will be populated based on which users are referenced in rules
         public Dictionary<string, bool> IsPlayedByUser { get; set; } = [];

@@ -130,6 +130,7 @@ Here are some popular playlist types you can create:
 - **Unwatched Action Movies** - Is Played = False AND Genre contains "Action"
 - **Recent Additions** - Date Created newer than "2 weeks"
 - **Holiday Classics** - Tags contain "Christmas" AND Production Year before "2000"
+- **Complete Franchise Collection** - Collection contains "Jurassic Park" (includes all movies in the franchise)
 
 #### **Music**
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
@@ -219,12 +220,17 @@ The web interface provides access to all available fields for creating playlist 
 - **Last Database Save** - When the item's data was last saved to Jellyfin's database
 
 #### **Collections**
+- **Collections** - All Jellyfin collections that contain the media item
 - **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
 - **Artists** - Track-level artists *for music*
 - **Album Artists** - Album-level primary artists *for music*
+
+> **Collections Field Details**: The **Collections** field captures all Jellyfin collections (both user-created and automatic from TMDB) that contain the media item. This is useful for creating playlists like "All items from my Marvel Collection" or "Complete Lord of the Rings Collection".
+> 
+> **⚠️ Important**: This field does NOT work with manually created Jellyfin collections (user-created groupings in the Jellyfin interface).
 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")
