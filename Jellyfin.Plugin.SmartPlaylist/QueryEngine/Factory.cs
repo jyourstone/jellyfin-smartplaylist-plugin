@@ -17,6 +17,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     {
         public bool ExtractAudioLanguages { get; set; } = false;
         public bool ExtractPeople { get; set; } = false;
+        public bool ExtractCollections { get; set; } = false;
         public bool ExtractNextUnwatched { get; set; } = false;
         public bool IncludeUnwatchedSeries { get; set; } = true;
         public List<string> AdditionalUserIds { get; set; } = [];
@@ -40,6 +41,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             public Dictionary<Guid, BaseItem[]> SeriesEpisodes { get; } = [];
             public Dictionary<string, (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
+            public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
+            public BaseItem[] AllCollections { get; set; } = null;
         }
 
         /// <summary>
@@ -543,26 +546,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             operand.OfficialRating = baseItem.OfficialRating ?? "";
             
-            // Extract CollectionName property using reflection
-            try
-            {
-                var collectionNameProperty = baseItem.GetType().GetProperty("CollectionName");
-                if (collectionNameProperty != null)
-                {
-                    var collectionNameValue = collectionNameProperty.GetValue(baseItem) as string;
-                    operand.CollectionName = collectionNameValue ?? "";
-                }
-                else
-                {
-                    operand.CollectionName = "";
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.LogDebug(ex, "Failed to extract CollectionName for item {Name}", baseItem.Name);
-                operand.CollectionName = "";
-            }
-            
             // Extract Overview property using reflection
             try
             {
@@ -601,6 +584,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 operand.AudioLanguages = [];
+            }
+            
+            // Extract collections - only when needed for performance
+            if (options.ExtractCollections)
+            {
+                operand.Collections = ExtractCollections(baseItem, user, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.Collections = [];
             }
             
             // Extract all people (actors, directors, producers, etc.) - only when needed for performance
@@ -836,6 +829,151 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogWarning(ex, "Failed to calculate next unwatched episode info");
                 return (null, 0, 0);
             }
+        }
+
+        /// <summary>
+        /// Extracts the collections that a media item belongs to, with caching for performance.
+        /// </summary>
+        /// <param name="baseItem">The media item to check</param>
+        /// <param name="user">The user context for collection access</param>
+        /// <param name="libraryManager">Library manager to query collections</param>
+        /// <param name="cache">Per-refresh cache to avoid repeated queries</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>List of collection names this item belongs to</returns>
+        private static List<string> ExtractCollections(BaseItem baseItem, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
+        {
+            // Check if we already have the result cached for this item
+            if (cache.ItemCollections.TryGetValue(baseItem.Id, out var cachedCollections))
+            {
+                return cachedCollections;
+            }
+            
+            var collections = new List<string>();
+            
+            try
+            {
+                // Load all collections once and cache them
+                if (cache.AllCollections == null)
+                {
+                    logger?.LogDebug("Loading all collections for user {UserId} (cache miss)", user.Id);
+                    var collectionQuery = new InternalItemsQuery(user)
+                    {
+                        IncludeItemTypes = [BaseItemKind.BoxSet],
+                        Recursive = true
+                    };
+                    
+                    cache.AllCollections = libraryManager.GetItemsResult(collectionQuery).Items.ToArray();
+                    logger?.LogDebug("Cached {CollectionCount} collections for user {UserId}", cache.AllCollections.Length, user.Id);
+                    
+                    // Debug: Log collection names (only if debug level logging)
+                    if (cache.AllCollections.Length <= 10) // Only log if reasonable number
+                    {
+                        foreach (var col in cache.AllCollections)
+                        {
+                            logger?.LogDebug("Found collection: '{CollectionName}' (ID: {CollectionId})", col.Name, col.Id);
+                        }
+                    }
+                }
+                
+                // Check each collection to see if it contains our item
+                foreach (var collection in cache.AllCollections)
+                {
+                    try
+                    {
+                        // Try multiple approaches to get collection items
+                        BaseItem[] itemsInCollection = null;
+                        
+                        // Approach 1: Try GetChildren method using reflection
+                        try
+                        {
+                            var getChildrenMethod = collection.GetType().GetMethod("GetChildren", new[] { typeof(User), typeof(bool) });
+                            if (getChildrenMethod != null)
+                            {
+                                var children = getChildrenMethod.Invoke(collection, new object[] { user, true });
+                                if (children is IEnumerable<BaseItem> childrenEnumerable)
+                                {
+                                    itemsInCollection = childrenEnumerable.ToArray();
+                                    logger?.LogDebug("Collection '{CollectionName}' GetChildren() returned {ItemCount} items", collection.Name, itemsInCollection.Length);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "GetChildren method failed for collection '{CollectionName}'", collection.Name);
+                        }
+                        
+                        // Approach 2: Try GetLinkedChildren method using reflection  
+                        if (itemsInCollection == null || itemsInCollection.Length == 0)
+                        {
+                            try
+                            {
+                                var getLinkedChildrenMethod = collection.GetType().GetMethod("GetLinkedChildren");
+                                if (getLinkedChildrenMethod != null)
+                                {
+                                    var linkedChildren = getLinkedChildrenMethod.Invoke(collection, null);
+                                    if (linkedChildren is IEnumerable<BaseItem> linkedEnumerable)
+                                    {
+                                        itemsInCollection = linkedEnumerable.ToArray();
+                                        logger?.LogDebug("Collection '{CollectionName}' GetLinkedChildren() returned {ItemCount} items", collection.Name, itemsInCollection.Length);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "GetLinkedChildren method failed for collection '{CollectionName}'", collection.Name);
+                            }
+                        }
+                        
+                        // Approach 3: Fallback to ParentId query (original approach)
+                        if (itemsInCollection == null || itemsInCollection.Length == 0)
+                        {
+                            var itemsInCollectionQuery = new InternalItemsQuery(user)
+                            {
+                                ParentId = collection.Id,
+                                Recursive = true
+                            };
+                            
+                            itemsInCollection = libraryManager.GetItemsResult(itemsInCollectionQuery).Items.ToArray();
+                            logger?.LogDebug("Collection '{CollectionName}' ParentId query returned {ItemCount} items", collection.Name, itemsInCollection.Length);
+                        }
+                        
+                        // Debug: Log first few items in collection (only for small collections)
+                        if (itemsInCollection.Length <= 5 && itemsInCollection.Length > 0)
+                        {
+                            foreach (var collectionItem in itemsInCollection.Take(3))
+                            {
+                                logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
+                            }
+                        }
+                        
+                        // Check if our item is in this collection
+                        if (itemsInCollection.Any(item => item.Id == baseItem.Id))
+                        {
+                            collections.Add(collection.Name);
+                            logger?.LogDebug("Item '{ItemName}' belongs to collection '{CollectionName}'", baseItem.Name, collection.Name);
+                        }
+                        else
+                        {
+                            logger?.LogDebug("Item '{ItemName}' (ID: {ItemId}) NOT found in collection '{CollectionName}'", baseItem.Name, baseItem.Id, collection.Name);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Error checking collection '{CollectionName}' for item '{ItemName}'", collection.Name, baseItem.Name);
+                    }
+                }
+                
+                logger?.LogDebug("Item '{ItemName}' belongs to {CollectionCount} collections: [{Collections}]", 
+                    baseItem.Name, collections.Count, string.Join(", ", collections));
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract collections for item {Name}", baseItem.Name);
+            }
+            
+            // Cache the result
+            cache.ItemCollections[baseItem.Id] = collections;
+            return collections;
         }
 
         /// <summary>

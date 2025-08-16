@@ -220,7 +220,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Last Database Save** - When the item's data was last saved to Jellyfin's database
 
 #### **Collections**
-- **Collection** - Official movie franchise/collection names from TMDB (e.g., "Jurassic Park", "The Matrix")
+- **Collections** - All Jellyfin collections that contain the media item
 - **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
 - **Genres** - Content genres
 - **Studios** - Production studios
@@ -228,7 +228,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Artists** - Track-level artists *for music*
 - **Album Artists** - Album-level primary artists *for music*
 
-> **Collection Field Details**: The **Collection** field captures official movie franchise collections that are automatically populated from external sources metadata. This is useful for creating playlists like "All Marvel Movies" or "Complete Lord of the Rings Collection".
+> **Collections Field Details**: The **Collections** field captures all Jellyfin collections (both user-created and automatic from TMDB) that contain the media item. This is useful for creating playlists like "All items from my Marvel Collection" or "Complete Lord of the Rings Collection".
 > 
 > **⚠️ Important**: This field does NOT work with manually created Jellyfin collections (user-created groupings in the Jellyfin interface).
 
