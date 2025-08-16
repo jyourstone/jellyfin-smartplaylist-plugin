@@ -33,7 +33,7 @@
             position: 'relative'
         },
 
-                // Rule action buttons
+        // Rule action buttons
         buttons: {
             action: {
                 base: {
@@ -174,6 +174,9 @@
             }
         }
     };
+    
+    // Constants for relative date operators
+    const RELATIVE_DATE_OPERATORS = ['NewerThan', 'OlderThan'];
 
     // Utility functions for applying styles
     function applyStyles(element, styles) {
@@ -686,10 +689,10 @@
             input.style.width = '100%';
             valueContainer.appendChild(input);
         } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-            // Check if this is a relative date operator by looking at the current operator
-            const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
-            
-            if (isRelativeDateOperator) {
+                // Check if this is a relative date operator using the resolved operator
+                const isRelativeDateOperator = RELATIVE_DATE_OPERATORS.includes(currentOperator);
+                
+                if (isRelativeDateOperator) {
                 // For relative date operators, use a number input and a unit dropdown
                 const inputContainer = document.createElement('div');
                 inputContainer.style.display = 'flex';
@@ -764,8 +767,8 @@
                     }
                 }
             } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-                // Check if this is a relative date operator
-                const isRelativeDateOperator = currentOperator && (currentOperator === 'NewerThan' || currentOperator === 'OlderThan');
+                // Check if this is a relative date operator using the resolved operator
+                const isRelativeDateOperator = RELATIVE_DATE_OPERATORS.includes(currentOperator);
                 
                 if (isRelativeDateOperator) {
                     // Parse number:unit format for relative date operators
@@ -932,16 +935,10 @@
         
                         operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(newRuleRow);
-                    // Update value input type if this is a date field and operator changed to/from relative date operators
-                    // or if switching to/from IsIn/IsNotIn operators
+                    // Always re-render the value input on operator change for consistency
+                    // setValueInput is idempotent and cheap, so this simplifies maintenance
                     const fieldValue = fieldSelect.value;
-                    if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue) || 
-                        this.value === 'IsIn' || this.value === 'IsNotIn' ||
-                        this.value === 'Contains' || this.value === 'NotContains' ||
-                        this.value === 'Equal' || this.value === 'NotEqual' ||
-                        this.value === 'MatchRegex') {
-                        setValueInput(fieldValue, valueContainer, this.value);
-                    }
+                    setValueInput(fieldValue, valueContainer, this.value);
                 }, listenerOptions);
 
         // Style the action buttons
@@ -1128,16 +1125,10 @@
                 
                 operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(ruleRow);
-                    // Update value input type if this is a date field and operator changed to/from relative date operators
-                    // or if switching to/from IsIn/IsNotIn operators
+                    // Always re-render the value input on operator change for consistency
+                    // setValueInput is idempotent and cheap, so this simplifies maintenance
                     const fieldValue = fieldSelect.value;
-                    if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue) || 
-                        this.value === 'IsIn' || this.value === 'IsNotIn' ||
-                        this.value === 'Contains' || this.value === 'NotContains' ||
-                        this.value === 'Equal' || this.value === 'NotEqual' ||
-                        this.value === 'MatchRegex') {
-                        setValueInput(fieldValue, valueContainer, this.value);
-                    }
+                    setValueInput(fieldValue, valueContainer, this.value);
                 }, listenerOptions);
                 
                 // Re-style action buttons
@@ -2290,10 +2281,9 @@
                                                 unitSelect.value = unit;
                                             }
                                         }
-                                    } else if (expression.Operator === 'IsIn' || expression.Operator === 'IsNotIn') {
-                                        // For tag-based inputs, the tags are already created by setValueInput
-                                        // Just ensure the hidden input has the correct value
-                                        valueInput.value = expression.TargetValue;
+                                                    } else if (expression.Operator === 'IsIn' || expression.Operator === 'IsNotIn') {
+                    // For tag-based inputs, the tags are already created by setValueInput
+                    // and the hidden input is already synced - no additional assignment needed
                                     } else {
                                         // For regular inputs, set the value directly
                                         valueInput.value = expression.TargetValue;
@@ -2987,8 +2977,7 @@
         input.style.cssText = 'border: none; background: transparent; color: #fff; flex: 1; min-width: 200px; outline: none; font-size: 0.9em; font-family: inherit;';
         input.setAttribute('data-input-type', 'tag-input');
         
-        // Set placeholder color
-        input.style.setProperty('--placeholder-color', '#757575');
+        // Use page-level ::placeholder styling (see config.html)
         input.style.setProperty('color-scheme', 'dark');
         
         // Create the hidden input that will store the semicolon-separated values for the backend
@@ -3004,7 +2993,7 @@
         
         // Add event listeners
         input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === 'Tab') {
+            if (e.key === 'Enter') {
                 e.preventDefault();
                 const value = input.value.trim();
                 if (value) {
@@ -3013,6 +3002,20 @@
                     updateHiddenInput(valueContainer);
                     hideAddOptionDropdown(valueContainer);
                 }
+            } else if (e.key === 'Tab') {
+                // Only handle Tab when dropdown is visible (for tag commit)
+                const dropdown = valueContainer.querySelector('.add-option-dropdown');
+                if (dropdown && dropdown.style.display !== 'none') {
+                    e.preventDefault();
+                    const value = input.value.trim();
+                    if (value) {
+                        addTagToContainer(valueContainer, value);
+                        input.value = '';
+                        updateHiddenInput(valueContainer);
+                        hideAddOptionDropdown(valueContainer);
+                    }
+                }
+                // If no dropdown visible, let Tab work normally for keyboard navigation
             } else if (e.key === 'Backspace' && input.value === '') {
                 // Remove last tag when backspace is pressed on empty input
                 e.preventDefault();
