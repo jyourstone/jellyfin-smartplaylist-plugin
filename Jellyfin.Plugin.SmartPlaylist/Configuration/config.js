@@ -12,7 +12,7 @@
     
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
-        LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
+        LIST_FIELDS: ['Collections', 'People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],

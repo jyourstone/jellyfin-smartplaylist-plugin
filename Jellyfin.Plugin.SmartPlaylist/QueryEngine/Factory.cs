@@ -43,6 +43,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public Dictionary<string, (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
             public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
             public BaseItem[] AllCollections { get; set; } = null;
+            public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
         }
 
         /// <summary>
@@ -862,7 +863,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         Recursive = true
                     };
                     
-                    cache.AllCollections = libraryManager.GetItemsResult(collectionQuery).Items.ToArray();
+                    cache.AllCollections = [.. libraryManager.GetItemsResult(collectionQuery).Items];
                     logger?.LogDebug("Cached {CollectionCount} collections for user {UserId}", cache.AllCollections.Length, user.Id);
                     
                     // Debug: Log collection names (only if debug level logging)
@@ -875,91 +876,112 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     }
                 }
                 
-                // Check each collection to see if it contains our item
-                foreach (var collection in cache.AllCollections)
+                // Build the reverse lookup cache if it's empty (one-time expensive operation per refresh)
+                if (cache.CollectionMembershipCache.Count == 0 && cache.AllCollections.Length > 0)
                 {
-                    try
+                    logger?.LogDebug("Building collection membership cache for {CollectionCount} collections", cache.AllCollections.Length);
+                    
+                    foreach (var collection in cache.AllCollections)
                     {
-                        // Try multiple approaches to get collection items
-                        BaseItem[] itemsInCollection = null;
-                        
-                        // Approach 1: Try GetChildren method using reflection
                         try
                         {
-                            var getChildrenMethod = collection.GetType().GetMethod("GetChildren", new[] { typeof(User), typeof(bool) });
-                            if (getChildrenMethod != null)
-                            {
-                                var children = getChildrenMethod.Invoke(collection, new object[] { user, true });
-                                if (children is IEnumerable<BaseItem> childrenEnumerable)
-                                {
-                                    itemsInCollection = childrenEnumerable.ToArray();
-                                    logger?.LogDebug("Collection '{CollectionName}' GetChildren() returned {ItemCount} items", collection.Name, itemsInCollection.Length);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger?.LogDebug(ex, "GetChildren method failed for collection '{CollectionName}'", collection.Name);
-                        }
-                        
-                        // Approach 2: Try GetLinkedChildren method using reflection  
-                        if (itemsInCollection == null || itemsInCollection.Length == 0)
-                        {
+                            // Try multiple approaches to get collection items
+                            BaseItem[] itemsInCollection = null;
+                            
+                            // Approach 1: Try GetChildren method using reflection
                             try
                             {
-                                var getLinkedChildrenMethod = collection.GetType().GetMethod("GetLinkedChildren");
-                                if (getLinkedChildrenMethod != null)
+                                var getChildrenMethod = collection.GetType().GetMethod("GetChildren", [typeof(User), typeof(bool)]);
+                                if (getChildrenMethod != null)
                                 {
-                                    var linkedChildren = getLinkedChildrenMethod.Invoke(collection, null);
-                                    if (linkedChildren is IEnumerable<BaseItem> linkedEnumerable)
+                                    var children = getChildrenMethod.Invoke(collection, [user, true]);
+                                    if (children is IEnumerable<BaseItem> childrenEnumerable)
                                     {
-                                        itemsInCollection = linkedEnumerable.ToArray();
-                                        logger?.LogDebug("Collection '{CollectionName}' GetLinkedChildren() returned {ItemCount} items", collection.Name, itemsInCollection.Length);
+                                        itemsInCollection = [.. childrenEnumerable];
+                                        logger?.LogDebug("Collection '{CollectionName}' GetChildren() returned {ItemCount} items", collection.Name, itemsInCollection.Length);
                                     }
                                 }
                             }
                             catch (Exception ex)
                             {
-                                logger?.LogDebug(ex, "GetLinkedChildren method failed for collection '{CollectionName}'", collection.Name);
+                                logger?.LogDebug(ex, "GetChildren method failed for collection '{CollectionName}'", collection.Name);
                             }
-                        }
-                        
-                        // Approach 3: Fallback to ParentId query (original approach)
-                        if (itemsInCollection == null || itemsInCollection.Length == 0)
-                        {
-                            var itemsInCollectionQuery = new InternalItemsQuery(user)
-                            {
-                                ParentId = collection.Id,
-                                Recursive = true
-                            };
                             
-                            itemsInCollection = libraryManager.GetItemsResult(itemsInCollectionQuery).Items.ToArray();
-                            logger?.LogDebug("Collection '{CollectionName}' ParentId query returned {ItemCount} items", collection.Name, itemsInCollection.Length);
-                        }
-                        
-                        // Debug: Log first few items in collection (only for small collections)
-                        if (itemsInCollection.Length <= 5 && itemsInCollection.Length > 0)
-                        {
-                            foreach (var collectionItem in itemsInCollection.Take(3))
+                            // Approach 2: Try GetLinkedChildren method using reflection  
+                            if (itemsInCollection == null || itemsInCollection.Length == 0)
                             {
-                                logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
+                                try
+                                {
+                                    var getLinkedChildrenMethod = collection.GetType().GetMethod("GetLinkedChildren");
+                                    if (getLinkedChildrenMethod != null)
+                                    {
+                                        var linkedChildren = getLinkedChildrenMethod.Invoke(collection, null);
+                                        if (linkedChildren is IEnumerable<BaseItem> linkedEnumerable)
+                                        {
+                                            itemsInCollection = [.. linkedEnumerable];
+                                            logger?.LogDebug("Collection '{CollectionName}' GetLinkedChildren() returned {ItemCount} items", collection.Name, itemsInCollection.Length);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger?.LogDebug(ex, "GetLinkedChildren method failed for collection '{CollectionName}'", collection.Name);
+                                }
+                            }
+                            
+                            // Approach 3: Fallback to ParentId query (original approach)
+                            if (itemsInCollection == null || itemsInCollection.Length == 0)
+                            {
+                                var itemsInCollectionQuery = new InternalItemsQuery(user)
+                                {
+                                    ParentId = collection.Id,
+                                    Recursive = true
+                                };
+                                
+                                itemsInCollection = [.. libraryManager.GetItemsResult(itemsInCollectionQuery).Items];
+                                logger?.LogDebug("Collection '{CollectionName}' ParentId query returned {ItemCount} items", collection.Name, itemsInCollection.Length);
+                            }
+                            
+                            // Build the reverse lookup set for this collection (O(1) lookups)
+                            var membershipSet = new HashSet<Guid>();
+                            if (itemsInCollection != null)
+                            {
+                                foreach (var item in itemsInCollection)
+                                {
+                                    membershipSet.Add(item.Id);
+                                }
+                            }
+                            
+                            cache.CollectionMembershipCache[collection.Id] = membershipSet;
+                            
+                            // Debug: Log first few items in collection (only for small collections)
+                            if (itemsInCollection != null && itemsInCollection.Length <= 5 && itemsInCollection.Length > 0)
+                            {
+                                foreach (var collectionItem in itemsInCollection.Take(3))
+                                {
+                                    logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
+                                }
                             }
                         }
-                        
-                        // Check if our item is in this collection
-                        if (itemsInCollection.Any(item => item.Id == baseItem.Id))
+                        catch (Exception ex)
                         {
-                            collections.Add(collection.Name);
-                            logger?.LogDebug("Item '{ItemName}' belongs to collection '{CollectionName}'", baseItem.Name, collection.Name);
-                        }
-                        else
-                        {
-                            logger?.LogDebug("Item '{ItemName}' (ID: {ItemId}) NOT found in collection '{CollectionName}'", baseItem.Name, baseItem.Id, collection.Name);
+                            logger?.LogDebug(ex, "Error building membership cache for collection '{CollectionName}'", collection.Name);
+                            // Create empty set for failed collections to avoid repeated attempts
+                            cache.CollectionMembershipCache[collection.Id] = [];
                         }
                     }
-                    catch (Exception ex)
+                    
+                    logger?.LogDebug("Collection membership cache built with {CacheCount} collections", cache.CollectionMembershipCache.Count);
+                }
+                
+                // Use the reverse lookup cache for O(1) membership checks (fast!)
+                foreach (var collection in cache.AllCollections)
+                {
+                    if (cache.CollectionMembershipCache.TryGetValue(collection.Id, out var membershipSet) && 
+                        membershipSet.Contains(baseItem.Id))
                     {
-                        logger?.LogDebug(ex, "Error checking collection '{CollectionName}' for item '{ItemName}'", collection.Name, baseItem.Name);
+                        collections.Add(collection.Name);
+                        logger?.LogDebug("Item '{ItemName}' belongs to collection '{CollectionName}'", baseItem.Name, collection.Name);
                     }
                 }
                 

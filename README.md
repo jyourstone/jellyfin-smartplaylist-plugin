@@ -130,7 +130,7 @@ Here are some popular playlist types you can create:
 - **Unwatched Action Movies** - Is Played = False AND Genre contains "Action"
 - **Recent Additions** - Date Created newer than "2 weeks"
 - **Holiday Classics** - Tags contain "Christmas" AND Production Year before "2000"
-- **Complete Franchise Collection** - Collection contains "Jurassic Park" (includes all movies in the franchise)
+- **Complete Franchise Collection** - Collections contains "Movie Franchise" (includes all movies in the franchise)
 
 #### **Music**
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
@@ -173,6 +173,34 @@ Here are some of the planned features for future updates. Feel free to contribut
 
 ### Building Locally
 For local development, see the [dev folder](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/tree/master/dev)
+
+### Adding New Rule Fields
+
+When adding new rule fields to the plugin, ensure they are categorized correctly in the UI field types (`config.js`):
+
+#### Field Type Categories
+
+- **`LIST_FIELDS`** - Multi-valued fields (Collections, People, Genres, Studios, Tags, Artists, AlbumArtists)
+  - **Operators**: Contains, NotContains, IsIn, IsNotIn, MatchRegex
+  - **Use for**: Fields that can have multiple values per item
+
+- **`NUMERIC_FIELDS`** - Number-based fields (ProductionYear, CommunityRating, RuntimeMinutes, PlayCount)  
+  - **Operators**: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual
+  - **Use for**: Fields with numeric values
+
+- **`DATE_FIELDS`** - Date/time fields (DateCreated, ReleaseDate, LastPlayedDate)
+  - **Operators**: Equal, NotEqual, After, Before, NewerThan, OlderThan
+  - **Use for**: Date and timestamp fields
+
+- **`BOOLEAN_FIELDS`** - True/false fields (IsPlayed, IsFavorite, NextUnwatched)
+  - **Operators**: Equal, NotEqual  
+  - **Use for**: Boolean/checkbox fields
+
+- **`SIMPLE_FIELDS`** - Single-choice fields (ItemType)
+  - **Operators**: Equal, NotEqual
+  - **Use for**: Dropdown/select fields with predefined options
+
+**Important**: Always add new fields to the correct category to ensure proper operator availability and UI behavior.
 
 ## 🔧 Advanced Configuration
 
@@ -229,7 +257,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Album Artists** - Album-level primary artists *for music*
 
 > **Collections Field Details**: The **Collections** field captures all Jellyfin collections (both user-created and automatic from TMDB) that contain the media item. This is useful for creating playlists like "All items from my Marvel Collection" or "Complete Lord of the Rings Collection".
-> 
+ 
 > **⚠️ Important**: This field does NOT work with manually created Jellyfin collections (user-created groupings in the Jellyfin interface).
 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
