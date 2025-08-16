@@ -12,7 +12,7 @@
     
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
-        LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
+        LIST_FIELDS: ['Collections', 'People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
@@ -703,6 +703,9 @@
             const option = document.createElement('option');
             option.value = opt.Value;
             option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
             select.appendChild(option);
         });
         valueContainer.appendChild(select);
@@ -730,6 +733,9 @@
             const option = document.createElement('option');
             option.value = opt.Value;
             option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
             select.appendChild(option);
         });
         valueContainer.appendChild(select);
@@ -744,6 +750,9 @@
         input.className = 'emby-input rule-value-input';
         input.placeholder = 'Value';
         input.style.width = '100%';
+        if (currentValue) {
+            input.value = currentValue;
+        }
         valueContainer.appendChild(input);
     }
 
@@ -754,9 +763,9 @@
         const isRelativeDateOperator = RELATIVE_DATE_OPERATORS.includes(currentOperator);
         
         if (isRelativeDateOperator) {
-            handleRelativeDateInput(valueContainer);
+            handleRelativeDateInput(valueContainer, currentValue);
         } else {
-            handleAbsoluteDateInput(valueContainer);
+            handleAbsoluteDateInput(valueContainer, currentValue);
         }
     }
 
@@ -825,6 +834,9 @@
         input.className = 'emby-input rule-value-input';
         input.placeholder = 'Value';
         input.style.width = '100%';
+        if (currentValue) {
+            input.value = currentValue;
+        }
         valueContainer.appendChild(input);
     }
 

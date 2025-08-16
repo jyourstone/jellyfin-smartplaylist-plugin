@@ -28,6 +28,21 @@ jobs:
       - name: Setup jq
         run: sudo apt-get install -y jq
 
+      - name: Check if tag is preview
+        id: check_preview
+        run: |
+          # Get the tag message and check if it contains "preview"
+          TAG_MESSAGE=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }})
+          if echo "$TAG_MESSAGE" | grep -qi "preview"; then
+            echo "is_preview=true" >> $GITHUB_OUTPUT
+            echo "PRERELEASE_STR=true" >> $GITHUB_OUTPUT
+            echo "Preview tag detected: $TAG_MESSAGE"
+          else
+            echo "is_preview=false" >> $GITHUB_OUTPUT
+            echo "PRERELEASE_STR=false" >> $GITHUB_OUTPUT
+            echo "Release tag detected: $TAG_MESSAGE"
+          fi
+
       - name: Restore dependencies
         run: dotnet restore
 
@@ -55,8 +70,8 @@ jobs:
           name: Release ${{ github.ref_name }}
           files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
           draft: false
-          # convert "true"/"false" string to boolean
-          prerelease: ${{ fromJSON(env.PRERELEASE_STR) }}
+          # Use the dynamically determined prerelease status
+          prerelease: ${{ steps.check_preview.outputs.is_preview }}
           generate_release_notes: true
           token: ${{ secrets.PAT }}
 
