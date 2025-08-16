@@ -256,10 +256,8 @@ The web interface provides access to all available fields for creating playlist 
 - **Artists** - Track-level artists *for music*
 - **Album Artists** - Album-level primary artists *for music*
 
-> **Collections Field Details**: The **Collections** field captures all Jellyfin collections (both user-created and automatic from TMDB) that contain the media item. This is useful for creating playlists like "All items from my Marvel Collection" or "Complete Lord of the Rings Collection".
+> **Collections Field Details**: The **Collections** field captures all Jellyfin collections that contain the media item. This is useful for creating playlists like "All items from Movie Franchise"".
  
-> **⚠️ Important**: This field does NOT work with manually created Jellyfin collections (user-created groupings in the Jellyfin interface).
-
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")
 > - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
