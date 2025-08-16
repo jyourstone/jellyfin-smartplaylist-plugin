@@ -641,16 +641,25 @@
         let currentValue = explicitCurrentValue;
         
         if (!currentValue) {
-            const currentValueInput = valueContainer.querySelector('.rule-value-input');
-            const currentUnitSelect = valueContainer.querySelector('.rule-value-unit');
-            
-            if (currentValueInput) {
-                if (currentUnitSelect && currentUnitSelect.value) {
-                    // This is a relative date input, combine number:unit format
-                    currentValue = `${currentValueInput.value}:${currentUnitSelect.value}`;
-                } else {
-                    // Regular input, just use the value
-                    currentValue = currentValueInput.value;
+            // Check if this is a multi-value operator
+            if (MULTI_VALUE_OPERATORS.includes(operatorValue)) {
+                // For multi-value fields, get the value from the hidden input directly
+                const hiddenInput = valueContainer.querySelector('input[type="hidden"].rule-value-input');
+                if (hiddenInput) {
+                    currentValue = hiddenInput.value;
+                }
+            } else {
+                const currentValueInput = valueContainer.querySelector('.rule-value-input');
+                const currentUnitSelect = valueContainer.querySelector('.rule-value-unit');
+                
+                if (currentValueInput) {
+                    if (currentUnitSelect && currentUnitSelect.value) {
+                        // This is a relative date input, combine number:unit format
+                        currentValue = `${currentValueInput.value}:${currentUnitSelect.value}`;
+                    } else {
+                        // Regular input, just use the value
+                        currentValue = currentValueInput.value;
+                    }
                 }
             }
         }
@@ -910,6 +919,10 @@
     function restoreMultiValueInput(valueContainer, currentValue) {
         // For tag-based inputs, restore the semicolon-separated values as individual tags
         if (currentValue) {
+            // Clear existing tags first to prevent duplicates and ensure UI consistency
+            const existingTags = valueContainer.querySelectorAll('.tag-item');
+            existingTags.forEach(tag => tag.remove());
+            
             const tags = currentValue.split(';').map(tag => tag.trim()).filter(tag => tag.length > 0);
             tags.forEach(tag => addTagToContainer(valueContainer, tag));
         }
