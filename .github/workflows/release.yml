@@ -28,13 +28,27 @@ jobs:
       - name: Setup jq
         run: sudo apt-get install -y jq
 
+      - name: Check if tag is preview
+        id: check_preview
+        run: |
+          # Check if tag name contains "preview" or "rc" after version
+          TAG_NAME="${{ github.ref_name }}"
+          if echo "$TAG_NAME" | grep -E "preview|rc" > /dev/null; then
+            echo "is_preview=true" >> $GITHUB_OUTPUT
+            echo "Preview tag detected: $TAG_NAME"
+          else
+            echo "is_preview=false" >> $GITHUB_OUTPUT
+            echo "Release tag detected: $TAG_NAME"
+          fi
+
       - name: Restore dependencies
         run: dotnet restore
 
       - name: Build plugin
         run: |
-          VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
-          echo "Building version: $VERSION"
+          # Strip preview/rc suffixes for .NET versioning
+          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//')
+          echo "Building version: $VERSION (stripped from tag: ${{ github.ref_name }})"
           dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj \
             --configuration Release --no-restore -o ./build_output \
             /p:Version=$VERSION /p:AssemblyVersion=$VERSION
@@ -55,8 +69,8 @@ jobs:
           name: Release ${{ github.ref_name }}
           files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
           draft: false
-          # convert "true"/"false" string to boolean
-          prerelease: ${{ fromJSON(env.PRERELEASE_STR) }}
+          # Use the dynamically determined prerelease status
+          prerelease: ${{ steps.check_preview.outputs.is_preview }}
           generate_release_notes: true
           token: ${{ secrets.PAT }}
 
@@ -76,10 +90,12 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Update External Manifest
+        if: steps.check_preview.outputs.is_preview != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
-          VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
+          # Strip preview/rc suffixes for .NET versioning
+          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//')
           ASSEMBLY_VERSION="${VERSION}"
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')

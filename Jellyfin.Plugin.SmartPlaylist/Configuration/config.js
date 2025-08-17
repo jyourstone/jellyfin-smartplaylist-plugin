@@ -12,7 +12,7 @@
     
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
-        LIST_FIELDS: ['People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
+        LIST_FIELDS: ['Collections', 'People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
@@ -33,7 +33,7 @@
             position: 'relative'
         },
 
-                // Rule action buttons
+        // Rule action buttons
         buttons: {
             action: {
                 base: {
@@ -174,6 +174,10 @@
             }
         }
     };
+    
+    // Constants for operators
+    const RELATIVE_DATE_OPERATORS = ['NewerThan', 'OlderThan'];
+    const MULTI_VALUE_OPERATORS = ['IsIn', 'IsNotIn'];
 
     // Utility functions for applying styles
     function applyStyles(element, styles) {
@@ -595,33 +599,27 @@
             allowedOperators = availableFields.Operators.filter(op => allowedOperatorValues.includes(op.Value));
         } else {
             // Fallback to the old logic if FieldOperators is not available
+            // Define common operator sets to avoid duplication
+            const stringListOperators = ['Contains', 'NotContains', 'IsIn', 'IsNotIn', 'MatchRegex'];
+            const stringOperators = ['Equal', 'NotEqual', 'Contains', 'NotContains', 'IsIn', 'IsNotIn', 'MatchRegex'];
+            const numericOperators = ['Equal', 'NotEqual', 'GreaterThan', 'LessThan', 'GreaterThanOrEqual', 'LessThanOrEqual'];
+            const booleanOperators = ['Equal', 'NotEqual'];
+            
             if (FIELD_TYPES.LIST_FIELDS.includes(fieldValue)) {
-                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                allowedOperators = availableFields.Operators.filter(op => stringListOperators.includes(op.Value));
             } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
                 // Numeric fields should NOT include date-specific operators
-                allowedOperators = availableFields.Operators.filter(op => 
-                    op.Value === 'Equal' || 
-                    op.Value === 'NotEqual' || 
-                    op.Value === 'GreaterThan' || 
-                    op.Value === 'LessThan' || 
-                    op.Value === 'GreaterThanOrEqual' || 
-                    op.Value === 'LessThanOrEqual'
-                );
+                allowedOperators = availableFields.Operators.filter(op => numericOperators.includes(op.Value));
             } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
                 // Date fields: exclude string operators and numeric-specific operators, include date-specific operators
                 allowedOperators = availableFields.Operators.filter(op => 
-                    op.Value !== 'Contains' && 
-                    op.Value !== 'NotContains' && 
-                    op.Value !== 'MatchRegex' &&
-                    op.Value !== 'GreaterThan' &&
-                    op.Value !== 'LessThan' &&
-                    op.Value !== 'GreaterThanOrEqual' &&
-                    op.Value !== 'LessThanOrEqual'
+                    !stringListOperators.includes(op.Value) && 
+                    !numericOperators.includes(op.Value)
                 );
             } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue) || FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
-                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual');
+                allowedOperators = availableFields.Operators.filter(op => booleanOperators.includes(op.Value));
             } else { // Default to string fields
-                allowedOperators = availableFields.Operators.filter(op => op.Value === 'Equal' || op.Value === 'NotEqual' || op.Value === 'Contains' || op.Value === 'NotContains' || op.Value === 'MatchRegex');
+                allowedOperators = availableFields.Operators.filter(op => stringOperators.includes(op.Value));
             }
         }
 
@@ -634,120 +632,218 @@
         if (fieldValue === 'ItemType' || FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) { operatorSelect.value = 'Equal'; }
     }
 
-    function setValueInput(fieldValue, valueContainer) {
+    /**
+     * Main dispatcher function for setting value inputs based on field type and operator
+     */
+    function setValueInput(fieldValue, valueContainer, operatorValue, explicitCurrentValue) {
         // Store the current value before clearing the container
-        const currentValueInput = valueContainer.querySelector('.rule-value-input');
-        const currentValue = currentValueInput ? currentValueInput.value : '';
+        // For relative date operators, we need to capture both number and unit
+        let currentValue = explicitCurrentValue;
+        
+        if (!currentValue) {
+            // Check if this is a multi-value operator
+            if (MULTI_VALUE_OPERATORS.includes(operatorValue)) {
+                // For multi-value fields, get the value from the hidden input directly
+                const hiddenInput = valueContainer.querySelector('input[type="hidden"].rule-value-input');
+                if (hiddenInput) {
+                    currentValue = hiddenInput.value;
+                }
+            } else {
+                const currentValueInput = valueContainer.querySelector('.rule-value-input');
+                const currentUnitSelect = valueContainer.querySelector('.rule-value-unit');
+                
+                if (currentValueInput) {
+                    if (currentUnitSelect && currentUnitSelect.value) {
+                        // This is a relative date input, combine number:unit format
+                        currentValue = `${currentValueInput.value}:${currentUnitSelect.value}`;
+                    } else {
+                        // Regular input, just use the value
+                        currentValue = currentValueInput.value;
+                    }
+                }
+            }
+        }
         
         valueContainer.innerHTML = '';
 
-        if (FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
-            const select = document.createElement('select');
-            select.className = 'emby-select rule-value-input';
-            select.setAttribute('is', 'emby-select');
-            select.style.width = '100%';
-            mediaTypes.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.Value;
-                option.textContent = opt.Label;
-                select.appendChild(option);
-            });
-            valueContainer.appendChild(select);
+        // Check if this is an IsIn/IsNotIn operator to use tag-based input
+        const ruleRow = valueContainer.closest('.rule-row');
+        const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
+        const currentOperator = operatorValue || (operatorSelect ? operatorSelect.value : '');
+        const isMultiValueOperator = MULTI_VALUE_OPERATORS.includes(currentOperator);
+
+        if (isMultiValueOperator) {
+            // Create tag-based input for IsIn/IsNotIn operators
+            createTagBasedInput(valueContainer, currentValue);
+        } else if (FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue)) {
+            handleSimpleFieldInput(valueContainer, currentValue);
         } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) {
-            const select = document.createElement('select');
-            select.className = 'emby-select rule-value-input';
-            select.setAttribute('is', 'emby-select');
-            select.style.width = '100%';
-            let boolOptions;
-            if (fieldValue === 'IsPlayed') {
-                boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
-            } else if (fieldValue === 'IsFavorite') {
-                boolOptions = [ { Value: "true", Label: "Yes (Favorite)" }, { Value: "false", Label: "No (Not Favorite)" } ];
-            } else if (fieldValue === 'NextUnwatched') {
-                boolOptions = [ { Value: "true", Label: "Yes (Next to Watch)" }, { Value: "false", Label: "No (Not Next)" } ];
-            } else {
-                boolOptions = [ { Value: "true", Label: "Yes" }, { Value: "false", Label: "No" } ];
-            }
-            boolOptions.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.Value;
-                option.textContent = opt.Label;
-                select.appendChild(option);
-            });
-            valueContainer.appendChild(select);
+            handleBooleanFieldInput(valueContainer, fieldValue, currentValue);
         } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.className = 'emby-input rule-value-input';
-            input.placeholder = 'Value';
-            input.style.width = '100%';
-            valueContainer.appendChild(input);
+            handleNumericFieldInput(valueContainer, currentValue);
         } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-            // Check if this is a relative date operator by looking at the current operator
-            const ruleRow = valueContainer.closest('.rule-row');
-            const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
-            const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
-            
-            if (isRelativeDateOperator) {
-                // For relative date operators, use a number input and a unit dropdown
-                const inputContainer = document.createElement('div');
-                inputContainer.style.display = 'flex';
-                inputContainer.style.gap = '0.5em';
-                inputContainer.style.alignItems = 'center';
-                valueContainer.appendChild(inputContainer);
-
-                const input = document.createElement('input');
-                input.type = 'number';
-                input.className = 'emby-input rule-value-input';
-                input.placeholder = 'Number';
-                input.min = '1';
-                input.style.flex = '0 0 43%';
-                inputContainer.appendChild(input);
-
-                const unitSelect = document.createElement('select');
-                unitSelect.className = 'emby-select rule-value-unit';
-                unitSelect.setAttribute('is', 'emby-select');
-                unitSelect.style.flex = '0 0 55%';
-                
-                // Add placeholder option
-                const placeholderOption = document.createElement('option');
-                placeholderOption.value = '';
-                placeholderOption.textContent = '-- Select Unit --';
-                placeholderOption.disabled = true;
-                placeholderOption.selected = true;
-                unitSelect.appendChild(placeholderOption);
-                
-                [
-                    { value: 'days', label: 'Day(s)' },
-                    { value: 'weeks', label: 'Week(s)' },
-                    { value: 'months', label: 'Month(s)' },
-                    { value: 'years', label: 'Year(s)' }
-                ].forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt.value;
-                    option.textContent = opt.label;
-                    unitSelect.appendChild(option);
-                });
-                inputContainer.appendChild(unitSelect);
-            } else {
-                // For regular date operators, use a date input
-                const input = document.createElement('input');
-                input.type = 'date';
-                input.className = 'emby-input rule-value-input';
-                input.style.width = '100%';
-                valueContainer.appendChild(input);
-            }
-        }
-        else {
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'emby-input rule-value-input';
-            input.placeholder = 'Value';
-            input.style.width = '100%';
-            valueContainer.appendChild(input);
+            handleDateFieldInput(valueContainer, currentOperator, currentValue);
+        } else {
+            handleTextFieldInput(valueContainer, currentValue);
         }
         
         // Restore the current value if it exists and is valid for the new field type
+        restoreFieldValue(valueContainer, fieldValue, currentOperator, currentValue, isMultiValueOperator);
+    }
+
+    /**
+     * Handles simple field inputs (media type selects)
+     */
+    function handleSimpleFieldInput(valueContainer, currentValue) {
+        const select = document.createElement('select');
+        select.className = 'emby-select rule-value-input';
+        select.setAttribute('is', 'emby-select');
+        select.style.width = '100%';
+        mediaTypes.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.Value;
+            option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        valueContainer.appendChild(select);
+    }
+
+    /**
+     * Handles boolean field inputs with appropriate labels
+     */
+    function handleBooleanFieldInput(valueContainer, fieldValue, currentValue) {
+        const select = document.createElement('select');
+        select.className = 'emby-select rule-value-input';
+        select.setAttribute('is', 'emby-select');
+        select.style.width = '100%';
+        let boolOptions;
+        if (fieldValue === 'IsPlayed') {
+            boolOptions = [ { Value: "true", Label: "Yes (Played)" }, { Value: "false", Label: "No (Unplayed)" } ];
+        } else if (fieldValue === 'IsFavorite') {
+            boolOptions = [ { Value: "true", Label: "Yes (Favorite)" }, { Value: "false", Label: "No (Not Favorite)" } ];
+        } else if (fieldValue === 'NextUnwatched') {
+            boolOptions = [ { Value: "true", Label: "Yes (Next to Watch)" }, { Value: "false", Label: "No (Not Next)" } ];
+        } else {
+            boolOptions = [ { Value: "true", Label: "Yes" }, { Value: "false", Label: "No" } ];
+        }
+        boolOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.Value;
+            option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        valueContainer.appendChild(select);
+    }
+
+    /**
+     * Handles numeric field inputs
+     */
+    function handleNumericFieldInput(valueContainer, currentValue) {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'emby-input rule-value-input';
+        input.placeholder = 'Value';
+        input.style.width = '100%';
+        if (currentValue) {
+            input.value = currentValue;
+        }
+        valueContainer.appendChild(input);
+    }
+
+    /**
+     * Handles date field inputs (both relative and absolute)
+     */
+    function handleDateFieldInput(valueContainer, currentOperator, currentValue) {
+        const isRelativeDateOperator = RELATIVE_DATE_OPERATORS.includes(currentOperator);
+        
+        if (isRelativeDateOperator) {
+            handleRelativeDateInput(valueContainer, currentValue);
+        } else {
+            handleAbsoluteDateInput(valueContainer, currentValue);
+        }
+    }
+
+    /**
+     * Handles relative date inputs (number + unit dropdown)
+     */
+    function handleRelativeDateInput(valueContainer) {
+        const inputContainer = document.createElement('div');
+        inputContainer.style.display = 'flex';
+        inputContainer.style.gap = '0.5em';
+        inputContainer.style.alignItems = 'center';
+        valueContainer.appendChild(inputContainer);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'emby-input rule-value-input';
+        input.placeholder = 'Number';
+        input.min = '1';
+        input.style.flex = '0 0 43%';
+        inputContainer.appendChild(input);
+
+        const unitSelect = document.createElement('select');
+        unitSelect.className = 'emby-select rule-value-unit';
+        unitSelect.setAttribute('is', 'emby-select');
+        unitSelect.style.flex = '0 0 55%';
+        
+        // Add placeholder option
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = '-- Select Unit --';
+        placeholderOption.disabled = true;
+        placeholderOption.selected = true;
+        unitSelect.appendChild(placeholderOption);
+        
+        [
+            { value: 'days', label: 'Day(s)' },
+            { value: 'weeks', label: 'Week(s)' },
+            { value: 'months', label: 'Month(s)' },
+            { value: 'years', label: 'Year(s)' }
+        ].forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            unitSelect.appendChild(option);
+        });
+        inputContainer.appendChild(unitSelect);
+    }
+
+    /**
+     * Handles absolute date inputs
+     */
+    function handleAbsoluteDateInput(valueContainer) {
+        const input = document.createElement('input');
+        input.type = 'date';
+        input.className = 'emby-input rule-value-input';
+        input.style.width = '100%';
+        valueContainer.appendChild(input);
+    }
+
+    /**
+     * Handles text field inputs (default fallback)
+     */
+    function handleTextFieldInput(valueContainer, currentValue) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'emby-input rule-value-input';
+        input.placeholder = 'Value';
+        input.style.width = '100%';
+        if (currentValue) {
+            input.value = currentValue;
+        }
+        valueContainer.appendChild(input);
+    }
+
+    /**
+     * Restores field values based on field type and operator
+     */
+    function restoreFieldValue(valueContainer, fieldValue, currentOperator, currentValue, isMultiValueOperator) {
         const newValueInput = valueContainer.querySelector('.rule-value-input');
         if (newValueInput && currentValue) {
             // Store the original value as a data attribute for potential restoration
@@ -755,54 +851,95 @@
             
             // Try to restore the value if it's appropriate for the new field type
             if (FIELD_TYPES.SIMPLE_FIELDS.includes(fieldValue) || FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) {
-                // For selects, check if the value exists as an option
-                if (newValueInput.tagName === 'SELECT') {
-                    const option = Array.from(newValueInput.options).find(opt => opt.value === currentValue);
-                    if (option) {
-                        newValueInput.value = currentValue;
-                    }
-                }
+                restoreSelectValue(newValueInput, currentValue);
             } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-                // Check if this is a relative date operator
-                const ruleRow = valueContainer.closest('.rule-row');
-                const operatorSelect = ruleRow ? ruleRow.querySelector('.rule-operator-select') : null;
-                const isRelativeDateOperator = operatorSelect && (operatorSelect.value === 'NewerThan' || operatorSelect.value === 'OlderThan');
-                
-                if (isRelativeDateOperator) {
-                    // Parse number:unit format for relative date operators
-                    const parts = currentValue.split(':');
-                    const validUnits = ['days', 'weeks', 'months', 'years'];
-                    const num = parts[0];
-                    const unit = parts[1];
-                    const isValidNum = /^\d+$/.test(num) && parseInt(num, 10) > 0;
-                    const isValidUnit = validUnits.includes(unit);
-                    if (parts.length === 2 && isValidNum && isValidUnit) {
-                        // Set the number input
-                        if (newValueInput.tagName === 'INPUT') {
-                            newValueInput.value = num;
-                        }
-                        // Set the unit dropdown
-                        const unitSelect = valueContainer.querySelector('.rule-value-unit');
-                        if (unitSelect) {
-                            unitSelect.value = unit;
-                        }
-                    } else {
-                        // Log a warning if the value is malformed
-                        console.warn(`Malformed relative date value: '${currentValue}'. Expected format: <number>:<unit> (e.g., '3:months'). Parts:`, parts, `isValidNum: ${isValidNum}`, `isValidUnit: ${isValidUnit}`);
-                    }
-                } else {
-                    // For regular date operators, restore the date value directly
-                    if (newValueInput.tagName === 'INPUT') {
-                        newValueInput.value = currentValue;
-                    }
-                }
+                restoreDateValue(valueContainer, currentOperator, currentValue, newValueInput);
+            } else if (isMultiValueOperator) {
+                restoreMultiValueInput(valueContainer, currentValue);
             } else {
                 // For inputs, restore the value directly
+                // If switching from multi-value operators, use first tag as fallback
+                if (currentValue && currentValue.includes(';')) {
+                    const tags = currentValue.split(';').map(tag => tag.trim()).filter(tag => tag.length > 0);
+                    newValueInput.value = tags[0] || '';
+                } else {
+                    newValueInput.value = currentValue;
+                }
+            }
+        }
+    }
+
+    /**
+     * Restores select field values
+     */
+    function restoreSelectValue(selectElement, currentValue) {
+        if (selectElement.tagName === 'SELECT') {
+            const option = Array.from(selectElement.options).find(opt => opt.value === currentValue);
+            if (option) {
+                selectElement.value = currentValue;
+            }
+        }
+    }
+
+    /**
+     * Restores date field values (both relative and absolute)
+     */
+    function restoreDateValue(valueContainer, currentOperator, currentValue, newValueInput) {
+        const isRelativeDateOperator = RELATIVE_DATE_OPERATORS.includes(currentOperator);
+        
+        if (isRelativeDateOperator) {
+            restoreRelativeDateValue(valueContainer, currentValue, newValueInput);
+        } else {
+            // For regular date operators, restore the date value directly
+            if (newValueInput.tagName === 'INPUT') {
                 newValueInput.value = currentValue;
             }
         }
     }
-    
+
+    /**
+     * Restores relative date values (number:unit format)
+     */
+    function restoreRelativeDateValue(valueContainer, currentValue, newValueInput) {
+        // Parse number:unit format for relative date operators
+        const parts = currentValue.split(':');
+        const validUnits = ['days', 'weeks', 'months', 'years'];
+        const num = parts[0];
+        const unit = parts[1];
+        const isValidNum = /^\d+$/.test(num) && parseInt(num, 10) > 0;
+        const isValidUnit = validUnits.includes(unit);
+        
+        if (parts.length === 2 && isValidNum && isValidUnit) {
+            // Set the number input
+            if (newValueInput.tagName === 'INPUT') {
+                newValueInput.value = num;
+            }
+            // Set the unit dropdown
+            const unitSelect = valueContainer.querySelector('.rule-value-unit');
+            if (unitSelect) {
+                unitSelect.value = unit;
+            }
+        } else {
+            // Log a warning if the value is malformed
+            console.warn(`Malformed relative date value: '${currentValue}'. Expected format: <number>:<unit> (e.g., '3:months'). Parts:`, parts, `isValidNum: ${isValidNum}`, `isValidUnit: ${isValidUnit}`);
+        }
+    }
+
+    /**
+     * Restores multi-value input (tag-based) values
+     */
+    function restoreMultiValueInput(valueContainer, currentValue) {
+        // For tag-based inputs, restore the semicolon-separated values as individual tags
+        if (currentValue) {
+            // Clear existing tags first to prevent duplicates and ensure UI consistency
+            const existingTags = valueContainer.querySelectorAll('.tag-item');
+            existingTags.forEach(tag => tag.remove());
+            
+            const tags = currentValue.split(';').map(tag => tag.trim()).filter(tag => tag.length > 0);
+            tags.forEach(tag => addTagToContainer(valueContainer, tag));
+        }
+    }
+
     function updateRegexHelp(ruleGroup) {
         const operatorSelect = ruleGroup.querySelector('.rule-operator-select');
         const existingHelp = ruleGroup.querySelector('.regex-help');
@@ -902,7 +1039,7 @@
             populateSelect(operatorSelect, availableFields.Operators, null, false);
         }
 
-        setValueInput(fieldSelect.value, valueContainer);
+        setValueInput(fieldSelect.value, valueContainer, operatorSelect.value);
         updateOperatorOptions(fieldSelect.value, operatorSelect);
         
         // Initialize user selector visibility and load users
@@ -918,7 +1055,7 @@
         // Add event listeners with AbortController signal (if supported)
         const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
-            setValueInput(fieldSelect.value, valueContainer);
+            setValueInput(fieldSelect.value, valueContainer, operatorSelect.value);
             updateOperatorOptions(fieldSelect.value, operatorSelect);
             updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
             updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
@@ -927,11 +1064,10 @@
         
                         operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(newRuleRow);
-                    // Update value input type if this is a date field and operator changed to/from relative date operators
+                    // Always re-render the value input on operator change for consistency
+                    // setValueInput is idempotent and cheap, so this simplifies maintenance
                     const fieldValue = fieldSelect.value;
-                    if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-                        setValueInput(fieldValue, valueContainer);
-                    }
+                    setValueInput(fieldValue, valueContainer, this.value);
                 }, listenerOptions);
 
         // Style the action buttons
@@ -1102,7 +1238,7 @@
                 // Re-set value input based on current field value
                 const currentFieldValue = fieldSelect.value;
                 if (currentFieldValue) {
-                    setValueInput(currentFieldValue, valueContainer);
+                    setValueInput(currentFieldValue, valueContainer, operatorSelect.value);
                     updateOperatorOptions(currentFieldValue, operatorSelect);
                     updateUserSelectorVisibility(ruleRow, currentFieldValue);
                 }
@@ -1110,7 +1246,7 @@
                 // Re-add event listeners
                 const listenerOptions = getEventListenerOptions(signal);
                 fieldSelect.addEventListener('change', function() {
-                    setValueInput(fieldSelect.value, valueContainer);
+                    setValueInput(fieldSelect.value, valueContainer, operatorSelect.value);
                     updateOperatorOptions(fieldSelect.value, operatorSelect);
                     updateUserSelectorVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
@@ -1118,11 +1254,10 @@
                 
                 operatorSelect.addEventListener('change', function() {
                     updateRegexHelp(ruleRow);
-                    // Update value input type if this is a date field and operator changed to/from relative date operators
+                    // Always re-render the value input on operator change for consistency
+                    // setValueInput is idempotent and cheap, so this simplifies maintenance
                     const fieldValue = fieldSelect.value;
-                    if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
-                        setValueInput(fieldValue, valueContainer);
-                    }
+                    setValueInput(fieldValue, valueContainer, this.value);
                 }, listenerOptions);
                 
                 // Re-style action buttons
@@ -1562,7 +1697,82 @@
         }
     }
 
-    function loadPlaylistList(page) {
+    // Helper function to generate rules HTML for playlist display
+    async function generatePlaylistRulesHtml(playlist, apiClient) {
+        let rulesHtml = '';
+        if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+            for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
+                const expressionSet = playlist.ExpressionSets[groupIndex];
+                if (groupIndex > 0) {
+                    rulesHtml += '<strong style="color: #888;">OR</strong><br>';
+                }
+                
+                if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                    rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
+                    
+                    for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
+                        const rule = expressionSet.Expressions[ruleIndex];
+                        if (ruleIndex > 0) {
+                            rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
+                        }
+                        
+                        let fieldName = rule.MemberName;
+                        if (fieldName === 'ItemType') fieldName = 'Media Type';
+                        let operator = rule.Operator;
+                        switch(operator) {
+                            case 'Equal': operator = 'equals'; break;
+                            case 'NotEqual': operator = 'not equals'; break;
+                            case 'Contains': operator = 'contains'; break;
+                            case 'NotContains': operator = "not contains"; break;
+                            case 'IsIn': operator = 'is in'; break;
+                            case 'IsNotIn': operator = 'is not in'; break;
+                            case 'GreaterThan': operator = '>'; break;
+                            case 'LessThan': operator = '<'; break;
+                            case 'After': operator = 'after'; break;
+                            case 'Before': operator = 'before'; break;
+                            case 'GreaterThanOrEqual': operator = '>='; break;
+                            case 'LessThanOrEqual': operator = '<='; break;
+                            case 'MatchRegex': operator = 'matches regex'; break;
+                        }
+                        let value = rule.TargetValue;
+                        if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                        if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
+                        
+                        // Check if this rule has a specific user
+                        let userInfo = '';
+                        if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
+                            const userName = await resolveUserIdToName(apiClient, rule.UserId);
+                            if (userName) {
+                                userInfo = ' for user "' + userName + '"';
+                            }
+                        }
+                        
+                        // Check for NextUnwatched specific options
+                        let nextUnwatchedInfo = '';
+                        if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
+                            nextUnwatchedInfo = ' (excluding unwatched series)';
+                        }
+                        
+                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
+                    }
+                    
+                    rulesHtml += '</div>';
+                }
+            }
+        } else {
+            rulesHtml = '<em>No rules defined</em><br>';
+        }
+        return rulesHtml;
+    }
+
+    // Helper function to format playlist display values
+    function formatPlaylistDisplayValues(playlist) {
+        const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
+        const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+        return { maxItemsDisplay, maxPlayTimeDisplay };
+    }
+
+    async function loadPlaylistList(page) {
         const apiClient = getApiClient();
         const container = page.querySelector('#playlist-list-container');
         
@@ -1619,73 +1829,9 @@
                     const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
                         playlist.MediaTypes.join(', ') : 'All Types';
                     
-                    let rulesHtml = '';
-                    if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-                        for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
-                            const expressionSet = playlist.ExpressionSets[groupIndex];
-                            if (groupIndex > 0) {
-                                rulesHtml += '<strong style="color: #888;">OR</strong><br>';
-                            }
-                            
-                            if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                                rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
-                                
-                                for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
-                                    const rule = expressionSet.Expressions[ruleIndex];
-                                    if (ruleIndex > 0) {
-                                        rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
-                                    }
-                                    
-                                    let fieldName = rule.MemberName;
-                                    if (fieldName === 'ItemType') fieldName = 'Media Type';
-                                    let operator = rule.Operator;
-                                    switch(operator) {
-                                        case 'Equal': operator = 'equals'; break;
-                                        case 'NotEqual': operator = 'not equals'; break;
-                                        case 'Contains': operator = 'contains'; break;
-                                        case 'NotContains': operator = "not contains"; break;
-                                        case 'GreaterThan': operator = '>'; break;
-                                        case 'LessThan': operator = '<'; break;
-                                        case 'After': operator = 'after'; break;
-                                        case 'Before': operator = 'before'; break;
-                                        case 'GreaterThanOrEqual': operator = '>='; break;
-                                        case 'LessThanOrEqual': operator = '<='; break;
-                                        case 'MatchRegex': operator = 'matches regex'; break;
-                                    }
-                                    let value = rule.TargetValue;
-                                    if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                                    if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
-                                    
-                                    // Check if this rule has a specific user
-                                    let userInfo = '';
-                                    if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
-                                        const userName = await resolveUserIdToName(apiClient, rule.UserId);
-                                        if (userName) {
-                                            userInfo = ' for user "' + userName + '"';
-                                        }
-                                    }
-                                    
-                                    // Check for NextUnwatched specific options
-                                    let nextUnwatchedInfo = '';
-                                    if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
-                                        nextUnwatchedInfo = ' (excluding unwatched series)';
-                                    }
-                                    
-                                    rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
-                                }
-                                
-                                rulesHtml += '</div>';
-                            }
-                        }
-                    } else {
-                        rulesHtml = '<em>No rules defined</em><br>';
-                    }
-                    
-                    // Format Max Items display
-                    const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
-                    
-                    // Format Max Play Time display
-                    const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+                    // Use helper functions to generate rules HTML and format display values
+                    const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
+                    const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
                     
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
                         '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
@@ -1915,73 +2061,9 @@
             const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
                 playlist.MediaTypes.join(', ') : 'All Types';
             
-            let rulesHtml = '';
-            if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-                for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
-                    const expressionSet = playlist.ExpressionSets[groupIndex];
-                    if (groupIndex > 0) {
-                        rulesHtml += '<strong style="color: #888;">OR</strong><br>';
-                    }
-                    
-                    if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                        rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 1px; background: rgba(255,255,255,0.02);">';
-                        
-                        for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
-                            const rule = expressionSet.Expressions[ruleIndex];
-                            if (ruleIndex > 0) {
-                                rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
-                            }
-                            
-                            let fieldName = rule.MemberName;
-                            if (fieldName === 'ItemType') fieldName = 'Media Type';
-                            let operator = rule.Operator;
-                            switch(operator) {
-                                case 'Equal': operator = 'equals'; break;
-                                case 'NotEqual': operator = 'not equals'; break;
-                                case 'Contains': operator = 'contains'; break;
-                                case 'NotContains': operator = "not contains"; break;
-                                case 'GreaterThan': operator = '>'; break;
-                                case 'LessThan': operator = '<'; break;
-                                case 'After': operator = 'after'; break;
-                                case 'Before': operator = 'before'; break;
-                                case 'GreaterThanOrEqual': operator = '>='; break;
-                                case 'LessThanOrEqual': operator = '<='; break;
-                                case 'MatchRegex': operator = 'matches regex'; break;
-                            }
-                            let value = rule.TargetValue;
-                            if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                            if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
-                            
-                            // Check if this rule has a specific user
-                            let userInfo = '';
-                            if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
-                                const userName = await resolveUserIdToName(apiClient, rule.UserId);
-                                if (userName) {
-                                    userInfo = ' for user "' + userName + '"';
-                                }
-                            }
-                            
-                            // Check for NextUnwatched specific options
-                            let nextUnwatchedInfo = '';
-                            if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
-                                nextUnwatchedInfo = ' (excluding unwatched series)';
-                            }
-                            
-                            rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
-                        }
-                        
-                        rulesHtml += '</div>';
-                    }
-                }
-            } else {
-                rulesHtml = '<em>No rules defined</em>';
-            }
-            
-            // Format Max Items display
-            const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
-            
-            // Format Max Play Time display
-            const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
+            // Use helper functions to generate rules HTML and format display values
+            const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
+            const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
             
             html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
                 '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
@@ -2302,13 +2384,15 @@
                                 operatorSelect.value = expression.Operator;
                                 
                                 // Update UI elements based on the loaded rule data
-                                setValueInput(expression.MemberName, valueContainer);
+                                // Pass the operator and current value to ensure correct input type is created
+                                setValueInput(expression.MemberName, valueContainer, expression.Operator, expression.TargetValue);
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
                                 updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName);
                                 
                                 // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
                                 if (valueInput) {
+                                    // For tag-based inputs (IsIn/IsNotIn), the tags are already created by setValueInput
                                     // For relative date operators, we need to parse the "number:unit" format
                                     const isRelativeDateOperator = expression.Operator === 'NewerThan' || expression.Operator === 'OlderThan';
                                     if (isRelativeDateOperator && expression.TargetValue) {
@@ -2326,6 +2410,9 @@
                                                 unitSelect.value = unit;
                                             }
                                         }
+                                                    } else if (expression.Operator === 'IsIn' || expression.Operator === 'IsNotIn') {
+                    // For tag-based inputs, the tags are already created by setValueInput
+                    // and the hidden input is already synced - no additional assignment needed
                                     } else {
                                         // For regular inputs, set the value directly
                                         valueInput.value = expression.TargetValue;
@@ -2999,6 +3086,253 @@
         var notificationArea = page.querySelector('#plugin-notification-area');
         if (notificationArea) {
             applyStyles(notificationArea, STYLES.layout.notification);
+        }
+    }
+
+    /**
+     * Creates a tag-based input interface for IsIn/IsNotIn operators
+     */
+    function createTagBasedInput(valueContainer, currentValue) {
+        // Create the main container with EXACT same styling as standard Jellyfin inputs
+        const tagContainer = document.createElement('div');
+        tagContainer.className = 'tag-input-container';
+        tagContainer.style.cssText = 'width: 100%; min-height: 38px; border: none; border-radius: 0; background: #292929; padding: 0.5em; display: flex; flex-wrap: wrap; gap: 0.5em; align-items: flex-start; box-sizing: border-box; align-content: flex-start;';
+        
+        // Create the input field with standard Jellyfin styling
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'emby-input tag-input-field';
+        input.placeholder = 'Type a value and press Enter';
+        input.style.cssText = 'border: none; background: transparent; color: #fff; flex: 1; min-width: 200px; outline: none; font-size: 0.9em; font-family: inherit;';
+        input.setAttribute('data-input-type', 'tag-input');
+        
+        // Use page-level ::placeholder styling (see config.html)
+        input.style.setProperty('color-scheme', 'dark');
+        
+        // Create the hidden input that will store the semicolon-separated values for the backend
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.className = 'rule-value-input';
+        hiddenInput.setAttribute('data-input-type', 'hidden-tag-input');
+        
+        // Add elements to container
+        tagContainer.appendChild(input);
+        valueContainer.appendChild(tagContainer);
+        valueContainer.appendChild(hiddenInput);
+        
+        // Add event listeners
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const value = input.value.trim();
+                if (value) {
+                    addTagToContainer(valueContainer, value);
+                    input.value = '';
+                    updateHiddenInput(valueContainer);
+                    hideAddOptionDropdown(valueContainer);
+                }
+            } else if (e.key === 'Tab') {
+                // Only handle Tab when dropdown is visible (for tag commit)
+                const dropdown = valueContainer.querySelector('.add-option-dropdown');
+                if (dropdown && dropdown.style.display !== 'none') {
+                    e.preventDefault();
+                    const value = input.value.trim();
+                    if (value) {
+                        addTagToContainer(valueContainer, value);
+                        input.value = '';
+                        updateHiddenInput(valueContainer);
+                        hideAddOptionDropdown(valueContainer);
+                    }
+                }
+                // If no dropdown visible, let Tab work normally for keyboard navigation
+            } else if (e.key === 'Backspace' && input.value === '') {
+                // Remove last tag when backspace is pressed on empty input
+                e.preventDefault();
+                removeLastTag(valueContainer);
+            }
+        });
+        
+        input.addEventListener('input', function() {
+            const value = input.value.trim();
+            
+            if (value) {
+                // Check if value contains semicolon
+                if (value.includes(';')) {
+                    const parts = value.split(';');
+                    parts.forEach(part => {
+                        const trimmedPart = part.trim();
+                        if (trimmedPart) {
+                            addTagToContainer(valueContainer, trimmedPart);
+                        }
+                    });
+                    input.value = '';
+                    updateHiddenInput(valueContainer);
+                    hideAddOptionDropdown(valueContainer);
+                } else {
+                    showAddOptionDropdown(valueContainer, value);
+                }
+            } else {
+                hideAddOptionDropdown(valueContainer);
+            }
+        });
+        
+        input.addEventListener('blur', function() {
+            // Small delay to allow clicking on the dropdown
+            setTimeout(() => hideAddOptionDropdown(valueContainer), 150);
+        });
+        
+        // Restore existing tags if any
+        if (currentValue) {
+            const tags = currentValue.split(';').map(tag => tag.trim()).filter(tag => tag.length > 0);
+            tags.forEach(tag => addTagToContainer(valueContainer, tag));
+        }
+        
+        // Initial update of hidden input
+        updateHiddenInput(valueContainer);
+    }
+    
+    /**
+     * Adds a tag to the container
+     */
+    function addTagToContainer(valueContainer, tagText) {
+        const tagContainer = valueContainer.querySelector('.tag-input-container');
+        if (!tagContainer) return;
+        
+        // Check if tag already exists to prevent duplicates (case-insensitive)
+        const existingTags = Array.from(tagContainer.querySelectorAll('.tag-item span'))
+            .map(span => span.textContent.toLowerCase());
+        if (existingTags.includes(tagText.toLowerCase())) {
+            return; // Tag already exists, don't add duplicate
+        }
+        
+        // Create tag element with subtle Jellyfin styling
+        const tag = document.createElement('div');
+        tag.className = 'tag-item';
+        tag.style.cssText = 'background: #292929; color: #ccc; padding: 0.3em 0.6em; border-radius: 2px; font-size: 0.85em; display: inline-flex; align-items: center; gap: 0.5em; max-width: none; flex: 0 0 auto; border: 1px solid #444; white-space: nowrap; overflow: hidden;';
+        
+        // Tag text
+        const tagTextSpan = document.createElement('span');
+        tagTextSpan.textContent = tagText;
+        tagTextSpan.style.cssText = 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+        
+        // Remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.innerHTML = '×';
+        removeBtn.style.cssText = 'background: none; border: none; color: #ccc; cursor: pointer; font-size: 1.2em; font-weight: bold; padding: 0; line-height: 1; width: 1.2em; height: 1.2em; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background-color 0.2s ease;';
+        
+        removeBtn.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+        });
+        
+        removeBtn.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = 'transparent';
+        });
+        
+        removeBtn.addEventListener('click', function() {
+            tag.remove();
+            updateHiddenInput(valueContainer);
+        });
+        
+        // Assemble tag
+        tag.appendChild(tagTextSpan);
+        tag.appendChild(removeBtn);
+        
+        // Insert before the input field
+        const input = tagContainer.querySelector('.tag-input-field');
+        tagContainer.insertBefore(tag, input);
+        
+        // Update hidden input
+        updateHiddenInput(valueContainer);
+    }
+    
+    /**
+     * Shows the "Add option" dropdown
+     */
+    function showAddOptionDropdown(valueContainer, value) {
+        // Remove existing dropdown
+        hideAddOptionDropdown(valueContainer);
+        
+        const tagContainer = valueContainer.querySelector('.tag-input-container');
+        if (!tagContainer) return;
+        
+        // Create dropdown
+        const dropdown = document.createElement('div');
+        dropdown.className = 'add-option-dropdown';
+        dropdown.style.cssText = 'position: absolute; background: #2a2a2a; border: 1px solid #444; border-radius: 2px; padding: 0.5em; margin-top: 0.25em; z-index: 1000; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); min-width: 200px;';
+        
+        const dropdownText = document.createElement('div');
+        dropdownText.style.cssText = 'color: #ccc; font-size: 0.9em; margin-bottom: 0.5em;';
+        dropdownText.textContent = 'Add option:';
+        
+        const optionText = document.createElement('div');
+        optionText.style.cssText = 'background: #292929; color: #ccc; padding: 0.5em; border-radius: 2px; font-weight: 500; cursor: pointer; transition: background-color 0.2s ease; border: 1px solid #444;';
+        optionText.textContent = value;
+        
+        optionText.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#3a3a3a';
+        });
+        
+        optionText.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '#292929';
+        });
+        
+        optionText.addEventListener('click', function() {
+            addTagToContainer(valueContainer, value);
+            const input = tagContainer.querySelector('.tag-input-field');
+            if (input) input.value = '';
+            hideAddOptionDropdown(valueContainer);
+        });
+        
+        dropdown.appendChild(dropdownText);
+        dropdown.appendChild(optionText);
+        
+        // Position the dropdown
+        tagContainer.style.position = 'relative';
+        tagContainer.appendChild(dropdown);
+    }
+    
+    /**
+     * Hides the "Add option" dropdown
+     */
+    function hideAddOptionDropdown(valueContainer) {
+        const dropdown = valueContainer.querySelector('.add-option-dropdown');
+        if (dropdown) {
+            dropdown.remove();
+        }
+        
+        // Also remove any positioning styles that might affect layout
+        const tagContainer = valueContainer.querySelector('.tag-input-container');
+        if (tagContainer) {
+            tagContainer.style.position = 'static';
+        }
+    }
+    
+    /**
+     * Updates the hidden input with semicolon-separated values
+     */
+    function updateHiddenInput(valueContainer) {
+        const hiddenInput = valueContainer.querySelector('.rule-value-input[data-input-type="hidden-tag-input"]');
+        if (!hiddenInput) return;
+        
+        const tags = Array.from(valueContainer.querySelectorAll('.tag-item span'))
+            .map(span => span.textContent.trim())
+            .filter(Boolean);
+        hiddenInput.value = tags.join(';');    
+    }
+    
+    /**
+     * Removes the last tag from the container
+     */
+    function removeLastTag(valueContainer) {
+        const tagContainer = valueContainer.querySelector('.tag-input-container');
+        if (!tagContainer) return;
+        
+        const tags = tagContainer.querySelectorAll('.tag-item');
+        if (tags.length > 0) {
+            const lastTag = tags[tags.length - 1];
+            lastTag.remove();
+            updateHiddenInput(valueContainer);
         }
     }
 

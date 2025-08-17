@@ -636,6 +636,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 },
                 CollectionFields = new[]
                 {
+                    new { Value = "Collections", Label = "Collections" },
                     new { Value = "People", Label = "People" },
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },
@@ -645,19 +646,56 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 },
                 Operators = new[]
                 {
-                    new { Value = "Equal", Label = "Equals" },
-                    new { Value = "NotEqual", Label = "Not Equals" },
-                    new { Value = "Contains", Label = "Contains" },
-                    new { Value = "NotContains", Label = "Not Contains" },
-                    new { Value = "GreaterThan", Label = "Greater Than" },
-                    new { Value = "LessThan", Label = "Less Than" },
-                    new { Value = "GreaterThanOrEqual", Label = "Greater Than or Equal" },
-                    new { Value = "LessThanOrEqual", Label = "Less Than or Equal" },
-                    new { Value = "MatchRegex", Label = "Matches Regex (.NET syntax)" },
-                    new { Value = "After", Label = "After" },
-                    new { Value = "Before", Label = "Before" },
-                    new { Value = "NewerThan", Label = "Newer Than" },
-                    new { Value = "OlderThan", Label = "Older Than" }
+                    new { Value = "Equal", Label = "equals" },
+                    new { Value = "NotEqual", Label = "not equals" },
+                    new { Value = "Contains", Label = "contains" },
+                    new { Value = "NotContains", Label = "not contains" },
+                    new { Value = "IsIn", Label = "is in" },
+                    new { Value = "IsNotIn", Label = "is not in" },
+                    new { Value = "GreaterThan", Label = "greater than" },
+                    new { Value = "LessThan", Label = "less than" },
+                    new { Value = "GreaterThanOrEqual", Label = "greater than or equal" },
+                    new { Value = "LessThanOrEqual", Label = "less than or equal" },
+                    new { Value = "MatchRegex", Label = "matches regex (.NET syntax)" },
+                    new { Value = "After", Label = "after" },
+                    new { Value = "Before", Label = "before" },
+                    new { Value = "NewerThan", Label = "newer than" },
+                    new { Value = "OlderThan", Label = "older than" }
+                },
+                FieldOperators = new Dictionary<string, string[]>
+                {
+                    // List fields - multi-valued fields
+                    ["Collections"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["People"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["Genres"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["Studios"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["Tags"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["Artists"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["AlbumArtists"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    ["AudioLanguages"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    
+                    // Simple fields - single-choice fields
+                    ["ItemType"] = ["Equal", "NotEqual"],
+                    
+                    // Boolean fields - true/false fields
+                    ["IsPlayed"] = ["Equal", "NotEqual"],
+                    ["IsFavorite"] = ["Equal", "NotEqual"],
+                    ["NextUnwatched"] = ["Equal", "NotEqual"],
+                    
+                    // Numeric fields - number-based fields
+                    ["ProductionYear"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
+                    ["CommunityRating"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
+                    ["CriticRating"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
+                    ["RuntimeMinutes"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
+                    ["PlayCount"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
+                    
+                    // Date fields - date/time fields
+                    ["DateCreated"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
+                    ["DateLastRefreshed"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
+                    ["DateLastSaved"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
+                    ["DateModified"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
+                    ["ReleaseDate"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
+                    ["LastPlayedDate"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"]
                 },
                 OrderOptions = new[]
                 {

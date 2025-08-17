@@ -355,6 +355,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     var method = typeof(Regex).GetMethod("IsMatch", [typeof(string)]);
                     var regexConstant = System.Linq.Expressions.Expression.Constant(regex);
                     return System.Linq.Expressions.Expression.Call(regexConstant, method, left);
+                case "IsIn":
+                    logger?.LogDebug("SmartPlaylist applying string IsIn to {Field} with value '{Value}'", r.MemberName, r.TargetValue);
+                    var isInMethod = typeof(Engine).GetMethod("StringIsInList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    var targetValueConstant = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+                    return System.Linq.Expressions.Expression.Call(isInMethod, left, targetValueConstant);
+                case "IsNotIn":
+                    logger?.LogDebug("SmartPlaylist applying string IsNotIn to {Field} with value '{Value}'", r.MemberName, r.TargetValue);
+                    var isNotInMethod = typeof(Engine).GetMethod("StringIsInList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    var targetValueConstant2 = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+                    var isNotInCall = System.Linq.Expressions.Expression.Call(isNotInMethod, left, targetValueConstant2);
+                    return System.Linq.Expressions.Expression.Not(isNotInCall);
                 default:
                     logger?.LogError("SmartPlaylist unsupported string operator '{Operator}' for field '{Field}'", r.Operator, r.MemberName);
                     throw new ArgumentException($"Operator '{r.Operator}' is not supported for string field '{r.MemberName}'");
@@ -622,6 +633,33 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 if (r.Operator == "Contains") return containsCall;
                 if (r.Operator == "NotContains") return System.Linq.Expressions.Expression.Not(containsCall);
             }
+
+            if (r.Operator == "IsIn")
+            {
+                logger?.LogDebug("SmartPlaylist applying collection IsIn to {Field} with value '{Value}'", r.MemberName, r.TargetValue);
+                var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+                var method = typeof(Engine).GetMethod("AnyItemIsInList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (method == null)
+                {
+                    logger?.LogError("SmartPlaylist AnyItemIsInList method not found!");
+                    throw new InvalidOperationException("AnyItemIsInList method not found");
+                }
+                return System.Linq.Expressions.Expression.Call(method, left, right);
+            }
+            
+            if (r.Operator == "IsNotIn")
+            {
+                logger?.LogDebug("SmartPlaylist applying collection IsNotIn to {Field} with value '{Value}'", r.MemberName, r.TargetValue);
+                var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+                var method = typeof(Engine).GetMethod("AnyItemIsInList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (method == null)
+                {
+                    logger?.LogError("SmartPlaylist AnyItemIsInList method not found!");
+                    throw new InvalidOperationException("AnyItemIsInList method not found");
+                }
+                var isNotInCall = System.Linq.Expressions.Expression.Call(method, left, right);
+                return System.Linq.Expressions.Expression.Not(isNotInCall);
+            }
             
             if (r.Operator == "MatchRegex")
             {
@@ -639,6 +677,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for string IEnumerable field '{Field}'", r.Operator, r.MemberName);
             throw new ArgumentException($"Operator '{r.Operator}' is not supported for string IEnumerable field '{r.MemberName}'");
         }
+
+        
 
         /// <summary>
         /// Builds expressions for generic IEnumerable fields.
@@ -760,6 +800,56 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
         }
 
+        /// <summary>
+        /// Helper method for string IsIn operator - checks if a single string contains any item from a semicolon-separated list.
+        /// </summary>
+        /// <param name="fieldValue">The field value to check</param>
+        /// <param name="targetList">Semicolon-separated list of values to check against</param>
+        /// <returns>True if the field value contains any item in the target list</returns>
+        internal static bool StringIsInList(string fieldValue, string targetList)
+        {
+            if (string.IsNullOrEmpty(fieldValue) || string.IsNullOrEmpty(targetList)) 
+                return false;
+            
+            // Split by semicolon, trim whitespace, and filter out empty strings
+            var listItems = targetList.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                                     .Select(item => item.Trim())
+                                     .Where(item => !string.IsNullOrEmpty(item))
+                                     .ToList();
+            
+            if (listItems.Count == 0) 
+                return false;
+            
+            // Check if fieldValue contains any item in the list (case insensitive, partial matching)
+            return listItems.Any(item => fieldValue.Contains(item, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Helper method for collection IsIn operator - checks if any item in a collection contains any item from a semicolon-separated list.
+        /// </summary>
+        /// <param name="collection">The collection of strings to check</param>
+        /// <param name="targetList">Semicolon-separated list of values to check against</param>
+        /// <returns>True if any item in the collection contains any item in the target list</returns>
+        internal static bool AnyItemIsInList(IEnumerable<string> collection, string targetList)
+        {
+            if (collection == null || string.IsNullOrEmpty(targetList)) 
+                return false;
+            
+            // Split by semicolon, trim whitespace, and filter out empty strings
+            var listItems = targetList.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                                     .Select(item => item.Trim())
+                                     .Where(item => !string.IsNullOrEmpty(item))
+                                     .ToList();
+            
+            if (listItems.Count == 0) 
+                return false;
+            
+            // Check if any item in the collection contains any item in the target list (case insensitive, partial matching)
+            return collection.Any(collectionItem => 
+                collectionItem != null && 
+                listItems.Any(targetItem => 
+                    collectionItem.Contains(targetItem, StringComparison.OrdinalIgnoreCase)));
+        }
         public static List<ExpressionSet> FixRuleSets(List<ExpressionSet> rulesets)
         {
             return rulesets;

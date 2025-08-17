@@ -130,6 +130,7 @@ Here are some popular playlist types you can create:
 - **Unwatched Action Movies** - Is Played = False AND Genre contains "Action"
 - **Recent Additions** - Date Created newer than "2 weeks"
 - **Holiday Classics** - Tags contain "Christmas" AND Production Year before "2000"
+- **Complete Franchise Collection** - Collections contains "Movie Franchise" (includes all movies in the franchise)
 
 #### **Music**
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
@@ -172,6 +173,34 @@ Here are some of the planned features for future updates. Feel free to contribut
 
 ### Building Locally
 For local development, see the [dev folder](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/tree/master/dev)
+
+### Adding New Rule Fields
+
+When adding new rule fields to the plugin, ensure they are categorized correctly in the UI field types (`config.js`):
+
+#### Field Type Categories
+
+- **`LIST_FIELDS`** - Multi-valued fields (Collections, People, Genres, Studios, Tags, Artists, AlbumArtists)
+  - **Operators**: Contains, NotContains, IsIn, IsNotIn, MatchRegex
+  - **Use for**: Fields that can have multiple values per item
+
+- **`NUMERIC_FIELDS`** - Number-based fields (ProductionYear, CommunityRating, RuntimeMinutes, PlayCount)  
+  - **Operators**: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual
+  - **Use for**: Fields with numeric values
+
+- **`DATE_FIELDS`** - Date/time fields (DateCreated, ReleaseDate, LastPlayedDate)
+  - **Operators**: Equal, NotEqual, After, Before, NewerThan, OlderThan
+  - **Use for**: Date and timestamp fields
+
+- **`BOOLEAN_FIELDS`** - True/false fields (IsPlayed, IsFavorite, NextUnwatched)
+  - **Operators**: Equal, NotEqual  
+  - **Use for**: Boolean/checkbox fields
+
+- **`SIMPLE_FIELDS`** - Single-choice fields (ItemType)
+  - **Operators**: Equal, NotEqual
+  - **Use for**: Dropdown/select fields with predefined options
+
+**Important**: Always add new fields to the correct category to ensure proper operator availability and UI behavior.
 
 ## 🔧 Advanced Configuration
 
@@ -219,6 +248,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Last Database Save** - When the item's data was last saved to Jellyfin's database
 
 #### **Collections**
+- **Collections** - All Jellyfin collections that contain the media item
 - **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
 - **Genres** - Content genres
 - **Studios** - Production studios
@@ -226,6 +256,8 @@ The web interface provides access to all available fields for creating playlist 
 - **Artists** - Track-level artists *for music*
 - **Album Artists** - Album-level primary artists *for music*
 
+> **Collections Field Details**: The **Collections** field captures all Jellyfin collections that contain the media item. This is useful for creating playlists like "All items from Movie Franchise"".
+ 
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")
 > - **Relative dates**: Use "Newer Than" or "Older Than" with a time period (e.g., "3 weeks", "1 month", "2 years")
@@ -243,13 +275,36 @@ The web interface provides access to all available fields for creating playlist 
 
 ### Available Operators
 
-- **Equals** / **Not Equals** - Exact matches
-- **Contains** / **Not Contains** - Partial text matching  
-- **Greater Than** / **Less Than** - Numeric comparisons
-- **Greater Than or Equal** / **Less Than or Equal** - Numeric comparisons
-- **After** / **Before** - Date comparisons
-- **Newer Than** / **Older Than** - Relative date comparisons (days, weeks, months, years)
-- **Matches Regex** - Advanced pattern matching using .NET regex syntax
+- **equals** / **not equals** - Exact matches
+- **contains** / **not contains** - Partial text matching  
+- **is in** / **is not in** - Check if value contains any item (partial matching)
+- **greater than** / **less than** - Numeric comparisons
+- **greater than or equal** / **less than or equal** - Numeric comparisons
+- **after** / **before** - Date comparisons
+- **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
+- **matches regex** - Advanced pattern matching using .NET regex syntax
+
+#### IsIn / IsNotIn Operator Details
+
+The **IsIn** and **IsNotIn** operators provide an easy way to check multiple values without creating separate rules or using regex:
+
+- **Behavior**: Uses partial matching (like "contains") - each item in your list is checked to see if it's contained within the field value
+- **Syntax**: Separate multiple values with semicolons: `value1; value2; value3`
+- **Case insensitive**: Matching ignores case differences
+- **Whitespace handling**: Spaces around semicolons are automatically trimmed
+
+**Examples:**
+- `Genre is not in horror;thriller` excludes:
+  - ❌ "Horror" 
+  - ❌ "Psychological Thriller"
+  - ❌ "Horror Comedy"
+
+- `Studio is in disney; warner; universal` matches:
+  - ✅ "Walt Disney Studios"
+  - ✅ "Warner Bros. Pictures" 
+  - ✅ "Universal Pictures"
+
+**For collection fields** (Genres, Studios, Tags, People, etc.), it checks if ANY item in the collection contains ANY item from your semicolon-separated list.
 
 #### Regex Pattern Examples
 
