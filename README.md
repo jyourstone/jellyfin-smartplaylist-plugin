@@ -256,7 +256,13 @@ The web interface provides access to all available fields for creating playlist 
 - **Artists** - Track-level artists *for music*
 - **Album Artists** - Album-level primary artists *for music*
 
-> **Collections Field Details**: The **Collections** field captures all Jellyfin collections that contain the media item. This is useful for creating playlists like "All items from Movie Franchise"".
+> **Collections Field Details**: The **Collections** field captures all Jellyfin collections that contain the media item. This is useful for creating playlists like "All items from Movie Franchise". 
+>
+> **Collections Episode Expansion**: When using the **Collections** field, you can choose to include individual episodes from TV series within the collections:
+> - **"No - Only include the series themselves"** (default): Collections rules will match and include the series as a whole
+> - **"Yes - Include individual episodes from series in collections"**: When a series in a collection matches your rules, all episodes from that series will be individually evaluated and included if they also match your other playlist rules
+>
+> This feature is particularly useful for creating episode-level playlists from franchise collections while still respecting other filters like date ranges, ratings, or viewing status.
  
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:
 > - **Exact dates**: Use "After" or "Before" with a specific date (e.g., "2024-01-01")

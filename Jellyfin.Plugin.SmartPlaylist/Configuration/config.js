@@ -1022,6 +1022,15 @@
                     <option value="true">Yes - Include first episodes of unwatched series</option>
                     <option value="false">No - Only show next episodes from started series</option>
                 </select>
+            </div>
+            <div class="rule-collections-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Include episodes within series:
+                </label>
+                <select is="emby-select" class="emby-select rule-collections-select" style="width: 100%;">
+                    <option value="false">No - Only include the series themselves</option>
+                    <option value="true">Yes - Include individual episodes from series in collections</option>
+                </select>
             </div>`;
         
         ruleDiv.innerHTML = fieldsHtml;
@@ -1052,6 +1061,9 @@
         // Initialize NextUnwatched options visibility
         updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
         
+        // Initialize Collections options visibility
+        updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
+        
         // Add event listeners with AbortController signal (if supported)
         const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
@@ -1059,6 +1071,7 @@
             updateOperatorOptions(fieldSelect.value, operatorSelect);
             updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
             updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
+            updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
@@ -1241,6 +1254,8 @@
                     setValueInput(currentFieldValue, valueContainer, operatorSelect.value);
                     updateOperatorOptions(currentFieldValue, operatorSelect);
                     updateUserSelectorVisibility(ruleRow, currentFieldValue);
+                    updateNextUnwatchedOptionsVisibility(ruleRow, currentFieldValue);
+                    updateCollectionsOptionsVisibility(ruleRow, currentFieldValue);
                 }
                 
                 // Re-add event listeners
@@ -1249,6 +1264,8 @@
                     setValueInput(fieldSelect.value, valueContainer, operatorSelect.value);
                     updateOperatorOptions(fieldSelect.value, operatorSelect);
                     updateUserSelectorVisibility(ruleRow, fieldSelect.value);
+                    updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value);
+                    updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
                 }, listenerOptions);
                 
@@ -1345,6 +1362,17 @@
                                 expression.IncludeUnwatchedSeries = false;
                             }
                             // If true (default), don't include the parameter to save space
+                        }
+                        
+                        // Check for Collections specific options
+                        const collectionsSelect = rule.querySelector('.rule-collections-select');
+                        if (collectionsSelect && memberName === 'Collections') {
+                            // Convert string to boolean and only include if it's explicitly true
+                            const includeEpisodesWithinSeries = collectionsSelect.value === 'true';
+                            if (includeEpisodesWithinSeries) {
+                                expression.IncludeEpisodesWithinSeries = true;
+                            }
+                            // If false (default), don't include the parameter to save space
                         }
                         
                         expressions.push(expression);
@@ -1558,6 +1586,24 @@
             }
         }
     }
+    
+    function updateCollectionsOptionsVisibility(ruleRow, fieldValue) {
+        const isCollectionsField = fieldValue === 'Collections';
+        const collectionsOptionsDiv = ruleRow.querySelector('.rule-collections-options');
+        
+        if (collectionsOptionsDiv) {
+            if (isCollectionsField) {
+                collectionsOptionsDiv.style.display = 'block';
+            } else {
+                collectionsOptionsDiv.style.display = 'none';
+                // Reset to default when hiding
+                const collectionsSelect = collectionsOptionsDiv.querySelector('.rule-collections-select');
+                if (collectionsSelect) {
+                    collectionsSelect.value = 'false'; // Default to not including episodes within series
+                }
+            }
+        }
+    }
 
     async function loadUsersForRule(userSelect, isOptional = false) {
         const apiClient = getApiClient();
@@ -1753,7 +1799,13 @@
                             nextUnwatchedInfo = ' (excluding unwatched series)';
                         }
                         
-                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + '</span>';
+                        // Check for Collections specific options
+                        let collectionsInfo = '';
+                        if (rule.MemberName === 'Collections' && rule.IncludeEpisodesWithinSeries === true) {
+                            collectionsInfo = ' (including episodes within series)';
+                        }
+                        
+                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + collectionsInfo + '</span>';
                     }
                     
                     rulesHtml += '</div>';
@@ -2388,6 +2440,7 @@
                                 setValueInput(expression.MemberName, valueContainer, expression.Operator, expression.TargetValue);
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
                                 updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName);
+                                updateCollectionsOptionsVisibility(currentRule, expression.MemberName);
                                 
                                 // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
@@ -2438,6 +2491,17 @@
                                         // Default to true if not specified (backwards compatibility)
                                         const includeValue = expression.IncludeUnwatchedSeries !== false ? 'true' : 'false';
                                         nextUnwatchedSelect.value = includeValue;
+                                    }
+                                }
+                                
+                                // Set Collections options if this is a Collections rule
+                                if (expression.MemberName === 'Collections') {
+                                    const collectionsSelect = currentRule.querySelector('.rule-collections-select');
+                                    if (collectionsSelect) {
+                                        // Set the value based on the IncludeEpisodesWithinSeries parameter
+                                        // Default to false if not specified (backwards compatibility)
+                                        const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';
+                                        collectionsSelect.value = includeValue;
                                     }
                                 }
                                 

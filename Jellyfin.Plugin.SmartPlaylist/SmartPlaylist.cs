@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Jellyfin.Data.Entities;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -351,6 +352,85 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
+        private bool EvaluateLogicGroupsForEpisode(List<List<Func<Operand, bool>>> compiledRules, Operand operand, MediaBrowser.Controller.Entities.TV.Series parentSeries, ILogger logger)
+        {
+            try
+            {
+                if (compiledRules == null || operand == null)
+                {
+                    return false;
+                }
+                
+                // If we have a parent series, it means this episode is being expanded from a series that matched Collections rules
+                // In this case, we should skip Collections rule evaluation for episodes since they inherit from their parent
+                bool isFromSeriesExpansion = parentSeries != null;
+                
+                // Each ExpressionSet is a logic group
+                // Groups are combined with OR logic (any group can match)
+                // Rules within each group always use AND logic
+                for (int groupIndex = 0; groupIndex < ExpressionSets.Count && groupIndex < compiledRules.Count; groupIndex++)
+                {
+                    var group = ExpressionSets[groupIndex];
+                    var groupRules = compiledRules[groupIndex];
+                    
+                    if (group == null || groupRules == null || groupRules.Count == 0) 
+                        continue; // Skip empty or null groups
+                    
+                    try
+                    {
+                        bool groupMatches = true; // Start with true for AND logic within groups
+                        
+                        // Check each expression in the group
+                        for (int ruleIndex = 0; ruleIndex < group.Expressions.Count && ruleIndex < groupRules.Count; ruleIndex++)
+                        {
+                            var expression = group.Expressions[ruleIndex];
+                            var rule = groupRules[ruleIndex];
+                            
+                            // Skip Collections rules when expanding from parent series since episodes inherit collection membership
+                            if (isFromSeriesExpansion && expression.MemberName == "Collections")
+                            {
+                                logger?.LogDebug("Skipping Collections rule for episode - inherited from parent series '{SeriesName}'", parentSeries.Name);
+                                continue; // Skip this rule, don't evaluate it
+                            }
+                            
+                            // Evaluate the rule normally
+                            try
+                            {
+                                if (rule?.Invoke(operand) != true)
+                                {
+                                    groupMatches = false; // This group fails due to AND logic
+                                    break; // No need to check remaining rules in this group
+                                }
+                            }
+                            catch (Exception)
+                            {
+                                // Conservative approach: assume rule doesn't match if it fails
+                                groupMatches = false;
+                                break;
+                            }
+                        }
+                        
+                        if (groupMatches)
+                        {
+                            return true; // This group matches, so the item matches overall
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // If we can't evaluate this group, skip it and continue with others
+                        continue;
+                    }
+                }
+                
+                return false; // No groups matched
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error evaluating rules for episode, assuming no match");
+                return false; // Return false (no match) on any unexpected errors
+            }
+        }
+
         // Returns the ID's of the items, if order is provided the IDs are sorted.
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager = null, ILogger logger = null)
@@ -558,10 +638,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug("Playlist filtering for '{PlaylistName}' completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
                     Name,stopwatch.ElapsedMilliseconds, totalItems, results.Count);
                 
+                // Check if we need to expand series to episodes for Collections rules  
+                var expandedResults = ExpandSeriesForCollectionsRules(results, libraryManager, user, userDataManager, logger);
+                logger?.LogDebug("Playlist '{PlaylistName}' expanded from {OriginalCount} items to {ExpandedCount} items after Collections episode expansion", 
+                    Name, results.Count, expandedResults.Count);
+                
                 // Apply ordering and limits with error handling
                 try
                 {
-                    var orderedResults = Order?.OrderBy(results) ?? results;
+                    var orderedResults = Order?.OrderBy(expandedResults) ?? expandedResults;
                     
                     // Apply limits (items and/or time)
                     if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
@@ -596,7 +681,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 catch (Exception ex)
                 {
                     logger?.LogError(ex, "Error applying ordering and limits to playlist '{PlaylistName}'. Returning unordered results.", Name);
-                    return results.Select(x => x.Id);
+                    return expandedResults.Select(x => x.Id);
                 }
             }
             catch (Exception ex)
@@ -605,6 +690,246 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogError(ex, "Critical error in FilterPlaylistItems for playlist '{PlaylistName}' after {ElapsedTime}ms. Returning empty results.", 
                     Name, stopwatch.ElapsedMilliseconds);
                 return [];
+            }
+        }
+
+        private bool ShouldExpandSeriesForCollections()
+        {
+            var result = ExpressionSets?.Any(set => 
+                set.Expressions?.Any(expr => 
+                    expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
+            return result;
+        }
+
+        private bool EvaluateCollectionsRulesOnly(List<List<Func<Operand, bool>>> compiledRules, Operand operand, ILogger logger)
+        {
+            try
+            {
+                if (compiledRules == null || operand == null)
+                {
+                    return false;
+                }
+                
+                // Check each logic group (OR logic between groups)
+                for (int groupIndex = 0; groupIndex < ExpressionSets.Count && groupIndex < compiledRules.Count; groupIndex++)
+                {
+                    var group = ExpressionSets[groupIndex];
+                    var groupRules = compiledRules[groupIndex];
+                    
+                    if (group == null || groupRules == null || groupRules.Count == 0) 
+                        continue;
+                    
+                    // Check if this group has any Collections rules
+                    var hasCollectionsRule = group.Expressions?.Any(e => e.MemberName == "Collections") == true;
+                    if (!hasCollectionsRule)
+                        continue; // Skip groups without Collections rules
+                    
+                    try
+                    {
+                        bool groupMatches = true; // AND logic within group
+                        
+                        // Evaluate only Collections rules in this group
+                        for (int ruleIndex = 0; ruleIndex < group.Expressions.Count && ruleIndex < groupRules.Count; ruleIndex++)
+                        {
+                            var expression = group.Expressions[ruleIndex];
+                            var rule = groupRules[ruleIndex];
+                            
+                            // Only evaluate Collections rules
+                            if (expression.MemberName == "Collections")
+                            {
+                                try
+                                {
+                                    if (rule?.Invoke(operand) != true)
+                                    {
+                                        groupMatches = false;
+                                        break;
+                                    }
+                                }
+                                catch (Exception)
+                                {
+                                    groupMatches = false;
+                                    break;
+                                }
+                            }
+                            // Skip non-Collections rules (treat as if they passed for expansion purposes)
+                        }
+                        
+                        if (groupMatches)
+                        {
+                            return true; // This group's Collections rules match
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        continue; // Skip this group on error
+                    }
+                }
+                
+                return false; // No Collections rules matched
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error evaluating Collections rules only, assuming no match");
+                return false;
+            }
+        }
+
+        private List<BaseItem> ExpandSeriesForCollectionsRules(List<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            try
+            {
+                // Check if any Collections rule has IncludeEpisodesWithinSeries = true
+                var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
+                    set.Expressions?.Any(expr => 
+                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
+
+                if (!hasCollectionsEpisodeExpansion)
+                {
+                    logger?.LogDebug("No Collections rules with episode expansion found for playlist '{PlaylistName}', returning original results", Name);
+                    return items;
+                }
+
+                logger?.LogDebug("Expanding series to episodes for Collections rules in playlist '{PlaylistName}'", Name);
+
+                var expandedItems = new List<BaseItem>();
+                var processedSeries = new HashSet<Guid>(); // Track processed series to avoid duplicates
+
+                foreach (var item in items)
+                {
+                    if (item is MediaBrowser.Controller.Entities.TV.Series series && !processedSeries.Contains(series.Id))
+                    {
+                        processedSeries.Add(series.Id);
+                        
+                        // Get all episodes for this series
+                        var episodes = GetSeriesEpisodes(series, libraryManager, user, logger);
+                        
+                        if (episodes.Count != 0)
+                        {
+                            logger?.LogDebug("Series '{SeriesName}' has {TotalEpisodes} episodes, filtering against rules for playlist '{PlaylistName}'", 
+                                series.Name, episodes.Count, Name);
+                            
+                            // Test each episode against the same rules, but skip Collections rules since the parent series already matched
+                            var matchingEpisodes = FilterEpisodesAgainstRules(episodes, libraryManager, user, userDataManager, logger, series);
+                            expandedItems.AddRange(matchingEpisodes);
+                            
+                            logger?.LogDebug("Expanded series '{SeriesName}' from {TotalEpisodes} episodes to {MatchingEpisodes} matching episodes for playlist '{PlaylistName}'", 
+                                series.Name, episodes.Count, matchingEpisodes.Count, Name);
+                        }
+                        else
+                        {
+                            logger?.LogDebug("Series '{SeriesName}' has no episodes, keeping series in playlist '{PlaylistName}'", 
+                                series.Name, Name);
+                            expandedItems.Add(item);
+                        }
+                    }
+                    else
+                    {
+                        // Not a series or already processed, keep the original item
+                        expandedItems.Add(item);
+                    }
+                }
+
+                return expandedItems;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error expanding series to episodes for playlist '{PlaylistName}', returning original results", Name);
+                return items;
+            }
+        }
+
+        private static List<BaseItem> GetSeriesEpisodes(MediaBrowser.Controller.Entities.TV.Series series, ILibraryManager libraryManager, User user, ILogger logger)
+        {
+            try
+            {
+                var query = new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = [BaseItemKind.Episode],
+                    ParentId = series.Id,
+                    Recursive = true
+                };
+
+                var result = libraryManager.GetItemsResult(query);
+                logger?.LogDebug("Found {EpisodeCount} episodes for series '{SeriesName}' (ID: {SeriesId})", 
+                    result.TotalRecordCount, series.Name, series.Id);
+                
+                return [.. result.Items];
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error getting episodes for series '{SeriesName}'", series.Name);
+                return [];
+            }
+        }
+
+        private List<BaseItem> FilterEpisodesAgainstRules(List<BaseItem> episodes, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger, MediaBrowser.Controller.Entities.TV.Series parentSeries = null)
+        {
+            try
+            {
+                var matchingEpisodes = new List<BaseItem>();
+                
+                // Compile the rules if not already compiled
+                var compiledRules = CompileRuleSets(logger);
+                if (compiledRules == null || compiledRules.Count == 0)
+                {
+                    return episodes; // No rules to check against
+                }
+
+                // Check field requirements for performance optimization
+                var needsAudioLanguages = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "AudioLanguages") == true) == true;
+                var needsPeople = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "People") == true) == true;
+                var needsCollections = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "Collections") == true) == true;
+                var needsNextUnwatched = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "NextUnwatched") == true) == true;
+                var includeUnwatchedSeries = ExpressionSets?.SelectMany(set => set.Expressions ?? [])
+                    .Where(e => e.MemberName == "NextUnwatched")
+                    .All(e => e.IncludeUnwatchedSeries != false) == true;
+                var additionalUserIds = ExpressionSets?.SelectMany(set => set.Expressions ?? [])
+                    .Where(e => !string.IsNullOrEmpty(e.UserId))
+                    .Select(e => e.UserId)
+                    .Distinct()
+                    .ToList() ?? [];
+
+                var refreshCache = new OperandFactory.RefreshCache();
+
+                logger?.LogDebug("Filtering {EpisodeCount} episodes against playlist rules", episodes.Count);
+                
+                foreach (var episode in episodes)
+                {
+                    try
+                    {
+                        var operand = OperandFactory.GetMediaType(libraryManager, episode, user, userDataManager, logger, new MediaTypeExtractionOptions
+                        {
+                            ExtractAudioLanguages = needsAudioLanguages,
+                            ExtractPeople = needsPeople,
+                            ExtractCollections = needsCollections,
+                            ExtractNextUnwatched = needsNextUnwatched,
+                            IncludeUnwatchedSeries = includeUnwatchedSeries,
+                            AdditionalUserIds = additionalUserIds
+                        }, refreshCache);
+
+                        var matches = EvaluateLogicGroupsForEpisode(compiledRules, operand, parentSeries, logger);
+                            
+                        if (matches)
+                        {
+                            matchingEpisodes.Add(episode);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error evaluating episode '{EpisodeName}' against rules, excluding from results", episode.Name);
+                        continue;
+                    }
+                }
+                
+                logger?.LogDebug("Episode filtering complete: {MatchingCount} of {TotalCount} episodes passed rules", 
+                    matchingEpisodes.Count, episodes.Count);
+
+                return matchingEpisodes;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error filtering episodes against rules, returning all episodes");
+                return episodes;
             }
         }
 
@@ -815,16 +1140,29 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 bool matches = false;
                                 if (!hasAnyRules) {
                                     matches = true;
-                                } else {
+                                } 
+                                else {
                                     matches = EvaluateLogicGroups(compiledRules, operand);
                                 }
-                            
-                                if (matches)
-                                {
-                                    results.Add(item);
-                                }
+                        
+                        if (matches)
+                        {
+                            results.Add(item);
+                        }
+                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandSeriesForCollections())
+                        {
+                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (simple)", series.Name);
+                            // For series that don't match all rules, check if they match Collections rules for expansion
+                            var matchesCollectionsOnly = EvaluateCollectionsRulesOnly(compiledRules, operand, logger);
+                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules only (simple): {Matches}", series.Name, matchesCollectionsOnly);
+                            if (matchesCollectionsOnly)
+                            {
+                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion but not other rules - will expand and filter episodes (simple)", series.Name);
+                                results.Add(item);
                             }
-                            catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                        }
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                             {
                                 // User-specific rule references a user that no longer exists
                                 logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
@@ -848,6 +1186,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
+                                // Special handling: Skip Phase 1 filtering for series when Collections expansion is enabled
+                                bool shouldSkipPhase1ForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandSeriesForCollections();
+                                
+                                if (shouldSkipPhase1ForSeries)
+                                {
+                                    logger?.LogDebug("Series '{SeriesName}' skipping Phase 1 cheap rules - will evaluate in Phase 2 for Collections expansion", ((MediaBrowser.Controller.Entities.TV.Series)item).Name);
+                                    results.Add(item); // Let it through to Phase 2
+                                    continue;
+                                }
+                                
                                 // Phase 1: Extract non-expensive properties and check non-expensive rules
                                 var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
                                 {
@@ -934,15 +1282,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 if (!hasAnyRules) {
                                     matches = true;
                                 } else {
-                                    matches = EvaluateLogicGroups(compiledRules, fullOperand);
-                                }
-                                
-                                if (matches)
-                                {
-                                    results.Add(item);
-                                }
+                                                                matches = EvaluateLogicGroups(compiledRules, fullOperand);
+                        }
+                        
+                        if (matches)
+                        {
+                            results.Add(item);
+                        }
+                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandSeriesForCollections())
+                        {
+                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (two-phase)", series.Name);
+                            // For series that don't match all rules, check if they match Collections rules for expansion
+                            var matchesCollectionsOnly = EvaluateCollectionsRulesOnly(compiledRules, fullOperand, logger);
+                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules only (two-phase): {Matches}", series.Name, matchesCollectionsOnly);
+                            if (matchesCollectionsOnly)
+                            {
+                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion but not other rules - will expand and filter episodes (two-phase)", series.Name);
+                                results.Add(item);
                             }
-                            catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                        }
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                             {
                                 // User-specific rule references a user that no longer exists
                                 logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
@@ -1017,6 +1377,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         if (matches)
                         {
                             results.Add(item);
+                        }
+                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandSeriesForCollections())
+                        {
+                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (phase2)", series.Name);
+                            // For series that don't match all rules, check if they match Collections rules for expansion
+                            var matchesCollectionsOnly = EvaluateCollectionsRulesOnly(compiledRules, operand, logger);
+                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules only (phase2): {Matches}", series.Name, matchesCollectionsOnly);
+                            if (matchesCollectionsOnly)
+                            {
+                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion but not other rules - will expand and filter episodes (phase2)", series.Name);
+                                results.Add(item);
+                            }
                         }
                     }
                     catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
