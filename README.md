@@ -262,6 +262,11 @@ The web interface provides access to all available fields for creating playlist 
 > - **"No - Only include the series themselves"** (default): Collections rules will match and include the series as a whole
 > - **"Yes - Include individual episodes from series in collections"**: When a series in a collection matches your rules, all episodes from that series will be individually evaluated and included if they also match your other playlist rules
 >
+> **⚠️ Important**: To use episode expansion, you must select **"Episodes"** as one of your Media Types. The expansion feature works as follows:
+> - **Episodes only**: Returns individual episodes (direct + expanded from series), no series items
+> - **Episodes + Series**: Returns both series items AND individual episodes (direct + expanded)  
+> - **Series only**: Returns only series items, episode expansion is disabled
+>
 > This feature is particularly useful for creating episode-level playlists from franchise collections while still respecting other filters like date ranges, ratings, or viewing status.
  
 > **Date Filtering**: Date fields support both exact date comparisons and relative date filtering:

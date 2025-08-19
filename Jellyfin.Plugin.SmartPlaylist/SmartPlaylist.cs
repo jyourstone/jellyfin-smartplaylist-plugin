@@ -638,9 +638,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug("Playlist filtering for '{PlaylistName}' completed in {ElapsedTime}ms: {InputCount} items → {OutputCount} items", 
                     Name,stopwatch.ElapsedMilliseconds, totalItems, results.Count);
                 
-                // Check if we need to expand series to episodes for Collections rules  
-                var expandedResults = ExpandSeriesForCollectionsRules(results, libraryManager, user, userDataManager, logger);
-                logger?.LogDebug("Playlist '{PlaylistName}' expanded from {OriginalCount} items to {ExpandedCount} items after Collections episode expansion", 
+                // Check if we need to expand Collections based on media type selection
+                var expandedResults = ExpandCollectionsBasedOnMediaType(results, libraryManager, user, userDataManager, logger);
+                logger?.LogDebug("Playlist '{PlaylistName}' expanded from {OriginalCount} items to {ExpandedCount} items after Collections processing", 
                     Name, results.Count, expandedResults.Count);
                 
                 // Apply ordering and limits with error handling
@@ -693,147 +693,116 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private bool ShouldExpandSeriesForCollections()
+        private bool ShouldExpandEpisodesForCollections()
         {
-            var result = ExpressionSets?.Any(set => 
+            // Only expand if Episodes media type is selected AND Collections expansion is enabled
+            var isEpisodesMediaType = MediaTypes?.Contains("Episode") == true;
+            var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
                 set.Expressions?.Any(expr => 
                     expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
-            return result;
+            
+            return isEpisodesMediaType && hasCollectionsEpisodeExpansion;
         }
 
-        private bool EvaluateCollectionsRulesOnly(List<List<Func<Operand, bool>>> compiledRules, Operand operand, ILogger logger)
+        private List<BaseItem> ExpandCollectionsBasedOnMediaType(List<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger)
         {
             try
             {
-                if (compiledRules == null || operand == null)
-                {
-                    return false;
-                }
+                // Media-type driven Collections expansion logic
+                var isEpisodesMediaType = MediaTypes?.Contains("Episode") == true;
+                var isSeriesMediaType = MediaTypes?.Contains("Series") == true;
                 
-                // Check each logic group (OR logic between groups)
-                for (int groupIndex = 0; groupIndex < ExpressionSets.Count && groupIndex < compiledRules.Count; groupIndex++)
-                {
-                    var group = ExpressionSets[groupIndex];
-                    var groupRules = compiledRules[groupIndex];
-                    
-                    if (group == null || groupRules == null || groupRules.Count == 0) 
-                        continue;
-                    
-                    // Check if this group has any Collections rules
-                    var hasCollectionsRule = group.Expressions?.Any(e => e.MemberName == "Collections") == true;
-                    if (!hasCollectionsRule)
-                        continue; // Skip groups without Collections rules
-                    
-                    try
-                    {
-                        bool groupMatches = true; // AND logic within group
-                        
-                        // Evaluate only Collections rules in this group
-                        for (int ruleIndex = 0; ruleIndex < group.Expressions.Count && ruleIndex < groupRules.Count; ruleIndex++)
-                        {
-                            var expression = group.Expressions[ruleIndex];
-                            var rule = groupRules[ruleIndex];
-                            
-                            // Only evaluate Collections rules
-                            if (expression.MemberName == "Collections")
-                            {
-                                try
-                                {
-                                    if (rule?.Invoke(operand) != true)
-                                    {
-                                        groupMatches = false;
-                                        break;
-                                    }
-                                }
-                                catch (Exception)
-                                {
-                                    groupMatches = false;
-                                    break;
-                                }
-                            }
-                            // Skip non-Collections rules (treat as if they passed for expansion purposes)
-                        }
-                        
-                        if (groupMatches)
-                        {
-                            return true; // This group's Collections rules match
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        continue; // Skip this group on error
-                    }
-                }
-                
-                return false; // No Collections rules matched
-            }
-            catch (Exception ex)
-            {
-                logger?.LogWarning(ex, "Error evaluating Collections rules only, assuming no match");
-                return false;
-            }
-        }
-
-        private List<BaseItem> ExpandSeriesForCollectionsRules(List<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger)
-        {
-            try
-            {
-                // Check if any Collections rule has IncludeEpisodesWithinSeries = true
+                // Check if Collections rules have episode expansion enabled
                 var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
                     set.Expressions?.Any(expr => 
                         expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
 
-                if (!hasCollectionsEpisodeExpansion)
+                // Series media type: Never expand to episodes, just return series
+                if (isSeriesMediaType && !isEpisodesMediaType)
                 {
-                    logger?.LogDebug("No Collections rules with episode expansion found for playlist '{PlaylistName}', returning original results", Name);
+                    logger?.LogDebug("Series media type selected - returning series without episode expansion for playlist '{PlaylistName}'", Name);
                     return items;
                 }
 
-                logger?.LogDebug("Expanding series to episodes for Collections rules in playlist '{PlaylistName}'", Name);
-
-                var expandedItems = new List<BaseItem>();
-                var processedSeries = new HashSet<Guid>(); // Track processed series to avoid duplicates
-
-                foreach (var item in items)
+                // Episodes media type with Collections expansion enabled: Expand and deduplicate
+                if (isEpisodesMediaType && hasCollectionsEpisodeExpansion)
                 {
-                    if (item is MediaBrowser.Controller.Entities.TV.Series series && !processedSeries.Contains(series.Id))
+                    logger?.LogDebug("Episodes media type + Collections expansion enabled - processing episodes and series for playlist '{PlaylistName}'", Name);
+                    
+                    var resultItems = new List<BaseItem>();
+                    var episodeIds = new HashSet<Guid>(); // Deduplication tracker for episodes
+                    
+                    foreach (var item in items)
                     {
-                        processedSeries.Add(series.Id);
-                        
-                        // Get all episodes for this series
-                        var episodes = GetSeriesEpisodes(series, libraryManager, user, logger);
-                        
-                        if (episodes.Count != 0)
+                        if (item.GetType().Name == "Episode")
                         {
-                            logger?.LogDebug("Series '{SeriesName}' has {TotalEpisodes} episodes, filtering against rules for playlist '{PlaylistName}'", 
-                                series.Name, episodes.Count, Name);
+                            // Direct episode from collection - add if not already seen
+                            if (episodeIds.Add(item.Id))
+                            {
+                                resultItems.Add(item);
+                                logger?.LogDebug("Added direct episode '{EpisodeName}' from collection", item.Name);
+                            }
+                        }
+                        else if (item is MediaBrowser.Controller.Entities.TV.Series series)
+                        {
+                            // If both Episodes and Series media types are selected, also include the series itself
+                            if (isSeriesMediaType)
+                            {
+                                resultItems.Add(series);
+                                logger?.LogDebug("Added series '{SeriesName}' to results (both Episodes and Series media types selected)", series.Name);
+                            }
                             
-                            // Test each episode against the same rules, but skip Collections rules since the parent series already matched
-                            var matchingEpisodes = FilterEpisodesAgainstRules(episodes, libraryManager, user, userDataManager, logger, series);
-                            expandedItems.AddRange(matchingEpisodes);
+                            // Series from collection - expand to episodes and add unique ones
+                            var seriesEpisodes = GetSeriesEpisodes(series, libraryManager, user, logger);
                             
-                            logger?.LogDebug("Expanded series '{SeriesName}' from {TotalEpisodes} episodes to {MatchingEpisodes} matching episodes for playlist '{PlaylistName}'", 
-                                series.Name, episodes.Count, matchingEpisodes.Count, Name);
+                            if (seriesEpisodes.Count > 0)
+                            {
+                                logger?.LogDebug("Expanding series '{SeriesName}' with {TotalEpisodes} episodes", series.Name, seriesEpisodes.Count);
+                                
+                                // Filter episodes against rules (excluding Collections rules since parent series matched)
+                                var matchingEpisodes = FilterEpisodesAgainstRules(seriesEpisodes, libraryManager, user, userDataManager, logger, series);
+                                
+                                // Add unique matching episodes
+                                int addedCount = 0;
+                                foreach (var matchingEpisode in matchingEpisodes)
+                                {
+                                    if (episodeIds.Add(matchingEpisode.Id))
+                                    {
+                                        resultItems.Add(matchingEpisode);
+                                        addedCount++;
+                                    }
+                                }
+                                
+                                logger?.LogDebug("Added {AddedEpisodes} unique episodes from series '{SeriesName}' (filtered from {MatchingEpisodes} matching episodes)", 
+                                    addedCount, series.Name, matchingEpisodes.Count);
+                            }
+                            else
+                            {
+                                logger?.LogDebug("Series '{SeriesName}' has no episodes to expand", series.Name);
+                            }
                         }
                         else
                         {
-                            logger?.LogDebug("Series '{SeriesName}' has no episodes, keeping series in playlist '{PlaylistName}'", 
-                                series.Name, Name);
-                            expandedItems.Add(item);
+                            // Non-TV item, keep as-is
+                            resultItems.Add(item);
                         }
                     }
-                    else
-                    {
-                        // Not a series or already processed, keep the original item
-                        expandedItems.Add(item);
-                    }
+                    
+                    logger?.LogDebug("Collections expansion complete: {TotalItems} items from {OriginalItems} original items", 
+                        resultItems.Count, items.Count);
+                    
+                    return resultItems;
                 }
 
-                return expandedItems;
+                // No expansion needed - return original items
+                logger?.LogDebug("No Collections episode expansion needed for playlist '{PlaylistName}' - MediaTypes: [{MediaTypes}], HasExpansion: {HasExpansion}", 
+                    Name, MediaTypes != null ? string.Join(",", MediaTypes) : "None", hasCollectionsEpisodeExpansion);
+                
+                return items;
             }
             catch (Exception ex)
             {
-                logger?.LogError(ex, "Error expanding series to episodes for playlist '{PlaylistName}', returning original results", Name);
+                logger?.LogError(ex, "Error in Collections processing for playlist '{PlaylistName}', returning original results", Name);
                 return items;
             }
         }
@@ -1115,26 +1084,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 // Debug: Log expensive data found for first few items
                                 if (results.Count < 5)
                                 {
-                                    if (needsAudioLanguages)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                                            item.Name, operand.AudioLanguages?.Count ?? 0, operand.AudioLanguages != null ? string.Join(", ", operand.AudioLanguages) : "none");
-                                    }
-                                    if (needsPeople)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
-                                            item.Name, operand.People?.Count ?? 0, operand.People != null ? string.Join(", ", operand.People.Take(5)) : "none");
-                                    }
-                                    if (needsCollections)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': Found {Count} collections: [{Collections}]", 
-                                            item.Name, operand.Collections?.Count ?? 0, operand.Collections != null ? string.Join(", ", operand.Collections) : "none");
-                                    }
-                                    if (needsNextUnwatched)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': NextUnwatched status: {NextUnwatchedUsers}", 
-                                            item.Name, operand.NextUnwatchedByUser?.Count > 0 ? string.Join(", ", operand.NextUnwatchedByUser.Select(x => $"{x.Key}={x.Value}")) : "none");
-                                    }
+
                                 }
                                 
                                 bool matches = false;
@@ -1149,18 +1099,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             results.Add(item);
                         }
-                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandSeriesForCollections())
-                        {
-                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (simple)", series.Name);
-                            // For series that don't match all rules, check if they match Collections rules for expansion
-                            var matchesCollectionsOnly = EvaluateCollectionsRulesOnly(compiledRules, operand, logger);
-                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules only (simple): {Matches}", series.Name, matchesCollectionsOnly);
-                            if (matchesCollectionsOnly)
-                            {
-                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion but not other rules - will expand and filter episodes (simple)", series.Name);
-                                results.Add(item);
-                            }
-                        }
+                        // Note: Series expansion logic is now handled in ExpandCollectionsBasedOnMediaType based on media type selection
                     }
                     catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                             {
@@ -1187,7 +1126,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             try
                             {
                                 // Special handling: Skip Phase 1 filtering for series when Collections expansion is enabled
-                                bool shouldSkipPhase1ForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandSeriesForCollections();
+                                bool shouldSkipPhase1ForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandEpisodesForCollections();
                                 
                                 if (shouldSkipPhase1ForSeries)
                                 {
@@ -1289,18 +1228,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             results.Add(item);
                         }
-                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandSeriesForCollections())
-                        {
-                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (two-phase)", series.Name);
-                            // For series that don't match all rules, check if they match Collections rules for expansion
-                            var matchesCollectionsOnly = EvaluateCollectionsRulesOnly(compiledRules, fullOperand, logger);
-                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules only (two-phase): {Matches}", series.Name, matchesCollectionsOnly);
-                            if (matchesCollectionsOnly)
-                            {
-                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion but not other rules - will expand and filter episodes (two-phase)", series.Name);
-                                results.Add(item);
-                            }
-                        }
+                        // Note: Series expansion logic is now handled in ExpandCollectionsBasedOnMediaType based on media type selection
                     }
                     catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                             {
@@ -1378,15 +1306,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             results.Add(item);
                         }
-                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandSeriesForCollections())
+                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandEpisodesForCollections())
                         {
                             logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (phase2)", series.Name);
                             // For series that don't match all rules, check if they match Collections rules for expansion
-                            var matchesCollectionsOnly = EvaluateCollectionsRulesOnly(compiledRules, operand, logger);
-                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules only (phase2): {Matches}", series.Name, matchesCollectionsOnly);
-                            if (matchesCollectionsOnly)
+                            
+                            // Check if this series matches any Collections rule (even if it fails other rules)
+                            var hasCollectionsInAnyGroup = ExpressionSets?.Any(set => 
+                                set.Expressions?.Any(expr => expr.MemberName == "Collections") == true) == true;
+                            
+                            if (hasCollectionsInAnyGroup && operand.Collections?.Any(collection => 
+                                ExpressionSets.Any(set => 
+                                    set.Expressions?.Any(expr => 
+                                        expr.MemberName == "Collections" && 
+                                        collection.IndexOf(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase) >= 0) == true)) == true)
                             {
-                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion but not other rules - will expand and filter episodes (phase2)", series.Name);
+                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes (phase2)", series.Name);
                                 results.Add(item);
                             }
                         }

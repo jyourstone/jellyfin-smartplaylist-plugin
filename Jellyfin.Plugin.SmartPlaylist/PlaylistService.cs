@@ -30,6 +30,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message)> TryRefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
         IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes);
+        IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto dto);
     }
 
     public class PlaylistService(
@@ -297,7 +298,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return (false, "No user found for playlist", string.Empty);
                 }
 
-                var allUserMedia = GetAllUserMedia(user, dto.MediaTypes).ToArray();
+                var allUserMedia = GetAllUserMedia(user, dto.MediaTypes, dto).ToArray();
                 
                 var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, cancellationToken);
                 
@@ -762,12 +763,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return GetAllUserMedia(user, mediaTypes);
         }
+        
+        public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto dto)
+        {
+            return GetAllUserMedia(user, mediaTypes, dto);
+        }
 
-        private IEnumerable<BaseItem> GetAllUserMedia(User user, List<string> mediaTypes = null)
+        private IEnumerable<BaseItem> GetAllUserMedia(User user, List<string> mediaTypes = null, SmartPlaylistDto dto = null)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = GetBaseItemKindsFromMediaTypes(mediaTypes),
+                IncludeItemTypes = GetBaseItemKindsFromMediaTypes(mediaTypes, dto),
                 Recursive = true
             };
 
@@ -777,7 +783,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <summary>
         /// Maps string media types to BaseItemKind enums for API-level filtering
         /// </summary>
-        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string> mediaTypes)
+        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string> mediaTypes, SmartPlaylistDto dto = null)
         {
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
@@ -809,6 +815,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     default:
                         _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
                         break;
+                }
+            }
+
+            // Smart Query Expansion: If Episodes media type is selected AND Collections episode expansion is enabled,
+            // also include Series in the query so we can find series in collections and expand them to episodes
+            if (dto != null && baseItemKinds.Contains(BaseItemKind.Episode) && !baseItemKinds.Contains(BaseItemKind.Series))
+            {
+                var hasCollectionsEpisodeExpansion = dto.ExpressionSets?.Any(set => 
+                    set.Expressions?.Any(expr => 
+                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
+
+                if (hasCollectionsEpisodeExpansion)
+                {
+                    baseItemKinds.Add(BaseItemKind.Series);
+                    _logger?.LogDebug("Auto-including Series in query for Episodes media type due to Collections episode expansion");
                 }
             }
 
