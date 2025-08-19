@@ -1125,13 +1125,41 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                // Special handling: Skip Phase 1 filtering for series when Collections expansion is enabled
-                                bool shouldSkipPhase1ForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandEpisodesForCollections();
+                                // Special handling: For series when Collections expansion is enabled, check Collections rules first
+                                bool shouldCheckCollectionsForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandEpisodesForCollections();
                                 
-                                if (shouldSkipPhase1ForSeries)
+                                if (shouldCheckCollectionsForSeries)
                                 {
-                                    logger?.LogDebug("Series '{SeriesName}' skipping Phase 1 cheap rules - will evaluate in Phase 2 for Collections expansion", ((MediaBrowser.Controller.Entities.TV.Series)item).Name);
-                                    results.Add(item); // Let it through to Phase 2
+                                    var series = (MediaBrowser.Controller.Entities.TV.Series)item;
+                                    logger?.LogDebug("Series '{SeriesName}' checking Collections rules for expansion eligibility", series.Name);
+                                    
+                                    // Extract Collections data for this series to check if it matches Collections rules
+                                    var collectionsOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                    {
+                                        ExtractAudioLanguages = false,
+                                        ExtractPeople = false,
+                                        ExtractCollections = true,  // Only extract Collections for this check
+                                        ExtractNextUnwatched = false,
+                                        IncludeUnwatchedSeries = true,
+                                        AdditionalUserIds = []
+                                    }, refreshCache);
+                                    
+                                    // Check if this series matches any Collections rule
+                                    bool matchesCollectionsRule = ExpressionSets?.Any(set => 
+                                        set.Expressions?.Any(expr => 
+                                            expr.MemberName == "Collections" && 
+                                            collectionsOperand.Collections?.Any(collection => 
+                                                collection.IndexOf(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase) >= 0) == true) == true) == true;
+                                    
+                                    if (matchesCollectionsRule)
+                                    {
+                                        logger?.LogDebug("Series '{SeriesName}' matches Collections rules - adding for expansion", series.Name);
+                                        results.Add(item);
+                                    }
+                                    else
+                                    {
+                                        logger?.LogDebug("Series '{SeriesName}' does not match Collections rules - skipping", series.Name);
+                                    }
                                     continue;
                                 }
                                 
@@ -1308,8 +1336,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandEpisodesForCollections())
                         {
-                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (phase2)", series.Name);
-                            // For series that don't match all rules, check if they match Collections rules for expansion
+                            logger?.LogDebug("Series '{SeriesName}' failed other rules but checking Collections rules for expansion", series.Name);
+                            // For series that don't match other rules, check if they match Collections rules for expansion
                             
                             // Check if this series matches any Collections rule (even if it fails other rules)
                             var hasCollectionsInAnyGroup = ExpressionSets?.Any(set => 
@@ -1321,8 +1349,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                         expr.MemberName == "Collections" && 
                                         collection.IndexOf(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase) >= 0) == true)) == true)
                             {
-                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes (phase2)", series.Name);
+                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes", series.Name);
                                 results.Add(item);
+                            }
+                            else
+                            {
+                                logger?.LogDebug("Series '{SeriesName}' does not match Collections rules - skipping expansion", series.Name);
                             }
                         }
                     }
