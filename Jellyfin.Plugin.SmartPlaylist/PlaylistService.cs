@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Data.Entities;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
@@ -798,19 +799,19 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 switch (mediaType)
                 {
-                    case "Movie":
+                    case MediaTypes.Movie:
                         baseItemKinds.Add(BaseItemKind.Movie);
                         break;
-                    case "Audio":
+                    case MediaTypes.Audio:
                         baseItemKinds.Add(BaseItemKind.Audio);
                         break;
-                    case "Episode":
+                    case MediaTypes.Episode:
                         baseItemKinds.Add(BaseItemKind.Episode);
                         break;
-                    case "Series":
+                    case MediaTypes.Series:
                         baseItemKinds.Add(BaseItemKind.Series);
                         break;
-                    case "MusicVideo":
+                    case MediaTypes.MusicVideo:
                         baseItemKinds.Add(BaseItemKind.MusicVideo);
                         break;
                     default:
@@ -904,14 +905,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (dto.MediaTypes?.Count > 0)
             {
                 // Check if it's audio-only
-                if (dto.MediaTypes.All(mt => mt == "Audio"))
+                if (dto.MediaTypes.All(mt => mt == MediaTypes.Audio))
                 {
                     _logger.LogDebug("Playlist {PlaylistName} contains only Audio content, setting MediaType to Audio", dto.Name);
                     return "Audio";
                 }
                 
-                bool hasVideoContent = dto.MediaTypes.Any(mt => mt is "Movie" or "Series" or "Episode" or "MusicVideo");
-                bool hasAudioContent = dto.MediaTypes.Any(mt => mt == "Audio");
+                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.Video.Contains(mt));
+                bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnly.Contains(mt));
                 
                 if (hasVideoContent && !hasAudioContent)
                 {

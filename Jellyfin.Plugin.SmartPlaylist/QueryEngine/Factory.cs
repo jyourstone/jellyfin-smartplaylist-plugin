@@ -3,10 +3,14 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -429,7 +433,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
                 MediaType = baseItem.MediaType.ToString(),
-                ItemType = baseItem.GetType().Name,
+                ItemType = GetItemTypeName(baseItem),
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
@@ -617,8 +621,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 try
                 {
                     // Only process episodes - other item types cannot be "next unwatched"
-                    // Check ItemType which is already populated above, avoiding repeated reflection calls
-                    if (operand.ItemType == "Episode")
+                    // Use proper type checking instead of string comparison
+                    if (baseItem is Episode)
                     {
                         var episodeType = baseItem.GetType();
                         
@@ -675,6 +679,24 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             return operand;
+        }
+
+        /// <summary>
+        /// Gets the item type name using efficient type checking instead of reflection
+        /// </summary>
+        /// <param name="item">The BaseItem to get the type name for</param>
+        /// <returns>The item type name</returns>
+        private static string GetItemTypeName(BaseItem item)
+        {
+            return item switch
+            {
+                Episode => MediaTypes.Episode,
+                Series => MediaTypes.Series,
+                Movie => MediaTypes.Movie,
+                Audio => MediaTypes.Audio,
+                MusicVideo => MediaTypes.MusicVideo,
+                _ => item.GetType().Name
+            };
         }
 
         /// <summary>

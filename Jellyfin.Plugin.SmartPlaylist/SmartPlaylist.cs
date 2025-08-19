@@ -7,6 +7,7 @@ using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 
@@ -352,7 +353,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private bool EvaluateLogicGroupsForEpisode(List<List<Func<Operand, bool>>> compiledRules, Operand operand, MediaBrowser.Controller.Entities.TV.Series parentSeries, ILogger logger)
+        private bool EvaluateLogicGroupsForEpisode(List<List<Func<Operand, bool>>> compiledRules, Operand operand, Series parentSeries, ILogger logger)
         {
             try
             {
@@ -373,7 +374,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var group = ExpressionSets[groupIndex];
                     var groupRules = compiledRules[groupIndex];
                     
-                    if (group == null || groupRules == null || groupRules.Count == 0) 
+                    if (group == null || groupRules == null || groupRules.Count == 0 || group.Expressions == null) 
                         continue; // Skip empty or null groups
                     
                     try
@@ -732,7 +733,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <param name="logger">Logger for debugging</param>
         /// <param name="refreshCache">Cache for performance optimization</param>
         /// <returns>True if the series matches Collections rules, false otherwise</returns>
-        private bool DoesSeriesMatchCollectionsRules(MediaBrowser.Controller.Entities.TV.Series series, 
+        private bool DoesSeriesMatchCollectionsRules(Series series, 
             ILibraryManager libraryManager, User user, IUserDataManager userDataManager, 
             ILogger logger, OperandFactory.RefreshCache refreshCache)
         {
@@ -778,7 +779,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <param name="operand">Operand with Collections data already extracted</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>True if the series matches Collections rules, false otherwise</returns>
-        private bool DoesSeriesMatchCollectionsRules(MediaBrowser.Controller.Entities.TV.Series series, 
+        private bool DoesSeriesMatchCollectionsRules(Series series, 
             Operand operand, ILogger logger)
         {
             try
@@ -840,7 +841,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     foreach (var item in items)
                     {
-                        if (item is MediaBrowser.Controller.Entities.TV.Episode)
+                        if (item is Episode)
                         {
                             // Direct episode from collection - add if not already seen
                             if (episodeIds.Add(item.Id))
@@ -849,7 +850,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 logger?.LogDebug("Added direct episode '{EpisodeName}' from collection", item.Name);
                             }
                         }
-                        else if (item is MediaBrowser.Controller.Entities.TV.Series series)
+                        else if (item is Series series)
                         {
                             // If both Episodes and Series media types are selected, also include the series itself
                             if (isSeriesMediaType && seriesIds.Add(series.Id))
@@ -917,7 +918,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private static List<BaseItem> GetSeriesEpisodes(MediaBrowser.Controller.Entities.TV.Series series, ILibraryManager libraryManager, User user, ILogger logger)
+        private static List<BaseItem> GetSeriesEpisodes(Series series, ILibraryManager libraryManager, User user, ILogger logger)
         {
             try
             {
@@ -941,7 +942,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private List<BaseItem> FilterEpisodesAgainstRules(List<BaseItem> episodes, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger, MediaBrowser.Controller.Entities.TV.Series parentSeries = null)
+        private List<BaseItem> FilterEpisodesAgainstRules(List<BaseItem> episodes, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger, Series parentSeries = null)
         {
             try
             {
@@ -1236,11 +1237,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             try
                             {
                                 // Special handling: For series when Collections expansion is enabled, check Collections rules first
-                                bool shouldCheckCollectionsForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandEpisodesForCollections();
+                                bool shouldCheckCollectionsForSeries = item is Series && ShouldExpandEpisodesForCollections();
                                 
                                 if (shouldCheckCollectionsForSeries)
                                 {
-                                    var series = (MediaBrowser.Controller.Entities.TV.Series)item;
+                                    var series = (Series)item;
                                     
                                     if (DoesSeriesMatchCollectionsRules(series, libraryManager, user, userDataManager, logger, refreshCache))
                                     {
@@ -1421,7 +1422,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             results.Add(item);
                         }
-                        else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandEpisodesForCollections())
+                        else if (item is Series series && ShouldExpandEpisodesForCollections())
                         {
                             logger?.LogDebug("Series '{SeriesName}' failed other rules but checking Collections rules for expansion", series.Name);
                             // For series that don't match other rules, check if they match Collections rules for expansion
@@ -1519,7 +1520,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <returns>The season number or 0 if not available or not an episode</returns>
         public static int GetSeasonNumber(BaseItem item)
         {
-            return item is MediaBrowser.Controller.Entities.TV.Episode episode
+            return item is Episode episode
                 ? (episode.ParentIndexNumber ?? 0)
                 : 0;
         }
@@ -1531,7 +1532,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <returns>The episode number or 0 if not available or not an episode</returns>
         public static int GetEpisodeNumber(BaseItem item)
         {
-            return item is MediaBrowser.Controller.Entities.TV.Episode episode
+            return item is Episode episode
                 ? (episode.IndexNumber ?? 0)
                 : 0;
         }
@@ -1543,7 +1544,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <returns>True if the item is an episode, false otherwise</returns>
         public static bool IsEpisode(BaseItem item)
         {
-            return item is MediaBrowser.Controller.Entities.TV.Episode;
+            return item is Episode;
         }
     }
 
