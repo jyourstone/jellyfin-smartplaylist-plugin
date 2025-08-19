@@ -38,10 +38,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return playlists.Where(playlist => 
                 playlist.MediaTypes != null && 
                 playlist.MediaTypes.Any(mediaType => 
-                    mediaType == MediaTypes.Movie || 
-                    mediaType == MediaTypes.Series || 
-                    mediaType == MediaTypes.Episode ||
-                    mediaType == MediaTypes.MusicVideo));
+                    MediaTypes.Video.Contains(mediaType)));
         }
 
         protected override IEnumerable<BaseItem> GetRelevantUserMedia(User user)
