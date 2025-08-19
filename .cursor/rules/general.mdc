@@ -8,6 +8,14 @@ Local development is contained in `/dev` directory. Use `./build-local.sh` from 
 ## Code Patterns
 Use C# 12+ collection expressions for cleaner code.
 
+## Media Type Constants
+Use `Jellyfin.Plugin.SmartPlaylist.Constants.MediaTypes` constants instead of hard-coded strings.
+
+**❌ Don't:** `mediaType == "Episode"`  
+**✅ Do:** `mediaType == MediaTypes.Episode`
+
+**Available:** `MediaTypes.Episode`, `MediaTypes.Series`, `MediaTypes.Movie`, `MediaTypes.Audio`, `MediaTypes.MusicVideo`
+
 ## UI Development
 When adding form fields, implement across all flows: create form (defaults), edit form (backwards compatibility), display views, API handling, backend DTOs.
 

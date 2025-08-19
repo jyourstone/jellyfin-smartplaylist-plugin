@@ -694,6 +694,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Series => MediaTypes.Series,
                 Movie => MediaTypes.Movie,
                 Audio => MediaTypes.Audio,
+                MusicVideo => MediaTypes.MusicVideo,
                 _ => item.GetType().Name
             };
         }

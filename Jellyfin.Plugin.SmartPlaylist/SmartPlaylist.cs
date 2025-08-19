@@ -374,7 +374,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var group = ExpressionSets[groupIndex];
                     var groupRules = compiledRules[groupIndex];
                     
-                    if (group == null || groupRules == null || groupRules.Count == 0) 
+                    if (group == null || groupRules == null || groupRules.Count == 0 || group.Expressions == null) 
                         continue; // Skip empty or null groups
                     
                     try
