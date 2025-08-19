@@ -731,10 +731,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     var resultItems = new List<BaseItem>();
                     var episodeIds = new HashSet<Guid>(); // Deduplication tracker for episodes
+                    var seriesIds = new HashSet<Guid>(); // Deduplication tracker for series
                     
                     foreach (var item in items)
                     {
-                        if (item.GetType().Name == "Episode")
+                        if (item is MediaBrowser.Controller.Entities.TV.Episode)
                         {
                             // Direct episode from collection - add if not already seen
                             if (episodeIds.Add(item.Id))
@@ -746,10 +747,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         else if (item is MediaBrowser.Controller.Entities.TV.Series series)
                         {
                             // If both Episodes and Series media types are selected, also include the series itself
-                            if (isSeriesMediaType)
+                            if (isSeriesMediaType && seriesIds.Add(series.Id))
                             {
                                 resultItems.Add(series);
                                 logger?.LogDebug("Added series '{SeriesName}' to results (both Episodes and Series media types selected)", series.Name);
+                            }
+                            else if (isSeriesMediaType)
+                            {
+                                logger?.LogDebug("Skipped adding series '{SeriesName}' to results (already present)", series.Name);
                             }
                             
                             // Series from collection - expand to episodes and add unique ones
