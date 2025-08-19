@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -689,10 +690,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             return item switch
             {
-                Episode => "Episode",
-                Series => "Series",
-                Movie => "Movie",
-                Audio => "Audio",
+                Episode => MediaTypes.Episode,
+                Series => MediaTypes.Series,
+                Movie => MediaTypes.Movie,
+                Audio => MediaTypes.Audio,
                 _ => item.GetType().Name
             };
         }
