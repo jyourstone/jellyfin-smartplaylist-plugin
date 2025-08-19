@@ -32,14 +32,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public static MediaTypesKey Create(List<string> mediaTypes)
         {
-            if (mediaTypes == null || mediaTypes.Count == 0)
-            {
-                return new MediaTypesKey([], false);
-            }
-
-            // Deduplicate to ensure identical cache keys for equivalent content (e.g., ["Movie", "Movie"] = ["Movie"])
-            var sorted = mediaTypes.Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
-            return new MediaTypesKey(sorted, false);
+            return Create(mediaTypes, null);
         }
         
         public static MediaTypesKey Create(List<string> mediaTypes, SmartPlaylistDto dto)
@@ -49,16 +42,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 return new MediaTypesKey([], false);
             }
 
+            // Deduplicate to ensure identical cache keys for equivalent content (e.g., ["Movie", "Movie"] = ["Movie"])
             var sortedTypes = mediaTypes.Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
             
-            // Include Collections episode expansion in cache key to avoid incorrect caching
-            // when same media types have different expansion settings
-            var hasCollectionsExpansion = dto?.ExpressionSets?.Any(set => 
-                set.Expressions?.Any(expr => 
-                    expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
-            
-            // Use boolean flag instead of string marker to distinguish caches with Collections expansion            
-            bool collectionsExpansionFlag = hasCollectionsExpansion && sortedTypes.Contains("Episode") && !sortedTypes.Contains("Series");
+            // Determine Collections expansion flag
+            bool collectionsExpansionFlag = false;
+            if (dto != null)
+            {
+                // Include Collections episode expansion in cache key to avoid incorrect caching
+                // when same media types have different expansion settings
+                var hasCollectionsExpansion = dto.ExpressionSets?.Any(set => 
+                    set.Expressions?.Any(expr => 
+                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
+                
+                // Use boolean flag instead of string marker to distinguish caches with Collections expansion            
+                collectionsExpansionFlag = hasCollectionsExpansion && sortedTypes.Contains("Episode") && !sortedTypes.Contains("Series");
+            }
             
             return new MediaTypesKey(sortedTypes, collectionsExpansionFlag);
         }
