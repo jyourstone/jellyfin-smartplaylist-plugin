@@ -705,6 +705,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         /// <summary>
+        /// Core logic for checking if Collections data matches Collections rules.
+        /// </summary>
+        /// <param name="collections">The collections data to check</param>
+        /// <returns>True if collections match any Collections rule, false otherwise</returns>
+        private bool DoCollectionsMatchRules(List<string> collections)
+        {
+            if (collections == null || collections.Count == 0)
+                return false;
+
+            // Check if any collection matches any Collections rule
+            return ExpressionSets?.Any(set => 
+                set.Expressions?.Any(expr => 
+                    expr.MemberName == "Collections" && 
+                    collections.Any(collection => 
+                        collection.Contains(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase))) == true) == true;
+        }
+
+        /// <summary>
         /// Checks if a series matches any Collections rule for episode expansion.
         /// </summary>
         /// <param name="series">The series to check</param>
@@ -733,12 +751,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     AdditionalUserIds = []
                 }, refreshCache);
                 
-                // Check if this series matches any Collections rule
-                bool matchesCollectionsRule = ExpressionSets?.Any(set => 
-                    set.Expressions?.Any(expr => 
-                        expr.MemberName == "Collections" && 
-                        collectionsOperand.Collections?.Any(collection => 
-                            collection.IndexOf(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase) >= 0) == true) == true) == true;
+                bool matchesCollectionsRule = DoCollectionsMatchRules(collectionsOperand.Collections);
                 
                 if (matchesCollectionsRule)
                 {
@@ -776,11 +789,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var hasCollectionsInAnyGroup = ExpressionSets?.Any(set => 
                     set.Expressions?.Any(expr => expr.MemberName == "Collections") == true) == true;
                 
-                bool matchesCollectionsRule = hasCollectionsInAnyGroup && operand.Collections?.Any(collection => 
-                    ExpressionSets.Any(set => 
-                        set.Expressions?.Any(expr => 
-                            expr.MemberName == "Collections" && 
-                            collection.IndexOf(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase) >= 0) == true)) == true;
+                bool matchesCollectionsRule = hasCollectionsInAnyGroup && DoCollectionsMatchRules(operand.Collections);
                 
                 if (matchesCollectionsRule)
                 {
