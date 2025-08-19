@@ -981,12 +981,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         membershipSet.Contains(baseItem.Id))
                     {
                         collections.Add(collection.Name);
-                        logger?.LogDebug("Item '{ItemName}' belongs to collection '{CollectionName}'", baseItem.Name, collection.Name);
+
                     }
                 }
                 
-                logger?.LogDebug("Item '{ItemName}' belongs to {CollectionCount} collections: [{Collections}]", 
-                    baseItem.Name, collections.Count, string.Join(", ", collections));
+
             }
             catch (Exception ex)
             {
