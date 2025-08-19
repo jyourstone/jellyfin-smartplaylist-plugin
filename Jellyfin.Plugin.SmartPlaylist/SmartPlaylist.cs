@@ -1511,6 +1511,76 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             return DateTime.MinValue;
         }
+
+        /// <summary>
+        /// Gets the season number for an episode
+        /// </summary>
+        /// <param name="item">The BaseItem to get the season number for</param>
+        /// <returns>The season number or 0 if not available or not an episode</returns>
+        public static int GetSeasonNumber(BaseItem item)
+        {
+            try
+            {
+                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
+                if (parentIndexProperty != null)
+                {
+                    var value = parentIndexProperty.GetValue(item);
+                    if (value is int intValue)
+                        return intValue;
+                    if (value != null)
+                    {
+                        var nullableValue = value as int?;
+                        if (nullableValue.HasValue)
+                            return nullableValue.Value;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors and fall back to 0
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Gets the episode number for an episode
+        /// </summary>
+        /// <param name="item">The BaseItem to get the episode number for</param>
+        /// <returns>The episode number or 0 if not available or not an episode</returns>
+        public static int GetEpisodeNumber(BaseItem item)
+        {
+            try
+            {
+                var indexProperty = item.GetType().GetProperty("IndexNumber");
+                if (indexProperty != null)
+                {
+                    var value = indexProperty.GetValue(item);
+                    if (value is int intValue)
+                        return intValue;
+                    if (value != null)
+                    {
+                        var nullableValue = value as int?;
+                        if (nullableValue.HasValue)
+                            return nullableValue.Value;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors and fall back to 0
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Checks if a BaseItem is an episode
+        /// </summary>
+        /// <param name="item">The BaseItem to check</param>
+        /// <returns>True if the item is an episode, false otherwise</returns>
+        public static bool IsEpisode(BaseItem item)
+        {
+            return item?.GetType().Name == "Episode";
+        }
     }
 
     public abstract class Order
@@ -1617,7 +1687,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items == null ? [] : items.OrderBy(OrderUtilities.GetReleaseDate);
+            if (items == null) return [];
+
+            // Group by release date, then sort each group properly
+            return items.GroupBy(OrderUtilities.GetReleaseDate)
+                        .OrderBy(g => g.Key) // Sort date groups ascending
+                        .SelectMany(dateGroup => 
+                            dateGroup.OrderBy(item => OrderUtilities.IsEpisode(item) ? 0 : 1) // Episodes first within same date
+                                     .ThenBy(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0)
+                                     .ThenBy(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0)
+                        );
         }
     }
 
@@ -1627,7 +1706,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items == null ? [] : items.OrderByDescending(OrderUtilities.GetReleaseDate);
+            if (items == null) return [];
+
+            // Group by release date, then sort each group properly
+            return items.GroupBy(OrderUtilities.GetReleaseDate)
+                        .OrderByDescending(g => g.Key) // Sort date groups descending
+                        .SelectMany(dateGroup => 
+                            dateGroup.OrderBy(item => OrderUtilities.IsEpisode(item) ? 0 : 1) // Episodes first within same date
+                                     .ThenByDescending(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0) // Season descending
+                                     .ThenByDescending(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0) // Episode descending
+                        );
         }
     }
 
