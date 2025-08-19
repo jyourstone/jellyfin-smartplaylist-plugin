@@ -1511,6 +1511,40 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             return DateTime.MinValue;
         }
+
+        /// <summary>
+        /// Gets the season number for an episode
+        /// </summary>
+        /// <param name="item">The BaseItem to get the season number for</param>
+        /// <returns>The season number or 0 if not available or not an episode</returns>
+        public static int GetSeasonNumber(BaseItem item)
+        {
+            return item is MediaBrowser.Controller.Entities.TV.Episode episode
+                ? (episode.ParentIndexNumber ?? 0)
+                : 0;
+        }
+
+        /// <summary>
+        /// Gets the episode number for an episode
+        /// </summary>
+        /// <param name="item">The BaseItem to get the episode number for</param>
+        /// <returns>The episode number or 0 if not available or not an episode</returns>
+        public static int GetEpisodeNumber(BaseItem item)
+        {
+            return item is MediaBrowser.Controller.Entities.TV.Episode episode
+                ? (episode.IndexNumber ?? 0)
+                : 0;
+        }
+
+        /// <summary>
+        /// Checks if a BaseItem is an episode
+        /// </summary>
+        /// <param name="item">The BaseItem to check</param>
+        /// <returns>True if the item is an episode, false otherwise</returns>
+        public static bool IsEpisode(BaseItem item)
+        {
+            return item is MediaBrowser.Controller.Entities.TV.Episode;
+        }
     }
 
     public abstract class Order
@@ -1617,7 +1651,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items == null ? [] : items.OrderBy(OrderUtilities.GetReleaseDate);
+            if (items == null) return [];
+
+            // Sort by release date (day precision), then within the same day: episodes first, then by season/episode
+            return items
+                .OrderBy(item => OrderUtilities.GetReleaseDate(item).Date)
+                .ThenBy(item => OrderUtilities.IsEpisode(item) ? 0 : 1) // Episodes first within same date
+                .ThenBy(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0)
+                .ThenBy(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0);
         }
     }
 
@@ -1627,7 +1668,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
-            return items == null ? [] : items.OrderByDescending(OrderUtilities.GetReleaseDate);
+            if (items == null) return [];
+
+            // Sort by release date (day precision) descending; within same day, episodes first then season/episode descending
+            return items
+                .OrderByDescending(item => OrderUtilities.GetReleaseDate(item).Date)
+                .ThenBy(item => OrderUtilities.IsEpisode(item) ? 0 : 1) // Episodes first within same date
+                .ThenByDescending(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0)
+                .ThenByDescending(item => OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0);
         }
     }
 
