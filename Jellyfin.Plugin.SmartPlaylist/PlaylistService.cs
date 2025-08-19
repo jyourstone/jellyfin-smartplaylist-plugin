@@ -18,8 +18,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
     /// Service for handling individual smart playlist operations.
+    /// This interface is internal to the plugin and not intended for external implementation.
     /// </summary>
-    public interface IPlaylistService
+    internal interface IPlaylistService
     {
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);

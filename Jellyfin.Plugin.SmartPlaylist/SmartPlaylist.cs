@@ -704,6 +704,111 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return isEpisodesMediaType && hasCollectionsEpisodeExpansion;
         }
 
+        /// <summary>
+        /// Core logic for checking if Collections data matches Collections rules.
+        /// </summary>
+        /// <param name="collections">The collections data to check</param>
+        /// <returns>True if collections match any Collections rule, false otherwise</returns>
+        private bool DoCollectionsMatchRules(List<string> collections)
+        {
+            if (collections == null || collections.Count == 0)
+                return false;
+
+            // Check if any collection matches any Collections rule
+            return ExpressionSets?.Any(set => 
+                set.Expressions?.Any(expr => 
+                    expr.MemberName == "Collections" && 
+                    collections.Any(collection => 
+                        collection.Contains(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase))) == true) == true;
+        }
+
+        /// <summary>
+        /// Checks if a series matches any Collections rule for episode expansion.
+        /// </summary>
+        /// <param name="series">The series to check</param>
+        /// <param name="libraryManager">Library manager for operand creation</param>
+        /// <param name="user">User context</param>
+        /// <param name="userDataManager">User data manager</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <param name="refreshCache">Cache for performance optimization</param>
+        /// <returns>True if the series matches Collections rules, false otherwise</returns>
+        private bool DoesSeriesMatchCollectionsRules(MediaBrowser.Controller.Entities.TV.Series series, 
+            ILibraryManager libraryManager, User user, IUserDataManager userDataManager, 
+            ILogger logger, OperandFactory.RefreshCache refreshCache)
+        {
+            try
+            {
+                logger?.LogDebug("Series '{SeriesName}' checking Collections rules for expansion eligibility", series.Name);
+                
+                // Extract Collections data for this series to check if it matches Collections rules
+                var collectionsOperand = OperandFactory.GetMediaType(libraryManager, series, user, userDataManager, logger, new MediaTypeExtractionOptions
+                {
+                    ExtractAudioLanguages = false,
+                    ExtractPeople = false,
+                    ExtractCollections = true,  // Only extract Collections for this check
+                    ExtractNextUnwatched = false,
+                    IncludeUnwatchedSeries = true,
+                    AdditionalUserIds = []
+                }, refreshCache);
+                
+                bool matchesCollectionsRule = DoCollectionsMatchRules(collectionsOperand.Collections);
+                
+                if (matchesCollectionsRule)
+                {
+                    logger?.LogDebug("Series '{SeriesName}' matches Collections rules - eligible for expansion", series.Name);
+                }
+                else
+                {
+                    logger?.LogDebug("Series '{SeriesName}' does not match Collections rules - skipping", series.Name);
+                }
+                
+                return matchesCollectionsRule;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error checking Collections rules for series '{SeriesName}', excluding from expansion", series.Name);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if a series matches Collections rules using an existing operand (for cases where Collections data is already extracted).
+        /// </summary>
+        /// <param name="series">The series to check</param>
+        /// <param name="operand">Operand with Collections data already extracted</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>True if the series matches Collections rules, false otherwise</returns>
+        private bool DoesSeriesMatchCollectionsRules(MediaBrowser.Controller.Entities.TV.Series series, 
+            Operand operand, ILogger logger)
+        {
+            try
+            {
+                logger?.LogDebug("Series '{SeriesName}' checking Collections rules for expansion (using existing operand)", series.Name);
+                
+                // Check if this series matches any Collections rule (even if it fails other rules)
+                var hasCollectionsInAnyGroup = ExpressionSets?.Any(set => 
+                    set.Expressions?.Any(expr => expr.MemberName == "Collections") == true) == true;
+                
+                bool matchesCollectionsRule = hasCollectionsInAnyGroup && DoCollectionsMatchRules(operand.Collections);
+                
+                if (matchesCollectionsRule)
+                {
+                    logger?.LogDebug("Series '{SeriesName}' matches Collections rules - eligible for expansion", series.Name);
+                }
+                else
+                {
+                    logger?.LogDebug("Series '{SeriesName}' does not match Collections rules - skipping expansion", series.Name);
+                }
+                
+                return matchesCollectionsRule;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error checking Collections rules for series '{SeriesName}', excluding from expansion", series.Name);
+                return false;
+            }
+        }
+
         private List<BaseItem> ExpandCollectionsBasedOnMediaType(List<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager userDataManager, ILogger logger)
         {
             try
@@ -731,10 +836,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     var resultItems = new List<BaseItem>();
                     var episodeIds = new HashSet<Guid>(); // Deduplication tracker for episodes
+                    var seriesIds = new HashSet<Guid>(); // Deduplication tracker for series
                     
                     foreach (var item in items)
                     {
-                        if (item.GetType().Name == "Episode")
+                        if (item is MediaBrowser.Controller.Entities.TV.Episode)
                         {
                             // Direct episode from collection - add if not already seen
                             if (episodeIds.Add(item.Id))
@@ -746,10 +852,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         else if (item is MediaBrowser.Controller.Entities.TV.Series series)
                         {
                             // If both Episodes and Series media types are selected, also include the series itself
-                            if (isSeriesMediaType)
+                            if (isSeriesMediaType && seriesIds.Add(series.Id))
                             {
                                 resultItems.Add(series);
                                 logger?.LogDebug("Added series '{SeriesName}' to results (both Episodes and Series media types selected)", series.Name);
+                            }
+                            else if (isSeriesMediaType)
+                            {
+                                logger?.LogDebug("Skipped adding series '{SeriesName}' to results (already present)", series.Name);
                             }
                             
                             // Series from collection - expand to episodes and add unique ones
@@ -1125,13 +1235,18 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                // Special handling: Skip Phase 1 filtering for series when Collections expansion is enabled
-                                bool shouldSkipPhase1ForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandEpisodesForCollections();
+                                // Special handling: For series when Collections expansion is enabled, check Collections rules first
+                                bool shouldCheckCollectionsForSeries = item is MediaBrowser.Controller.Entities.TV.Series && ShouldExpandEpisodesForCollections();
                                 
-                                if (shouldSkipPhase1ForSeries)
+                                if (shouldCheckCollectionsForSeries)
                                 {
-                                    logger?.LogDebug("Series '{SeriesName}' skipping Phase 1 cheap rules - will evaluate in Phase 2 for Collections expansion", ((MediaBrowser.Controller.Entities.TV.Series)item).Name);
-                                    results.Add(item); // Let it through to Phase 2
+                                    var series = (MediaBrowser.Controller.Entities.TV.Series)item;
+                                    
+                                    if (DoesSeriesMatchCollectionsRules(series, libraryManager, user, userDataManager, logger, refreshCache))
+                                    {
+                                        logger?.LogDebug("Series '{SeriesName}' matches Collections rules - adding for expansion", series.Name);
+                                        results.Add(item);
+                                    }
                                     continue;
                                 }
                                 
@@ -1308,20 +1423,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         else if (item is MediaBrowser.Controller.Entities.TV.Series series && ShouldExpandEpisodesForCollections())
                         {
-                            logger?.LogDebug("Series '{SeriesName}' failed all rules but checking Collections rules for expansion (phase2)", series.Name);
-                            // For series that don't match all rules, check if they match Collections rules for expansion
+                            logger?.LogDebug("Series '{SeriesName}' failed other rules but checking Collections rules for expansion", series.Name);
+                            // For series that don't match other rules, check if they match Collections rules for expansion
                             
-                            // Check if this series matches any Collections rule (even if it fails other rules)
-                            var hasCollectionsInAnyGroup = ExpressionSets?.Any(set => 
-                                set.Expressions?.Any(expr => expr.MemberName == "Collections") == true) == true;
-                            
-                            if (hasCollectionsInAnyGroup && operand.Collections?.Any(collection => 
-                                ExpressionSets.Any(set => 
-                                    set.Expressions?.Any(expr => 
-                                        expr.MemberName == "Collections" && 
-                                        collection.IndexOf(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase) >= 0) == true)) == true)
+                            if (DoesSeriesMatchCollectionsRules(series, operand, logger))
                             {
-                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes (phase2)", series.Name);
+                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes", series.Name);
                                 results.Add(item);
                             }
                         }
