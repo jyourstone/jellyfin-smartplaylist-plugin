@@ -63,7 +63,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// <summary>
         /// Operators for date fields.
         /// </summary>
-        public static readonly string[] DateFieldOperators = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan", "WithinLastDays"];
+        public static readonly string[] DateFieldOperators = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"];
 
         /// <summary>
         /// Gets the appropriate operators for a given field type.

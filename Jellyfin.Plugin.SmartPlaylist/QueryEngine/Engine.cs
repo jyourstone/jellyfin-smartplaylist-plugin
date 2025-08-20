@@ -246,6 +246,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return BuildRelativeDateExpressionForMethodCall(r, methodCall, logger);
             }
             
+
+            
             if (string.IsNullOrWhiteSpace(r.TargetValue))
             {
                 logger?.LogError("SmartPlaylist date comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
@@ -274,7 +276,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 "Before" => System.Linq.Expressions.Expression.LessThan(methodCall, right),
                 _ when Enum.TryParse(r.Operator, out ExpressionType dateBinary) => 
                     System.Linq.Expressions.Expression.MakeBinary(dateBinary, methodCall, right),
-                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: {Operators.GetSupportedOperatorsString("LastPlayedDate")}")
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: {Operators.GetOperatorsForField("LastPlayedDate").Length}")
             };
         }
 
@@ -461,10 +463,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 return BuildDateInequalityExpression(r, left, logger);
             }
-            else if (r.Operator == "WithinLastDays")
-            {
-                return BuildWithinLastDaysExpression(r, left, logger);
-            }
+
             else if (r.Operator == "After")
             {
                 logger?.LogDebug("SmartPlaylist 'After' operator for date field {Field} with timestamp {Timestamp}", r.MemberName, targetTimestamp);
@@ -579,30 +578,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             return System.Linq.Expressions.Expression.OrElse(lessThan, greaterThanOrEqual);
         }
 
-        /// <summary>
-        /// Builds expressions for WithinLastDays operator.
-        /// </summary>
-        private static BinaryExpression BuildWithinLastDaysExpression(Expression r, MemberExpression left, ILogger logger)
-        {
-            logger?.LogDebug("SmartPlaylist handling 'WithinLastDays' for field {Field} with {Days} days", r.MemberName, r.TargetValue);
-            
-            // Parse the number of days
-            if (!int.TryParse(r.TargetValue, out int days) || days <= 0)
-            {
-                logger?.LogError("SmartPlaylist 'WithinLastDays' requires a positive integer for days, got: '{Value}'", r.TargetValue);
-                throw new ArgumentException($"'WithinLastDays' requires a positive integer for days, but got: '{r.TargetValue}'");
-            }
-            
-            // Calculate the cutoff date (X days ago from now)
-            var cutoffDate = DateTimeOffset.UtcNow.AddDays(-days);
-            var cutoffTimestamp = (double)cutoffDate.ToUnixTimeSeconds();
-            
-            logger?.LogDebug("SmartPlaylist 'WithinLastDays' cutoff: {CutoffDate} (timestamp: {Timestamp})", cutoffDate, cutoffTimestamp);
-            
-            // Create expression: operand.DateCreated >= cutoffTimestamp
-            var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
-            return System.Linq.Expressions.Expression.GreaterThanOrEqual(left, cutoffConstant);
-        }
+
 
         /// <summary>
         /// Builds expressions for IEnumerable fields (collections).
@@ -683,7 +659,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return System.Linq.Expressions.Expression.Call(method, left, right);
             }
             
-            var supportedOperators = Constants.Operators.GetOperatorsForField(r.MemberName);
+            var supportedOperators = Operators.GetOperatorsForField(r.MemberName);
             var supportedOperatorsString = string.Join(", ", supportedOperators);
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for string IEnumerable field '{Field}'", r.Operator, r.MemberName);
             throw new ArgumentException($"Operator '{r.Operator}' is not supported for string IEnumerable field '{r.MemberName}'. Supported operators: {supportedOperatorsString}");
@@ -709,7 +685,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 if (r.Operator == "NotContains") return System.Linq.Expressions.Expression.Not(call);
             }
             
-            var supportedOperators = Constants.Operators.GetOperatorsForField(r.MemberName);
+            var supportedOperators = Operators.GetOperatorsForField(r.MemberName);
             var supportedOperatorsString = string.Join(", ", supportedOperators);
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for generic IEnumerable field '{Field}'", r.Operator, r.MemberName);
             throw new ArgumentException($"Operator '{r.Operator}' is not supported for generic IEnumerable field '{r.MemberName}'. Supported operators: {supportedOperatorsString}");
