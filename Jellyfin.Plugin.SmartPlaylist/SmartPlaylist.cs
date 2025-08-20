@@ -719,8 +719,56 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return ExpressionSets?.Any(set => 
                 set.Expressions?.Any(expr => 
                     expr.MemberName == "Collections" && 
-                    collections.Any(collection => 
-                        collection.Contains(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase))) == true) == true;
+                    DoesCollectionMatchRule(collections, expr)) == true) == true;
+        }
+
+        /// <summary>
+        /// Checks if collections match a specific Collections rule.
+        /// </summary>
+        /// <param name="collections">The collections data to check</param>
+        /// <param name="expr">The expression rule to check against</param>
+        /// <returns>True if collections match the rule, false otherwise</returns>
+        private bool DoesCollectionMatchRule(List<string> collections, Expression expr)
+        {
+            if (string.IsNullOrEmpty(expr.TargetValue))
+                return false;
+
+            switch (expr.Operator)
+            {
+                case "Contains":
+                    // Check if any collection contains the target value
+                    return collections.Any(collection => 
+                        collection.Contains(expr.TargetValue, StringComparison.OrdinalIgnoreCase));
+                
+                case "IsIn":
+                    // Check if any collection is in the target value list (semicolon-separated)
+                    var targetItems = expr.TargetValue.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(item => item.Trim())
+                        .Where(item => !string.IsNullOrEmpty(item))
+                        .ToList();
+                    
+                    return collections.Any(collection => 
+                        targetItems.Any(targetItem => 
+                            string.Equals(collection, targetItem, StringComparison.OrdinalIgnoreCase)));
+                
+                case "MatchRegex":
+                    // Check if any collection matches the regex pattern
+                    try
+                    {
+                        var regex = new System.Text.RegularExpressions.Regex(expr.TargetValue, 
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        return collections.Any(collection => regex.IsMatch(collection));
+                    }
+                    catch (System.Text.RegularExpressions.RegexParseException)
+                    {
+                        // Invalid regex pattern - treat as no match
+                        return false;
+                    }
+                
+                default:
+                    // Unknown operator - treat as no match
+                    return false;
+            }
         }
 
         /// <summary>
