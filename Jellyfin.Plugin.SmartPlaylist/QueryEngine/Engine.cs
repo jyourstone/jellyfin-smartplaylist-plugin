@@ -683,8 +683,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return System.Linq.Expressions.Expression.Call(method, left, right);
             }
             
+            var supportedOperators = Constants.Operators.GetOperatorsForField(r.MemberName);
+            var supportedOperatorsString = string.Join(", ", supportedOperators);
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for string IEnumerable field '{Field}'", r.Operator, r.MemberName);
-            throw new ArgumentException($"Operator '{r.Operator}' is not supported for string IEnumerable field '{r.MemberName}'");
+            throw new ArgumentException($"Operator '{r.Operator}' is not supported for string IEnumerable field '{r.MemberName}'. Supported operators: {supportedOperatorsString}");
         }
 
         
@@ -707,8 +709,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 if (r.Operator == "NotContains") return System.Linq.Expressions.Expression.Not(call);
             }
             
+            var supportedOperators = Constants.Operators.GetOperatorsForField(r.MemberName);
+            var supportedOperatorsString = string.Join(", ", supportedOperators);
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for generic IEnumerable field '{Field}'", r.Operator, r.MemberName);
-            throw new ArgumentException($"Operator '{r.Operator}' is not supported for generic IEnumerable field '{r.MemberName}'");
+            throw new ArgumentException($"Operator '{r.Operator}' is not supported for generic IEnumerable field '{r.MemberName}'. Supported operators: {supportedOperatorsString}");
         }
 
         /// <summary>
