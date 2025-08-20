@@ -276,7 +276,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 "Before" => System.Linq.Expressions.Expression.LessThan(methodCall, right),
                 _ when Enum.TryParse(r.Operator, out ExpressionType dateBinary) => 
                     System.Linq.Expressions.Expression.MakeBinary(dateBinary, methodCall, right),
-                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: {Operators.GetOperatorsForField("LastPlayedDate").Length}")
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: {Operators.GetSupportedOperatorsString(r.MemberName)}")
             };
         }
 
@@ -337,6 +337,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         private static System.Linq.Expressions.Expression BuildStringExpression(Expression r, MemberExpression left, ILogger logger)
         {
+            // Enforce per-field operator whitelist for string fields
+            var allowedOps = Operators.GetOperatorsForField(r.MemberName);
+            if (!allowedOps.Contains(r.Operator))
+            {
+                logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for string field '{Field}'. Allowed: {Allowed}",
+                    r.Operator, r.MemberName, string.Join(", ", allowedOps));
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for string field '{r.MemberName}'. Supported operators: {supportedOperators}");
+            }
+
             var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
             var comparison = System.Linq.Expressions.Expression.Constant(StringComparison.OrdinalIgnoreCase);
 
