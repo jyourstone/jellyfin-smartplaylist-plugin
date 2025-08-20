@@ -168,15 +168,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         private static BinaryExpression BuildUserSpecificBooleanExpression(Expression r, System.Linq.Expressions.Expression methodCall, ILogger logger)
         {
-            if (r.Operator != "Equal")
+            if (r.Operator != "Equal" && r.Operator != "NotEqual")
             {
                 logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for boolean user-specific field '{Field}'", r.Operator, r.MemberName);
-                throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean user-specific field '{r.MemberName}'. Only 'Equal' is supported.");
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean user-specific field '{r.MemberName}'. Supported operators: {supportedOperators}");
             }
             
             var boolValue = ValidateAndParseBooleanValue(r.TargetValue, r.MemberName, logger);
             var right = System.Linq.Expressions.Expression.Constant(boolValue);
-            return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, methodCall, right);
+            return r.Operator == "Equal"
+                ? System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, methodCall, right)
+                : System.Linq.Expressions.Expression.MakeBinary(ExpressionType.NotEqual, methodCall, right);
         }
 
         /// <summary>
@@ -379,15 +382,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         private static BinaryExpression BuildBooleanExpression(Expression r, MemberExpression left, ILogger logger)
         {
-            if (r.Operator != "Equal")
+            if (r.Operator != "Equal" && r.Operator != "NotEqual")
             {
                 logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for boolean field '{Field}'", r.Operator, r.MemberName);
-                throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean field '{r.MemberName}'. Only 'Equal' is supported.");
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for boolean field '{r.MemberName}'. Supported operators: {supportedOperators}");
             }
             
             var boolValue = ValidateAndParseBooleanValue(r.TargetValue, r.MemberName, logger);
             var right = System.Linq.Expressions.Expression.Constant(boolValue);
-            return System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, left, right);
+            return r.Operator == "Equal"
+                ? System.Linq.Expressions.Expression.MakeBinary(ExpressionType.Equal, left, right)
+                : System.Linq.Expressions.Expression.MakeBinary(ExpressionType.NotEqual, left, right);
         }
 
         /// <summary>
