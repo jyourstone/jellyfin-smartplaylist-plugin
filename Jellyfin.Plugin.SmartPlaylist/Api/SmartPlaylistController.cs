@@ -667,12 +667,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
+        /// Static readonly field operators dictionary for performance optimization.
+        /// </summary>
+        private static readonly Dictionary<string, string[]> _fieldOperators = Constants.Operators.GetFieldOperatorsDictionary();
+
+        /// <summary>
         /// Gets the field operators dictionary using centralized constants.
         /// </summary>
         /// <returns>Dictionary mapping field names to their allowed operators</returns>
         private static Dictionary<string, string[]> GetFieldOperators()
         {
-            return Constants.Operators.GetFieldOperatorsDictionary();
+            return _fieldOperators;
         }
 
         /// <summary>

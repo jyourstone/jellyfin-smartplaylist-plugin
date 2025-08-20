@@ -483,7 +483,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 else
                 {
                     logger?.LogError("SmartPlaylist unsupported date operator '{Operator}' for field '{Field}'", r.Operator, r.MemberName);
-                    throw new ArgumentException($"Operator '{r.Operator}' is not supported for date field '{r.MemberName}'. Supported operators: Equal, NotEqual, After, Before, NewerThan, OlderThan, WithinLastDays");
+                    var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                    throw new ArgumentException($"Operator '{r.Operator}' is not supported for date field '{r.MemberName}'. Supported operators: {supportedOperators}");
                 }
             }
         }
@@ -722,7 +723,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // All supported operators have been handled explicitly above
             // If we reach here, the operator is not supported for this field type
             logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for field '{Field}' of type '{Type}'", r.Operator, r.MemberName, tProp.Name);
-            throw new ArgumentException($"Operator '{r.Operator}' is not supported for field '{r.MemberName}' of type '{tProp.Name}'. Supported operators depend on the field type.");
+            var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+            throw new ArgumentException($"Operator '{r.Operator}' is not supported for field '{r.MemberName}' of type '{tProp.Name}'. Supported operators: {supportedOperators}");
         }
 
         /// <summary>
