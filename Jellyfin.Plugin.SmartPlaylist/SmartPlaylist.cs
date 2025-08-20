@@ -718,9 +718,40 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Check if any collection matches any Collections rule
             return ExpressionSets?.Any(set => 
                 set.Expressions?.Any(expr => 
-                    expr.MemberName == "Collections" && 
-                    collections.Any(collection => 
-                        collection.Contains(expr.TargetValue?.ToString() ?? "", StringComparison.OrdinalIgnoreCase))) == true) == true;
+                    expr.MemberName == "Collections" &&
+                    DoesCollectionMatchRule(collections, expr)) == true) == true;
+        }
+
+        /// <summary>
+        /// Checks if collections match a specific Collections rule.
+        /// </summary>
+        /// <param name="collections">The collections data to check</param>
+        /// <param name="expr">The expression rule to check against</param>
+        /// <returns>True if collections match the rule, false otherwise</returns>
+        private static bool DoesCollectionMatchRule(List<string> collections, Expression expr)
+        {
+            if (string.IsNullOrEmpty(expr.TargetValue))
+                return false;
+
+            switch (expr.Operator)
+            {
+                case "Contains":
+                    // Reuse Engine helper for consistency and null safety
+                    return Engine.AnyItemContains(collections, expr.TargetValue);
+                
+                case "IsIn":
+                    // Maintain parity with Engine's "contains any in list" semantics
+                    return Engine.AnyItemIsInList(collections, expr.TargetValue);
+                
+                case "MatchRegex":
+                    // Delegate to Engine to leverage compiled regex cache and uniform error handling
+                    try { return Engine.AnyRegexMatch(collections, expr.TargetValue); }
+                    catch (ArgumentException) { return false; }
+                
+                default:
+                    // Unknown operator - treat as no match
+                    return false;
+            }
         }
 
         /// <summary>
