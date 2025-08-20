@@ -665,7 +665,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 FieldOperators = new Dictionary<string, string[]>
                 {
                     // List fields - multi-valued fields
-                    ["Collections"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
+                    // Note: IsNotIn and NotContains excluded from Collections to avoid confusion with series expansion logic
+                    ["Collections"] = ["Contains", "IsIn", "MatchRegex"],
                     ["People"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
                     ["Genres"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
                     ["Studios"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
