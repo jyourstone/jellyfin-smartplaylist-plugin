@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -206,7 +207,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for integer user-specific field '{Field}'", r.Operator, r.MemberName);
-                throw new ArgumentException($"Operator '{r.Operator}' is not supported for integer user-specific field '{r.MemberName}'. Supported operators: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual");
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for integer user-specific field '{r.MemberName}'. Supported operators: {supportedOperators}");
             }
         }
 
@@ -269,7 +271,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 "Before" => System.Linq.Expressions.Expression.LessThan(methodCall, right),
                 _ when Enum.TryParse(r.Operator, out ExpressionType dateBinary) => 
                     System.Linq.Expressions.Expression.MakeBinary(dateBinary, methodCall, right),
-                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: After, Before, NewerThan, OlderThan, Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual")
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not currently supported for user-specific LastPlayedDate field. Supported operators: {Operators.GetSupportedOperatorsString("LastPlayedDate")}")
             };
         }
 
