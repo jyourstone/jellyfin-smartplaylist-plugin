@@ -6,9 +6,9 @@ on:
       - 'v*'
 
 env:
-  DOTNET_VERSION: 8.0.x
-  PRERELEASE_STR: false
-  TARGET_ABI: 10.10.0
+  DOTNET_VERSION: 9.0.x
+  PRERELEASE_STR: true
+  TARGET_ABI: 10.11.0
 
 jobs:
   build:
@@ -140,7 +140,7 @@ jobs:
 
           jq --argjson new_package "$NEW_PACKAGE" --arg guid "$PLUGIN_GUID" \
             '(.[] | select(.guid == $guid).versions) |= [$new_package] + .' \
-            "$MANIFEST_FILE" > tmp_manifest.json && mv tmp_manifest.json "$MANIFEST_FILE"
+            "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
 
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'

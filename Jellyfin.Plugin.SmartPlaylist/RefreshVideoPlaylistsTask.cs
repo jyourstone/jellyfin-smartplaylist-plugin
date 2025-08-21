@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Jellyfin.Data.Enums;
-using Jellyfin.Data.Entities;
 using Jellyfin.Plugin.SmartPlaylist.Constants;
+using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
