@@ -47,7 +47,7 @@ jobs:
       - name: Build plugin
         run: |
           # Strip preview/rc suffixes for .NET versioning
-          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//')
+          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
           echo "Building version: $VERSION (stripped from tag: ${{ github.ref_name }})"
           dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj \
             --configuration Release --no-restore -o ./build_output \
@@ -95,7 +95,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
           # Strip preview/rc suffixes for .NET versioning
-          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//')
+          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
           ASSEMBLY_VERSION="${VERSION}"
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')

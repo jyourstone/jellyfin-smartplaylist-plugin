@@ -3,8 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
 
@@ -429,7 +433,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
                 MediaType = baseItem.MediaType.ToString(),
-                ItemType = baseItem.GetType().Name,
+                ItemType = GetItemTypeName(baseItem),
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
@@ -617,8 +621,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 try
                 {
                     // Only process episodes - other item types cannot be "next unwatched"
-                    // Check ItemType which is already populated above, avoiding repeated reflection calls
-                    if (operand.ItemType == "Episode")
+                    // Use proper type checking instead of string comparison
+                    if (baseItem is Episode)
                     {
                         var episodeType = baseItem.GetType();
                         
@@ -675,6 +679,24 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             
             return operand;
+        }
+
+        /// <summary>
+        /// Gets the item type name using efficient type checking instead of reflection
+        /// </summary>
+        /// <param name="item">The BaseItem to get the type name for</param>
+        /// <returns>The item type name</returns>
+        private static string GetItemTypeName(BaseItem item)
+        {
+            return item switch
+            {
+                Episode => MediaTypes.Episode,
+                Series => MediaTypes.Series,
+                Movie => MediaTypes.Movie,
+                Audio => MediaTypes.Audio,
+                MusicVideo => MediaTypes.MusicVideo,
+                _ => item.GetType().Name
+            };
         }
 
         /// <summary>
@@ -962,6 +984,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                     logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
                                 }
                             }
+                            
+                            cache.CollectionMembershipCache[collection.Id] = membershipSet;
+                            
+                            // Debug: Log first few items in collection (only for small collections)
+                            if (itemsInCollection != null && itemsInCollection.Length <= 5 && itemsInCollection.Length > 0)
+                            {
+                                foreach (var collectionItem in itemsInCollection.Take(3))
+                                {
+                                    logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Error building membership cache for collection '{CollectionName}'", collection.Name);
+                            // Create empty set for failed collections to avoid repeated attempts
+                            cache.CollectionMembershipCache[collection.Id] = [];
                         }
                         catch (Exception ex)
                         {
@@ -981,12 +1020,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         membershipSet.Contains(baseItem.Id))
                     {
                         collections.Add(collection.Name);
-                        logger?.LogDebug("Item '{ItemName}' belongs to collection '{CollectionName}'", baseItem.Name, collection.Name);
+
                     }
                 }
                 
-                logger?.LogDebug("Item '{ItemName}' belongs to {CollectionCount} collections: [{Collections}]", 
-                    baseItem.Name, collections.Count, string.Join(", ", collections));
+
             }
             catch (Exception ex)
             {

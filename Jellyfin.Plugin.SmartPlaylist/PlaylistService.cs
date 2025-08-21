@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -18,8 +19,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
     /// Service for handling individual smart playlist operations.
+    /// This interface is internal to the plugin and not intended for external implementation.
     /// </summary>
-    public interface IPlaylistService
+    internal interface IPlaylistService
     {
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message, string JellyfinPlaylistId)> RefreshSinglePlaylistWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
@@ -30,6 +32,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message)> TryRefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
         IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes);
+        IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto dto);
     }
 
     public class PlaylistService(
@@ -297,7 +300,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return (false, "No user found for playlist", string.Empty);
                 }
 
-                var allUserMedia = GetAllUserMedia(user, dto.MediaTypes).ToArray();
+                var allUserMedia = GetAllUserMedia(user, dto.MediaTypes, dto).ToArray();
                 
                 var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, cancellationToken);
                 
@@ -762,12 +765,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return GetAllUserMedia(user, mediaTypes);
         }
+        
+        public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto dto)
+        {
+            return GetAllUserMedia(user, mediaTypes, dto);
+        }
 
-        private IEnumerable<BaseItem> GetAllUserMedia(User user, List<string> mediaTypes = null)
+        private IEnumerable<BaseItem> GetAllUserMedia(User user, List<string> mediaTypes = null, SmartPlaylistDto dto = null)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = GetBaseItemKindsFromMediaTypes(mediaTypes),
+                IncludeItemTypes = GetBaseItemKindsFromMediaTypes(mediaTypes, dto),
                 Recursive = true
             };
 
@@ -777,7 +785,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <summary>
         /// Maps string media types to BaseItemKind enums for API-level filtering
         /// </summary>
-        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string> mediaTypes)
+        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string> mediaTypes, SmartPlaylistDto dto = null)
         {
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
@@ -791,24 +799,39 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 switch (mediaType)
                 {
-                    case "Movie":
+                    case MediaTypes.Movie:
                         baseItemKinds.Add(BaseItemKind.Movie);
                         break;
-                    case "Audio":
+                    case MediaTypes.Audio:
                         baseItemKinds.Add(BaseItemKind.Audio);
                         break;
-                    case "Episode":
+                    case MediaTypes.Episode:
                         baseItemKinds.Add(BaseItemKind.Episode);
                         break;
-                    case "Series":
+                    case MediaTypes.Series:
                         baseItemKinds.Add(BaseItemKind.Series);
                         break;
-                    case "MusicVideo":
+                    case MediaTypes.MusicVideo:
                         baseItemKinds.Add(BaseItemKind.MusicVideo);
                         break;
                     default:
                         _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
                         break;
+                }
+            }
+
+            // Smart Query Expansion: If Episodes media type is selected AND Collections episode expansion is enabled,
+            // also include Series in the query so we can find series in collections and expand them to episodes
+            if (dto != null && baseItemKinds.Contains(BaseItemKind.Episode) && !baseItemKinds.Contains(BaseItemKind.Series))
+            {
+                var hasCollectionsEpisodeExpansion = dto.ExpressionSets?.Any(set => 
+                    set.Expressions?.Any(expr => 
+                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
+
+                if (hasCollectionsEpisodeExpansion)
+                {
+                    baseItemKinds.Add(BaseItemKind.Series);
+                    _logger?.LogDebug("Auto-including Series in query for Episodes media type due to Collections episode expansion");
                 }
             }
 
@@ -882,14 +905,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (dto.MediaTypes?.Count > 0)
             {
                 // Check if it's audio-only
-                if (dto.MediaTypes.All(mt => mt == "Audio"))
+                if (dto.MediaTypes.All(mt => mt == MediaTypes.Audio))
                 {
                     _logger.LogDebug("Playlist {PlaylistName} contains only Audio content, setting MediaType to Audio", dto.Name);
                     return "Audio";
                 }
                 
-                bool hasVideoContent = dto.MediaTypes.Any(mt => mt is "Movie" or "Series" or "Episode" or "MusicVideo");
-                bool hasAudioContent = dto.MediaTypes.Any(mt => mt == "Audio");
+                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.Video.Contains(mt));
+                bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnly.Contains(mt));
                 
                 if (hasVideoContent && !hasAudioContent)
                 {

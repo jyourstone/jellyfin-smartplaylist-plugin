@@ -22,32 +22,55 @@ namespace Jellyfin.Plugin.SmartPlaylist
     internal readonly record struct MediaTypesKey : IEquatable<MediaTypesKey>
     {
         private readonly string[] _sortedTypes;
+        private readonly bool _hasCollectionsExpansion;
 
-        private MediaTypesKey(string[] sortedTypes)
+        private MediaTypesKey(string[] sortedTypes, bool hasCollectionsExpansion = false)
         {
             _sortedTypes = sortedTypes;
+            _hasCollectionsExpansion = hasCollectionsExpansion;
         }
 
         public static MediaTypesKey Create(List<string> mediaTypes)
         {
+            return Create(mediaTypes, null);
+        }
+        
+        public static MediaTypesKey Create(List<string> mediaTypes, SmartPlaylistDto dto)
+        {
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return new MediaTypesKey([]);
+                return new MediaTypesKey([], false);
             }
 
             // Deduplicate to ensure identical cache keys for equivalent content (e.g., ["Movie", "Movie"] = ["Movie"])
-            var sorted = mediaTypes.Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
-            return new MediaTypesKey(sorted);
+            var sortedTypes = mediaTypes.Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            
+            // Determine Collections expansion flag
+            bool collectionsExpansionFlag = false;
+            if (dto != null)
+            {
+                // Include Collections episode expansion in cache key to avoid incorrect caching
+                // when same media types have different expansion settings
+                var hasCollectionsExpansion = dto.ExpressionSets?.Any(set => 
+                    set.Expressions?.Any(expr => 
+                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
+                
+                // Use boolean flag instead of string marker to distinguish caches with Collections expansion            
+                collectionsExpansionFlag = hasCollectionsExpansion && sortedTypes.Contains("Episode") && !sortedTypes.Contains("Series");
+            }
+            
+            return new MediaTypesKey(sortedTypes, collectionsExpansionFlag);
         }
 
-                    public bool Equals(MediaTypesKey other)
-            {
-                // Handle null arrays (default struct case) and use SequenceEqual for cleaner comparison
-                var thisArray = _sortedTypes ?? [];
-                var otherArray = other._sortedTypes ?? [];
-                
-                return thisArray.AsSpan().SequenceEqual(otherArray.AsSpan());
-            }
+        public bool Equals(MediaTypesKey other)
+        {
+            // Handle null arrays (default struct case) and use SequenceEqual for cleaner comparison
+            var thisArray = _sortedTypes ?? [];
+            var otherArray = other._sortedTypes ?? [];
+            
+            return thisArray.AsSpan().SequenceEqual(otherArray.AsSpan()) && 
+                   _hasCollectionsExpansion == other._hasCollectionsExpansion;
+        }
 
 
 
@@ -61,6 +84,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 hash.Add(type, StringComparer.Ordinal);
             }
+            hash.Add(_hasCollectionsExpansion);
             return hash.ToHashCode();
         }
 
@@ -68,7 +92,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             // Handle null array (default struct case)
             var array = _sortedTypes ?? [];
-            return array.Length == 0 ? "(empty)" : string.Join(",", array);
+            var typesStr = array.Length == 0 ? "(empty)" : string.Join(",", array);
+            return _hasCollectionsExpansion ? $"{typesStr}+CollectionsExpansion" : typesStr;
         }
     }
 
@@ -308,7 +333,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 // OPTIMIZATION: Get media specifically for this playlist's media types using cache
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
-                                var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes);
+                                var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes, dto);
                                 var mediaTypesForClosure = dto.MediaTypes; // Avoid capturing entire dto in closure
                                 // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
                                 // where failures typically indicate serious issues that should fail fast
@@ -316,7 +341,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
                                     new Lazy<BaseItem[]>(() =>
                                     {
-                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, mediaTypesForClosure).ToArray();
+                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, mediaTypesForClosure, dto).ToArray();
                                         logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
                                             media.Length, mediaTypesKey, user.Username);
                                         return media;

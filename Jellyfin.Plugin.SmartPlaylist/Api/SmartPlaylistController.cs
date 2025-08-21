@@ -644,59 +644,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "Artists", Label = "Artists" },
                     new { Value = "AlbumArtists", Label = "Album Artists" }
                 },
-                Operators = new[]
-                {
-                    new { Value = "Equal", Label = "equals" },
-                    new { Value = "NotEqual", Label = "not equals" },
-                    new { Value = "Contains", Label = "contains" },
-                    new { Value = "NotContains", Label = "not contains" },
-                    new { Value = "IsIn", Label = "is in" },
-                    new { Value = "IsNotIn", Label = "is not in" },
-                    new { Value = "GreaterThan", Label = "greater than" },
-                    new { Value = "LessThan", Label = "less than" },
-                    new { Value = "GreaterThanOrEqual", Label = "greater than or equal" },
-                    new { Value = "LessThanOrEqual", Label = "less than or equal" },
-                    new { Value = "MatchRegex", Label = "matches regex (.NET syntax)" },
-                    new { Value = "After", Label = "after" },
-                    new { Value = "Before", Label = "before" },
-                    new { Value = "NewerThan", Label = "newer than" },
-                    new { Value = "OlderThan", Label = "older than" }
-                },
-                FieldOperators = new Dictionary<string, string[]>
-                {
-                    // List fields - multi-valued fields
-                    ["Collections"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["People"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["Genres"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["Studios"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["Tags"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["Artists"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["AlbumArtists"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    ["AudioLanguages"] = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"],
-                    
-                    // Simple fields - single-choice fields
-                    ["ItemType"] = ["Equal", "NotEqual"],
-                    
-                    // Boolean fields - true/false fields
-                    ["IsPlayed"] = ["Equal", "NotEqual"],
-                    ["IsFavorite"] = ["Equal", "NotEqual"],
-                    ["NextUnwatched"] = ["Equal", "NotEqual"],
-                    
-                    // Numeric fields - number-based fields
-                    ["ProductionYear"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
-                    ["CommunityRating"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
-                    ["CriticRating"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
-                    ["RuntimeMinutes"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
-                    ["PlayCount"] = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"],
-                    
-                    // Date fields - date/time fields
-                    ["DateCreated"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
-                    ["DateLastRefreshed"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
-                    ["DateLastSaved"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
-                    ["DateModified"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
-                    ["ReleaseDate"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"],
-                    ["LastPlayedDate"] = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"]
-                },
+                Operators = Constants.Operators.AllOperators,
+                FieldOperators = GetFieldOperators(),
                 OrderOptions = new[]
                 {
                     new { Value = "NoOrder", Label = "No Order" },
@@ -715,6 +664,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             };
 
             return Ok(fields);
+        }
+
+        /// <summary>
+        /// Static readonly field operators dictionary for performance optimization.
+        /// </summary>
+        private static readonly Dictionary<string, string[]> _fieldOperators = Constants.Operators.GetFieldOperatorsDictionary();
+
+        /// <summary>
+        /// Gets the field operators dictionary using centralized constants.
+        /// </summary>
+        /// <returns>Dictionary mapping field names to their allowed operators</returns>
+        private static Dictionary<string, string[]> GetFieldOperators()
+        {
+            return _fieldOperators;
         }
 
         /// <summary>
