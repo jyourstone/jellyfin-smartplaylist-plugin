@@ -984,23 +984,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                     logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
                                 }
                             }
-                            
-                            cache.CollectionMembershipCache[collection.Id] = membershipSet;
-                            
-                            // Debug: Log first few items in collection (only for small collections)
-                            if (itemsInCollection != null && itemsInCollection.Length <= 5 && itemsInCollection.Length > 0)
-                            {
-                                foreach (var collectionItem in itemsInCollection.Take(3))
-                                {
-                                    logger?.LogDebug("  Collection item: '{ItemName}' (ID: {ItemId})", collectionItem.Name, collectionItem.Id);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger?.LogDebug(ex, "Error building membership cache for collection '{CollectionName}'", collection.Name);
-                            // Create empty set for failed collections to avoid repeated attempts
-                            cache.CollectionMembershipCache[collection.Id] = [];
                         }
                         catch (Exception ex)
                         {
