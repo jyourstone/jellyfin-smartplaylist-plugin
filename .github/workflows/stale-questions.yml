@@ -1,0 +1,43 @@
+# .github/workflows/stale-questions.yml
+name: Close inactive questions
+
+on:
+  schedule:
+    - cron: "0 03 * * *"  # runs daily at 03:00 UTC
+  workflow_dispatch: {}   # let maintainers run it on demand
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # Consider only issues labeled "question"
+          only-labels: question
+
+          # Timing
+          days-before-issue-stale: 14          # mark as stale after 14 days of no activity
+          days-before-issue-close: 7           # close 7 days after being marked stale
+
+          # What to do when marking as stale
+          stale-issue-label: stale
+          stale-issue-message: >
+            This question has been inactive for 14 days. We mark issues like this
+            as stale to help keep the tracker tidy. If this is still relevant,
+            please add a comment and it will be kept open.
+
+          # What to do when closing
+          close-issue-message: >
+            Closing due to inactivity. If you’re still seeing this problem,
+            comment with an update.
+
+          # Nice-to-haves / safeguards
+          exempt-issue-labels: pinned,security,keep-open
+          exempt-milestones: true            # don't stale anything in an active milestone
+          exempt-assignees: true             # don't stale if someone is actively assigned
+          remove-stale-when-updated: true    # remove "stale" label on any activity
+          enable-statistics: true
