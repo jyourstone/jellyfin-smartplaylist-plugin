@@ -216,6 +216,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Overview** - Description/summary of the content
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
+- **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K) with numeric comparison support
 
 #### **Ratings & Playback**
 - **Community Rating** - User ratings (0-10)
@@ -294,6 +295,18 @@ The web interface provides access to all available fields for creating playlist 
 - **after** / **before** - Date comparisons
 - **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
 - **matches regex** - Advanced pattern matching using .NET regex syntax
+
+#### Resolution Field Details
+
+The **Resolution** field provides predefined resolution options and supports both equality and numeric comparisons:
+
+- **Predefined Options**: 480p, 720p, 1080p, 1440p, 4K, 8K
+- **Numeric Comparisons**: Use "greater than", "less than", etc. to find content above/below specific resolutions
+- **Examples**:
+  - `Resolution > 1080p` → Finds 1440p, 4K, and 8K content
+  - `Resolution = 4K` → Finds only 4K content
+  - `Resolution < 720p` → Finds 480p content
+  - `Resolution >= 1080p` → Finds 1080p, 1440p, 4K, and 8K content
 
 #### IsIn / IsNotIn Operator Details
 
