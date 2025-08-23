@@ -17,6 +17,7 @@
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
+        RESOLUTION_FIELDS: ['Resolution'],
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
@@ -474,6 +475,7 @@
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
             { Value: 'ReleaseDate', Label: 'Release Date' },
+            { Value: 'Resolution', Label: 'Resolution' },
             { Value: 'Random', Label: 'Random' },
             { Value: 'NoOrder', Label: 'No Order' }
         ];
@@ -683,6 +685,8 @@
             handleNumericFieldInput(valueContainer, currentValue);
         } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
             handleDateFieldInput(valueContainer, currentOperator, currentValue);
+        } else if (FIELD_TYPES.RESOLUTION_FIELDS.includes(fieldValue)) {
+            handleResolutionFieldInput(valueContainer, currentValue);
         } else {
             handleTextFieldInput(valueContainer, currentValue);
         }
@@ -823,6 +827,50 @@
         input.className = 'emby-input rule-value-input';
         input.style.width = '100%';
         valueContainer.appendChild(input);
+    }
+
+    /**
+     * Handles resolution field inputs with predefined resolution options
+     */
+    function handleResolutionFieldInput(valueContainer, currentValue) {
+        const select = document.createElement('select');
+        select.className = 'emby-select rule-value-input';
+        select.setAttribute('is', 'emby-select');
+        select.style.width = '100%';
+        
+        // Add placeholder option
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = '-- Select Resolution --';
+        placeholderOption.disabled = true;
+        // Only select placeholder if no currentValue
+        if (!currentValue) {
+            placeholderOption.selected = true;
+        }
+        select.appendChild(placeholderOption);
+        
+        // Resolution options with display names
+        const resolutionOptions = [
+            { Value: '480p', Label: '480p (854x480)' },
+            { Value: '720p', Label: '720p (1280x720)' },
+            { Value: '1080p', Label: '1080p (1920x1080)' },
+            { Value: '1440p', Label: '1440p (2560x1440)' },
+            { Value: '4K', Label: '4K (3840x2160)' },
+            { Value: '8K', Label: '8K (7680x4320)' }
+        ];
+        
+        // Add resolution options and select if matches currentValue
+        resolutionOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.Value;
+            option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        
+        valueContainer.appendChild(select);
     }
 
     /**

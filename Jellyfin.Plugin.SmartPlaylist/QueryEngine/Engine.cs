@@ -69,6 +69,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogDebug("SmartPlaylist BuildExpr: Field={Field}, Type={Type}, Operator={Operator}", r.MemberName, tProp.Name, r.Operator);
 
             // Handle different field types with specialized handlers
+            // Check resolution fields first (before generic string check)
+            if (tProp == typeof(string) && IsResolutionField(r.MemberName))
+            {
+                return BuildResolutionExpression(r, left, logger);
+            }
+            
             if (tProp == typeof(string))
             {
                 return BuildStringExpression(r, left, logger);
@@ -432,6 +438,61 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             return BuildStandardDateExpression(r, left, logger);
         }
+
+        /// <summary>
+        /// Builds expressions for resolution fields that support both equality and numeric comparisons.
+        /// </summary>
+        private static BinaryExpression BuildResolutionExpression(Expression r, MemberExpression left, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist handling resolution field {Field} with value {Value}", r.MemberName, r.TargetValue);
+            
+            // Enforce per-field operator whitelist for resolution fields
+            var allowedOps = Operators.GetOperatorsForField(r.MemberName);
+            if (!allowedOps.Contains(r.Operator))
+            {
+                logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for resolution field '{Field}'. Allowed: {Allowed}",
+                    r.Operator, r.MemberName, string.Join(", ", allowedOps));
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for resolution field '{r.MemberName}'. Supported operators: {supportedOperators}");
+            }
+
+            // Get the numeric height value for the target resolution
+            var targetHeight = ResolutionTypes.GetHeightForResolution(r.TargetValue);
+            if (targetHeight == -1)
+            {
+                logger?.LogError("SmartPlaylist resolution comparison failed: Invalid resolution value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid resolution value '{r.TargetValue}' for field '{r.MemberName}'. Expected one of: {string.Join(", ", ResolutionTypes.GetAllValues())}");
+            }
+
+            // For all resolution comparisons, we need to ensure the resolution field is not null/empty
+            // and that it's a valid resolution (height > 0)
+            var resolutionHeightMethod = typeof(ResolutionTypes).GetMethod("GetHeightForResolution", [typeof(string)]);
+            var resolutionHeightCall = System.Linq.Expressions.Expression.Call(
+                resolutionHeightMethod, 
+                left
+            );
+
+            var targetHeightConstant = System.Linq.Expressions.Expression.Constant(targetHeight);
+            var zeroConstant = System.Linq.Expressions.Expression.Constant(0);
+
+            // First, ensure the resolution is valid (not null/empty and height > 0)
+            var isValidResolution = System.Linq.Expressions.Expression.GreaterThan(resolutionHeightCall, zeroConstant);
+
+            // Handle different operators with validity check
+            BinaryExpression comparisonExpression = r.Operator switch
+            {
+                "Equal" => System.Linq.Expressions.Expression.Equal(resolutionHeightCall, targetHeightConstant),
+                "NotEqual" => System.Linq.Expressions.Expression.NotEqual(resolutionHeightCall, targetHeightConstant),
+                "GreaterThan" => System.Linq.Expressions.Expression.GreaterThan(resolutionHeightCall, targetHeightConstant),
+                "LessThan" => System.Linq.Expressions.Expression.LessThan(resolutionHeightCall, targetHeightConstant),
+                "GreaterThanOrEqual" => System.Linq.Expressions.Expression.GreaterThanOrEqual(resolutionHeightCall, targetHeightConstant),
+                "LessThanOrEqual" => System.Linq.Expressions.Expression.LessThanOrEqual(resolutionHeightCall, targetHeightConstant),
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not supported for resolution field '{r.MemberName}'. Supported operators: {string.Join(", ", allowedOps)}")
+            };
+
+            // Combine: resolution must be valid AND meet the comparison criteria
+            return System.Linq.Expressions.Expression.AndAlso(isValidResolution, comparisonExpression);
+        }
         
         /// <summary>
         /// Builds standard date expressions without special handling for never-played items.
@@ -731,6 +792,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool IsDateField(string fieldName)
         {
             return FieldDefinitions.IsDateField(fieldName);
+        }
+
+        /// <summary>
+        /// Checks if a field name is a resolution field that needs special handling.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a resolution field, false otherwise</returns>
+        private static bool IsResolutionField(string fieldName)
+        {
+            return FieldDefinitions.IsResolutionField(fieldName);
         }
 
         /// <summary>

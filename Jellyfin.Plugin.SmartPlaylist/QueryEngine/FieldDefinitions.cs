@@ -65,6 +65,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         ];
 
         /// <summary>
+        /// Resolution fields that support numeric comparisons based on height.
+        /// </summary>
+        public static readonly HashSet<string> ResolutionFields =
+        [
+            "Resolution"
+        ];
+
+        /// <summary>
         /// User-specific fields that can be filtered by user.
         /// </summary>
         public static readonly HashSet<string> UserDataFields =
@@ -127,6 +135,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Checks if a field is a resolution field that supports numeric comparisons.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a resolution field, false otherwise</returns>
+        public static bool IsResolutionField(string fieldName)
+        {
+            return ResolutionFields.Contains(fieldName);
+        }
+
+        /// <summary>
         /// Checks if a field supports user-specific filtering.
         /// </summary>
         /// <param name="fieldName">The field name to check</param>
@@ -148,6 +166,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.UnionWith(NumericFields);
             allFields.UnionWith(BooleanFields);
             allFields.UnionWith(SimpleFields);
+            allFields.UnionWith(ResolutionFields);
             
             // Add other fields that aren't in the main categories
             allFields.Add("Name");
