@@ -203,6 +203,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         {
                             mediaStreams.AddRange(streamEnum);
                         }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -298,6 +306,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         if (result is IEnumerable<object> streamEnum)
                         {
                             mediaStreams.AddRange(streamEnum);
+                        }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
                         }
                     }
                     catch (Exception ex)

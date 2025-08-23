@@ -843,7 +843,10 @@
         placeholderOption.value = '';
         placeholderOption.textContent = '-- Select Resolution --';
         placeholderOption.disabled = true;
-        placeholderOption.selected = true;
+        // Only select placeholder if no currentValue
+        if (!currentValue) {
+            placeholderOption.selected = true;
+        }
         select.appendChild(placeholderOption);
         
         // Resolution options with display names
@@ -856,6 +859,7 @@
             { Value: '8K', Label: '8K (7680x4320)' }
         ];
         
+        // Add resolution options and select if matches currentValue
         resolutionOptions.forEach(opt => {
             const option = document.createElement('option');
             option.value = opt.Value;
