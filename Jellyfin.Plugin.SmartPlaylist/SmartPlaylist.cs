@@ -6,6 +6,7 @@ using System.Linq;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -695,7 +696,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool ShouldExpandEpisodesForCollections()
         {
             // Only expand if Episodes media type is selected AND Collections expansion is enabled
-            var isEpisodesMediaType = MediaTypes?.Contains("Episode") == true;
+            var isEpisodesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Episode) == true;
             var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
                 set.Expressions?.Any(expr => 
                     expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
@@ -845,8 +846,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             try
             {
                 // Media-type driven Collections expansion logic
-                var isEpisodesMediaType = MediaTypes?.Contains("Episode") == true;
-                var isSeriesMediaType = MediaTypes?.Contains("Series") == true;
+                var isEpisodesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Episode) == true;
+                var isSeriesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Series) == true;
                 
                 // Check if Collections rules have episode expansion enabled
                 var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
