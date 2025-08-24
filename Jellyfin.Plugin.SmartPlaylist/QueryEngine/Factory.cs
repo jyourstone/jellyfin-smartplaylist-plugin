@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public bool ExtractPeople { get; set; } = false;
         public bool ExtractCollections { get; set; } = false;
         public bool ExtractNextUnwatched { get; set; } = false;
+        public bool ExtractSeriesName { get; set; } = false;
         public bool IncludeUnwatchedSeries { get; set; } = true;
         public List<string> AdditionalUserIds { get; set; } = [];
     }
@@ -48,6 +49,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
             public BaseItem[] AllCollections { get; set; } = null;
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
+            public Dictionary<Guid, string> SeriesNameById { get; } = [];
         }
 
         /// <summary>
@@ -527,9 +529,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
-        /// Extracts the series name for episodes.
+        /// Extracts the series name for episodes with per-refresh caching.
         /// </summary>
-        private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
+        private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
         {
             operand.SeriesName = "";
             try
@@ -547,33 +549,62 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         var seriesId = seriesIdProperty.GetValue(baseItem);
                         
                         // Safely convert SeriesId to Guid and get the parent series
-                        if (seriesId is Guid seriesGuid)
+                        Guid seriesGuid = Guid.Empty;
+                        
+                        if (seriesId is Guid directGuid)
                         {
-                            try
+                            seriesGuid = directGuid;
+                        }
+                        else if (seriesId != null && seriesId.GetType() == typeof(Guid?))
+                        {
+                            var nullableGuid = (Guid?)seriesId;
+                            if (nullableGuid.HasValue)
                             {
-                                // Get the parent series from the library manager
-                                var parentSeries = libraryManager.GetItemById(seriesGuid);
-                                if (parentSeries != null)
+                                seriesGuid = nullableGuid.Value;
+                            }
+                        }
+                        else if (seriesId is string stringId && Guid.TryParse(stringId, out var parsedGuid))
+                        {
+                            seriesGuid = parsedGuid;
+                        }
+
+                        if (seriesGuid != Guid.Empty)
+                        {
+                            // Check cache first to avoid repeated library lookups
+                            if (cache.SeriesNameById.TryGetValue(seriesGuid, out var cachedName))
+                            {
+                                operand.SeriesName = cachedName;
+                                logger?.LogDebug("Using cached series name '{SeriesName}' for episode '{EpisodeName}'", 
+                                    operand.SeriesName, baseItem.Name);
+                            }
+                            else
+                            {
+                                try
                                 {
-                                    operand.SeriesName = parentSeries.Name ?? "";
-                                    logger?.LogDebug("Extracted series name '{SeriesName}' for episode '{EpisodeName}'", 
+                                    // Get the parent series from the library manager
+                                    var parentSeries = libraryManager.GetItemById(seriesGuid);
+                                    var seriesName = parentSeries?.Name ?? "";
+                                    
+                                    // Cache the result for future episodes from the same series
+                                    cache.SeriesNameById[seriesGuid] = seriesName;
+                                    operand.SeriesName = seriesName;
+                                    
+                                    logger?.LogDebug("Extracted and cached series name '{SeriesName}' for episode '{EpisodeName}'", 
                                         operand.SeriesName, baseItem.Name);
                                 }
-                                else
+                                catch (Exception ex)
                                 {
-                                    logger?.LogDebug("Could not find parent series with ID {SeriesId} for episode '{EpisodeName}'", 
-                                        seriesGuid, baseItem.Name);
+                                    logger?.LogDebug(ex, "Failed to get parent series for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                        baseItem.Name, seriesGuid);
+                                    
+                                    // Cache empty string to avoid repeated failures
+                                    cache.SeriesNameById[seriesGuid] = "";
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Failed to get parent series for episode '{EpisodeName}' with SeriesId {SeriesId}", 
-                                    baseItem.Name, seriesGuid);
                             }
                         }
                         else
                         {
-                            logger?.LogDebug("SeriesId property returned non-Guid value for episode '{EpisodeName}': {SeriesIdType}", 
+                            logger?.LogDebug("SeriesId property had unsupported value for episode '{EpisodeName}': {SeriesIdType}", 
                                 baseItem.Name, seriesId?.GetType().Name ?? "null");
                         }
                     }
@@ -582,10 +613,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         logger?.LogDebug("SeriesId property not found for episode '{EpisodeName}'", baseItem.Name);
                     }
                 }
-                // For non-episodes, SeriesName remains empty string (default)
+                // For non-episodes, SeriesName remains empty string (default) 
                 else
                 {
-                    logger?.LogDebug("Item '{ItemName}' is not an episode, skipping series name extraction", baseItem.Name);
+                    logger?.LogDebug("Item '{ItemName}' is not an episode, series name remains empty", baseItem.Name);
                 }
             }
             catch (Exception ex)
@@ -739,6 +770,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var extractAudioLanguages = options.ExtractAudioLanguages;
             var extractPeople = options.ExtractPeople;  
             var extractNextUnwatched = options.ExtractNextUnwatched;
+            var extractSeriesName = options.ExtractSeriesName;
             var includeUnwatchedSeries = options.IncludeUnwatchedSeries;
             var additionalUserIds = options.AdditionalUserIds;
             
@@ -759,8 +791,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0.0
             };
 
-            // Extract series name for episodes (cheap operation)
-            ExtractSeriesName(operand, baseItem, libraryManager, logger);
+            // Extract series name for episodes - only when needed for performance
+            if (extractSeriesName)
+            {
+                ExtractSeriesName(operand, baseItem, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.SeriesName = ""; // Ensure consistent default
+                logger?.LogDebug("SeriesName extraction skipped for item {Name} - not needed by rules", baseItem.Name);
+            }
 
             // Try to access user data properly
             try
