@@ -27,6 +27,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public string OfficialRating { get; set; } = "";
         public List<string> AudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
+        public string Resolution { get; set; } = "";
+        public float? Framerate { get; set; } = null;
         
         // Music-specific fields
         public List<string> Artists { get; set; } = [];
@@ -34,6 +36,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         
         // Collections field - indicates which collections this item belongs to  
         public List<string> Collections { get; set; } = [];
+        
+        // Series name field - for episodes, contains the name of the parent series
+        public string SeriesName { get; set; } = "";
         
         // User-specific data - Store user ID -> data mappings
         // These will be populated based on which users are referenced in rules

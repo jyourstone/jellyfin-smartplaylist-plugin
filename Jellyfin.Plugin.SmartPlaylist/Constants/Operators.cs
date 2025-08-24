@@ -66,6 +66,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public static readonly string[] DateFieldOperators = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"];
 
         /// <summary>
+        /// Operators for resolution fields that support both equality and numeric comparisons.
+        /// </summary>
+        public static readonly string[] ResolutionFieldOperators = ["Equal", "NotEqual", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"];
+
+        /// <summary>
         /// Gets the appropriate operators for a given field type.
         /// </summary>
         /// <param name="fieldName">The field name to get operators for</param>
@@ -91,12 +96,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                     => BooleanFieldOperators,
                 
                 // Numeric fields
-                "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" 
+                "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" or "Framerate" 
                     => NumericFieldOperators,
                 
                 // Date fields
                 "DateCreated" or "DateLastRefreshed" or "DateLastSaved" or "DateModified" or "ReleaseDate" or "LastPlayedDate" 
                     => DateFieldOperators,
+                
+                // Resolution fields
+                "Resolution" 
+                    => ResolutionFieldOperators,
                 
                 // Default: allow all operators for unknown fields
                 _ => [.. AllOperators.Select(op => op.Value)]
@@ -136,6 +145,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["CriticRating"] = NumericFieldOperators,
                 ["RuntimeMinutes"] = NumericFieldOperators,
                 ["PlayCount"] = NumericFieldOperators,
+                ["Framerate"] = NumericFieldOperators,
                 
                 // Date fields - date/time fields
                 ["DateCreated"] = DateFieldOperators,
@@ -143,7 +153,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["DateLastSaved"] = DateFieldOperators,
                 ["DateModified"] = DateFieldOperators,
                 ["ReleaseDate"] = DateFieldOperators,
-                ["LastPlayedDate"] = DateFieldOperators
+                ["LastPlayedDate"] = DateFieldOperators,
+                
+                // Resolution fields - resolution-based fields
+                ["Resolution"] = ResolutionFieldOperators
             };
         }
 

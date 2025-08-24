@@ -184,7 +184,7 @@ When adding new rule fields to the plugin, ensure they are categorized correctly
   - **Operators**: Contains, NotContains, IsIn, IsNotIn, MatchRegex
   - **Use for**: Fields that can have multiple values per item
 
-- **`NUMERIC_FIELDS`** - Number-based fields (ProductionYear, CommunityRating, RuntimeMinutes, PlayCount)  
+- **`NUMERIC_FIELDS`** - Number-based fields (ProductionYear, CommunityRating, RuntimeMinutes, PlayCount, Framerate)  
   - **Operators**: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual
   - **Use for**: Fields with numeric values
 
@@ -212,10 +212,13 @@ The web interface provides access to all available fields for creating playlist 
 - **Album** - Album name (for music)
 - **Audio Languages** - The audio language of the movie/TV show
 - **Name** - Title of the media item
+- **Series Name** - Name of the parent series (for episodes only)
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
 - **Overview** - Description/summary of the content
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
+- **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K)
+- **Framerate** - Video framerate in frames per second (e.g., 23.976, 29.97, 59.94)
 
 #### **Ratings & Playback**
 - **Community Rating** - User ratings (0-10)
@@ -294,6 +297,31 @@ The web interface provides access to all available fields for creating playlist 
 - **after** / **before** - Date comparisons
 - **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
 - **matches regex** - Advanced pattern matching using .NET regex syntax
+
+#### Resolution Field Details
+
+The **Resolution** field provides predefined resolution options and supports both equality and numeric comparisons:
+
+- **Predefined Options**: 480p, 720p, 1080p, 1440p, 4K, 8K
+- **Numeric Comparisons**: Use "greater than", "less than", etc. to find content above/below specific resolutions
+- **Examples**:
+  - `Resolution > 1080p` → Finds 1440p, 4K, and 8K content
+  - `Resolution = 4K` → Finds only 4K content
+  - `Resolution < 720p` → Finds 480p content
+  - `Resolution >= 1080p` → Finds 1080p, 1440p, 4K, and 8K content
+
+#### Framerate Field Details
+
+The **Framerate** field extracts video framerate information from media streams and supports numeric comparisons:
+
+- **Format**: Decimal values representing frames per second (e.g., 23.976, 29.97, 59.94)
+- **Null Handling**: Items without framerate information are automatically excluded from framerate rules
+- **Numeric Comparisons**: Use standard numeric operators for filtering by framerate ranges
+- **Examples**:
+  - `Framerate = 24` → Finds content at exactly 24fps
+  - `Framerate > 30` → Finds high framerate content (60fps, 120fps, etc.)
+  - `Framerate < 25` → Finds cinema framerates (23.976fps, 24fps)
+  - `Framerate >= 59.94` → Finds smooth motion content (59.94fps, 60fps, etc.)
 
 #### IsIn / IsNotIn Operator Details
 

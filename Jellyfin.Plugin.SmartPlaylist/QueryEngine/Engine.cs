@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using System.Linq;
@@ -69,6 +70,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogDebug("SmartPlaylist BuildExpr: Field={Field}, Type={Type}, Operator={Operator}", r.MemberName, tProp.Name, r.Operator);
 
             // Handle different field types with specialized handlers
+            // Check resolution fields first (before generic string check)
+            if (tProp == typeof(string) && IsResolutionField(r.MemberName))
+            {
+                return BuildResolutionExpression(r, left, logger);
+            }
+            
+            // Check framerate fields (nullable float type)
+            if (tProp == typeof(float?) && IsFramerateField(r.MemberName))
+            {
+                return BuildFramerateExpression(r, left, logger);
+            }
+            
             if (tProp == typeof(string))
             {
                 return BuildStringExpression(r, left, logger);
@@ -432,6 +445,108 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             return BuildStandardDateExpression(r, left, logger);
         }
+
+        /// <summary>
+        /// Builds expressions for resolution fields that support both equality and numeric comparisons.
+        /// </summary>
+        private static BinaryExpression BuildResolutionExpression(Expression r, MemberExpression left, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist handling resolution field {Field} with value {Value}", r.MemberName, r.TargetValue);
+            
+            // Enforce per-field operator whitelist for resolution fields
+            var allowedOps = Operators.GetOperatorsForField(r.MemberName);
+            if (!allowedOps.Contains(r.Operator))
+            {
+                logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for resolution field '{Field}'. Allowed: {Allowed}",
+                    r.Operator, r.MemberName, string.Join(", ", allowedOps));
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for resolution field '{r.MemberName}'. Supported operators: {supportedOperators}");
+            }
+
+            // Get the numeric height value for the target resolution
+            var targetHeight = ResolutionTypes.GetHeightForResolution(r.TargetValue);
+            if (targetHeight == -1)
+            {
+                logger?.LogError("SmartPlaylist resolution comparison failed: Invalid resolution value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid resolution value '{r.TargetValue}' for field '{r.MemberName}'. Expected one of: {string.Join(", ", ResolutionTypes.GetAllValues())}");
+            }
+
+            // For all resolution comparisons, we need to ensure the resolution field is not null/empty
+            // and that it's a valid resolution (height > 0)
+            var resolutionHeightMethod = typeof(ResolutionTypes).GetMethod("GetHeightForResolution", [typeof(string)]);
+            var resolutionHeightCall = System.Linq.Expressions.Expression.Call(
+                resolutionHeightMethod, 
+                left
+            );
+
+            var targetHeightConstant = System.Linq.Expressions.Expression.Constant(targetHeight);
+            var zeroConstant = System.Linq.Expressions.Expression.Constant(0);
+
+            // First, ensure the resolution is valid (not null/empty and height > 0)
+            var isValidResolution = System.Linq.Expressions.Expression.GreaterThan(resolutionHeightCall, zeroConstant);
+
+            // Handle different operators with validity check
+            BinaryExpression comparisonExpression = r.Operator switch
+            {
+                "Equal" => System.Linq.Expressions.Expression.Equal(resolutionHeightCall, targetHeightConstant),
+                "NotEqual" => System.Linq.Expressions.Expression.NotEqual(resolutionHeightCall, targetHeightConstant),
+                "GreaterThan" => System.Linq.Expressions.Expression.GreaterThan(resolutionHeightCall, targetHeightConstant),
+                "LessThan" => System.Linq.Expressions.Expression.LessThan(resolutionHeightCall, targetHeightConstant),
+                "GreaterThanOrEqual" => System.Linq.Expressions.Expression.GreaterThanOrEqual(resolutionHeightCall, targetHeightConstant),
+                "LessThanOrEqual" => System.Linq.Expressions.Expression.LessThanOrEqual(resolutionHeightCall, targetHeightConstant),
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not supported for resolution field '{r.MemberName}'. Supported operators: {string.Join(", ", allowedOps)}")
+            };
+
+            // Combine: resolution must be valid AND meet the comparison criteria
+            return System.Linq.Expressions.Expression.AndAlso(isValidResolution, comparisonExpression);
+        }
+
+        /// <summary>
+        /// Builds expressions for framerate fields that support numeric comparisons with null handling.
+        /// Items with null framerate are ignored (filtered out).
+        /// </summary>
+        private static BinaryExpression BuildFramerateExpression(Expression r, MemberExpression left, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist handling framerate field {Field} with value {Value}", r.MemberName, r.TargetValue);
+            
+            // Enforce per-field operator whitelist for framerate fields
+            var allowedOps = Operators.GetOperatorsForField(r.MemberName);
+            if (!allowedOps.Contains(r.Operator))
+            {
+                logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for framerate field '{Field}'. Allowed: {Allowed}",
+                    r.Operator, r.MemberName, string.Join(", ", allowedOps));
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for framerate field '{r.MemberName}'. Supported operators: {supportedOperators}");
+            }
+
+            // Parse target value as float using culture-invariant parsing
+            if (!float.TryParse(r.TargetValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var targetValue))
+            {
+                logger?.LogError("SmartPlaylist framerate comparison failed: Invalid numeric value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid numeric value '{r.TargetValue}' for field '{r.MemberName}'. Expected a decimal number.");
+            }
+
+            // For all framerate comparisons, we need to ensure the framerate field is not null
+            // This means items with null framerate will be ignored
+            var hasValueCheck = System.Linq.Expressions.Expression.Property(left, "HasValue");
+            var valueProperty = System.Linq.Expressions.Expression.Property(left, "Value");
+            var targetConstant = System.Linq.Expressions.Expression.Constant(targetValue);
+
+            // Handle different operators with null check
+            BinaryExpression comparisonExpression = r.Operator switch
+            {
+                "Equal" => System.Linq.Expressions.Expression.Equal(valueProperty, targetConstant),
+                "NotEqual" => System.Linq.Expressions.Expression.NotEqual(valueProperty, targetConstant),
+                "GreaterThan" => System.Linq.Expressions.Expression.GreaterThan(valueProperty, targetConstant),
+                "LessThan" => System.Linq.Expressions.Expression.LessThan(valueProperty, targetConstant),
+                "GreaterThanOrEqual" => System.Linq.Expressions.Expression.GreaterThanOrEqual(valueProperty, targetConstant),
+                "LessThanOrEqual" => System.Linq.Expressions.Expression.LessThanOrEqual(valueProperty, targetConstant),
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not supported for framerate field '{r.MemberName}'. Supported operators: {string.Join(", ", allowedOps)}")
+            };
+
+            // Combine: framerate must have a value (not null) AND meet the comparison criteria
+            return System.Linq.Expressions.Expression.AndAlso(hasValueCheck, comparisonExpression);
+        }
         
         /// <summary>
         /// Builds standard date expressions without special handling for never-played items.
@@ -536,8 +651,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             // For equality, we need to check if the date falls within the target day
             // Convert the target date to start and end of day timestamps using UTC
-            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
-                System.Globalization.DateTimeStyles.None, out DateTime targetDate))
+            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, 
+                DateTimeStyles.None, out DateTime targetDate))
             {
                 logger?.LogError("SmartPlaylist date equality failed: Invalid date format '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
                 throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
@@ -566,8 +681,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogDebug("SmartPlaylist handling date inequality for field {Field} with date {Date}", r.MemberName, r.TargetValue);
             
             // For inequality, we need to check if the date is outside the target day
-            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
-                System.Globalization.DateTimeStyles.None, out DateTime targetDate))
+            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, 
+                DateTimeStyles.None, out DateTime targetDate))
             {
                 logger?.LogError("SmartPlaylist date inequality failed: Invalid date format '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
                 throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
@@ -734,6 +849,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Checks if a field name is a resolution field that needs special handling.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a resolution field, false otherwise</returns>
+        private static bool IsResolutionField(string fieldName)
+        {
+            return FieldDefinitions.IsResolutionField(fieldName);
+        }
+
+        private static bool IsFramerateField(string fieldName)
+        {
+            return FieldDefinitions.IsFramerateField(fieldName);
+        }
+
+        /// <summary>
         /// Converts a date string (YYYY-MM-DD) to Unix timestamp.
         /// </summary>
         /// <param name="dateString">The date string to convert</param>
@@ -749,8 +879,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             try
             {
                 // Parse the date string as YYYY-MM-DD format
-                if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
-                    System.Globalization.DateTimeStyles.None, out DateTime parsedDate))
+                if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", CultureInfo.InvariantCulture, 
+                    DateTimeStyles.None, out DateTime parsedDate))
                 {
                     // Convert to Unix timestamp using UTC to ensure consistency with other date operations
                     return new DateTimeOffset(parsedDate, TimeSpan.Zero).ToUnixTimeSeconds();

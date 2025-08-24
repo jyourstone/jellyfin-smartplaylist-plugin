@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public bool ExtractPeople { get; set; } = false;
         public bool ExtractCollections { get; set; } = false;
         public bool ExtractNextUnwatched { get; set; } = false;
+        public bool ExtractSeriesName { get; set; } = false;
         public bool IncludeUnwatchedSeries { get; set; } = true;
         public List<string> AdditionalUserIds { get; set; } = [];
     }
@@ -48,6 +49,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
             public BaseItem[] AllCollections { get; set; } = null;
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
+            public Dictionary<Guid, string> SeriesNameById { get; } = [];
         }
 
         /// <summary>
@@ -203,6 +205,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         {
                             mediaStreams.AddRange(streamEnum);
                         }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -272,6 +282,336 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Failed to extract audio languages for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Extracts resolution from media streams.
+        /// </summary>
+        private static void ExtractResolution(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.Resolution = "";
+            try
+            {
+                // Try multiple approaches to access media stream information
+                List<object> mediaStreams = [];
+                
+                // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                var baseItemType = baseItem.GetType();
+                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
+                
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                        }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Approach 2: Look for MediaSources property (with caching)
+                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
+                    {
+                        foreach (var source in sourceEnum)
+                        {
+                            try
+                            {
+                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                if (streamsProperty != null)
+                                {
+                                    var streams = streamsProperty.GetValue(source);
+                                    if (streams is IEnumerable<object> streamList)
+                                    {
+                                        mediaStreams.AddRange(streamList);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
+                            }
+                        }
+                    }
+                }
+                
+                // Process found streams to find the highest resolution video stream
+                int maxHeight = 0;
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        var heightProperty = stream.GetType().GetProperty("Height");
+                        
+                        if (typeProperty != null && heightProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            var height = heightProperty.GetValue(stream);
+                            
+                            // Check if it's a video stream
+                            if (streamType != null && streamType.ToString() == "Video" && height != null)
+                            {
+                                if (int.TryParse(height.ToString(), out int heightValue) && heightValue > maxHeight)
+                                {
+                                    maxHeight = heightValue;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Convert height to resolution string
+                if (maxHeight > 0)
+                {
+                    operand.Resolution = maxHeight switch
+                    {
+                        <= 480 => "480p",
+                        <= 720 => "720p",
+                        <= 1080 => "1080p",
+                        <= 1440 => "1440p",
+                        <= 2160 => "4K",
+                        <= 4320 => "8K",
+                        _ => "8K" // For anything higher, default to 8K
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract resolution for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Extracts framerate from media streams.
+        /// </summary>
+        private static void ExtractFramerate(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.Framerate = null;
+            try
+            {
+                // Try multiple approaches to access media stream information
+                List<object> mediaStreams = [];
+                
+                // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                var baseItemType = baseItem.GetType();
+                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
+                
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                        }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Approach 2: Look for MediaSources property (with caching)
+                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
+                    {
+                        foreach (var source in sourceEnum)
+                        {
+                            try
+                            {
+                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                if (streamsProperty != null)
+                                {
+                                    var streams = streamsProperty.GetValue(source);
+                                    if (streams is IEnumerable<object> streamList)
+                                    {
+                                        mediaStreams.AddRange(streamList);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
+                            }
+                        }
+                    }
+                }
+                
+                // Process found streams to find the first video stream with framerate information
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        var framerateProperty = stream.GetType().GetProperty("RealFrameRate") ?? stream.GetType().GetProperty("AverageFrameRate");
+                        
+                        if (typeProperty != null && framerateProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            var framerate = framerateProperty.GetValue(stream);
+                            
+                            // Check if it's a video stream
+                            if (streamType != null && streamType.ToString() == "Video" && framerate != null)
+                            {
+                                // Try to parse framerate as different numeric types
+                                if (framerate is float floatFramerate && floatFramerate > 0)
+                                {
+                                    operand.Framerate = floatFramerate;
+                                    break; // Use the first valid framerate found
+                                }
+                                else if (framerate is double doubleFramerate && doubleFramerate > 0)
+                                {
+                                    operand.Framerate = (float)doubleFramerate;
+                                    break;
+                                }
+                                else if (framerate is int intFramerate && intFramerate > 0)
+                                {
+                                    operand.Framerate = intFramerate;
+                                    break;
+                                }
+                                else if (double.TryParse(framerate.ToString(), out var parsedFramerate) && parsedFramerate > 0)
+                                {
+                                    operand.Framerate = (float)parsedFramerate;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                logger?.LogDebug("Extracted framerate for item {Name}: {Framerate}", baseItem.Name, operand.Framerate?.ToString() ?? "null");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract framerate for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Helper method to safely extract SeriesId as Guid from episode items.
+        /// Handles Guid, Guid?, and string representations.
+        /// </summary>
+        private static bool TryGetEpisodeSeriesGuid(BaseItem baseItem, out Guid seriesGuid)
+        {
+            seriesGuid = Guid.Empty;
+            if (baseItem is not Episode) return false;
+
+            var episodeType = baseItem.GetType();
+            var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, t => t.GetProperty("SeriesId"));
+            if (seriesIdProperty == null) return false;
+
+            var seriesId = seriesIdProperty.GetValue(baseItem);
+            if (seriesId is Guid g) { seriesGuid = g; return true; }
+            if (seriesId != null && seriesId.GetType() == typeof(Guid?))
+            {
+                var nullableGuid = (Guid?)seriesId;
+                if (nullableGuid.HasValue) { seriesGuid = nullableGuid.Value; return true; }
+            }
+            if (seriesId is string s && Guid.TryParse(s, out var parsed)) { seriesGuid = parsed; return true; }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Extracts the series name for episodes with per-refresh caching.
+        /// </summary>
+        private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
+        {
+            operand.SeriesName = "";
+            try
+            {
+                // Use helper to extract SeriesId safely
+                if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid))
+                {
+                    // Check cache first to avoid repeated library lookups
+                    if (cache.SeriesNameById.TryGetValue(seriesGuid, out var cachedName))
+                    {
+                        operand.SeriesName = cachedName;
+                        logger?.LogDebug("Using cached series name '{SeriesName}' for episode '{EpisodeName}'", 
+                            operand.SeriesName, baseItem.Name);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            // Get the parent series from the library manager
+                            var parentSeries = libraryManager.GetItemById(seriesGuid);
+                            var seriesName = parentSeries?.Name ?? "";
+                            
+                            // Cache the result for future episodes from the same series
+                            cache.SeriesNameById[seriesGuid] = seriesName;
+                            operand.SeriesName = seriesName;
+                            
+                            logger?.LogDebug("Extracted and cached series name '{SeriesName}' for episode '{EpisodeName}'", 
+                                operand.SeriesName, baseItem.Name);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Failed to get parent series for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                baseItem.Name, seriesGuid);
+                            
+                            // Cache empty string to avoid repeated failures
+                            cache.SeriesNameById[seriesGuid] = "";
+                        }
+                    }
+                }
+                else
+                {
+                    // Either not an episode, no SeriesId property, or unsupported SeriesId value
+                    if (baseItem is Episode)
+                    {
+                        logger?.LogDebug("Could not extract valid SeriesId from episode '{EpisodeName}'", baseItem.Name);
+                    }
+                    else
+                    {
+                        logger?.LogDebug("Item '{ItemName}' is not an episode, series name remains empty", baseItem.Name);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract series name for item '{ItemName}'", baseItem.Name);
             }
         }
 
@@ -420,6 +760,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var extractAudioLanguages = options.ExtractAudioLanguages;
             var extractPeople = options.ExtractPeople;  
             var extractNextUnwatched = options.ExtractNextUnwatched;
+            var extractSeriesName = options.ExtractSeriesName;
             var includeUnwatchedSeries = options.IncludeUnwatchedSeries;
             var additionalUserIds = options.AdditionalUserIds;
             
@@ -439,6 +780,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
                 RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0.0
             };
+
+            // Extract series name for episodes - only when needed for performance
+            if (extractSeriesName)
+            {
+                ExtractSeriesName(operand, baseItem, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.SeriesName = ""; // Ensure consistent default
+                logger?.LogDebug("SeriesName extraction skipped for item {Name} - not needed by rules", baseItem.Name);
+            }
 
             // Try to access user data properly
             try
@@ -590,6 +942,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 operand.AudioLanguages = [];
             }
+
+            // Extract resolution from media streams - always extract for performance (cheap operation)
+            ExtractResolution(operand, baseItem, logger);
+            
+            // Extract framerate from media streams - always extract for performance (cheap operation)
+            ExtractFramerate(operand, baseItem, logger);
             
             // Extract collections - only when needed for performance
             if (options.ExtractCollections)
@@ -627,19 +985,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         var episodeType = baseItem.GetType();
                         
                         // Use cached property lookups for better performance with thread-safe access
-                        var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("SeriesId"));
                         var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
                         var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
                         
-                        if (seriesIdProperty != null && parentIndexProperty != null && indexProperty != null)
+                        if (parentIndexProperty != null && indexProperty != null)
                         {
-                            var seriesId = seriesIdProperty.GetValue(baseItem);
                             // Safe extraction of season and episode numbers - handle both nullable and non-nullable int properties
                             var seasonNumber = ExtractIntValue(parentIndexProperty.GetValue(baseItem));
                             var episodeNumber = ExtractIntValue(indexProperty.GetValue(baseItem));
                             
-                            // Safely convert SeriesId to Guid and validate all required properties
-                            if (seriesId is Guid seriesGuid && seasonNumber.HasValue && episodeNumber.HasValue)
+                            // Use helper to safely extract SeriesId and validate all required properties
+                            if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid) && seasonNumber.HasValue && episodeNumber.HasValue)
                             {
                                 // Get all episodes in this series - use cache to avoid redundant database queries
                                 var allEpisodes = GetCachedSeriesEpisodes(seriesGuid, user, libraryManager, cache, logger);
@@ -1005,9 +1361,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         collections.Add(collection.Name);
 
                     }
+                    
+                    logger?.LogDebug("Collection membership cache built with {CacheCount} collections", cache.CollectionMembershipCache.Count);
                 }
                 
-
             }
             catch (Exception ex)
             {

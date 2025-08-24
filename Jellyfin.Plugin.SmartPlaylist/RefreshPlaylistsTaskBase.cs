@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
@@ -56,7 +57,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
                 
                 // Use boolean flag instead of string marker to distinguish caches with Collections expansion            
-                collectionsExpansionFlag = hasCollectionsExpansion && sortedTypes.Contains("Episode") && !sortedTypes.Contains("Series");
+                collectionsExpansionFlag = hasCollectionsExpansion && sortedTypes.Contains(MediaTypes.Episode) && !sortedTypes.Contains(MediaTypes.Series);
             }
             
             return new MediaTypesKey(sortedTypes, collectionsExpansionFlag);

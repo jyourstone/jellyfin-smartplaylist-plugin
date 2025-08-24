@@ -13,10 +13,11 @@
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
         LIST_FIELDS: ['Collections', 'People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
-        NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
+        NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount', 'Framerate'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
+        RESOLUTION_FIELDS: ['Resolution'],
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
@@ -474,6 +475,7 @@
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
             { Value: 'ReleaseDate', Label: 'Release Date' },
+            { Value: 'Resolution', Label: 'Resolution' },
             { Value: 'Random', Label: 'Random' },
             { Value: 'NoOrder', Label: 'No Order' }
         ];
@@ -680,9 +682,11 @@
         } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) {
             handleBooleanFieldInput(valueContainer, fieldValue, currentValue);
         } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
-            handleNumericFieldInput(valueContainer, currentValue);
+            handleNumericFieldInput(valueContainer, fieldValue, currentValue);
         } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
             handleDateFieldInput(valueContainer, currentOperator, currentValue);
+        } else if (FIELD_TYPES.RESOLUTION_FIELDS.includes(fieldValue)) {
+            handleResolutionFieldInput(valueContainer, currentValue);
         } else {
             handleTextFieldInput(valueContainer, currentValue);
         }
@@ -744,12 +748,20 @@
     /**
      * Handles numeric field inputs
      */
-    function handleNumericFieldInput(valueContainer, currentValue) {
+    function handleNumericFieldInput(valueContainer, fieldValue, currentValue) {
         const input = document.createElement('input');
         input.type = 'number';
         input.className = 'emby-input rule-value-input';
         input.placeholder = 'Value';
         input.style.width = '100%';
+        
+        // Set appropriate step for decimal fields like Framerate
+        if (fieldValue === 'Framerate' || fieldValue === 'CommunityRating' || fieldValue === 'CriticRating') {
+            input.step = 'any'; // Allow any decimal precision
+        } else {
+            input.step = '1'; // Integer fields like ProductionYear, RuntimeMinutes, PlayCount
+        }
+        
         if (currentValue) {
             input.value = currentValue;
         }
@@ -823,6 +835,50 @@
         input.className = 'emby-input rule-value-input';
         input.style.width = '100%';
         valueContainer.appendChild(input);
+    }
+
+    /**
+     * Handles resolution field inputs with predefined resolution options
+     */
+    function handleResolutionFieldInput(valueContainer, currentValue) {
+        const select = document.createElement('select');
+        select.className = 'emby-select rule-value-input';
+        select.setAttribute('is', 'emby-select');
+        select.style.width = '100%';
+        
+        // Add placeholder option
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = '-- Select Resolution --';
+        placeholderOption.disabled = true;
+        // Only select placeholder if no currentValue
+        if (!currentValue) {
+            placeholderOption.selected = true;
+        }
+        select.appendChild(placeholderOption);
+        
+        // Resolution options with display names
+        const resolutionOptions = [
+            { Value: '480p', Label: '480p (854x480)' },
+            { Value: '720p', Label: '720p (1280x720)' },
+            { Value: '1080p', Label: '1080p (1920x1080)' },
+            { Value: '1440p', Label: '1440p (2560x1440)' },
+            { Value: '4K', Label: '4K (3840x2160)' },
+            { Value: '8K', Label: '8K (7680x4320)' }
+        ];
+        
+        // Add resolution options and select if matches currentValue
+        resolutionOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.Value;
+            option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        
+        valueContainer.appendChild(select);
     }
 
     /**

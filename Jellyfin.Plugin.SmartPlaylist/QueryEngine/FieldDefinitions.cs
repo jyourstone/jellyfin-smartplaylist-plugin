@@ -43,7 +43,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "CommunityRating",
             "CriticRating", 
             "RuntimeMinutes",
-            "PlayCount"
+            "PlayCount",
+            "Framerate"
         ];
 
         /// <summary>
@@ -62,6 +63,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static readonly HashSet<string> SimpleFields =
         [
             "ItemType"
+        ];
+
+        /// <summary>
+        /// Resolution fields that support numeric comparisons based on height.
+        /// </summary>
+        public static readonly HashSet<string> ResolutionFields =
+        [
+            "Resolution"
+        ];
+
+        /// <summary>
+        /// Framerate fields that support numeric comparisons.
+        /// </summary>
+        public static readonly HashSet<string> FramerateFields =
+        [
+            "Framerate"
         ];
 
         /// <summary>
@@ -127,6 +144,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Checks if a field is a resolution field that supports numeric comparisons.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a resolution field, false otherwise</returns>
+        public static bool IsResolutionField(string fieldName)
+        {
+            return ResolutionFields.Contains(fieldName);
+        }
+
+        /// <summary>
+        /// Checks if a field is a framerate field that supports numeric comparisons.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a framerate field, false otherwise</returns>
+        public static bool IsFramerateField(string fieldName)
+        {
+            return FramerateFields.Contains(fieldName);
+        }
+
+        /// <summary>
         /// Checks if a field supports user-specific filtering.
         /// </summary>
         /// <param name="fieldName">The field name to check</param>
@@ -148,6 +185,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.UnionWith(NumericFields);
             allFields.UnionWith(BooleanFields);
             allFields.UnionWith(SimpleFields);
+            allFields.UnionWith(ResolutionFields);
+            allFields.UnionWith(FramerateFields);
             
             // Add other fields that aren't in the main categories
             allFields.Add("Name");
@@ -158,6 +197,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("FileName");
             allFields.Add("FolderPath");
             allFields.Add("MediaType");
+            allFields.Add("SeriesName");
             
             return [.. allFields];
         }
