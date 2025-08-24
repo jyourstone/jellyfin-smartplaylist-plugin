@@ -212,11 +212,12 @@ The web interface provides access to all available fields for creating playlist 
 - **Album** - Album name (for music)
 - **Audio Languages** - The audio language of the movie/TV show
 - **Name** - Title of the media item
+- **Series Name** - Name of the parent series (for episodes only)
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
 - **Overview** - Description/summary of the content
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
-- **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K) with numeric comparison support
+- **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K)
 - **Framerate** - Video framerate in frames per second (e.g., 23.976, 29.97, 59.94)
 
 #### **Ratings & Playback**

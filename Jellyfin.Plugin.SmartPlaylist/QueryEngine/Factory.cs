@@ -527,6 +527,74 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Extracts the series name for episodes.
+        /// </summary>
+        private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
+        {
+            operand.SeriesName = "";
+            try
+            {
+                // Only extract series name for episodes
+                if (baseItem is Episode)
+                {
+                    var episodeType = baseItem.GetType();
+                    
+                    // Use cached property lookup for better performance
+                    var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("SeriesId"));
+                    
+                    if (seriesIdProperty != null)
+                    {
+                        var seriesId = seriesIdProperty.GetValue(baseItem);
+                        
+                        // Safely convert SeriesId to Guid and get the parent series
+                        if (seriesId is Guid seriesGuid)
+                        {
+                            try
+                            {
+                                // Get the parent series from the library manager
+                                var parentSeries = libraryManager.GetItemById(seriesGuid);
+                                if (parentSeries != null)
+                                {
+                                    operand.SeriesName = parentSeries.Name ?? "";
+                                    logger?.LogDebug("Extracted series name '{SeriesName}' for episode '{EpisodeName}'", 
+                                        operand.SeriesName, baseItem.Name);
+                                }
+                                else
+                                {
+                                    logger?.LogDebug("Could not find parent series with ID {SeriesId} for episode '{EpisodeName}'", 
+                                        seriesGuid, baseItem.Name);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to get parent series for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                    baseItem.Name, seriesGuid);
+                            }
+                        }
+                        else
+                        {
+                            logger?.LogDebug("SeriesId property returned non-Guid value for episode '{EpisodeName}': {SeriesIdType}", 
+                                baseItem.Name, seriesId?.GetType().Name ?? "null");
+                        }
+                    }
+                    else
+                    {
+                        logger?.LogDebug("SeriesId property not found for episode '{EpisodeName}'", baseItem.Name);
+                    }
+                }
+                // For non-episodes, SeriesName remains empty string (default)
+                else
+                {
+                    logger?.LogDebug("Item '{ItemName}' is not an episode, skipping series name extraction", baseItem.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract series name for item '{ItemName}'", baseItem.Name);
+            }
+        }
+
+        /// <summary>
         /// Extracts people (actors, directors, producers, etc.) associated with the item.
         /// </summary>
         private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
@@ -690,6 +758,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
                 RuntimeMinutes = baseItem.RunTimeTicks.HasValue ? TimeSpan.FromTicks(baseItem.RunTimeTicks.Value).TotalMinutes : 0.0
             };
+
+            // Extract series name for episodes (cheap operation)
+            ExtractSeriesName(operand, baseItem, libraryManager, logger);
 
             // Try to access user data properly
             try

@@ -197,6 +197,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("FileName");
             allFields.Add("FolderPath");
             allFields.Add("MediaType");
+            allFields.Add("SeriesName");
             
             return [.. allFields];
         }

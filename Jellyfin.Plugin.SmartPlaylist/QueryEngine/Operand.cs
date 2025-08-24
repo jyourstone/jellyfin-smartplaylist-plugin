@@ -37,6 +37,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         // Collections field - indicates which collections this item belongs to  
         public List<string> Collections { get; set; } = [];
         
+        // Series name field - for episodes, contains the name of the parent series
+        public string SeriesName { get; set; } = "";
+        
         // User-specific data - Store user ID -> data mappings
         // These will be populated based on which users are referenced in rules
         public Dictionary<string, bool> IsPlayedByUser { get; set; } = [];
