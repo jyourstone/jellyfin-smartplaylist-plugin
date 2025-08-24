@@ -529,6 +529,31 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Helper method to safely extract SeriesId as Guid from episode items.
+        /// Handles Guid, Guid?, and string representations.
+        /// </summary>
+        private static bool TryGetEpisodeSeriesGuid(BaseItem baseItem, out Guid seriesGuid)
+        {
+            seriesGuid = Guid.Empty;
+            if (baseItem is not Episode) return false;
+
+            var episodeType = baseItem.GetType();
+            var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, t => t.GetProperty("SeriesId"));
+            if (seriesIdProperty == null) return false;
+
+            var seriesId = seriesIdProperty.GetValue(baseItem);
+            if (seriesId is Guid g) { seriesGuid = g; return true; }
+            if (seriesId != null && seriesId.GetType() == typeof(Guid?))
+            {
+                var nullableGuid = (Guid?)seriesId;
+                if (nullableGuid.HasValue) { seriesGuid = nullableGuid.Value; return true; }
+            }
+            if (seriesId is string s && Guid.TryParse(s, out var parsed)) { seriesGuid = parsed; return true; }
+
+            return false;
+        }
+
+        /// <summary>
         /// Extracts the series name for episodes with per-refresh caching.
         /// </summary>
         private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
@@ -536,87 +561,52 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.SeriesName = "";
             try
             {
-                // Only extract series name for episodes
-                if (baseItem is Episode)
+                // Use helper to extract SeriesId safely
+                if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid))
                 {
-                    var episodeType = baseItem.GetType();
-                    
-                    // Use cached property lookup for better performance
-                    var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("SeriesId"));
-                    
-                    if (seriesIdProperty != null)
+                    // Check cache first to avoid repeated library lookups
+                    if (cache.SeriesNameById.TryGetValue(seriesGuid, out var cachedName))
                     {
-                        var seriesId = seriesIdProperty.GetValue(baseItem);
-                        
-                        // Safely convert SeriesId to Guid and get the parent series
-                        Guid seriesGuid = Guid.Empty;
-                        
-                        if (seriesId is Guid directGuid)
-                        {
-                            seriesGuid = directGuid;
-                        }
-                        else if (seriesId != null && seriesId.GetType() == typeof(Guid?))
-                        {
-                            var nullableGuid = (Guid?)seriesId;
-                            if (nullableGuid.HasValue)
-                            {
-                                seriesGuid = nullableGuid.Value;
-                            }
-                        }
-                        else if (seriesId is string stringId && Guid.TryParse(stringId, out var parsedGuid))
-                        {
-                            seriesGuid = parsedGuid;
-                        }
-
-                        if (seriesGuid != Guid.Empty)
-                        {
-                            // Check cache first to avoid repeated library lookups
-                            if (cache.SeriesNameById.TryGetValue(seriesGuid, out var cachedName))
-                            {
-                                operand.SeriesName = cachedName;
-                                logger?.LogDebug("Using cached series name '{SeriesName}' for episode '{EpisodeName}'", 
-                                    operand.SeriesName, baseItem.Name);
-                            }
-                            else
-                            {
-                                try
-                                {
-                                    // Get the parent series from the library manager
-                                    var parentSeries = libraryManager.GetItemById(seriesGuid);
-                                    var seriesName = parentSeries?.Name ?? "";
-                                    
-                                    // Cache the result for future episodes from the same series
-                                    cache.SeriesNameById[seriesGuid] = seriesName;
-                                    operand.SeriesName = seriesName;
-                                    
-                                    logger?.LogDebug("Extracted and cached series name '{SeriesName}' for episode '{EpisodeName}'", 
-                                        operand.SeriesName, baseItem.Name);
-                                }
-                                catch (Exception ex)
-                                {
-                                    logger?.LogDebug(ex, "Failed to get parent series for episode '{EpisodeName}' with SeriesId {SeriesId}", 
-                                        baseItem.Name, seriesGuid);
-                                    
-                                    // Cache empty string to avoid repeated failures
-                                    cache.SeriesNameById[seriesGuid] = "";
-                                }
-                            }
-                        }
-                        else
-                        {
-                            logger?.LogDebug("SeriesId property had unsupported value for episode '{EpisodeName}': {SeriesIdType}", 
-                                baseItem.Name, seriesId?.GetType().Name ?? "null");
-                        }
+                        operand.SeriesName = cachedName;
+                        logger?.LogDebug("Using cached series name '{SeriesName}' for episode '{EpisodeName}'", 
+                            operand.SeriesName, baseItem.Name);
                     }
                     else
                     {
-                        logger?.LogDebug("SeriesId property not found for episode '{EpisodeName}'", baseItem.Name);
+                        try
+                        {
+                            // Get the parent series from the library manager
+                            var parentSeries = libraryManager.GetItemById(seriesGuid);
+                            var seriesName = parentSeries?.Name ?? "";
+                            
+                            // Cache the result for future episodes from the same series
+                            cache.SeriesNameById[seriesGuid] = seriesName;
+                            operand.SeriesName = seriesName;
+                            
+                            logger?.LogDebug("Extracted and cached series name '{SeriesName}' for episode '{EpisodeName}'", 
+                                operand.SeriesName, baseItem.Name);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Failed to get parent series for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                baseItem.Name, seriesGuid);
+                            
+                            // Cache empty string to avoid repeated failures
+                            cache.SeriesNameById[seriesGuid] = "";
+                        }
                     }
                 }
-                // For non-episodes, SeriesName remains empty string (default) 
                 else
                 {
-                    logger?.LogDebug("Item '{ItemName}' is not an episode, series name remains empty", baseItem.Name);
+                    // Either not an episode, no SeriesId property, or unsupported SeriesId value
+                    if (baseItem is Episode)
+                    {
+                        logger?.LogDebug("Could not extract valid SeriesId from episode '{EpisodeName}'", baseItem.Name);
+                    }
+                    else
+                    {
+                        logger?.LogDebug("Item '{ItemName}' is not an episode, series name remains empty", baseItem.Name);
+                    }
                 }
             }
             catch (Exception ex)
@@ -995,19 +985,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         var episodeType = baseItem.GetType();
                         
                         // Use cached property lookups for better performance with thread-safe access
-                        var seriesIdProperty = _seriesIdPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("SeriesId"));
                         var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
                         var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
                         
-                        if (seriesIdProperty != null && parentIndexProperty != null && indexProperty != null)
+                        if (parentIndexProperty != null && indexProperty != null)
                         {
-                            var seriesId = seriesIdProperty.GetValue(baseItem);
                             // Safe extraction of season and episode numbers - handle both nullable and non-nullable int properties
                             var seasonNumber = ExtractIntValue(parentIndexProperty.GetValue(baseItem));
                             var episodeNumber = ExtractIntValue(indexProperty.GetValue(baseItem));
                             
-                            // Safely convert SeriesId to Guid and validate all required properties
-                            if (seriesId is Guid seriesGuid && seasonNumber.HasValue && episodeNumber.HasValue)
+                            // Use helper to safely extract SeriesId and validate all required properties
+                            if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid) && seasonNumber.HasValue && episodeNumber.HasValue)
                             {
                                 // Get all episodes in this series - use cache to avoid redundant database queries
                                 var allEpisodes = GetCachedSeriesEpisodes(seriesGuid, user, libraryManager, cache, logger);

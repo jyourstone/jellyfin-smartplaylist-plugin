@@ -489,25 +489,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     if (ExpressionSets != null)
                     {
-                        needsAudioLanguages = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "AudioLanguages");
+                        var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
                         
-                        needsPeople = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "People");
-                        
-                        needsCollections = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "Collections");
-                        
-                        needsNextUnwatched = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "NextUnwatched");
-                        
-                        needsSeriesName = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "SeriesName");
+                        needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
+                        needsPeople = fieldReqs.NeedsPeople;
+                        needsCollections = fieldReqs.NeedsCollections;
+                        needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
+                        needsSeriesName = fieldReqs.NeedsSeriesName;
                         
                         // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
                         // If any rule explicitly sets it to false, use false; otherwise default to true
@@ -589,7 +577,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         hasNonExpensiveRules = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName != "AudioLanguages" && expr?.MemberName != "People");
+                            .Any(expr => expr != null
+                                && expr.MemberName != "AudioLanguages"
+                                && expr.MemberName != "People"
+                                && expr.MemberName != "Collections"
+                                && expr.MemberName != "NextUnwatched"
+                                && expr.MemberName != "SeriesName");
                     }
                 }
                 catch (Exception ex)
@@ -993,19 +986,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
 
                 // Check field requirements for performance optimization
-                var needsAudioLanguages = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "AudioLanguages") == true) == true;
-                var needsPeople = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "People") == true) == true;
-                var needsCollections = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "Collections") == true) == true;
-                var needsNextUnwatched = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "NextUnwatched") == true) == true;
-                var needsSeriesName = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "SeriesName") == true) == true;
-                var includeUnwatchedSeries = ExpressionSets?.SelectMany(set => set.Expressions ?? [])
-                    .Where(e => e.MemberName == "NextUnwatched")
-                    .All(e => e.IncludeUnwatchedSeries != false) == true;
-                var additionalUserIds = ExpressionSets?.SelectMany(set => set.Expressions ?? [])
-                    .Where(e => !string.IsNullOrEmpty(e.UserId))
-                    .Select(e => e.UserId)
-                    .Distinct()
-                    .ToList() ?? [];
+                var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
+                var needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
+                var needsPeople = fieldReqs.NeedsPeople;
+                var needsCollections = fieldReqs.NeedsCollections;
+                var needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
+                var needsSeriesName = fieldReqs.NeedsSeriesName;
+                var includeUnwatchedSeries = fieldReqs.IncludeUnwatchedSeries;
+                var additionalUserIds = fieldReqs.AdditionalUserIds;
 
                 var refreshCache = new OperandFactory.RefreshCache();
 
@@ -1534,6 +1522,65 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return OrderMap.TryGetValue(orderName ?? "", out var factory) 
                 ? factory() 
                 : new NoOrder();
+        }
+    }
+
+    /// <summary>
+    /// Helper class to analyze field requirements from expression sets.
+    /// </summary>
+    public class FieldRequirements
+    {
+        public bool NeedsAudioLanguages { get; set; }
+        public bool NeedsPeople { get; set; }
+        public bool NeedsCollections { get; set; }
+        public bool NeedsNextUnwatched { get; set; }
+        public bool NeedsSeriesName { get; set; }
+        public bool IncludeUnwatchedSeries { get; set; } = true;
+        public List<string> AdditionalUserIds { get; set; } = [];
+        
+        /// <summary>
+        /// Analyzes expression sets to determine field requirements.
+        /// </summary>
+        public static FieldRequirements Analyze(List<ExpressionSet> expressionSets)
+        {
+            var requirements = new FieldRequirements();
+            
+            if (expressionSets == null) return requirements;
+            
+            requirements.NeedsAudioLanguages = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "AudioLanguages");
+                
+            requirements.NeedsPeople = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "People");
+                
+            requirements.NeedsCollections = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "Collections");
+                
+            requirements.NeedsNextUnwatched = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "NextUnwatched");
+                
+            requirements.NeedsSeriesName = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "SeriesName");
+            
+            // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
+            requirements.IncludeUnwatchedSeries = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Where(e => e?.MemberName == "NextUnwatched")
+                .All(e => e.IncludeUnwatchedSeries != false);
+                
+            // Extract additional user IDs from user-specific rules
+            requirements.AdditionalUserIds = [.. expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Where(e => !string.IsNullOrEmpty(e?.UserId))
+                .Select(e => e.UserId)
+                .Distinct()];
+                
+            return requirements;
         }
     }
 
