@@ -75,6 +75,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return BuildResolutionExpression(r, left, logger);
             }
             
+            // Check framerate fields (nullable float type)
+            if (tProp == typeof(float?) && IsFramerateField(r.MemberName))
+            {
+                return BuildFramerateExpression(r, left, logger);
+            }
+            
             if (tProp == typeof(string))
             {
                 return BuildStringExpression(r, left, logger);
@@ -493,6 +499,53 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Combine: resolution must be valid AND meet the comparison criteria
             return System.Linq.Expressions.Expression.AndAlso(isValidResolution, comparisonExpression);
         }
+
+        /// <summary>
+        /// Builds expressions for framerate fields that support numeric comparisons with null handling.
+        /// Items with null framerate are ignored (filtered out).
+        /// </summary>
+        private static BinaryExpression BuildFramerateExpression(Expression r, MemberExpression left, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist handling framerate field {Field} with value {Value}", r.MemberName, r.TargetValue);
+            
+            // Enforce per-field operator whitelist for framerate fields
+            var allowedOps = Operators.GetOperatorsForField(r.MemberName);
+            if (!allowedOps.Contains(r.Operator))
+            {
+                logger?.LogError("SmartPlaylist unsupported operator '{Operator}' for framerate field '{Field}'. Allowed: {Allowed}",
+                    r.Operator, r.MemberName, string.Join(", ", allowedOps));
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for framerate field '{r.MemberName}'. Supported operators: {supportedOperators}");
+            }
+
+            // Parse target value as float
+            if (!float.TryParse(r.TargetValue, out var targetValue))
+            {
+                logger?.LogError("SmartPlaylist framerate comparison failed: Invalid numeric value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid numeric value '{r.TargetValue}' for field '{r.MemberName}'. Expected a decimal number.");
+            }
+
+            // For all framerate comparisons, we need to ensure the framerate field is not null
+            // This means items with null framerate will be ignored
+            var hasValueCheck = System.Linq.Expressions.Expression.Property(left, "HasValue");
+            var valueProperty = System.Linq.Expressions.Expression.Property(left, "Value");
+            var targetConstant = System.Linq.Expressions.Expression.Constant(targetValue);
+
+            // Handle different operators with null check
+            BinaryExpression comparisonExpression = r.Operator switch
+            {
+                "Equal" => System.Linq.Expressions.Expression.Equal(valueProperty, targetConstant),
+                "NotEqual" => System.Linq.Expressions.Expression.NotEqual(valueProperty, targetConstant),
+                "GreaterThan" => System.Linq.Expressions.Expression.GreaterThan(valueProperty, targetConstant),
+                "LessThan" => System.Linq.Expressions.Expression.LessThan(valueProperty, targetConstant),
+                "GreaterThanOrEqual" => System.Linq.Expressions.Expression.GreaterThanOrEqual(valueProperty, targetConstant),
+                "LessThanOrEqual" => System.Linq.Expressions.Expression.LessThanOrEqual(valueProperty, targetConstant),
+                _ => throw new ArgumentException($"Operator '{r.Operator}' is not supported for framerate field '{r.MemberName}'. Supported operators: {string.Join(", ", allowedOps)}")
+            };
+
+            // Combine: framerate must have a value (not null) AND meet the comparison criteria
+            return System.Linq.Expressions.Expression.AndAlso(hasValueCheck, comparisonExpression);
+        }
         
         /// <summary>
         /// Builds standard date expressions without special handling for never-played items.
@@ -802,6 +855,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool IsResolutionField(string fieldName)
         {
             return FieldDefinitions.IsResolutionField(fieldName);
+        }
+
+        private static bool IsFramerateField(string fieldName)
+        {
+            return FieldDefinitions.IsFramerateField(fieldName);
         }
 
         /// <summary>
