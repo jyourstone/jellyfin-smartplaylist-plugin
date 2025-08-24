@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using System.Linq;
@@ -518,8 +519,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 throw new ArgumentException($"Operator '{r.Operator}' is not supported for framerate field '{r.MemberName}'. Supported operators: {supportedOperators}");
             }
 
-            // Parse target value as float
-            if (!float.TryParse(r.TargetValue, out var targetValue))
+            // Parse target value as float using culture-invariant parsing
+            if (!float.TryParse(r.TargetValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var targetValue))
             {
                 logger?.LogError("SmartPlaylist framerate comparison failed: Invalid numeric value '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
                 throw new ArgumentException($"Invalid numeric value '{r.TargetValue}' for field '{r.MemberName}'. Expected a decimal number.");

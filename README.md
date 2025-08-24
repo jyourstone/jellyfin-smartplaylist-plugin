@@ -184,7 +184,7 @@ When adding new rule fields to the plugin, ensure they are categorized correctly
   - **Operators**: Contains, NotContains, IsIn, IsNotIn, MatchRegex
   - **Use for**: Fields that can have multiple values per item
 
-- **`NUMERIC_FIELDS`** - Number-based fields (ProductionYear, CommunityRating, RuntimeMinutes, PlayCount)  
+- **`NUMERIC_FIELDS`** - Number-based fields (ProductionYear, CommunityRating, RuntimeMinutes, PlayCount, Framerate)  
   - **Operators**: Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual
   - **Use for**: Fields with numeric values
 
@@ -217,6 +217,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
 - **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K) with numeric comparison support
+- **Framerate** - Video framerate in frames per second (e.g., 23.976, 29.97, 59.94)
 
 #### **Ratings & Playback**
 - **Community Rating** - User ratings (0-10)
@@ -307,6 +308,19 @@ The **Resolution** field provides predefined resolution options and supports bot
   - `Resolution = 4K` → Finds only 4K content
   - `Resolution < 720p` → Finds 480p content
   - `Resolution >= 1080p` → Finds 1080p, 1440p, 4K, and 8K content
+
+#### Framerate Field Details
+
+The **Framerate** field extracts video framerate information from media streams and supports numeric comparisons:
+
+- **Format**: Decimal values representing frames per second (e.g., 23.976, 29.97, 59.94)
+- **Null Handling**: Items without framerate information are automatically excluded from framerate rules
+- **Numeric Comparisons**: Use standard numeric operators for filtering by framerate ranges
+- **Examples**:
+  - `Framerate = 24` → Finds content at exactly 24fps
+  - `Framerate > 30` → Finds high framerate content (60fps, 120fps, etc.)
+  - `Framerate < 25` → Finds cinema framerates (23.976fps, 24fps)
+  - `Framerate >= 59.94` → Finds smooth motion content (59.94fps, 60fps, etc.)
 
 #### IsIn / IsNotIn Operator Details
 

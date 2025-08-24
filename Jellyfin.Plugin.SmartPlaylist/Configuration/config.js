@@ -13,7 +13,7 @@
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
         LIST_FIELDS: ['Collections', 'People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
-        NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount'],
+        NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount', 'Framerate'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
@@ -682,7 +682,7 @@
         } else if (FIELD_TYPES.BOOLEAN_FIELDS.includes(fieldValue)) {
             handleBooleanFieldInput(valueContainer, fieldValue, currentValue);
         } else if (FIELD_TYPES.NUMERIC_FIELDS.includes(fieldValue)) {
-            handleNumericFieldInput(valueContainer, currentValue);
+            handleNumericFieldInput(valueContainer, fieldValue, currentValue);
         } else if (FIELD_TYPES.DATE_FIELDS.includes(fieldValue)) {
             handleDateFieldInput(valueContainer, currentOperator, currentValue);
         } else if (FIELD_TYPES.RESOLUTION_FIELDS.includes(fieldValue)) {
@@ -748,12 +748,20 @@
     /**
      * Handles numeric field inputs
      */
-    function handleNumericFieldInput(valueContainer, currentValue) {
+    function handleNumericFieldInput(valueContainer, fieldValue, currentValue) {
         const input = document.createElement('input');
         input.type = 'number';
         input.className = 'emby-input rule-value-input';
         input.placeholder = 'Value';
         input.style.width = '100%';
+        
+        // Set appropriate step for decimal fields like Framerate
+        if (fieldValue === 'Framerate' || fieldValue === 'CommunityRating' || fieldValue === 'CriticRating') {
+            input.step = 'any'; // Allow any decimal precision
+        } else {
+            input.step = '1'; // Integer fields like ProductionYear, RuntimeMinutes, PlayCount
+        }
+        
         if (currentValue) {
             input.value = currentValue;
         }
