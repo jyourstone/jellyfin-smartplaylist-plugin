@@ -8,9 +8,9 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
-using Jellyfin.Data.Entities;
-using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartPlaylist.Constants;
+using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
 
 namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 {
@@ -1361,9 +1361,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         collections.Add(collection.Name);
 
                     }
+                    
+                    logger?.LogDebug("Collection membership cache built with {CacheCount} collections", cache.CollectionMembershipCache.Count);
                 }
                 
-
             }
             catch (Exception ex)
             {

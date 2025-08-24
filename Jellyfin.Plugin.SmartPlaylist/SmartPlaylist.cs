@@ -3,8 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -496,6 +496,23 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         needsCollections = fieldReqs.NeedsCollections;
                         needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
                         needsSeriesName = fieldReqs.NeedsSeriesName;
+                        
+                        // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
+                        // If any rule explicitly sets it to false, use false; otherwise default to true
+                        var nextUnwatchedRules = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Where(expr => expr?.MemberName == "NextUnwatched")
+                            .ToList();
+                        
+                        includeUnwatchedSeries = !nextUnwatchedRules.Any(rule => rule.IncludeUnwatchedSeries == false);
+                        
+                        needsCollections = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Any(expr => expr?.MemberName == "Collections");
+                        
+                        needsNextUnwatched = ExpressionSets
+                            .SelectMany(set => set?.Expressions ?? [])
+                            .Any(expr => expr?.MemberName == "NextUnwatched");
                         
                         // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
                         // If any rule explicitly sets it to false, use false; otherwise default to true
