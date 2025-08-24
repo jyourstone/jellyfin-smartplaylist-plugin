@@ -6,7 +6,6 @@ using System.Linq;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
-using Jellyfin.Plugin.SmartPlaylist.Constants;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
