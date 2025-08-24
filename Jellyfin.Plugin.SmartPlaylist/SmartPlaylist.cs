@@ -514,15 +514,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             .SelectMany(set => set?.Expressions ?? [])
                             .Any(expr => expr?.MemberName == "NextUnwatched");
                         
-                        // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
-                        // If any rule explicitly sets it to false, use false; otherwise default to true
-                        var nextUnwatchedRules = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Where(expr => expr?.MemberName == "NextUnwatched")
-                            .ToList();
-                        
-                        includeUnwatchedSeries = !nextUnwatchedRules.Any(rule => rule.IncludeUnwatchedSeries == false);
-                        
 
                         
                         // Collect unique user IDs from user-specific expressions
