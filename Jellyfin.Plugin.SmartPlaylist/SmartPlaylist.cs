@@ -481,6 +481,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var needsPeople = false;
                 var needsCollections = false;
                 var needsNextUnwatched = false;
+                var needsSeriesName = false;
                 var includeUnwatchedSeries = true; // Default to true for backwards compatibility
                 var additionalUserIds = new List<string>();
                 
@@ -488,21 +489,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     if (ExpressionSets != null)
                     {
-                        needsAudioLanguages = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "AudioLanguages");
+                        var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
                         
-                        needsPeople = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "People");
-                        
-                        needsCollections = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "Collections");
-                        
-                        needsNextUnwatched = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName == "NextUnwatched");
+                        needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
+                        needsPeople = fieldReqs.NeedsPeople;
+                        needsCollections = fieldReqs.NeedsCollections;
+                        needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
+                        needsSeriesName = fieldReqs.NeedsSeriesName;
                         
                         // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
                         // If any rule explicitly sets it to false, use false; otherwise default to true
@@ -584,7 +577,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         hasNonExpensiveRules = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr?.MemberName != "AudioLanguages" && expr?.MemberName != "People");
+                            .Any(expr => expr != null
+                                && expr.MemberName != "AudioLanguages"
+                                && expr.MemberName != "People"
+                                && expr.MemberName != "Collections"
+                                && expr.MemberName != "NextUnwatched"
+                                && expr.MemberName != "SeriesName");
                     }
                 }
                 catch (Exception ex)
@@ -617,7 +615,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -697,7 +695,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool ShouldExpandEpisodesForCollections()
         {
             // Only expand if Episodes media type is selected AND Collections expansion is enabled
-            var isEpisodesMediaType = MediaTypes?.Contains("Episode") == true;
+            var isEpisodesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Episode) == true;
             var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
                 set.Expressions?.Any(expr => 
                     expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
@@ -779,6 +777,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     ExtractPeople = false,
                     ExtractCollections = true,  // Only extract Collections for this check
                     ExtractNextUnwatched = false,
+                    ExtractSeriesName = false,
                     IncludeUnwatchedSeries = true,
                     AdditionalUserIds = []
                 }, refreshCache);
@@ -846,8 +845,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             try
             {
                 // Media-type driven Collections expansion logic
-                var isEpisodesMediaType = MediaTypes?.Contains("Episode") == true;
-                var isSeriesMediaType = MediaTypes?.Contains("Series") == true;
+                var isEpisodesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Episode) == true;
+                var isSeriesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Series) == true;
                 
                 // Check if Collections rules have episode expansion enabled
                 var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
@@ -987,18 +986,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
 
                 // Check field requirements for performance optimization
-                var needsAudioLanguages = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "AudioLanguages") == true) == true;
-                var needsPeople = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "People") == true) == true;
-                var needsCollections = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "Collections") == true) == true;
-                var needsNextUnwatched = ExpressionSets?.Any(set => set.Expressions?.Any(e => e.MemberName == "NextUnwatched") == true) == true;
-                var includeUnwatchedSeries = ExpressionSets?.SelectMany(set => set.Expressions ?? [])
-                    .Where(e => e.MemberName == "NextUnwatched")
-                    .All(e => e.IncludeUnwatchedSeries != false) == true;
-                var additionalUserIds = ExpressionSets?.SelectMany(set => set.Expressions ?? [])
-                    .Where(e => !string.IsNullOrEmpty(e.UserId))
-                    .Select(e => e.UserId)
-                    .Distinct()
-                    .ToList() ?? [];
+                var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
+                var needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
+                var needsPeople = fieldReqs.NeedsPeople;
+                var needsCollections = fieldReqs.NeedsCollections;
+                var needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
+                var needsSeriesName = fieldReqs.NeedsSeriesName;
+                var includeUnwatchedSeries = fieldReqs.IncludeUnwatchedSeries;
+                var additionalUserIds = fieldReqs.AdditionalUserIds;
 
                 var refreshCache = new OperandFactory.RefreshCache();
 
@@ -1014,6 +1009,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             ExtractPeople = needsPeople,
                             ExtractCollections = needsCollections,
                             ExtractNextUnwatched = needsNextUnwatched,
+                            ExtractSeriesName = needsSeriesName,
                             IncludeUnwatchedSeries = includeUnwatchedSeries,
                             AdditionalUserIds = additionalUserIds
                         }, refreshCache);
@@ -1092,6 +1088,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     ExtractPeople = false,
                     ExtractCollections = false,
                     ExtractNextUnwatched = false,
+                    ExtractSeriesName = false,
                     IncludeUnwatchedSeries = true,
                     AdditionalUserIds = []
                 }, new OperandFactory.RefreshCache());
@@ -1125,7 +1122,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool includeUnwatchedSeries,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool includeUnwatchedSeries,
             List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
@@ -1138,7 +1135,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople || needsCollections || needsNextUnwatched)
+                if (needsAudioLanguages || needsPeople || needsCollections || needsNextUnwatched || needsSeriesName)
                 {
                     // Create per-refresh cache for performance optimization within this chunk
                     var refreshCache = new OperandFactory.RefreshCache();
@@ -1147,8 +1144,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
                     var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
 
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded})",
-                        needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched);
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded}, SeriesName: {SeriesNameNeeded})",
+                        needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName);
                     
                     
                     try
@@ -1170,7 +1167,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     var compiledRule = compiledRules[setIndex][exprIndex];
                                     
-                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People" || expr.MemberName == "Collections" || expr.MemberName == "NextUnwatched")
+                                    if (expr.MemberName == "AudioLanguages" || expr.MemberName == "People" || expr.MemberName == "Collections" || expr.MemberName == "NextUnwatched" || expr.MemberName == "SeriesName")
                                     {
                                         expensiveRules.Add(compiledRule);
                                         logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
@@ -1199,7 +1196,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -1219,6 +1216,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     ExtractPeople = needsPeople,
                                     ExtractCollections = needsCollections,
                                     ExtractNextUnwatched = needsNextUnwatched,
+                                    ExtractSeriesName = needsSeriesName,
                                     IncludeUnwatchedSeries = includeUnwatchedSeries,
                                     AdditionalUserIds = additionalUserIds
                                 }, refreshCache);
@@ -1289,6 +1287,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     ExtractPeople = false,
                                     ExtractCollections = false,
                                     ExtractNextUnwatched = false,
+                                    ExtractSeriesName = false,
                                     IncludeUnwatchedSeries = true,
                                     AdditionalUserIds = []
                                 }, refreshCache);
@@ -1335,6 +1334,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     ExtractPeople = needsPeople,
                                     ExtractCollections = needsCollections,
                                     ExtractNextUnwatched = needsNextUnwatched,
+                                    ExtractSeriesName = needsSeriesName,
                                     IncludeUnwatchedSeries = includeUnwatchedSeries,
                                     AdditionalUserIds = additionalUserIds
                                 }, refreshCache);
@@ -1394,7 +1394,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
                 }
                 
                 return results;
@@ -1416,7 +1416,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// Simple item processing fallback method with error handling.
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool includeUnwatchedSeries,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool includeUnwatchedSeries,
             List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
             var results = new List<BaseItem>();
@@ -1438,6 +1438,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             ExtractPeople = needsPeople,
                             ExtractCollections = needsCollections,
                             ExtractNextUnwatched = needsNextUnwatched,
+                            ExtractSeriesName = needsSeriesName,
                             IncludeUnwatchedSeries = includeUnwatchedSeries,
                             AdditionalUserIds = additionalUserIds
                         }, refreshCache);
@@ -1521,6 +1522,65 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return OrderMap.TryGetValue(orderName ?? "", out var factory) 
                 ? factory() 
                 : new NoOrder();
+        }
+    }
+
+    /// <summary>
+    /// Helper class to analyze field requirements from expression sets.
+    /// </summary>
+    public class FieldRequirements
+    {
+        public bool NeedsAudioLanguages { get; set; }
+        public bool NeedsPeople { get; set; }
+        public bool NeedsCollections { get; set; }
+        public bool NeedsNextUnwatched { get; set; }
+        public bool NeedsSeriesName { get; set; }
+        public bool IncludeUnwatchedSeries { get; set; } = true;
+        public List<string> AdditionalUserIds { get; set; } = [];
+        
+        /// <summary>
+        /// Analyzes expression sets to determine field requirements.
+        /// </summary>
+        public static FieldRequirements Analyze(List<ExpressionSet> expressionSets)
+        {
+            var requirements = new FieldRequirements();
+            
+            if (expressionSets == null) return requirements;
+            
+            requirements.NeedsAudioLanguages = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "AudioLanguages");
+                
+            requirements.NeedsPeople = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "People");
+                
+            requirements.NeedsCollections = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "Collections");
+                
+            requirements.NeedsNextUnwatched = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "NextUnwatched");
+                
+            requirements.NeedsSeriesName = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "SeriesName");
+            
+            // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
+            requirements.IncludeUnwatchedSeries = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Where(e => e?.MemberName == "NextUnwatched")
+                .All(e => e.IncludeUnwatchedSeries != false);
+                
+            // Extract additional user IDs from user-specific rules
+            requirements.AdditionalUserIds = [.. expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Where(e => !string.IsNullOrEmpty(e?.UserId))
+                .Select(e => e.UserId)
+                .Distinct()];
+                
+            return requirements;
         }
     }
 

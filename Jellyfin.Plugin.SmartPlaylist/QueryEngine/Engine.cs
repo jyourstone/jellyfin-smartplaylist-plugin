@@ -651,8 +651,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             // For equality, we need to check if the date falls within the target day
             // Convert the target date to start and end of day timestamps using UTC
-            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
-                System.Globalization.DateTimeStyles.None, out DateTime targetDate))
+            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, 
+                DateTimeStyles.None, out DateTime targetDate))
             {
                 logger?.LogError("SmartPlaylist date equality failed: Invalid date format '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
                 throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
@@ -681,8 +681,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             logger?.LogDebug("SmartPlaylist handling date inequality for field {Field} with date {Date}", r.MemberName, r.TargetValue);
             
             // For inequality, we need to check if the date is outside the target day
-            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
-                System.Globalization.DateTimeStyles.None, out DateTime targetDate))
+            if (!DateTime.TryParseExact(r.TargetValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, 
+                DateTimeStyles.None, out DateTime targetDate))
             {
                 logger?.LogError("SmartPlaylist date inequality failed: Invalid date format '{Value}' for field '{Field}'", r.TargetValue, r.MemberName);
                 throw new ArgumentException($"Invalid date format '{r.TargetValue}' for field '{r.MemberName}'. Expected format: YYYY-MM-DD");
@@ -879,8 +879,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             try
             {
                 // Parse the date string as YYYY-MM-DD format
-                if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, 
-                    System.Globalization.DateTimeStyles.None, out DateTime parsedDate))
+                if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", CultureInfo.InvariantCulture, 
+                    DateTimeStyles.None, out DateTime parsedDate))
                 {
                     // Convert to Unix timestamp using UTC to ensure consistency with other date operations
                     return new DateTimeOffset(parsedDate, TimeSpan.Zero).ToUnixTimeSeconds();
