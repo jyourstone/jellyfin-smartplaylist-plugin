@@ -404,6 +404,129 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Extracts framerate from media streams.
+        /// </summary>
+        private static void ExtractFramerate(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.Framerate = null;
+            try
+            {
+                // Try multiple approaches to access media stream information
+                List<object> mediaStreams = [];
+                
+                // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                var baseItemType = baseItem.GetType();
+                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
+                
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                        }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Approach 2: Look for MediaSources property (with caching)
+                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
+                    {
+                        foreach (var source in sourceEnum)
+                        {
+                            try
+                            {
+                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                if (streamsProperty != null)
+                                {
+                                    var streams = streamsProperty.GetValue(source);
+                                    if (streams is IEnumerable<object> streamList)
+                                    {
+                                        mediaStreams.AddRange(streamList);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
+                            }
+                        }
+                    }
+                }
+                
+                // Process found streams to find the first video stream with framerate information
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        var framerateProperty = stream.GetType().GetProperty("RealFrameRate") ?? stream.GetType().GetProperty("AverageFrameRate");
+                        
+                        if (typeProperty != null && framerateProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            var framerate = framerateProperty.GetValue(stream);
+                            
+                            // Check if it's a video stream
+                            if (streamType != null && streamType.ToString() == "Video" && framerate != null)
+                            {
+                                // Try to parse framerate as different numeric types
+                                if (framerate is float floatFramerate && floatFramerate > 0)
+                                {
+                                    operand.Framerate = floatFramerate;
+                                    break; // Use the first valid framerate found
+                                }
+                                else if (framerate is double doubleFramerate && doubleFramerate > 0)
+                                {
+                                    operand.Framerate = (float)doubleFramerate;
+                                    break;
+                                }
+                                else if (framerate is int intFramerate && intFramerate > 0)
+                                {
+                                    operand.Framerate = intFramerate;
+                                    break;
+                                }
+                                else if (double.TryParse(framerate.ToString(), out var parsedFramerate) && parsedFramerate > 0)
+                                {
+                                    operand.Framerate = (float)parsedFramerate;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                logger?.LogDebug("Extracted framerate for item {Name}: {Framerate}", baseItem.Name, operand.Framerate?.ToString() ?? "null");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract framerate for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
         /// Extracts people (actors, directors, producers, etc.) associated with the item.
         /// </summary>
         private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
@@ -721,6 +844,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
             // Extract resolution from media streams - always extract for performance (cheap operation)
             ExtractResolution(operand, baseItem, logger);
+            
+            // Extract framerate from media streams - always extract for performance (cheap operation)
+            ExtractFramerate(operand, baseItem, logger);
             
             // Extract collections - only when needed for performance
             if (options.ExtractCollections)

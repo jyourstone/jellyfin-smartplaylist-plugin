@@ -96,7 +96,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                     => BooleanFieldOperators,
                 
                 // Numeric fields
-                "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" 
+                "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" or "Framerate" 
                     => NumericFieldOperators,
                 
                 // Date fields
@@ -145,6 +145,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["CriticRating"] = NumericFieldOperators,
                 ["RuntimeMinutes"] = NumericFieldOperators,
                 ["PlayCount"] = NumericFieldOperators,
+                ["Framerate"] = NumericFieldOperators,
                 
                 // Date fields - date/time fields
                 ["DateCreated"] = DateFieldOperators,

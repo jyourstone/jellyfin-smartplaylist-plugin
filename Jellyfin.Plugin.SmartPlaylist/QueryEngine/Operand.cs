@@ -28,6 +28,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public List<string> AudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
         public string Resolution { get; set; } = "";
+        public float? Framerate { get; set; } = null;
         
         // Music-specific fields
         public List<string> Artists { get; set; } = [];
