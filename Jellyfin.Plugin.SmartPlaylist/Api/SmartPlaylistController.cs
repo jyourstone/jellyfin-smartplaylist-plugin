@@ -943,7 +943,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return BadRequest(new { message = "No smart playlists found to export" });
                 }
 
-                var zipStream = new MemoryStream();
+                using var zipStream = new MemoryStream();
                 using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
                 {
                     foreach (var filePath in filePaths)
@@ -1013,6 +1013,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     {
                         continue; // Skip non-JSON files
                     }
+                    
+                    // Skip system files (like macOS ._filename files)
+                    if (entry.Name.StartsWith("._") || entry.Name.StartsWith(".DS_Store"))
+                    {
+                        _logger.LogDebug("Skipping system file: {FileName}", entry.Name);
+                        continue;
+                    }
 
                     try
                     {
@@ -1026,6 +1033,55 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                             importResults.Add(new { fileName = entry.Name, status = "error", message = "Invalid or empty playlist data" });
                             errorCount++;
                             continue;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(playlist.Name))
+                        {
+                            _logger.LogWarning("Playlist in file {FileName} has no name", entry.Name);
+                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Playlist must have a name" });
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Validate and potentially reassign user references
+                        bool reassignedUsers = false;
+                        Guid currentUserId = Guid.Empty;
+                        
+                        // Check playlist owner
+                        if (playlist.UserId != Guid.Empty)
+                        {
+                            var user = _userManager.GetUserById(playlist.UserId);
+                            if (user == null)
+                            {
+                                // Only get current user ID when we need to reassign
+                                if (currentUserId == Guid.Empty)
+                                {
+                                    var currentUserIdClaim = User.FindFirst("UserId")?.Value ?? User.FindFirst("sub")?.Value;
+                                    if (string.IsNullOrEmpty(currentUserIdClaim) || !Guid.TryParse(currentUserIdClaim, out currentUserId))
+                                    {
+                                        _logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId} but cannot determine importing user for reassignment", 
+                                            playlist.Name, playlist.UserId);
+                                        importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
+                                        errorCount++;
+                                        continue; // Skip this entire playlist
+                                    }
+                                }
+                                
+                                _logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId}, reassigning to importing user {CurrentUserId}", 
+                                    playlist.Name, playlist.UserId, currentUserId);
+                                
+                                playlist.UserId = currentUserId;
+                                reassignedUsers = true;
+                            }
+                        }
+
+                        // Note: We don't reassign user-specific expression rules if the referenced user doesn't exist.
+                        // The system will naturally fall back to the playlist owner for such rules.
+
+                        // Add note to import results if users were reassigned
+                        if (reassignedUsers)
+                        {
+                            _logger.LogInformation("Reassigned user references in playlist '{PlaylistName}' due to non-existent users", playlist.Name);
                         }
 
                         if (existingIds.Contains(playlist.Id))

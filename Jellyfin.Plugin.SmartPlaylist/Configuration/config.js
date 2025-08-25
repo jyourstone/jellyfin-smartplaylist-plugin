@@ -3570,6 +3570,14 @@
             return;
         }
         
+        // File size limit: 10MB
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
+        if (file.size > MAX_FILE_SIZE) {
+            showNotification('File is too large (max 10MB)', 'error');
+            return;
+        }
+        
+        // Extension check as safety net (accept attribute already filters in dialog)
         if (!file.name.toLowerCase().endsWith('.zip')) {
             showNotification('Please select a ZIP file', 'error');
             return;

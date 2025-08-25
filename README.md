@@ -106,15 +106,10 @@ The Export/Import feature allows you to backup your smart playlist configuration
 **Import:**
 - Select a ZIP file exported from the SmartPlaylist plugin
 - Click "Import Selected File" to upload and process the archive
-- View detailed import results showing which playlists were imported, skipped, or had errors
 - **Duplicate Detection**: Playlists with the same GUID as existing playlists will be automatically skipped to prevent conflicts
-- **Safe Operation**: Import process validates all playlist data before saving
+- **User Reassignment**: When importing playlists from another Jellyfin instance, if the original playlist owner doesn't exist in the destination system, the playlist will be automatically reassigned to the admin user performing the import
 
-This feature is particularly useful for:
-- Creating backups before major changes
-- Migrating playlists when setting up a new Jellyfin server
-- Sharing playlist configurations with other users
-- Testing playlist configurations in development environments
+> **User-Specific Rules**: Rules like "Is Played by [User]" or "Is Favorite for [User]" that reference non-existent users will need to be updated manually.
 
 ### Automatic Updates
 
