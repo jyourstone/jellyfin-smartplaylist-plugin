@@ -166,7 +166,9 @@
         <div data-role="content">
             <div class="content-primary">
                 <h1>SmartPlaylist Configuration</h1>
-                <div id="plugin-notification-area" style="display: none; padding: 1em; margin: 1em 0; border-radius: 4px; text-align: center; font-weight: bold;"></div>
+                <form style="margin: 0;">
+                    <div id="plugin-notification-area" style="display: none; padding: 1em; margin: 1em 0; border-radius: 4px; text-align: center; font-weight: bold;"></div>
+                </form>
 
                 <div class="emby-tabs-slider" style="white-space:nowrap;">
                     <button type="button" is="emby-button" class="emby-tab-button emby-button emby-tab-button-active" data-tab="create" data-index="0">
@@ -267,7 +269,7 @@
 
                 <!-- Manage Tab -->
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
-                    <div style="margin-top:2em;">
+                    <form style="margin-top:2em;">
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised">Refresh List</button>
                         </div>
@@ -283,24 +285,24 @@
                         <div id="playlist-list-container">
                             <p>Loading playlists...</p>
                         </div>
-                    </div>
+                    </form>
                 </div>
 
                 <!-- Settings Tab -->
                 <div id="settings-tab" class="page-content hide" data-tab-content="settings">
-                    <div style="margin-top:2em;">
+                    <form style="margin-top:2em;">
                         <h3 class="sectionTitle">General Settings</h3>
-                        <div class="input-group" style="display: flex; gap: 2em;">
-                            <div class="inputContainer flex-grow">
-                                <label class="inputLabel" for="defaultSortBy">Default Sort By</label>
-                                <select is="emby-select" id="defaultSortBy" class="emby-select"></select>
-                                <div class="fieldDescription">Default sorting method for new smart playlists.</div>
-                            </div>
-                            <div class="inputContainer flex-grow">
-                                <label class="inputLabel" for="defaultSortOrder">Default Sort Order</label>
-                                <select is="emby-select" id="defaultSortOrder" class="emby-select"></select>
-                                <div class="fieldDescription">Default sorting direction for new smart playlists.</div>
-                            </div>
+                        
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="defaultSortBy">Default Sort By</label>
+                            <select is="emby-select" id="defaultSortBy" class="emby-select"></select>
+                            <div class="fieldDescription">Default sorting method for new smart playlists.</div>
+                        </div>
+
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="defaultSortOrder">Default Sort Order</label>
+                            <select is="emby-select" id="defaultSortOrder" class="emby-select"></select>
+                            <div class="fieldDescription">Default sorting direction for new smart playlists.</div>
                         </div>
 
                         <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
@@ -325,17 +327,16 @@
 
                         <h3 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h3>
                         
-                        <div class="input-group" style="display: flex; gap: 2em;">
-                            <div class="inputContainer flex-grow">
-                                <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
-                                <input type="text" id="playlistNamePrefix" class="emby-input">
-                                <div class="fieldDescription">Text to add before the playlist name. Leave blank for no prefix.</div>
-                            </div>
-                            <div class="inputContainer flex-grow">
-                                <label class="inputLabel" for="playlistNameSuffix">Suffix Text</label>
-                                <input type="text" id="playlistNameSuffix" class="emby-input">
-                                <div class="fieldDescription">Text to add after the playlist name. Leave blank for no suffix.</div>
-                            </div>
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
+                            <input type="text" id="playlistNamePrefix" class="emby-input">
+                            <div class="fieldDescription">Text to add before the playlist name. Leave blank for no prefix.</div>
+                        </div>
+
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="playlistNameSuffix">Suffix Text</label>
+                            <input type="text" id="playlistNameSuffix" class="emby-input">
+                            <div class="fieldDescription">Text to add after the playlist name. Leave blank for no suffix.</div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em;">
@@ -348,16 +349,33 @@
 
                         <div>After you have changed this setting, you need to refresh all playlists for it to take effect.</div>
 
+                        <h3 class="sectionTitle" style="margin-top: 2em;">Export</h3>
+                        
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <button type="button" is="emby-button" id="exportPlaylistsBtn" class="emby-button raised" style="width: 200px; text-align: center;">Export All Playlists</button>
+                            <div class="fieldDescription">Download a ZIP file containing all your smart playlist configurations. This can be used as a backup or to transfer playlists to another Jellyfin instance.</div>
+                        </div>
+
+                        <h3 class="sectionTitle" style="margin-top: 2em;">Import</h3>
+
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <input type="file" id="importPlaylistsFile" accept=".zip" style="display: none;">
+                            <label for="importPlaylistsFile" class="emby-button raised" style="display: inline-block; margin-bottom: 0.5em; cursor: pointer; width: 200px; text-align: center;">Choose ZIP File</label>
+                            <div id="selectedFileName" style="margin-bottom: 0.5em; color: #ccc; font-size: 0.9em;"></div>
+                            <button type="button" is="emby-button" id="importPlaylistsBtn" class="emby-button raised" style="display: none; width: 200px;">Import Selected File</button>
+                            <div class="fieldDescription">Select a ZIP file exported from SmartPlaylist plugin. Playlists with duplicate IDs will be skipped to avoid conflicts.</div>
+                        </div>
+
                         <div style="margin-top: 2em;">
                             <button type="button" is="emby-button" id="saveSettingsBtn" class="button-submit emby-button block">Save Settings</button>
                             <button type="button" is="emby-button" id="refreshPlaylistsBtn" class="emby-button raised block" style="margin-top: 0.5em;">Refresh All Playlists</button>
                         </div>
-                    </div>
+                    </form>
                 </div>
 
                 <!-- Help Tab -->
                 <div id="help-tab" class="page-content hide" data-tab-content="help">
-                     <div style="margin-top:2em;">
+                     <form style="margin-top:2em;">
                         <h3 class="sectionTitle">Need Help?</h3>
                         <p>For detailed instructions and bug reports, please see the following GitHub repository.</p>
                         <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin" target="_blank" style="text-decoration: none;">
@@ -366,7 +384,7 @@
                                 View on GitHub
                             </button>
                         </a>
-                    </div>
+                     </form>
                 </div>
 
             </div>

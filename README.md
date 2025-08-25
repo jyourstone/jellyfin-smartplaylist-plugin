@@ -33,6 +33,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. 
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled tasks).
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
+- 📦 **Export/Import** - Export all playlists to a ZIP file for backup or transfer between Jellyfin instances. Import playlists with duplicate detection.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
 - 🎵 **Media Types** - Works with movies, series, episodes, music, and music videos.
 
@@ -69,6 +70,8 @@ The web interface is organized into three tabs:
     -   Set the default sort order for new playlists.
     -   Set the default max items and max play time for new playlists.
     -   Configure custom prefix and suffix for playlist names.
+    -   Export all playlists to a ZIP file for backup or transfer.
+    -   Import playlists from a ZIP file with duplicate detection.
     -   Manually trigger a refresh for all smart playlists.
 
 #### Flexible Deletion Options
@@ -90,6 +93,28 @@ You can customize how smart playlist names appear in Jellyfin by configuring a p
 - **None**: Leave both empty for no prefix/suffix
 
 The naming configuration applies to all new smart playlists. When you delete a smart playlist but keep the Jellyfin playlist, the custom prefix/suffix will be automatically removed.
+
+#### Export & Import
+
+The Export/Import feature allows you to backup your smart playlist configurations or transfer them between different Jellyfin instances:
+
+**Export:**
+- Click the "Export All Playlists" button in the Settings tab
+- Downloads a timestamped ZIP file containing all your smart playlist JSON configurations
+- Use this as a backup or to transfer your playlists to another Jellyfin server
+
+**Import:**
+- Select a ZIP file exported from the SmartPlaylist plugin
+- Click "Import Selected File" to upload and process the archive
+- View detailed import results showing which playlists were imported, skipped, or had errors
+- **Duplicate Detection**: Playlists with the same GUID as existing playlists will be automatically skipped to prevent conflicts
+- **Safe Operation**: Import process validates all playlist data before saving
+
+This feature is particularly useful for:
+- Creating backups before major changes
+- Migrating playlists when setting up a new Jellyfin server
+- Sharing playlist configurations with other users
+- Testing playlist configurations in development environments
 
 ### Automatic Updates
 
