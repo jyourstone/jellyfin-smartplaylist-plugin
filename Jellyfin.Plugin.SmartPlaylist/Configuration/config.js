@@ -263,26 +263,53 @@
         // Clear existing content
         container.innerHTML = '';
         
+        // Create one big checkboxList paperList container
+        const mainContainer = document.createElement('div');
+        mainContainer.className = 'checkboxList paperList';
+        mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
+        
         // Generate checkboxes for each media type
         mediaTypes.forEach(mediaType => {
+            const sectionCheckbox = document.createElement('div');
+            sectionCheckbox.className = 'sectioncheckbox';
+            
             const label = document.createElement('label');
-            label.className = 'checkboxLabel';
-            label.setAttribute('for', `mediaType${mediaType.Value}`);
+            label.className = 'emby-checkbox-label';
             
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.setAttribute('data-embycheckbox', 'true');
             checkbox.id = `mediaType${mediaType.Value}`;
             checkbox.className = 'emby-checkbox media-type-checkbox';
             checkbox.value = mediaType.Value;
             
             const span = document.createElement('span');
+            span.className = 'checkboxLabel';
             span.textContent = mediaType.Label;
+            
+            const checkboxOutline = document.createElement('span');
+            checkboxOutline.className = 'checkboxOutline';
+            
+            const checkedIcon = document.createElement('span');
+            checkedIcon.className = 'material-icons checkboxIcon checkboxIcon-checked check';
+            checkedIcon.setAttribute('aria-hidden', 'true');
+            
+            const uncheckedIcon = document.createElement('span');
+            uncheckedIcon.className = 'material-icons checkboxIcon checkboxIcon-unchecked';
+            uncheckedIcon.setAttribute('aria-hidden', 'true');
+            
+            checkboxOutline.appendChild(checkedIcon);
+            checkboxOutline.appendChild(uncheckedIcon);
             
             label.appendChild(checkbox);
             label.appendChild(span);
-            container.appendChild(label);
+            label.appendChild(checkboxOutline);
+            sectionCheckbox.appendChild(label);
+            mainContainer.appendChild(sectionCheckbox);
         });
+        
+        container.appendChild(mainContainer);
     };
 
     // Helper function to manage search input state
@@ -1921,7 +1948,7 @@
                 const disabledPlaylists = filteredCount - enabledPlaylists;
                 
                 let html = '<div class="inputContainer">';
-                html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #00a4dc;">';
+                html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #666;">';
                 html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                         (searchTerm ? ' matching "' + searchTerm + '"' : '') +
                         ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
@@ -2153,7 +2180,7 @@
         const disabledPlaylists = filteredCount - enabledPlaylists;
         
         let html = '<div class="inputContainer">';
-        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 1px; border-left: 3px solid #00a4dc;">';
+        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 1px; border-left: 3px solid #666;">';
         html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                 (searchTerm ? ' matching "' + searchTerm + '"' : '') +
                 ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
