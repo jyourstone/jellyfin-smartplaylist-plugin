@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller;
@@ -28,7 +29,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
     [Authorize(Policy = "RequiresElevation")]
     [Route("Plugins/SmartPlaylist")]
     [Produces("application/json")]
-    public class SmartPlaylistController(
+    public partial class SmartPlaylistController(
         ILogger<SmartPlaylistController> logger, 
         IServerApplicationPaths applicationPaths,
         IUserManager userManager,
@@ -36,7 +37,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         ITaskManager taskManager,
         IPlaylistManager playlistManager,
         IUserDataManager userDataManager,
-        IProviderManager providerManager) : ControllerBase
+        IProviderManager providerManager,
+        IHttpContextAccessor httpContextAccessor) : ControllerBase
     {
         private readonly ILogger<SmartPlaylistController> _logger = logger;
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
@@ -46,6 +48,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         private readonly IPlaylistManager _playlistManager = playlistManager;
         private readonly IUserDataManager _userDataManager = userDataManager;
         private readonly IProviderManager _providerManager = providerManager;
+        private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
 
         private SmartPlaylistStore GetPlaylistStore()
         {
@@ -183,6 +186,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
+        /// Gets the current user ID from Jellyfin claims.
+        /// </summary>
+        /// <returns>The current user ID, or Guid.Empty if not found.</returns>
+        private Guid GetCurrentUserId()
+        {
+            try
+            {
+                _logger.LogDebug("Attempting to determine current user ID from Jellyfin claims...");
+                
+                // Get user ID from Jellyfin-specific claims
+                var userIdClaim = User.FindFirst("Jellyfin-UserId")?.Value;
+                _logger.LogDebug("Jellyfin-UserId claim: {UserId}", userIdClaim ?? "null");
+                
+                if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId))
+                {
+                    _logger.LogDebug("Found current user ID from Jellyfin-UserId claim: {UserId}", userId);
+                    return userId;
+                }
+
+                _logger.LogWarning("Could not determine current user ID from Jellyfin-UserId claim");
+                return Guid.Empty;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting current user ID");
+                return Guid.Empty;
+            }
+        }
+
+        /// <summary>
         /// Get all smart playlists.
         /// </summary>
         /// <returns>List of smart playlists.</returns>
@@ -301,7 +334,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                                 {
                                     try
                                     {
-                                        var regex = new System.Text.RegularExpressions.Regex(expression.TargetValue, System.Text.RegularExpressions.RegexOptions.None);
+                                        var regex = new Regex(expression.TargetValue, RegexOptions.None);
                                     }
                                     catch (ArgumentException ex)
                                     {
@@ -439,7 +472,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                                 {
                                     try
                                     {
-                                        var regex = new System.Text.RegularExpressions.Regex(expression.TargetValue, System.Text.RegularExpressions.RegexOptions.None);
+                                        var regex = new Regex(expression.TargetValue, RegexOptions.None);
                                     }
                                     catch (ArgumentException ex)
                                     {
@@ -721,10 +754,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             try
             {
-                // Try to get the current user ID from the request context
-                var userIdClaim = User.FindFirst("UserId")?.Value ?? User.FindFirst("sub")?.Value;
+                // Use the improved helper method to get current user ID
+                var userId = GetCurrentUserId();
                 
-                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+                if (userId == Guid.Empty)
                 {
                     return BadRequest("Unable to determine current user");
                 }
@@ -1056,8 +1089,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                                 // Only get current user ID when we need to reassign
                                 if (currentUserId == Guid.Empty)
                                 {
-                                    var currentUserIdClaim = User.FindFirst("UserId")?.Value ?? User.FindFirst("sub")?.Value;
-                                    if (string.IsNullOrEmpty(currentUserIdClaim) || !Guid.TryParse(currentUserIdClaim, out currentUserId))
+                                    currentUserId = GetCurrentUserId();
+                                    if (currentUserId == Guid.Empty)
                                     {
                                         _logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId} but cannot determine importing user for reassignment", 
                                             playlist.Name, playlist.UserId);
@@ -1127,5 +1160,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error importing smart playlists");
             }
         }
+
+
     }
 } 
