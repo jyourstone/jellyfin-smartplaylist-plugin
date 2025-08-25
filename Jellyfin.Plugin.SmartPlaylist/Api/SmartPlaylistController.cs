@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller;
@@ -920,6 +923,208 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             {
                 _logger.LogError(ex, "Error triggering smart playlist refresh");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error triggering smart playlist refresh");
+            }
+        }
+
+        /// <summary>
+        /// Export all smart playlists as a ZIP file.
+        /// </summary>
+        /// <returns>ZIP file containing all playlist JSON files.</returns>
+        [HttpPost("export")]
+        public async Task<ActionResult> ExportPlaylists()
+        {
+            try
+            {
+                var fileSystem = new SmartPlaylistFileSystem(_applicationPaths);
+                var filePaths = fileSystem.GetAllSmartPlaylistFilePaths();
+                
+                if (filePaths.Length == 0)
+                {
+                    return BadRequest(new { message = "No smart playlists found to export" });
+                }
+
+                using var zipStream = new MemoryStream();
+                using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
+                {
+                    foreach (var filePath in filePaths)
+                    {
+                        var fileName = Path.GetFileName(filePath);
+                        var entry = archive.CreateEntry(fileName);
+                        
+                        using var entryStream = entry.Open();
+                        using var fileStream = System.IO.File.OpenRead(filePath);
+                        await fileStream.CopyToAsync(entryStream);
+                    }
+                }
+
+                zipStream.Position = 0;
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var zipFileName = $"smartplaylists_export_{timestamp}.zip";
+                
+                _logger.LogInformation("Exported {PlaylistCount} smart playlists to {FileName}", filePaths.Length, zipFileName);
+                
+                return File(zipStream.ToArray(), "application/zip", zipFileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting smart playlists");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error exporting smart playlists");
+            }
+        }
+
+        /// <summary>
+        /// Import smart playlists from a ZIP file.
+        /// </summary>
+        /// <param name="file">ZIP file containing playlist JSON files.</param>
+        /// <returns>Import results with counts of imported and skipped playlists.</returns>
+        [HttpPost("import")]
+        public async Task<ActionResult> ImportPlaylists([FromForm] IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { message = "No file uploaded" });
+                }
+
+                if (!file.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { message = "File must be a ZIP archive" });
+                }
+
+                var playlistStore = GetPlaylistStore();
+                var existingPlaylists = await playlistStore.GetAllSmartPlaylistsAsync();
+                var existingIds = existingPlaylists.Select(p => p.Id).ToHashSet();
+
+                var importResults = new List<object>();
+                int importedCount = 0;
+                int skippedCount = 0;
+                int errorCount = 0;
+
+                using var zipStream = new MemoryStream();
+                await file.CopyToAsync(zipStream);
+                zipStream.Position = 0;
+
+                using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
+                
+                foreach (var entry in archive.Entries)
+                {
+                    if (!entry.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue; // Skip non-JSON files
+                    }
+                    
+                    // Skip system files (like macOS ._filename files)
+                    if (entry.Name.StartsWith("._") || entry.Name.StartsWith(".DS_Store"))
+                    {
+                        _logger.LogDebug("Skipping system file: {FileName}", entry.Name);
+                        continue;
+                    }
+
+                    try
+                    {
+                        using var entryStream = entry.Open();
+                        var playlist = await JsonSerializer.DeserializeAsync<SmartPlaylistDto>(entryStream);
+                        
+                        if (playlist == null || string.IsNullOrEmpty(playlist.Id))
+                        {
+                            _logger.LogWarning("Invalid playlist data in file {FileName}: {Issue}", 
+                                entry.Name, playlist == null ? "null playlist" : "empty ID");
+                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Invalid or empty playlist data" });
+                            errorCount++;
+                            continue;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(playlist.Name))
+                        {
+                            _logger.LogWarning("Playlist in file {FileName} has no name", entry.Name);
+                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Playlist must have a name" });
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Validate and potentially reassign user references
+                        bool reassignedUsers = false;
+                        Guid currentUserId = Guid.Empty;
+                        
+                        // Check playlist owner
+                        if (playlist.UserId != Guid.Empty)
+                        {
+                            var user = _userManager.GetUserById(playlist.UserId);
+                            if (user == null)
+                            {
+                                // Only get current user ID when we need to reassign
+                                if (currentUserId == Guid.Empty)
+                                {
+                                    var currentUserIdClaim = User.FindFirst("UserId")?.Value ?? User.FindFirst("sub")?.Value;
+                                    if (string.IsNullOrEmpty(currentUserIdClaim) || !Guid.TryParse(currentUserIdClaim, out currentUserId))
+                                    {
+                                        _logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId} but cannot determine importing user for reassignment", 
+                                            playlist.Name, playlist.UserId);
+                                        importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
+                                        errorCount++;
+                                        continue; // Skip this entire playlist
+                                    }
+                                }
+                                
+                                _logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId}, reassigning to importing user {CurrentUserId}", 
+                                    playlist.Name, playlist.UserId, currentUserId);
+                                
+                                playlist.UserId = currentUserId;
+                                reassignedUsers = true;
+                            }
+                        }
+
+                        // Note: We don't reassign user-specific expression rules if the referenced user doesn't exist.
+                        // The system will naturally fall back to the playlist owner for such rules.
+
+                        // Add note to import results if users were reassigned
+                        if (reassignedUsers)
+                        {
+                            _logger.LogInformation("Reassigned user references in playlist '{PlaylistName}' due to non-existent users", playlist.Name);
+                        }
+
+                        if (existingIds.Contains(playlist.Id))
+                        {
+                            importResults.Add(new { fileName = entry.Name, playlistName = playlist.Name, status = "skipped", message = "Playlist with this ID already exists" });
+                            skippedCount++;
+                            continue;
+                        }
+
+                        // Import the playlist
+                        await playlistStore.SaveAsync(playlist);
+                        importResults.Add(new { fileName = entry.Name, playlistName = playlist.Name, status = "imported", message = "Successfully imported" });
+                        importedCount++;
+                        
+                        _logger.LogDebug("Imported playlist {PlaylistName} (ID: {PlaylistId}) from {FileName}", 
+                            playlist.Name, playlist.Id, entry.Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error importing playlist from {FileName}", entry.Name);
+                        importResults.Add(new { fileName = entry.Name, status = "error", message = ex.Message });
+                        errorCount++;
+                    }
+                }
+
+                var summary = new
+                {
+                    totalFiles = archive.Entries.Count(e => e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)),
+                    imported = importedCount,
+                    skipped = skippedCount,
+                    errors = errorCount,
+                    details = importResults
+                };
+
+                _logger.LogInformation("Import completed: {Imported} imported, {Skipped} skipped, {Errors} errors", 
+                    importedCount, skippedCount, errorCount);
+
+                return Ok(summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing smart playlists");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error importing smart playlists");
             }
         }
     }

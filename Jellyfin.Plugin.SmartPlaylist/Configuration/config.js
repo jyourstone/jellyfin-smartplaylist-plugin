@@ -7,7 +7,9 @@
         fields: 'Plugins/SmartPlaylist/fields',
         base: 'Plugins/SmartPlaylist',
         users: 'Plugins/SmartPlaylist/users',
-        refresh: 'Plugins/SmartPlaylist/refresh'
+        refresh: 'Plugins/SmartPlaylist/refresh',
+        export: 'Plugins/SmartPlaylist/export',
+        import: 'Plugins/SmartPlaylist/import'
     };
     
     // Field type constants to avoid duplication
@@ -2631,12 +2633,24 @@
     function loadConfiguration(page) {
         Dashboard.showLoadingMsg();
         getApiClient().getPluginConfiguration(getPluginId()).then(config => {
-            page.querySelector('#defaultSortBy').value = config.DefaultSortBy || 'Name';
-            page.querySelector('#defaultSortOrder').value = config.DefaultSortOrder || 'Ascending';
+            const defaultSortByEl = page.querySelector('#defaultSortBy');
+            const defaultSortOrderEl = page.querySelector('#defaultSortOrder');
+            const defaultMakePublicEl = page.querySelector('#defaultMakePublic');
+            const defaultMaxItemsEl = page.querySelector('#defaultMaxItems');
+            const defaultMaxPlayTimeMinutesEl = page.querySelector('#defaultMaxPlayTimeMinutes');
+            const playlistNamePrefixEl = page.querySelector('#playlistNamePrefix');
+            const playlistNameSuffixEl = page.querySelector('#playlistNameSuffix');
             
-            page.querySelector('#defaultMakePublic').checked = config.DefaultMakePublic || false;
-            page.querySelector('#defaultMaxItems').value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
-            page.querySelector('#defaultMaxPlayTimeMinutes').value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            if (defaultSortByEl) defaultSortByEl.value = config.DefaultSortBy || 'Name';
+            if (defaultSortOrderEl) defaultSortOrderEl.value = config.DefaultSortOrder || 'Ascending';
+            if (defaultMakePublicEl) defaultMakePublicEl.checked = config.DefaultMakePublic || false;
+            if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
+            if (playlistNameSuffixEl) playlistNameSuffixEl.value = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
+            
+            // Update playlist name preview
+            updatePlaylistNamePreview(page);
             
             Dashboard.hideLoadingMsg();
         }).catch(() => {
@@ -2978,6 +2992,8 @@
             if (target.closest('#saveSettingsBtn')) { saveConfiguration(page); }
             if (target.closest('#refreshPlaylistsBtn')) { refreshAllPlaylists(); }
             if (target.closest('#refreshPlaylistListBtn')) { loadPlaylistList(page); }
+            if (target.closest('#exportPlaylistsBtn')) { exportPlaylists(); }
+            if (target.closest('#importPlaylistsBtn')) { importPlaylists(page); }
             if (target.closest('.delete-playlist-btn')) {
                 const button = target.closest('.delete-playlist-btn');
                 showDeleteConfirm(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
@@ -3066,6 +3082,35 @@
             
             // Initialize clear button visibility
             updateClearButtonVisibility();
+        }
+        
+        // Add import file input event listener
+        const importFileInput = page.querySelector('#importPlaylistsFile');
+        const importBtn = page.querySelector('#importPlaylistsBtn');
+        const selectedFileName = page.querySelector('#selectedFileName');
+        if (importFileInput && importBtn) {
+            importFileInput.addEventListener('change', function() {
+                const hasFile = this.files && this.files.length > 0;
+                
+                // Show/hide and enable/disable import button based on file selection
+                if (hasFile) {
+                    importBtn.style.display = 'inline-block';
+                    importBtn.disabled = false;
+                } else {
+                    importBtn.style.display = 'none';
+                    importBtn.disabled = true;
+                }
+                
+                // Update filename display
+                if (selectedFileName) {
+                    if (hasFile) {
+                        selectedFileName.textContent = 'Selected: ' + this.files[0].name;
+                        selectedFileName.style.fontStyle = 'italic';
+                    } else {
+                        selectedFileName.textContent = '';
+                    }
+                }
+            }, getEventListenerOptions(pageSignal));
         }
     }
 
@@ -3453,6 +3498,136 @@
             const lastTag = tags[tags.length - 1];
             lastTag.remove();
             updateHiddenInput(valueContainer);
+        }
+    }
+
+    /**
+     * Export all playlists as a ZIP file
+     */
+    function exportPlaylists() {
+        try {
+            const apiClient = getApiClient();
+            const url = apiClient.getUrl(ENDPOINTS.base + '/export');
+            
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `MediaBrowser Token="${apiClient.accessToken()}"`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(async response => {
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Export failed');
+                }
+                
+                // Get the blob from response
+                const blob = await response.blob();
+                
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                
+                // Get filename from Content-Disposition header or use default
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'smartplaylists_export.zip';
+                if (contentDisposition) {
+                    const matches = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (matches && matches[1]) {
+                        filename = matches[1].replace(/['"]/g, '');
+                    }
+                }
+                
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showNotification('Export completed successfully!', 'success');
+            })
+            .catch(error => {
+                console.error('Export error:', error);
+                showNotification('Export failed: ' + error.message, 'error');
+            });
+        } catch (error) {
+            console.error('Export error:', error);
+            showNotification('Export failed: ' + error.message, 'error');
+        }
+    }
+
+    /**
+     * Import playlists from selected ZIP file
+     */
+    function importPlaylists(page) {
+        const fileInput = page.querySelector('#importPlaylistsFile');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            showNotification('Please select a file to import', 'error');
+            return;
+        }
+        
+        // File size limit: 10MB
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
+        if (file.size > MAX_FILE_SIZE) {
+            showNotification('File is too large (max 10MB)', 'error');
+            return;
+        }
+        
+        // Extension check as safety net (accept attribute already filters in dialog)
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            showNotification('Please select a ZIP file', 'error');
+            return;
+        }
+        
+        try {
+            const apiClient = getApiClient();
+            const url = apiClient.getUrl(ENDPOINTS.base + '/import');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `MediaBrowser Token="${apiClient.accessToken()}"`
+                },
+                body: formData
+            })
+            .then(async response => {
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Import failed');
+                }
+                
+                const result = await response.json();
+                
+                // Clear the file input and filename display
+                fileInput.value = '';
+                const selectedFileName = page.querySelector('#selectedFileName');
+                if (selectedFileName) {
+                    selectedFileName.textContent = '';
+                }
+                const importBtn = page.querySelector('#importPlaylistsBtn');
+                if (importBtn) {
+                    importBtn.disabled = true;
+                    importBtn.style.display = 'none';
+                }
+                
+                // Show detailed notification
+                const message = `Import completed: ${result.imported} imported, ${result.skipped} skipped, ${result.errors} errors`;
+                showNotification(message, result.errors > 0 ? 'warning' : 'success');
+            })
+            .catch(error => {
+                console.error('Import error:', error);
+                showNotification('Import failed: ' + error.message, 'error');
+            });
+        } catch (error) {
+            console.error('Import error:', error);
+            showNotification('Import failed: ' + error.message, 'error');
         }
     }
 
