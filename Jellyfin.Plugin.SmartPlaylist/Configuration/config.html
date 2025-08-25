@@ -117,12 +117,12 @@
             top: -0.6em !important;
             left: 1em !important;
             background: #1a1a1a !important;
-            color: #00a4dc !important;
+            color: #888 !important;
             padding: 0.2em 0.8em !important;
             border-radius: 4px !important;
             font-size: 0.75em !important;
             font-weight: bold !important;
-            border: 1px solid #00a4dc !important;
+            border: 1px solid #666 !important;
         }
         
 
@@ -131,7 +131,17 @@
             display: flex;
             flex-wrap: wrap;
             gap: 1.5em;
-            align-items: center;
+            align-items: flex-start;
+            width: 100%;
+        }
+        
+        /* Styling for sectioncheckbox items within the media types container */
+        .media-type-flex .sectioncheckbox {
+            margin-bottom: 0.5em;
+        }
+        
+        .media-type-flex .sectioncheckbox:last-child {
+            margin-bottom: 0;
         }
         
         /* Search clear button styles */
@@ -146,6 +156,11 @@
             font-weight: bold;
         }
         
+        /* Ensure search input container spans full width */
+        .search-inputContainer {
+            width: 100%;
+        }
+        
         .search-clear-btn:hover {
             color: #fff !important;
             background-color: rgba(255, 255, 255, 0.1) !important;
@@ -158,6 +173,52 @@
         /* Tag input placeholder color */
         .tag-input-field::placeholder {
             color: #757575 !important;
+        }
+        
+        /* Ensure form elements span full width */
+        .SmartPlaylistConfigurationPage .inputContainer input,
+        .SmartPlaylistConfigurationPage .inputContainer select,
+        .SmartPlaylistConfigurationPage .inputContainer textarea {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* Ensure buttons span full width when using .block class */
+        .SmartPlaylistConfigurationPage .emby-button.block {
+            width: 100%;
+            display: block;
+        }
+        
+        /* Better spacing for form sections */
+        .SmartPlaylistConfigurationPage .sectionTitle {
+            margin-top: 2em;
+            margin-bottom: 1em;
+            padding-bottom: 0.5em;
+            border-bottom: 1px solid #444;
+        }
+        
+        /* Consistent spacing for input containers */
+        .SmartPlaylistConfigurationPage .inputContainer {
+            margin-bottom: 1.5em;
+        }
+        
+        /* Better checkbox styling for Jellyfin-style checkboxes */
+        .SmartPlaylistConfigurationPage .checkboxList.paperList {
+            margin-bottom: 1.5em;
+            background-color: #2a2a2a;
+            border-radius: 4px;
+        }
+        
+        .SmartPlaylistConfigurationPage .emby-checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 0.5em 0;
+        }
+        
+        .SmartPlaylistConfigurationPage .checkboxLabel {
+            margin-left: 0.5em;
+            flex: 1;
         }
     </style>
 </head>
@@ -199,7 +260,7 @@
                             <div class="fieldDescription">The name of the playlist that will be created in Jellyfin. The suffix/prefix provided in Settings will always be added.</div>
                         </div>
                        
-                        <div class="inputContainer" style="margin-bottom: 1em;">
+                        <div class="inputContainer">
                             <label class="inputLabel">Media Types</label>
                             <div id="media-types-container" class="media-type-flex">
                                 <!-- Media type checkboxes will be generated here -->
@@ -234,28 +295,36 @@
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistMaxItems">Max Items</label>
-                            <input type="number" id="playlistMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <input type="number" id="playlistMaxItems" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Maximum number of items in this playlist. Set to 0 for no limit.</div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistMaxPlayTimeMinutes">Max Play Time (Minutes)</label>
-                            <input type="number" id="playlistMaxPlayTimeMinutes" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <input type="number" id="playlistMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Maximum play time in minutes for this playlist. Set to 0 for no limit.</div>
                         </div>
 
-                        <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="checkboxLabel" for="playlistIsPublic">
-                                <input type="checkbox" is="emby-checkbox" id="playlistIsPublic" class="emby-checkbox">
-                                <span>Make playlist public</span>
+                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input type="checkbox" is="emby-checkbox" id="playlistIsPublic" data-embycheckbox="true" class="emby-checkbox">
+                                <span class="checkboxLabel">Make playlist public</span>
+                                <span class="checkboxOutline">
+                                    <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
+                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                </span>
                             </label>
                             <div class="fieldDescription">Allow this playlist to be viewed by any logged in user.</div>
                         </div>
 
-                        <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="checkboxLabel" for="playlistIsEnabled">
-                                <input type="checkbox" is="emby-checkbox" id="playlistIsEnabled" class="emby-checkbox" checked>
-                                <span>Enable playlist</span>
+                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input type="checkbox" is="emby-checkbox" id="playlistIsEnabled" data-embycheckbox="true" class="emby-checkbox" checked>
+                                <span class="checkboxLabel">Enable playlist</span>
+                                <span class="checkboxOutline">
+                                    <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
+                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                </span>
                             </label>
                             <div class="fieldDescription">When enabled, the playlist will be created and updated automatically. When disabled, the playlist will be removed from Jellyfin.</div>
                         </div>
@@ -271,13 +340,13 @@
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <form style="margin-top:2em;">
                         <div class="inputContainer" style="margin-bottom: 1em;">
-                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised">Refresh List</button>
+                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised block">Refresh List</button>
                         </div>
                         
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel" for="playlistSearchInput">Search Playlists</label>
-                            <div class="search-inputContainer" style="position: relative; display: flex; align-items: center;">
-                                <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search all playlist fields..." style="padding-right: 2.5em;">
+                            <div class="search-inputContainer" style="position: relative; display: flex; align-items: center; width: 100%;">
+                                <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search all playlist fields..." style="padding-right: 2.5em; width: 100%; box-sizing: border-box;">
                                 <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
                             </div>
                         </div>
@@ -291,7 +360,7 @@
                 <!-- Settings Tab -->
                 <div id="settings-tab" class="page-content hide" data-tab-content="settings">
                     <form style="margin-top:2em;">
-                        <h3 class="sectionTitle">General Settings</h3>
+                        <h2 class="sectionTitle">General Settings</h2>
                         
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="defaultSortBy">Default Sort By</label>
@@ -305,27 +374,33 @@
                             <div class="fieldDescription">Default sorting direction for new smart playlists.</div>
                         </div>
 
-                        <div class="checkbox-container" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="checkboxLabel" for="defaultMakePublic">
-                                <input type="checkbox" is="emby-checkbox" id="defaultMakePublic" class="emby-checkbox">
-                                <span>Make playlists public by default</span>
-                            </label>
-                            <div class="fieldDescription">New smart playlists will be public by default when this is enabled.</div>
+                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
+                            <div class="sectioncheckbox">
+                                <label class="emby-checkbox-label">
+                                    <input type="checkbox" is="emby-checkbox" id="defaultMakePublic" data-embycheckbox="true" class="emby-checkbox">
+                                    <span class="checkboxLabel">Make playlists public by default</span>
+                                    <span class="checkboxOutline">
+                                        <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
+                                        <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                    </span>
+                                </label>
+                                <div class="fieldDescription">New smart playlists will be public by default when this is enabled.</div>
+                            </div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="defaultMaxItems">Default Max Items</label>
-                            <input type="number" id="defaultMaxItems" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <input type="number" id="defaultMaxItems" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Default maximum number of items for new smart playlists. Set to 0 for no limit.</div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="defaultMaxPlayTimeMinutes">Default Max Play Time (Minutes)</label>
-                            <input type="number" id="defaultMaxPlayTimeMinutes" class="emby-input" min="0" step="1" style="max-width: 200px;">
+                            <input type="number" id="defaultMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Default maximum play time in minutes for new smart playlists. Set to 0 for no limit.</div>
                         </div>
 
-                        <h3 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h3>
+                        <h2 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h2>
                         
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
@@ -341,7 +416,7 @@
 
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel">Preview</label>
-                            <div id="playlistNamePreview" style="padding: 0.5em; background-color: #2a2a2a; border: 1px solid #555; border-radius: 4px; font-family: monospace; max-width: 400px;">
+                            <div id="playlistNamePreview" style="padding: 0.5em; background-color: #2a2a2a; border: 1px solid #555; border-radius: 4px; font-family: monospace; width: 100%; box-sizing: border-box;">
                                 <span style="color: #888;">Example: </span><span id="previewText">My Awesome Playlist</span>
                             </div>
                             <div class="fieldDescription">Live preview of how playlist names will appear in Jellyfin. You can use both prefix and suffix, or just one, or neither.</div>
@@ -349,10 +424,12 @@
 
                         <div>After you have changed this setting, you need to refresh all playlists for it to take effect.</div>
 
+                        <h2 class="sectionTitle" style="margin-top: 2em;">Export/Import</h2>
+
                         <h3 class="sectionTitle" style="margin-top: 2em;">Export</h3>
                         
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
-                            <button type="button" is="emby-button" id="exportPlaylistsBtn" class="emby-button raised" style="width: 200px; text-align: center;">Export All Playlists</button>
+                            <button type="button" is="emby-button" id="exportPlaylistsBtn" class="emby-button raised block">Export All Playlists</button>
                             <div class="fieldDescription">Download a ZIP file containing all your smart playlist configurations. This can be used as a backup or to transfer playlists to another Jellyfin instance.</div>
                         </div>
 
@@ -360,10 +437,10 @@
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <input type="file" id="importPlaylistsFile" accept=".zip" style="display: none;">
-                            <label for="importPlaylistsFile" class="emby-button raised" style="display: inline-block; margin-bottom: 0.5em; cursor: pointer; width: 200px; text-align: center;">Choose ZIP File</label>
+                            <label for="importPlaylistsFile" class="emby-button raised block" style="display: inline-block; margin-bottom: 0.5em; cursor: pointer;">Choose ZIP File</label>
                             <div id="selectedFileName" style="margin-bottom: 0.5em; color: #ccc; font-size: 0.9em;"></div>
-                            <button type="button" is="emby-button" id="importPlaylistsBtn" class="emby-button raised" style="display: none; width: 200px;">Import Selected File</button>
-                            <div class="fieldDescription">Select a ZIP file exported from SmartPlaylist plugin. Playlists with duplicate IDs will be skipped to avoid conflicts.</div>
+                            <button type="button" is="emby-button" id="importPlaylistsBtn" class="emby-button raised block" style="display: none;">Import Selected File</button>
+                            <div class="fieldDescription">Select a ZIP file exported from SmartPlaylist plugin. Playlists with duplicate IDs will be skipped to avoid conflicts. After importing, you need to refresh all playlists to create them in Jellyfin.</div>
                         </div>
 
                         <div style="margin-top: 2em;">
@@ -376,14 +453,12 @@
                 <!-- Help Tab -->
                 <div id="help-tab" class="page-content hide" data-tab-content="help">
                      <form style="margin-top:2em;">
-                        <h3 class="sectionTitle">Need Help?</h3>
+                        <h2 class="sectionTitle">Need Help?</h2>
                         <p>For detailed instructions and bug reports, please see the following GitHub repository.</p>
-                        <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin" target="_blank" style="text-decoration: none;">
-                            <button is="emby-button" class="emby-button raised">
-                                <span class="material-icons open_in_new" style="margin-right: 0.5em;"></span>
-                                View on GitHub
-                            </button>
-                        </a>
+                        <button type="button" is="emby-button" class="emby-button raised" onclick="window.open('https://github.com/jyourstone/jellyfin-smartplaylist-plugin', '_blank')">
+                            <span class="material-icons open_in_new" style="margin-right: 0.5em;"></span>
+                            View on GitHub
+                        </button>
                      </form>
                 </div>
 
