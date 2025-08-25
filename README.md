@@ -43,8 +43,9 @@ SmartPlaylist now features a modern web-based configuration interface through th
 
 <div align="center">
     <p>
-        <img alt="Create playlist page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_create.png" width="400" style="margin-right: 10px;"/>
-        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_manage.png" width="400"/>
+        <img alt="Create playlist page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_create.png" width="270" style="margin-right: 10px;"/>
+        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_manage.png" width="270" style="margin-right: 10px;"/>
+        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_settings.png" width="270"/>
     </p>
 </div>
 
