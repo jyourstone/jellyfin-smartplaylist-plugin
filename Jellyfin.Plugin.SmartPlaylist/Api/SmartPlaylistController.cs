@@ -186,55 +186,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
-        /// Gets the current user ID using the most reliable methods available in Jellyfin.
+        /// Gets the current user ID from Jellyfin claims.
         /// </summary>
         /// <returns>The current user ID, or Guid.Empty if not found.</returns>
         private Guid GetCurrentUserId()
         {
             try
             {
-                _logger.LogDebug("Attempting to determine current user ID...");
+                _logger.LogDebug("Attempting to determine current user ID from Jellyfin claims...");
                 
-                // Method 1: Try to get from JWT claims (most common in Jellyfin)
-                var userIdClaim = User.FindFirst("UserId")?.Value ?? User.FindFirst("sub")?.Value;
-                _logger.LogDebug("JWT claims - UserId: {UserId}, sub: {Sub}", 
-                    User.FindFirst("UserId")?.Value ?? "null", 
-                    User.FindFirst("sub")?.Value ?? "null");
+                // Get user ID from Jellyfin-specific claims
+                var userIdClaim = User.FindFirst("Jellyfin-UserId")?.Value;
+                _logger.LogDebug("Jellyfin-UserId claim: {UserId}", userIdClaim ?? "null");
                 
                 if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId))
                 {
-                    _logger.LogDebug("Found current user ID from JWT claims: {UserId}", userId);
+                    _logger.LogDebug("Found current user ID from Jellyfin-UserId claim: {UserId}", userId);
                     return userId;
                 }
 
-                // Method 2: Try to get from request headers (some Jellyfin versions use this)
-                var userIdHeader = _httpContextAccessor.HttpContext?.Request.Headers["X-User-Id"].FirstOrDefault();
-                if (!string.IsNullOrEmpty(userIdHeader) && Guid.TryParse(userIdHeader, out var headerUserId))
-                {
-                    _logger.LogDebug("Found current user ID from request header: {UserId}", headerUserId);
-                    return headerUserId;
-                }
-
-                // Method 3: Try to get from query parameters (some Jellyfin versions use this)
-                var userIdQuery = _httpContextAccessor.HttpContext?.Request.Query["UserId"].FirstOrDefault();
-                if (!string.IsNullOrEmpty(userIdQuery) && Guid.TryParse(userIdQuery, out var queryUserId))
-                {
-                    _logger.LogDebug("Found current user ID from query parameter: {UserId}", queryUserId);
-                    return queryUserId;
-                }
-
-                // Method 4: Fallback - use the first available user (last resort)
-                // This is similar to how the frontend would default to a user
-                var availableUsers = _userManager.Users.ToList();
-                if (availableUsers.Count > 0)
-                {
-                    var fallbackUser = availableUsers.First();
-                    _logger.LogWarning("Using fallback approach - assigning to first available user: {UserId} ({Username})", 
-                        fallbackUser.Id, fallbackUser.Username);
-                    return fallbackUser.Id;
-                }
-
-                _logger.LogWarning("Could not determine current user ID using any method");
+                _logger.LogWarning("Could not determine current user ID from Jellyfin-UserId claim");
                 return Guid.Empty;
             }
             catch (Exception ex)
