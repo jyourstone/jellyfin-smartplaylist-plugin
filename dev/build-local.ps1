@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop" # Exit immediately if a command fails
 
 # Set the version for the build. For local testing, this can be a static string.
-$VERSION = "10.10.0.0"
+$VERSION = "10.11.0.0"
 $OUTPUT_DIR = "..\build_output"
 
 Write-Host "Building SmartPlaylist plugin version for local development..."
@@ -28,7 +28,7 @@ Copy-Item -Path "..\images\logo.jpg" -Destination "$OUTPUT_DIR\logo.jpg"
 
 # Create the Configuration directory and copy the logging file for debug logs
 New-Item -ItemType Directory -Path "$OUTPUT_DIR\Configuration" -Force | Out-Null
-Copy-Item -Path "logging.json" -Destination "jellyfin-data\config\config\logging.json"
+Copy-Item -Path "logging.json" -Destination "jellyfin-data-10.11\config\config\logging.json"
 
 Write-Host ""
 Write-Host "Build complete."

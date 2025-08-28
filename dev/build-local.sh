@@ -6,7 +6,7 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # Set the version for the build. For local testing, this can be a static string.
-VERSION="10.10.0.0"
+VERSION="10.11.0.0"
 OUTPUT_DIR="../build_output"
 
 echo "Building SmartPlaylist plugin version for local development..."
@@ -26,7 +26,7 @@ cp ../images/logo.jpg $OUTPUT_DIR/logo.jpg
 
 # Create the Configuration directory and copy the logging file for debug logs
 mkdir -p $OUTPUT_DIR/Configuration
-cp logging.json jellyfin-data/config/config/logging.json
+cp logging.json jellyfin-data-10.11/config/config/logging.json
 
 echo ""
 echo "Build complete."
