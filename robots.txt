@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://jellyfin-smartplaylist.dinsten.se/sitemap.xml
