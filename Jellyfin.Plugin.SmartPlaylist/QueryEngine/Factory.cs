@@ -6,6 +6,8 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.Audio;
+using Video = MediaBrowser.Controller.Entities.Video;
+using Photo = MediaBrowser.Controller.Entities.Photo;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
@@ -943,11 +945,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.AudioLanguages = [];
             }
 
-            // Extract resolution from media streams - always extract for performance (cheap operation)
-            ExtractResolution(operand, baseItem, logger);
-            
-            // Extract framerate from media streams - always extract for performance (cheap operation)
-            ExtractFramerate(operand, baseItem, logger);
+            // Extract resolution/framerate only for items that can have video streams (exclude audio and photos)
+            if (baseItem is not Photo and not Audio)
+            {
+                ExtractResolution(operand, baseItem, logger);
+                ExtractFramerate(operand, baseItem, logger);
+            }
             
             // Extract collections - only when needed for performance
             if (options.ExtractCollections)
@@ -1051,6 +1054,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Movie => MediaTypes.Movie,
                 Audio => MediaTypes.Audio,
                 MusicVideo => MediaTypes.MusicVideo,
+                // Handle Video and Photo types for Home Videos and Photos (same format as other media types)
+                Video => MediaTypes.Video,
+                Photo => MediaTypes.Photo,
                 _ => item.GetType().Name
             };
         }

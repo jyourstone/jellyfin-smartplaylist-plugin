@@ -18,15 +18,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         // Music Video Types
         public const string MusicVideo = nameof(MusicVideo);
         
+        // Home Video and Photo Types (matching Jellyfin's backend types)
+        public const string Video = nameof(Video);
+        public const string Photo = nameof(Photo);
+        
         /// <summary>
         /// Gets all supported media types as an array
         /// </summary>
-        public static readonly string[] All = [Episode, Series, Movie, Audio, MusicVideo];
+        public static readonly string[] All = [Episode, Series, Movie, Audio, MusicVideo, Video, Photo];
         
         /// <summary>
-        /// Gets video media types (Movie, Series, Episode, MusicVideo)
+        /// Gets video media types (Movie, Series, Episode, MusicVideo, Video, Photo)
+        /// Note: Photo is included here because it's part of the same library type as Video
         /// </summary>
-        public static readonly string[] Video = [Movie, Series, Episode, MusicVideo];
+        public static readonly string[] VideoTypes = [Movie, Series, Episode, MusicVideo, Video, Photo];
         
         /// <summary>
         /// Gets TV media types (Series, Episode)

@@ -35,7 +35,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 📦 **Export/Import** - Export all playlists to a ZIP file for backup or transfer between Jellyfin instances. Import playlists with duplicate detection.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
-- 🎵 **Media Types** - Works with movies, series, episodes, music, and music videos.
+- 🎵 **Media Types** - Works with movies, series, episodes, music, music videos, home videos and photos.
 
 ## ⚙️ Configuration
 
@@ -158,6 +158,12 @@ Here are some popular playlist types you can create:
 - **Discover New Music** - Play Count = 0 AND Date Created newer than "1 month"
 - **Top Rated Favorites** - Is Favorite = True AND Community Rating greater than 8
 - **Rediscover Music** - Last Played older than 6 months
+
+#### **Home Videos & Photos**
+- **Recent Family Memories** - Date Created newer than "3 months" (both videos and photos)
+- **Vacation Videos Only** - Tags contain "Vacation" (select Home Videos media type)
+- **Photo Slideshow** - Production Year = 2024 (select Home Photos media type)
+- **Birthday Memories** - File Name contains "birthday" OR Tags contain "Birthday"
 
 #### **Advanced Examples**
 - **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only

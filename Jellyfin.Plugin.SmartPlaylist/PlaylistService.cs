@@ -790,7 +790,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo];
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo];
             }
 
             var baseItemKinds = new List<BaseItemKind>();
@@ -813,6 +813,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         break;
                     case MediaTypes.MusicVideo:
                         baseItemKinds.Add(BaseItemKind.MusicVideo);
+                        break;
+                    case MediaTypes.Video:
+                        baseItemKinds.Add(BaseItemKind.Video);
+                        break;
+                    case MediaTypes.Photo:
+                        baseItemKinds.Add(BaseItemKind.Photo);
                         break;
                     default:
                         _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
@@ -839,7 +845,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (baseItemKinds.Count == 0)
             {
                 _logger?.LogWarning("No valid media types found, falling back to all supported types");
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo];
+                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo];
             }
 
             return [.. baseItemKinds];
@@ -911,7 +917,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return "Audio";
                 }
                 
-                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.Video.Contains(mt));
+                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.VideoTypes.Contains(mt));
                 bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnly.Contains(mt));
                 
                 if (hasVideoContent && !hasAudioContent)

@@ -252,7 +252,9 @@
         { Value: "Series", Label: "Series" }, 
         { Value: "Episode", Label: "Episode" }, 
         { Value: "Audio", Label: "Audio (Music)" },
-        { Value: "MusicVideo", Label: "Music Video" } 
+        { Value: "MusicVideo", Label: "Music Video" },
+        { Value: "Video", Label: "Video (Home Video)" },
+        { Value: "Photo", Label: "Photo (Home Photo)" }
     ];
 
     // Generate media type checkboxes from the mediaTypes array
