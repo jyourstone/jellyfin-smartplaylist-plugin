@@ -6,6 +6,8 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.Audio;
+using Video = MediaBrowser.Controller.Entities.Video;
+using Photo = MediaBrowser.Controller.Entities.Photo;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
@@ -1051,6 +1053,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Movie => MediaTypes.Movie,
                 Audio => MediaTypes.Audio,
                 MusicVideo => MediaTypes.MusicVideo,
+                // Handle Video and Photo types for Home Videos and Photos (same format as other media types)
+                Video => MediaTypes.Video,
+                Photo => MediaTypes.Photo,
                 _ => item.GetType().Name
             };
         }

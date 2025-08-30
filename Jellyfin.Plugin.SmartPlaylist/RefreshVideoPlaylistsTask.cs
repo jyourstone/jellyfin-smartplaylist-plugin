@@ -25,7 +25,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         IProviderManager providerManager) : RefreshPlaylistsTaskBase(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
     {
         public override string Name => "Refresh Video SmartPlaylists";
-        public override string Description => "Refresh all video SmartPlaylists (movies, series, episodes, music videos)";
+        public override string Description => "Refresh all video SmartPlaylists (movies, series, episodes, music videos, home videos, home photos)";
         public override string Key => "RefreshVideoSmartPlaylists";
 
         protected override string GetHandledMediaTypes()
@@ -38,14 +38,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return playlists.Where(playlist => 
                 playlist.MediaTypes != null && 
                 playlist.MediaTypes.Any(mediaType => 
-                    MediaTypes.Video.Contains(mediaType)));
+                    MediaTypes.VideoTypes.Contains(mediaType)));
         }
 
         protected override IEnumerable<BaseItem> GetRelevantUserMedia(User user)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo],
+                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo],
                 Recursive = true
             };
 

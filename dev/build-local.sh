@@ -26,6 +26,7 @@ cp ../images/logo.jpg $OUTPUT_DIR/logo.jpg
 
 # Create the Configuration directory and copy the logging file for debug logs
 mkdir -p $OUTPUT_DIR/Configuration
+mkdir -p jellyfin-data/config/config
 cp logging.json jellyfin-data/config/config/logging.json
 
 echo ""
