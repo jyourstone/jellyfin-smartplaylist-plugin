@@ -945,11 +945,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.AudioLanguages = [];
             }
 
-            // Extract resolution from media streams - always extract for performance (cheap operation)
-            ExtractResolution(operand, baseItem, logger);
-            
-            // Extract framerate from media streams - always extract for performance (cheap operation)
-            ExtractFramerate(operand, baseItem, logger);
+            // Extract resolution/framerate only for items that can have video streams (exclude audio and photos)
+            if (baseItem is not Photo and not Audio)
+            {
+                ExtractResolution(operand, baseItem, logger);
+                ExtractFramerate(operand, baseItem, logger);
+            }
             
             // Extract collections - only when needed for performance
             if (options.ExtractCollections)

@@ -917,7 +917,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return "Audio";
                 }
                 
-                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.Video.Contains(mt));
+                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.VideoTypes.Contains(mt));
                 bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnly.Contains(mt));
                 
                 if (hasVideoContent && !hasAudioContent)
