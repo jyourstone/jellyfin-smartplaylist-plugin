@@ -790,45 +790,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo, BaseItemKind.Book, BaseItemKind.AudioBook];
+                return [.. MediaTypes.MediaTypeToBaseItemKind.Values];
             }
 
             var baseItemKinds = new List<BaseItemKind>();
             
             foreach (var mediaType in mediaTypes)
             {
-                switch (mediaType)
+                if (MediaTypes.MediaTypeToBaseItemKind.TryGetValue(mediaType, out var baseItemKind))
                 {
-                    case MediaTypes.Movie:
-                        baseItemKinds.Add(BaseItemKind.Movie);
-                        break;
-                    case MediaTypes.Audio:
-                        baseItemKinds.Add(BaseItemKind.Audio);
-                        break;
-                    case MediaTypes.Episode:
-                        baseItemKinds.Add(BaseItemKind.Episode);
-                        break;
-                    case MediaTypes.Series:
-                        baseItemKinds.Add(BaseItemKind.Series);
-                        break;
-                    case MediaTypes.MusicVideo:
-                        baseItemKinds.Add(BaseItemKind.MusicVideo);
-                        break;
-                    case MediaTypes.Video:
-                        baseItemKinds.Add(BaseItemKind.Video);
-                        break;
-                    case MediaTypes.Photo:
-                        baseItemKinds.Add(BaseItemKind.Photo);
-                        break;
-                    case MediaTypes.Book:
-                        baseItemKinds.Add(BaseItemKind.Book);
-                        break;
-                    case MediaTypes.AudioBook:
-                        baseItemKinds.Add(BaseItemKind.AudioBook);
-                        break;
-                    default:
-                        _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
-                        break;
+                    baseItemKinds.Add(baseItemKind);
+                }
+                else
+                {
+                    _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
                 }
             }
 
@@ -916,11 +891,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             if (dto.MediaTypes?.Count > 0)
             {
-                // Check if it's audio-only
-                if (dto.MediaTypes.All(mt => mt == MediaTypes.Audio))
+                // Check if it's audio-only (Audio or AudioBook)
+                if (dto.MediaTypes.All(mt => MediaTypes.AudioOnly.Contains(mt)))
                 {
-                    _logger.LogDebug("Playlist {PlaylistName} contains only Audio content, setting MediaType to Audio", dto.Name);
-                    return "Audio";
+                    _logger.LogDebug("Playlist {PlaylistName} contains only audio content, setting MediaType to Audio", dto.Name);
+                    return MediaTypes.Audio;
                 }
                 
                 bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.NonAudioTypes.Contains(mt));
@@ -928,8 +903,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 if (hasVideoContent && !hasAudioContent)
                 {
-                    _logger.LogDebug("Playlist {PlaylistName} contains only video content, setting MediaType to Video", dto.Name);
-                    return "Video";
+                    _logger.LogDebug("Playlist {PlaylistName} contains only non-audio content, setting MediaType to Video", dto.Name);
+                    return MediaTypes.Video;
                 }
             }
             

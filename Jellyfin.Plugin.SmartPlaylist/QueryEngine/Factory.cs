@@ -1049,7 +1049,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <returns>The item type name</returns>
         private static string GetItemTypeName(BaseItem item, ILogger logger = null)
         {
-            return item switch
+            // First try direct type matching for performance
+            var directMatch = item switch
             {
                 Episode => MediaTypes.Episode,
                 Series => MediaTypes.Series,
@@ -1059,30 +1060,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Video => MediaTypes.Video,
                 Photo => MediaTypes.Photo,
                 Book => MediaTypes.Book,
-                _ => LogUnknownItemType(item, logger)
+                _ => null
             };
-        }
-
-        /// <summary>
-        /// Helper method to log unknown item types for debugging and handle AudioBook
-        /// </summary>
-        private static string LogUnknownItemType(BaseItem item, ILogger logger)
-        {
+            
+            if (directMatch != null)
+            {
+                return directMatch;
+            }
+            
+            // Fallback to BaseItemKind mapping for types that don't have direct C# classes
+            if (MediaTypes.BaseItemKindToMediaType.TryGetValue(item.GetBaseItemKind(), out var mappedType))
+            {
+                return mappedType;
+            }
+            
+            // Log truly unknown types (not in our supported mapping)
             var typeName = item.GetType().Name;
+            var baseItemKind = item.GetBaseItemKind().ToString();
             
-            // Handle AudioBook which doesn't exist as a direct type reference
-            if (typeName == "AudioBook")
+            // Only log if it's not a known unsupported type to reduce noise
+            var knownUnsupportedTypes = new[] { "CollectionFolder", "UserRootFolder", "AggregateFolder", "Folder" };
+            if (!knownUnsupportedTypes.Contains(typeName))
             {
-                return MediaTypes.AudioBook;
+                logger?.LogDebug("Unsupported item type encountered: {ItemType} (BaseItemKind: {BaseItemKind}) for item: {ItemName}", 
+                    typeName, baseItemKind, item.Name);
             }
             
-            if (typeName != "Movie" && typeName != "Series" && typeName != "Episode" && 
-                typeName != "Audio" && typeName != "MusicVideo" && typeName != "Video" && 
-                typeName != "Photo" && typeName != "Book" && typeName != "AudioBook")
-            {
-                logger?.LogDebug("Unknown item type detected: {TypeName} for item: {ItemName} at path: {Path}", 
-                    typeName, item.Name, item.Path);
-            }
             return typeName;
         }
 

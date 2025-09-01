@@ -55,7 +55,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         /// <summary>
-        /// Gets the default triggers - runs once daily at 2:30 AM.
+        /// Gets the default triggers - runs once daily at 3:30 AM.
         /// </summary>
         /// <returns>IEnumerable{TaskTriggerInfo}.</returns>
         public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers()

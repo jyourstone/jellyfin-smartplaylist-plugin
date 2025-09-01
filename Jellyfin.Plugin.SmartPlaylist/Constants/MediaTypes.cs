@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using Jellyfin.Data.Enums;
+
 namespace Jellyfin.Plugin.SmartPlaylist.Constants
 {
     /// <summary>
@@ -27,9 +30,42 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public const string AudioBook = nameof(AudioBook);
         
         /// <summary>
-        /// Gets all supported media types as an array
+        /// Centralized mapping between BaseItemKind and MediaTypes.
+        /// This is the single source of truth for all media type mappings.
         /// </summary>
-        public static readonly string[] All = [Episode, Series, Movie, Audio, MusicVideo, Video, Photo, Book, AudioBook];
+        public static readonly Dictionary<BaseItemKind, string> BaseItemKindToMediaType = new()
+        {
+            { BaseItemKind.Episode, Episode },
+            { BaseItemKind.Series, Series },
+            { BaseItemKind.Movie, Movie },
+            { BaseItemKind.Audio, Audio },
+            { BaseItemKind.MusicVideo, MusicVideo },
+            { BaseItemKind.Video, Video },
+            { BaseItemKind.Photo, Photo },
+            { BaseItemKind.Book, Book },
+            { BaseItemKind.AudioBook, AudioBook }
+        };
+        
+        /// <summary>
+        /// Reverse mapping from MediaTypes to BaseItemKind.
+        /// </summary>
+        public static readonly Dictionary<string, BaseItemKind> MediaTypeToBaseItemKind = new()
+        {
+            { Episode, BaseItemKind.Episode },
+            { Series, BaseItemKind.Series },
+            { Movie, BaseItemKind.Movie },
+            { Audio, BaseItemKind.Audio },
+            { MusicVideo, BaseItemKind.MusicVideo },
+            { Video, BaseItemKind.Video },
+            { Photo, BaseItemKind.Photo },
+            { Book, BaseItemKind.Book },
+            { AudioBook, BaseItemKind.AudioBook }
+        };
+        
+        /// <summary>
+        /// Gets all supported media types as an array (derived from centralized mapping)
+        /// </summary>
+        public static readonly string[] All = [.. BaseItemKindToMediaType.Values];
         
         /// <summary>
         /// Gets non-audio media types (everything except Audio and AudioBook)
