@@ -329,6 +329,16 @@
                             <div class="fieldDescription">When enabled, the playlist will be created and updated automatically. When disabled, the playlist will be removed from Jellyfin.</div>
                         </div>
 
+                        <div class="selectContainer" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="autoRefreshMode">Auto-refresh on library changes:</label>
+                            <select id="autoRefreshMode" is="emby-select" class="emby-select-withcolor emby-select">
+                                <option value="Never">Never - Manual refresh only</option>
+                                <option value="OnLibraryChanges">On library changes - When items are added/removed</option>
+                                <option value="OnAllChanges">On all changes - Including playback status changes</option>
+                            </select>
+                            <div class="fieldDescription">Controls when this playlist automatically refreshes based on library changes. Note: Frequent updates may impact performance.</div>
+                        </div>
+
                         <div style="margin-top: 2em;">
                             <button type="submit" id="submitBtn" class="button-submit emby-button block">Create Playlist</button>
                             <button type="button" id="clearFormBtn" class="emby-button raised block">Clear Form</button>
@@ -398,6 +408,16 @@
                             <label class="inputLabel" for="defaultMaxPlayTimeMinutes">Default Max Play Time (Minutes)</label>
                             <input type="number" id="defaultMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Default maximum play time in minutes for new smart playlists. Set to 0 for no limit.</div>
+                        </div>
+
+                        <div class="selectContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="selectLabel" for="defaultAutoRefresh">Default Auto-refresh Mode</label>
+                            <select id="defaultAutoRefresh" is="emby-select" class="emby-select-withcolor emby-select">
+                                <option value="Never">Never - Manual refresh only</option>
+                                <option value="OnLibraryChanges">On library changes - When items are added/removed</option>
+                                <option value="OnAllChanges">On all changes - Including playback status changes</option>
+                            </select>
+                            <div class="fieldDescription">Default auto-refresh mode for new smart playlists. Existing playlists keep their current setting.</div>
                         </div>
 
                         <h2 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h2>

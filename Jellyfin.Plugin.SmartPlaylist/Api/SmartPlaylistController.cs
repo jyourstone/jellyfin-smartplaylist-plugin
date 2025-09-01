@@ -55,6 +55,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             var fileSystem = new SmartPlaylistFileSystem(_applicationPaths);
             return new SmartPlaylistStore(fileSystem, _userManager);
         }
+        
+
 
         private PlaylistService GetPlaylistService()
         {
@@ -614,7 +616,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
                 
                 // Then delete the smart playlist configuration
-                playlistStore.Delete(Guid.Empty, id);
+                await playlistStore.DeleteAsync(Guid.Empty, id).ConfigureAwait(false);
                 
                 return NoContent();
             }

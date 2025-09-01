@@ -32,7 +32,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - ✏️ **Edit Playlists** - Modify existing smart playlists directly from the UI.
 - 👥 **User Selection** - Choose which user should own a playlist with an intuitive dropdown, making it easy to create playlists for different family members.
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. 
-- 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled tasks).
+- 🔄 **Automatic Updates** - Playlists refresh automatically on library updates or via scheduled tasks.
 - 📦 **Export/Import** - Export all playlists to a ZIP file for backup or transfer between Jellyfin instances. Import playlists with duplicate detection.
 - 🎵 **Media Types** - Works with all Jellyfin media types.
 
@@ -67,6 +67,7 @@ The web interface is organized into three tabs:
     -   Set the maximum play time for the playlist (defaults to unlimited)
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
+    -   Configure auto-refresh behavior (Never, On Library Changes, On All Changes).
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
@@ -77,6 +78,7 @@ The web interface is organized into three tabs:
     -   Set the default sort order for new playlists.
     -   Set the default max items and max play time for new playlists.
     -   Configure custom prefix and suffix for playlist names.
+    -   Set the default auto-refresh mode for new playlists.
     -   Export all playlists to a ZIP file for backup or transfer.
     -   Import playlists from a ZIP file with duplicate detection.
     -   Manually trigger a refresh for all smart playlists.
@@ -120,7 +122,21 @@ The Export/Import feature allows you to backup your smart playlist configuration
 
 ### Automatic Updates
 
-Smart playlists automatically refresh using scheduled tasks:
+Smart playlists can update automatically in multiple ways:
+
+#### **🚀 Real-Time Auto-Refresh (New!)**
+Configure playlists to refresh automatically when your library changes:
+
+- **Per-Playlist Setting**: Each playlist can be set to `Never`, `On Library Changes`, or `On All Changes`
+- **Global Default**: Set the default auto-refresh mode for new playlists in Settings
+- **Instant Playback Updates**: Changes to playback status (watched/unwatched, favorites) refresh immediately
+- **Batched Library Updates**: Library additions, removals, and metadata updates are intelligently batched to prevent spam during bulk operations
+- **Performance Optimized**: Uses advanced caching to only refresh playlists that are actually affected by changes
+
+**Auto-Refresh Modes:**
+- **Never**: Scheduled and manual refresh only (original behavior)
+- **On Library Changes**: Refresh when items are added, removed, or metadata is updated
+- **On All Changes**: Also refresh immediately when playback status changes (watched, favorites, etc.)
 
 #### **Scheduled Tasks**
 - **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM** (handles music and audiobooks)
@@ -132,6 +148,22 @@ These tasks can be configured in the Jellyfin admin dashboard.
 - Use the **"Refresh All Playlists"** button in the Settings tab to trigger both tasks immediately
 - Use the **"Refresh"** button next to each playlist in the Manage Playlists tab to refresh individual playlists
 - Individual tasks can also be triggered separately from the Jellyfin admin dashboard
+
+#### **⚠️ Performance Considerations**
+
+**Auto-Refresh Settings:**
+- **`Never`**: Best performance, no automatic refreshes
+- **`On Library Changes`**: Good performance, refreshes for library additions/removals and metadata updates
+- **`On All Changes`**: ⚠️ **Use with caution on large libraries** - refreshes immediately for every playback status change
+
+**Large Library Recommendations:**
+- For libraries with **1000+ items**, consider using `On Library Changes` instead of `On All Changes`
+- Monitor your server performance when enabling `On All Changes` for multiple playlists
+- **Bulk operations** (like library imports) are automatically batched with a 3-second delay to prevent spam
+
+**Third-Party Plugin Compatibility:**
+- Plugins that sync watched status may trigger many simultaneous updates
+- If you experience performance issues during bulk sync operations, temporarily set playlists to `Never` or `On Library Changes`
 
 ## 📋 Overview
 

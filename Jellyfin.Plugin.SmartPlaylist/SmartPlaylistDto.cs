@@ -12,6 +12,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Or
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum AutoRefreshMode
+    {
+        Never = 0,           // Manual only (current behavior)
+        OnLibraryChanges = 1, // Only when items added/removed  
+        OnAllChanges = 2     // Any metadata updates (including playback status)
+    }
+
     [Serializable]
     public class SmartPlaylistDto
     {
@@ -27,6 +35,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public bool Enabled { get; set; } = true; // Default to enabled
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility
+        public AutoRefreshMode AutoRefresh { get; set; } = AutoRefreshMode.Never; // Default to never for backward compatibility
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]

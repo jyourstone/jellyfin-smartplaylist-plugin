@@ -13,7 +13,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Task<SmartPlaylistDto[]> LoadPlaylistsAsync(Guid userId);
         Task<SmartPlaylistDto[]> GetAllSmartPlaylistsAsync();
         Task<SmartPlaylistDto> SaveAsync(SmartPlaylistDto smartPlaylist);
-        void Delete(Guid userId, string smartPlaylistId);
+        Task DeleteAsync(Guid userId, string smartPlaylistId);
     }
 
     public class SmartPlaylistStore(ISmartPlaylistFileSystem fileSystem, IUserManager userManager) : ISmartPlaylistStore
@@ -74,10 +74,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return smartPlaylist;
         }
 
-        public void Delete(Guid userId, string smartPlaylistId)
+        public async Task DeleteAsync(Guid userId, string smartPlaylistId)
         {
             // First find the playlist by ID to get the filename
-            var allPlaylists = GetAllSmartPlaylistsAsync().Result;
+            var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
             var playlist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId);
             
             if (playlist != null && !string.IsNullOrEmpty(playlist.FileName))

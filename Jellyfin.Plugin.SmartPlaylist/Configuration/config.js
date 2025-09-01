@@ -547,6 +547,7 @@
             const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             const defaultPlaylistNamePrefix = config.PlaylistNamePrefix || '';
             const defaultPlaylistNameSuffix = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
+            const defaultAutoRefresh = config.DefaultAutoRefresh || 'OnLibraryChanges';
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
@@ -558,6 +559,10 @@
             const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
             if (maxPlayTimeMinutesElement) {
                 maxPlayTimeMinutesElement.value = defaultMaxPlayTimeMinutes;
+            }
+            const autoRefreshElement = page.querySelector('#autoRefreshMode');
+            if (autoRefreshElement) {
+                autoRefreshElement.value = defaultAutoRefresh;
             }
             
             // Populate settings tab dropdowns with current configuration values
@@ -1493,6 +1498,7 @@
             const orderName = sortByValue === 'Random' ? 'Random' : sortByValue + ' ' + sortOrderValue;
             const isPublic = page.querySelector('#playlistIsPublic').checked || false;
             const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
+            const autoRefreshMode = page.querySelector('#autoRefreshMode')?.value || 'Never';
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             const maxItemsInput = maxItemsElement?.value || '';
             let maxItems;
@@ -1530,7 +1536,8 @@
                 UserId: userId,
                 MediaTypes: selectedMediaTypes,
                 MaxItems: maxItems,
-                MaxPlayTimeMinutes: maxPlayTimeMinutes
+                MaxPlayTimeMinutes: maxPlayTimeMinutes,
+                AutoRefresh: autoRefreshMode
             };
 
             // Add ID if in edit mode
@@ -1618,6 +1625,10 @@
             if (maxPlayTimeMinutesElement) {
                 maxPlayTimeMinutesElement.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             }
+            const autoRefreshElement = page.querySelector('#autoRefreshMode');
+            if (autoRefreshElement) {
+                autoRefreshElement.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
+            }
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
             page.querySelector('#sortOrder').value = 'Ascending';
@@ -1630,6 +1641,10 @@
             const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
             if (maxPlayTimeMinutesElement) {
                 maxPlayTimeMinutesElement.value = 0;
+            }
+            const autoRefreshElement = page.querySelector('#autoRefreshMode');
+            if (autoRefreshElement) {
+                autoRefreshElement.value = 'OnLibraryChanges';
             }
         });
         
@@ -1964,6 +1979,10 @@
                     const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
                     const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
                     const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
+                    const autoRefreshMode = playlist.AutoRefresh || 'Never';
+                    const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
+                                             autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
+                                             autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
                     const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                     const userName = await resolveUsername(apiClient, playlist);
                     const playlistId = playlist.Id || 'NO_ID';
@@ -1984,6 +2003,7 @@
                         '<strong>Sort:</strong> ' + sortName + '<br>' +
                         '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
                         '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
+                        '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
@@ -2196,6 +2216,10 @@
             const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
             const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
             const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
+            const autoRefreshMode = playlist.AutoRefresh || 'Never';
+            const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
+                                     autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
+                                     autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
             const userName = await resolveUsername(apiClient, playlist);
             const playlistId = playlist.Id || 'NO_ID';
@@ -2216,6 +2240,7 @@
                 '<strong>Sort:</strong> ' + sortName + '<br>' +
                 '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
                 '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
+                '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
                 '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                 '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
@@ -2421,6 +2446,13 @@
                 page.querySelector('#playlistName').value = playlist.Name || '';
                 page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
                 page.querySelector('#playlistIsEnabled').checked = playlist.Enabled !== false; // Default to true for backward compatibility
+                
+                // Handle AutoRefresh with backward compatibility
+                const autoRefreshValue = playlist.AutoRefresh !== undefined ? playlist.AutoRefresh : 'Never';
+                const autoRefreshElement = page.querySelector('#autoRefreshMode');
+                if (autoRefreshElement) {
+                    autoRefreshElement.value = autoRefreshValue;
+                }
                 
                 // Handle MaxItems with backward compatibility for existing playlists
                 // Default to 0 (unlimited) for old playlists that didn't have this setting
@@ -2669,6 +2701,7 @@
             const defaultMakePublicEl = page.querySelector('#defaultMakePublic');
             const defaultMaxItemsEl = page.querySelector('#defaultMaxItems');
             const defaultMaxPlayTimeMinutesEl = page.querySelector('#defaultMaxPlayTimeMinutes');
+            const defaultAutoRefreshEl = page.querySelector('#defaultAutoRefresh');
             const playlistNamePrefixEl = page.querySelector('#playlistNamePrefix');
             const playlistNameSuffixEl = page.querySelector('#playlistNameSuffix');
             
@@ -2677,6 +2710,7 @@
             if (defaultMakePublicEl) defaultMakePublicEl.checked = config.DefaultMakePublic || false;
             if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
             if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
             if (playlistNameSuffixEl) playlistNameSuffixEl.value = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
             
@@ -2712,6 +2746,8 @@
                 const parsedValue = parseInt(defaultMaxPlayTimeMinutesInput);
                 config.DefaultMaxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
             }
+            
+            config.DefaultAutoRefresh = page.querySelector('#defaultAutoRefresh').value || 'OnLibraryChanges';
             
             // Save playlist naming configuration
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
