@@ -129,7 +129,7 @@ jobs:
             PLUGIN_ENTRY=$(jq -n \
               --arg name "SmartPlaylist" \
               --arg guid "$PLUGIN_GUID" \
-              --arg overview "Smart Playlist plugin for Jellyfin." \
+              --arg overview "SmartPlaylist plugin for Jellyfin." \
               --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin." \
               --arg category "General" \
               --arg owner "jyourstone" \
