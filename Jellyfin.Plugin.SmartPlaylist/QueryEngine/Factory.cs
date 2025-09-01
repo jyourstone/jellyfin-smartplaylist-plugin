@@ -40,6 +40,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static System.Reflection.MethodInfo _getPeopleMethodCache = null;
         private static readonly object _getPeopleMethodLock = new();
         
+        // Known unsupported types to avoid logging noise
+        private static readonly HashSet<string> _knownUnsupportedTypes = new() 
+        { 
+            "CollectionFolder", "UserRootFolder", "AggregateFolder", "Folder" 
+        };
+        
         // Cache episode property lookups for better performance - using ConcurrentDictionary for thread safety
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _parentIndexPropertyCache = new();
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _indexPropertyCache = new();
@@ -1079,8 +1085,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var baseItemKind = item.GetBaseItemKind().ToString();
             
             // Only log if it's not a known unsupported type to reduce noise
-            var knownUnsupportedTypes = new[] { "CollectionFolder", "UserRootFolder", "AggregateFolder", "Folder" };
-            if (!knownUnsupportedTypes.Contains(typeName))
+            if (!_knownUnsupportedTypes.Contains(typeName))
             {
                 logger?.LogDebug("Unsupported item type encountered: {ItemType} (BaseItemKind: {BaseItemKind}) for item: {ItemName}", 
                     typeName, baseItemKind, item.Name);

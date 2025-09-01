@@ -892,14 +892,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (dto.MediaTypes?.Count > 0)
             {
                 // Check if it's audio-only (Audio or AudioBook)
-                if (dto.MediaTypes.All(mt => MediaTypes.AudioOnly.Contains(mt)))
+                if (dto.MediaTypes.All(mt => MediaTypes.AudioOnlySet.Contains(mt)))
                 {
                     _logger.LogDebug("Playlist {PlaylistName} contains only audio content, setting MediaType to Audio", dto.Name);
                     return MediaTypes.Audio;
                 }
                 
-                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.NonAudioTypes.Contains(mt));
-                bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnly.Contains(mt));
+                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.NonAudioSet.Contains(mt));
+                bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnlySet.Contains(mt));
                 
                 if (hasVideoContent && !hasAudioContent)
                 {

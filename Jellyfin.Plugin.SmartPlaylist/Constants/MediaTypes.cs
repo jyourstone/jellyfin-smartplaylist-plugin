@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Jellyfin.Data.Enums;
 
 namespace Jellyfin.Plugin.SmartPlaylist.Constants
@@ -87,6 +89,34 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// </summary>
         public static readonly string[] TV = [Series, Episode];
         
+        // HashSet variants for O(1) membership checks (performance optimization)
+        
+        /// <summary>
+        /// HashSet variant of AudioOnly for O(1) membership checks
+        /// </summary>
+        public static readonly HashSet<string> AudioOnlySet = new(AudioOnly, StringComparer.Ordinal);
+        
+        /// <summary>
+        /// HashSet variant of NonAudioTypes for O(1) membership checks  
+        /// </summary>
+        public static readonly HashSet<string> NonAudioSet = new(NonAudioTypes, StringComparer.Ordinal);
+        
+        /// <summary>
+        /// HashSet variant of BookTypes for O(1) membership checks
+        /// </summary>
+        public static readonly HashSet<string> BookTypesSet = new(BookTypes, StringComparer.Ordinal);
+        
+        /// <summary>
+        /// Gets BaseItemKind array for audio-only content (derived from centralized mapping)
+        /// </summary>
+        public static BaseItemKind[] GetAudioOnlyBaseItemKinds() => 
+            AudioOnly.Select(mediaType => MediaTypeToBaseItemKind[mediaType]).ToArray();
+        
+        /// <summary>
+        /// Gets BaseItemKind array for non-audio content (derived from centralized mapping)
+        /// </summary>
+        public static BaseItemKind[] GetNonAudioBaseItemKinds() => 
+            NonAudioTypes.Select(mediaType => MediaTypeToBaseItemKind[mediaType]).ToArray();
 
     }
 }

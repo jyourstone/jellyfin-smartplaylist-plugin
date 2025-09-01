@@ -40,14 +40,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return playlists.Where(playlist => 
                 playlist.MediaTypes != null && 
                 playlist.MediaTypes.Any(mediaType => 
-                    MediaTypes.AudioOnly.Contains(mediaType)));
+                    MediaTypes.AudioOnlySet.Contains(mediaType)));
         }
 
         protected override IEnumerable<BaseItem> GetRelevantUserMedia(User user)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Audio, BaseItemKind.AudioBook],
+                IncludeItemTypes = MediaTypes.GetAudioOnlyBaseItemKinds(),
                 Recursive = true
             };
 
