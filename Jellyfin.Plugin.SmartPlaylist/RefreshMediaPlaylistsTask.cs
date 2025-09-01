@@ -13,24 +13,25 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.SmartPlaylist
 {
     /// <summary>
-    /// Scheduled task for refreshing video smart playlists (movies, series, episodes).
+    /// Scheduled task for refreshing media smart playlists (everything except audio/music).
+    /// Handles movies, TV shows, books, photos, music videos, and home videos.
     /// </summary>
-    public class RefreshVideoPlaylistsTask(
+    public class RefreshMediaPlaylistsTask(
         IUserManager userManager,
         ILibraryManager libraryManager,
-        ILogger<RefreshVideoPlaylistsTask> logger,
+        ILogger<RefreshMediaPlaylistsTask> logger,
         IServerApplicationPaths serverApplicationPaths,
         IPlaylistManager playlistManager,
         IUserDataManager userDataManager,
         IProviderManager providerManager) : RefreshPlaylistsTaskBase(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
     {
-        public override string Name => "Refresh Video/Photo SmartPlaylists";
-        public override string Description => "Refresh all video/photo SmartPlaylists (movies, series, episodes, music videos, home videos, home photos)";
-        public override string Key => "RefreshVideoSmartPlaylists";
+        public override string Name => "Refresh Media Smart Playlists";
+        public override string Description => "Refreshes smart playlists for all media content except audio/music (movies, TV shows, books, music videos, home videos, and photos)";
+        public override string Key => "RefreshMediaSmartPlaylists";
 
         protected override string GetHandledMediaTypes()
         {
-            return "video";
+            return "media";
         }
 
         protected override IEnumerable<SmartPlaylistDto> FilterPlaylistsByMediaType(IEnumerable<SmartPlaylistDto> playlists)
@@ -38,14 +39,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return playlists.Where(playlist => 
                 playlist.MediaTypes != null && 
                 playlist.MediaTypes.Any(mediaType => 
-                    MediaTypes.VideoTypes.Contains(mediaType)));
+                    !MediaTypes.AudioOnly.Contains(mediaType)));
         }
 
         protected override IEnumerable<BaseItem> GetRelevantUserMedia(User user)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo],
+                IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo, BaseItemKind.Book],
                 Recursive = true
             };
 

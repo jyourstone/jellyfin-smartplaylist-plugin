@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
@@ -38,14 +39,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return playlists.Where(playlist => 
                 playlist.MediaTypes != null && 
-                playlist.MediaTypes.Any(mediaType => mediaType == "Audio"));
+                playlist.MediaTypes.Any(mediaType => 
+                    MediaTypes.AudioOnly.Contains(mediaType)));
         }
 
         protected override IEnumerable<BaseItem> GetRelevantUserMedia(User user)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Audio],
+                IncludeItemTypes = [BaseItemKind.Audio, BaseItemKind.AudioBook],
                 Recursive = true
             };
 

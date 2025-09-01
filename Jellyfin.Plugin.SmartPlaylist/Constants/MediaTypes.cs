@@ -22,25 +22,35 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public const string Video = nameof(Video);
         public const string Photo = nameof(Photo);
         
+        // Book Types
+        public const string Book = nameof(Book);
+        public const string AudioBook = nameof(AudioBook);
+        
         /// <summary>
         /// Gets all supported media types as an array
         /// </summary>
-        public static readonly string[] All = [Episode, Series, Movie, Audio, MusicVideo, Video, Photo];
+        public static readonly string[] All = [Episode, Series, Movie, Audio, MusicVideo, Video, Photo, Book, AudioBook];
         
         /// <summary>
-        /// Gets video media types (Movie, Series, Episode, MusicVideo, Video, Photo)
-        /// Note: Photo is included here because it's part of the same library type as Video
+        /// Gets non-audio media types (everything except Audio and AudioBook)
         /// </summary>
-        public static readonly string[] VideoTypes = [Movie, Series, Episode, MusicVideo, Video, Photo];
+        public static readonly string[] NonAudioTypes = [Movie, Series, Episode, MusicVideo, Video, Photo, Book];
+        
+        /// <summary>
+        /// Gets audio-only media types (Audio, AudioBook)
+        /// </summary>
+        public static readonly string[] AudioOnly = [Audio, AudioBook];
+        
+        /// <summary>
+        /// Gets book media types (Book, AudioBook)
+        /// </summary>
+        public static readonly string[] BookTypes = [Book, AudioBook];
         
         /// <summary>
         /// Gets TV media types (Series, Episode)
         /// </summary>
         public static readonly string[] TV = [Series, Episode];
         
-        /// <summary>
-        /// Gets audio-only media types (Audio)
-        /// </summary>
-        public static readonly string[] AudioOnly = [Audio];
+
     }
 }

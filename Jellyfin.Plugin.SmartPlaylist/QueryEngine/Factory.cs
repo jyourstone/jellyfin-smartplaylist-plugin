@@ -8,6 +8,8 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.Audio;
 using Video = MediaBrowser.Controller.Entities.Video;
 using Photo = MediaBrowser.Controller.Entities.Photo;
+using Book = MediaBrowser.Controller.Entities.Book;
+
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
@@ -776,7 +778,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
                 MediaType = baseItem.MediaType.ToString(),
-                ItemType = GetItemTypeName(baseItem),
+                ItemType = GetItemTypeName(baseItem, logger),
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
@@ -1045,7 +1047,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="item">The BaseItem to get the type name for</param>
         /// <returns>The item type name</returns>
-        private static string GetItemTypeName(BaseItem item)
+        private static string GetItemTypeName(BaseItem item, ILogger logger = null)
         {
             return item switch
             {
@@ -1054,11 +1056,34 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 Movie => MediaTypes.Movie,
                 Audio => MediaTypes.Audio,
                 MusicVideo => MediaTypes.MusicVideo,
-                // Handle Video and Photo types for Home Videos and Photos (same format as other media types)
                 Video => MediaTypes.Video,
                 Photo => MediaTypes.Photo,
-                _ => item.GetType().Name
+                Book => MediaTypes.Book,
+                _ => LogUnknownItemType(item, logger)
             };
+        }
+
+        /// <summary>
+        /// Helper method to log unknown item types for debugging and handle AudioBook
+        /// </summary>
+        private static string LogUnknownItemType(BaseItem item, ILogger logger)
+        {
+            var typeName = item.GetType().Name;
+            
+            // Handle AudioBook which doesn't exist as a direct type reference
+            if (typeName == "AudioBook")
+            {
+                return MediaTypes.AudioBook;
+            }
+            
+            if (typeName != "Movie" && typeName != "Series" && typeName != "Episode" && 
+                typeName != "Audio" && typeName != "MusicVideo" && typeName != "Video" && 
+                typeName != "Photo" && typeName != "Book" && typeName != "AudioBook")
+            {
+                logger?.LogDebug("Unknown item type detected: {TypeName} for item: {ItemName} at path: {Path}", 
+                    typeName, item.Name, item.Path);
+            }
+            return typeName;
         }
 
         /// <summary>
