@@ -15,11 +15,11 @@ Requires Jellyfin version `10.10.0` and newer.
 ## 📋 Table of Contents
 
 - [✨ Features](#-features)
+- [🚀 Quick Start](#-quick-start)
 - [⚙️ Configuration](#️-configuration)
 - [📋 Overview](#-overview)
 - [🎬 Supported Media Types](#supported-media-types)
 - [📦 How to Install](#-how-to-install)
-- [🚀 Roadmap](#-roadmap)
 - [🛠️ Development](#️-development)
 - [🔧 Advanced Configuration](#-advanced-configuration)
 - [🙏 Credits](#-credits)
@@ -208,13 +208,6 @@ https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/master/man
 
 ### Manual Installation
 Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to your Jellyfin plugins directory.
-
-## 🚀 Roadmap
-
-Here are some of the planned features for future updates. Feel free to contribute or suggest new ideas!
-
-- **More Rule Fields**: Add additional fields if needed, [request here](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues).
-- **Auto refresh**: Make smart playlists update automatically on library changes instead of a fixed schedule.
 
 ## 🛠️ Development
 
