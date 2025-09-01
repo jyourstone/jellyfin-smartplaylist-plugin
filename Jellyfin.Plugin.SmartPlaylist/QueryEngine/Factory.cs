@@ -8,6 +8,8 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.Audio;
 using Video = MediaBrowser.Controller.Entities.Video;
 using Photo = MediaBrowser.Controller.Entities.Photo;
+using Book = MediaBrowser.Controller.Entities.Book;
+
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Data.Entities;
@@ -37,6 +39,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _mediaSourcesPropertyCache = new();
         private static System.Reflection.MethodInfo _getPeopleMethodCache = null;
         private static readonly object _getPeopleMethodLock = new();
+        
+        // Known unsupported types to avoid logging noise
+        private static readonly HashSet<string> _knownUnsupportedTypes = new() 
+        { 
+            "CollectionFolder", "UserRootFolder", "AggregateFolder", "Folder" 
+        };
         
         // Cache episode property lookups for better performance - using ConcurrentDictionary for thread safety
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _parentIndexPropertyCache = new();
@@ -776,7 +784,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
                 MediaType = baseItem.MediaType.ToString(),
-                ItemType = GetItemTypeName(baseItem),
+                ItemType = GetItemTypeName(baseItem, logger),
                 Album = baseItem.Album,
                 ProductionYear = baseItem.ProductionYear.GetValueOrDefault(),
                 Tags = baseItem.Tags is not null ? [.. baseItem.Tags] : [],
@@ -1045,20 +1053,45 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="item">The BaseItem to get the type name for</param>
         /// <returns>The item type name</returns>
-        private static string GetItemTypeName(BaseItem item)
+        private static string GetItemTypeName(BaseItem item, ILogger logger = null)
         {
-            return item switch
+            // First try direct type matching for performance
+            var directMatch = item switch
             {
                 Episode => MediaTypes.Episode,
                 Series => MediaTypes.Series,
                 Movie => MediaTypes.Movie,
                 Audio => MediaTypes.Audio,
                 MusicVideo => MediaTypes.MusicVideo,
-                // Handle Video and Photo types for Home Videos and Photos (same format as other media types)
                 Video => MediaTypes.Video,
                 Photo => MediaTypes.Photo,
-                _ => item.GetType().Name
+                Book => MediaTypes.Book,
+                _ => null
             };
+            
+            if (directMatch != null)
+            {
+                return directMatch;
+            }
+            
+            // Fallback to BaseItemKind mapping for types that don't have direct C# classes
+            if (MediaTypes.BaseItemKindToMediaType.TryGetValue(item.GetBaseItemKind(), out var mappedType))
+            {
+                return mappedType;
+            }
+            
+            // Log truly unknown types (not in our supported mapping)
+            var typeName = item.GetType().Name;
+            var baseItemKind = item.GetBaseItemKind().ToString();
+            
+            // Only log if it's not a known unsupported type to reduce noise
+            if (!_knownUnsupportedTypes.Contains(typeName))
+            {
+                logger?.LogDebug("Unsupported item type encountered: {ItemType} (BaseItemKind: {BaseItemKind}) for item: {ItemName}", 
+                    typeName, baseItemKind, item.Name);
+            }
+            
+            return typeName;
         }
 
         /// <summary>

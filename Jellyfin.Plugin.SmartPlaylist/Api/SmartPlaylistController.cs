@@ -98,7 +98,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
             {
                 // Find both audio and video refresh tasks
                 var audioTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshAudioSmartPlaylists");
-                var videoTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshVideoSmartPlaylists");
+                var mediaTask = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RefreshMediaSmartPlaylists");
                 
                 bool anyTaskTriggered = false;
                 
@@ -113,15 +113,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     _logger.LogWarning("Audio SmartPlaylist refresh task not found");
                 }
                 
-                if (videoTask != null)
+                if (mediaTask != null)
                 {
-                    _logger.LogInformation("Triggering Video SmartPlaylist refresh task");
-                    _taskManager.Execute(videoTask, new TaskOptions());
+                    _logger.LogInformation("Triggering Media SmartPlaylist refresh task");
+                    _taskManager.Execute(mediaTask, new TaskOptions());
                     anyTaskTriggered = true;
                 }
                 else
                 {
-                    _logger.LogWarning("Video SmartPlaylist refresh task not found");
+                    _logger.LogWarning("Media SmartPlaylist refresh task not found");
                 }
                 
                 if (!anyTaskTriggered)

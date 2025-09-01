@@ -654,12 +654,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
             }
             
-            // Save the changes
-            await playlist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-            
             // Set the appropriate MediaType based on playlist content
             var mediaType = DeterminePlaylistMediaType(dto);
             SetPlaylistMediaType(playlist, mediaType);
+            
+            // Save the changes after updating PlaylistMediaType
+            await playlist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
@@ -691,18 +691,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
                 
                 newPlaylist.LinkedChildren = linkedChildren;
-                
-                // Note: Jellyfin defaults playlist MediaType to "Audio" regardless of content - this is a known Jellyfin limitation
-                
+
+                // Set MediaType before persisting to avoid a second write
+                var mediaType = DeterminePlaylistMediaType(dto);
+                SetPlaylistMediaType(newPlaylist, mediaType);
+
+                // Persist once with items + media type
                 await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
-                
-                // Set the appropriate MediaType based on playlist content
-                var mediaType = DeterminePlaylistMediaType(dto);
-                SetPlaylistMediaType(newPlaylist, mediaType);
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
@@ -790,39 +789,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // If no media types specified, return all supported types (backward compatibility)
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo];
+                return [.. MediaTypes.MediaTypeToBaseItemKind.Values];
             }
 
             var baseItemKinds = new List<BaseItemKind>();
             
             foreach (var mediaType in mediaTypes)
             {
-                switch (mediaType)
+                if (MediaTypes.MediaTypeToBaseItemKind.TryGetValue(mediaType, out var baseItemKind))
                 {
-                    case MediaTypes.Movie:
-                        baseItemKinds.Add(BaseItemKind.Movie);
-                        break;
-                    case MediaTypes.Audio:
-                        baseItemKinds.Add(BaseItemKind.Audio);
-                        break;
-                    case MediaTypes.Episode:
-                        baseItemKinds.Add(BaseItemKind.Episode);
-                        break;
-                    case MediaTypes.Series:
-                        baseItemKinds.Add(BaseItemKind.Series);
-                        break;
-                    case MediaTypes.MusicVideo:
-                        baseItemKinds.Add(BaseItemKind.MusicVideo);
-                        break;
-                    case MediaTypes.Video:
-                        baseItemKinds.Add(BaseItemKind.Video);
-                        break;
-                    case MediaTypes.Photo:
-                        baseItemKinds.Add(BaseItemKind.Photo);
-                        break;
-                    default:
-                        _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
-                        break;
+                    baseItemKinds.Add(baseItemKind);
+                }
+                else
+                {
+                    _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
                 }
             }
 
@@ -845,7 +825,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (baseItemKinds.Count == 0)
             {
                 _logger?.LogWarning("No valid media types found, falling back to all supported types");
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo];
+                return [.. MediaTypes.MediaTypeToBaseItemKind.Values];
             }
 
             return [.. baseItemKinds];
@@ -910,20 +890,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             if (dto.MediaTypes?.Count > 0)
             {
-                // Check if it's audio-only
-                if (dto.MediaTypes.All(mt => mt == MediaTypes.Audio))
+                // Check if it's audio-only (Audio or AudioBook)
+                if (dto.MediaTypes.All(mt => MediaTypes.AudioOnlySet.Contains(mt)))
                 {
-                    _logger.LogDebug("Playlist {PlaylistName} contains only Audio content, setting MediaType to Audio", dto.Name);
-                    return "Audio";
+                    _logger.LogDebug("Playlist {PlaylistName} contains only audio content, setting MediaType to Audio", dto.Name);
+                    return MediaTypes.Audio;
                 }
                 
-                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.VideoTypes.Contains(mt));
-                bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnly.Contains(mt));
+                bool hasVideoContent = dto.MediaTypes.Any(mt => MediaTypes.NonAudioSet.Contains(mt));
+                bool hasAudioContent = dto.MediaTypes.Any(mt => MediaTypes.AudioOnlySet.Contains(mt));
                 
                 if (hasVideoContent && !hasAudioContent)
                 {
-                    _logger.LogDebug("Playlist {PlaylistName} contains only video content, setting MediaType to Video", dto.Name);
-                    return "Video";
+                    _logger.LogDebug("Playlist {PlaylistName} contains only non-audio content, setting MediaType to Video", dto.Name);
+                    return MediaTypes.Video;
                 }
             }
             

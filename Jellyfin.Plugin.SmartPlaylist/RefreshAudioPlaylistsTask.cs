@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
@@ -38,14 +39,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return playlists.Where(playlist => 
                 playlist.MediaTypes != null && 
-                playlist.MediaTypes.Any(mediaType => mediaType == "Audio"));
+                playlist.MediaTypes.Any(mediaType => 
+                    MediaTypes.AudioOnlySet.Contains(mediaType)));
         }
 
         protected override IEnumerable<BaseItem> GetRelevantUserMedia(User user)
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = [BaseItemKind.Audio],
+                IncludeItemTypes = MediaTypes.GetAudioOnlyBaseItemKinds(),
                 Recursive = true
             };
 
@@ -53,7 +55,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         /// <summary>
-        /// Gets the default triggers - runs once daily at 2:30 AM.
+        /// Gets the default triggers - runs once daily at 3:30 AM.
         /// </summary>
         /// <returns>IEnumerable{TaskTriggerInfo}.</returns>
         public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers()

@@ -254,7 +254,9 @@
         { Value: "Audio", Label: "Audio (Music)" },
         { Value: "MusicVideo", Label: "Music Video" },
         { Value: "Video", Label: "Video (Home Video)" },
-        { Value: "Photo", Label: "Photo (Home Photo)" }
+        { Value: "Photo", Label: "Photo (Home Photo)" },
+        { Value: "Book", Label: "Book" },
+        { Value: "AudioBook", Label: "Audiobook" }
     ];
 
     // Generate media type checkboxes from the mediaTypes array

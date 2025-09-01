@@ -35,7 +35,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 📦 **Export/Import** - Export all playlists to a ZIP file for backup or transfer between Jellyfin instances. Import playlists with duplicate detection.
 - 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
-- 🎵 **Media Types** - Works with movies, series, episodes, music, music videos, home videos and photos.
+- 🎵 **Media Types** - Works with movies, series, episodes, music, music videos, home videos, photos, books (eBooks/Comics), and audiobooks.
 
 ## ⚙️ Configuration
 
@@ -117,8 +117,8 @@ The Export/Import feature allows you to backup your smart playlist configuration
 Smart playlists automatically refresh using scheduled tasks:
 
 #### **Scheduled Tasks**
-- **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM**
-- **🎬 Video SmartPlaylists**: Runs by default **hourly**
+- **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM** (handles music and audiobooks)
+- **🎬 Media SmartPlaylists**: Runs by default **hourly** (handles movies, TV shows, readable books, music videos, home videos, and photos)
 
 These tasks can be configured in the Jellyfin admin dashboard.
 
