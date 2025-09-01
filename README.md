@@ -17,6 +17,7 @@ Requires Jellyfin version `10.10.0` and newer.
 - [✨ Features](#-features)
 - [⚙️ Configuration](#️-configuration)
 - [📋 Overview](#-overview)
+- [🎬 Supported Media Types](#supported-media-types)
 - [📦 How to Install](#-how-to-install)
 - [🚀 Roadmap](#-roadmap)
 - [🛠️ Development](#️-development)
@@ -140,6 +141,20 @@ This plugin creates smart playlists that automatically updates based on rules yo
 - And much more!
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
+
+### Supported Media Types
+
+SmartPlaylist works with all media types supported by Jellyfin:
+
+- **🎬 Movie** - Individual movie files
+- **📺 Series** - TV show series as a whole
+- **📺 Episode** - Individual TV show episodes
+- **🎵 Audio (Music)** - Music tracks and albums
+- **🎬 Music Video** - Music video files
+- **📹 Video (Home Video)** - Personal home videos and recordings
+- **📸 Photo (Home Photo)** - Personal photos and images
+- **📚 Book** - eBooks, comics, and other readable content
+- **🎧 Audiobook** - Spoken word audio books
 
 ### Common Use Cases
 
