@@ -33,10 +33,17 @@ Requires Jellyfin version `10.10.0` and newer.
 - 👥 **User Selection** - Choose which user should own a playlist with an intuitive dropdown, making it easy to create playlists for different family members.
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder. 
 - 🔄 **Automatic Updates** - Playlists refresh automatically (scheduled tasks).
-- ⚙️ **Settings** - Configure default settings and trigger a manual refresh for all playlists at any time.
 - 📦 **Export/Import** - Export all playlists to a ZIP file for backup or transfer between Jellyfin instances. Import playlists with duplicate detection.
-- 🛠️ **Advanced Options** - Support for regex patterns, date ranges, and more.
-- 🎵 **Media Types** - Works with movies, series, episodes, music, music videos, home videos, photos, books (eBooks/Comics), and audiobooks.
+- 🎵 **Media Types** - Works with all Jellyfin media types.
+
+## 🚀 Quick Start
+
+1. **Install the Plugin**: [See installation instructions](#-how-to-install)
+2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartPlaylist
+3. **Create Your First Playlist**: Use the "Create Playlist" tab
+4. **Example**: Create a playlist for "Unwatched Action Movies" with media type "Movie", Genre contains "Action" AND Is Played = False
+
+[📖 Full Documentation](#️-configuration) | [📦 Installation Guide](#-how-to-install)
 
 ## ⚙️ Configuration
 
