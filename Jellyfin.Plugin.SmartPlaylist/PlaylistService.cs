@@ -691,19 +691,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
                 
                 newPlaylist.LinkedChildren = linkedChildren;
-                
-                // Note: Jellyfin defaults playlist MediaType to "Audio" regardless of content - this is a known Jellyfin limitation
-                
+
+                // Set MediaType before persisting to avoid a second write
+                var mediaType = DeterminePlaylistMediaType(dto);
+                SetPlaylistMediaType(newPlaylist, mediaType);
+
+                // Persist once with items + media type
                 await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
-                
-                // Set the appropriate MediaType based on playlist content and persist
-                var mediaType = DeterminePlaylistMediaType(dto);
-                SetPlaylistMediaType(newPlaylist, mediaType);
-                await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
