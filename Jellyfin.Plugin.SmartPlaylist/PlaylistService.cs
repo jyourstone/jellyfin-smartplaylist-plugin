@@ -654,12 +654,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
             }
             
-            // Save the changes
-            await playlist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-            
             // Set the appropriate MediaType based on playlist content
             var mediaType = DeterminePlaylistMediaType(dto);
             SetPlaylistMediaType(playlist, mediaType);
+            
+            // Save the changes after updating PlaylistMediaType
+            await playlist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
@@ -700,9 +700,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
                 
-                // Set the appropriate MediaType based on playlist content
+                // Set the appropriate MediaType based on playlist content and persist
                 var mediaType = DeterminePlaylistMediaType(dto);
                 SetPlaylistMediaType(newPlaylist, mediaType);
+                await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
@@ -826,7 +827,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (baseItemKinds.Count == 0)
             {
                 _logger?.LogWarning("No valid media types found, falling back to all supported types");
-                return [BaseItemKind.Movie, BaseItemKind.Audio, BaseItemKind.Episode, BaseItemKind.Series, BaseItemKind.MusicVideo, BaseItemKind.Video, BaseItemKind.Photo, BaseItemKind.Book, BaseItemKind.AudioBook];
+                return [.. MediaTypes.MediaTypeToBaseItemKind.Values];
             }
 
             return [.. baseItemKinds];
