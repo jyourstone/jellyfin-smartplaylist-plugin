@@ -43,8 +43,6 @@ Requires Jellyfin version `10.10.0` and newer.
 3. **Create Your First Playlist**: Use the "Create Playlist" tab
 4. **Example**: Create a playlist for "Unwatched Action Movies" with media type "Movie", Genre contains "Action" AND Is Played = False
 
-[📖 Full Documentation](#️-configuration) | [📦 Installation Guide](#-how-to-install)
-
 ## ⚙️ Configuration
 
 SmartPlaylist now features a modern web-based configuration interface through the plugin settings page! No more manual JSON editing required.
