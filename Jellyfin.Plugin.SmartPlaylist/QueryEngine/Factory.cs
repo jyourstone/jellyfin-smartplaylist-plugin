@@ -953,8 +953,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.AudioLanguages = [];
             }
 
-            // Extract resolution/framerate only for items that can have video streams (exclude audio and photos)
-            if (baseItem is not Photo and not Audio)
+            // Extract resolution/framerate only for items that can have video streams
+            if (MediaTypes.VideoStreamCapableSet.Contains(operand.ItemType))
             {
                 ExtractResolution(operand, baseItem, logger);
                 ExtractFramerate(operand, baseItem, logger);
@@ -980,8 +980,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.People = [];
             }
             
-            // Extract artists and album artists for music items (cheap operations, always extract)
-            ExtractArtists(operand, baseItem, logger);
+            // Extract artists and album artists only for music-related items (cheap operations when applicable)
+            if (MediaTypes.MusicRelatedSet.Contains(operand.ItemType))
+            {
+                ExtractArtists(operand, baseItem, logger);
+            }
+            else
+            {
+                operand.Artists = [];
+                operand.AlbumArtists = [];
+            }
             
             // Extract NextUnwatched status for each user - only when needed for performance
             operand.NextUnwatchedByUser = [];
@@ -1047,6 +1055,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             return operand;
         }
+
+
 
         /// <summary>
         /// Gets the item type name using efficient type checking instead of reflection

@@ -89,6 +89,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// </summary>
         public static readonly string[] TV = [Series, Episode];
         
+        /// <summary>
+        /// Gets music-related media types (Audio, AudioBook, MusicVideo)
+        /// </summary>
+        public static readonly string[] MusicRelated = [Audio, AudioBook, MusicVideo];
+        
+        /// <summary>
+        /// Gets media types that can have video streams (excludes Photo, Audio, Book, AudioBook)
+        /// </summary>
+        public static readonly string[] VideoStreamCapable = [Movie, Series, Episode, MusicVideo, Video];
+        
         // HashSet variants for O(1) membership checks (performance optimization)
         
         /// <summary>
@@ -105,6 +115,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// HashSet variant of BookTypes for O(1) membership checks
         /// </summary>
         public static readonly HashSet<string> BookTypesSet = new(BookTypes, StringComparer.Ordinal);
+        
+        /// <summary>
+        /// HashSet variant of MusicRelated for O(1) membership checks
+        /// </summary>
+        public static readonly HashSet<string> MusicRelatedSet = new(MusicRelated, StringComparer.Ordinal);
+        
+        /// <summary>
+        /// HashSet variant of VideoStreamCapable for O(1) membership checks
+        /// </summary>
+        public static readonly HashSet<string> VideoStreamCapableSet = new(VideoStreamCapable, StringComparer.Ordinal);
         
         /// <summary>
         /// Gets BaseItemKind array for audio-only content (derived from centralized mapping)
