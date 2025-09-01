@@ -909,7 +909,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             // Default to Audio for mixed/unknown content (Jellyfin standard)
             _logger.LogDebug("Playlist {PlaylistName} has mixed/unknown content, defaulting to Audio", dto.Name);
-            return "Audio";
+            return MediaTypes.Audio;
         }
 
         /// <summary>

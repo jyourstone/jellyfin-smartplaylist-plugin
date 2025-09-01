@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     /// <summary>
     /// Service registrator for SmartPlaylist plugin services.
     /// </summary>
-    public class ServiceRegistrator : IPluginServiceRegistrator
+    public sealed class ServiceRegistrator : IPluginServiceRegistrator
     {
         /// <summary>
         /// Registers services for the SmartPlaylist plugin.

@@ -352,6 +352,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 _logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
                 
+                // Update the auto-refresh cache with the new playlist
+                AutoRefreshService.Instance?.UpdatePlaylistInCache(createdPlaylist);
+                
                 // Clear the rule cache to ensure the new playlist rules are properly compiled
                 SmartPlaylist.ClearRuleCache(_logger);
                 _logger.LogDebug("Cleared rule cache after creating playlist '{PlaylistName}'", playlist.Name);
@@ -532,6 +535,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
                 
+                // Update the auto-refresh cache with the updated playlist
+                AutoRefreshService.Instance?.UpdatePlaylistInCache(updatedPlaylist);
+                
                 // Clear the rule cache to ensure any rule changes are properly reflected
                 SmartPlaylist.ClearRuleCache(_logger);
                 _logger.LogDebug("Cleared rule cache after updating playlist '{PlaylistName}'", playlist.Name);
@@ -617,6 +623,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 // Then delete the smart playlist configuration
                 await playlistStore.DeleteAsync(Guid.Empty, id).ConfigureAwait(false);
+                
+                // Remove the playlist from auto-refresh cache
+                AutoRefreshService.Instance?.RemovePlaylistFromCache(id);
                 
                 return NoContent();
             }
@@ -817,6 +826,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     // Only save the configuration if the Jellyfin operation succeeds
                     await playlistStore.SaveAsync(playlist);
                     
+                    // Update the auto-refresh cache with the enabled playlist
+                    AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
+                    
                     _logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
                     return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
                 }
@@ -869,6 +881,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     
                     // Only save the configuration if the Jellyfin operation succeeds
                     await playlistStore.SaveAsync(playlist);
+                    
+                    // Update the auto-refresh cache with the disabled playlist
+                    AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
                     
                     _logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
                     return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
@@ -1128,6 +1143,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                         // Import the playlist
                         await playlistStore.SaveAsync(playlist);
+                        
+                        // Update the auto-refresh cache with the imported playlist
+                        AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
+                        
                         importResults.Add(new { fileName = entry.Name, playlistName = playlist.Name, status = "imported", message = "Successfully imported" });
                         importedCount++;
                         

@@ -26,7 +26,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             _logger = logger;
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        public Task StartAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -51,16 +51,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, userDataManager);
                 
                 _logger.LogInformation("SmartPlaylist AutoRefreshService started successfully");
-                
-                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to start AutoRefreshService");
             }
+            
+            return Task.CompletedTask;
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken)
+        public Task StopAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -74,7 +74,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogError(ex, "Error stopping AutoRefreshService");
             }
             
-            await Task.CompletedTask;
+            return Task.CompletedTask;
         }
     }
 }

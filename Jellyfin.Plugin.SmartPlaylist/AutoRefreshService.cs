@@ -234,7 +234,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     Played = userData.Played,
                     PlayCount = userData.PlayCount,
                     IsFavorite = userData.IsFavorite,
-                    LastPlayedDate = userData.LastPlayedDate
+                    LastPlayedDate = userData.LastPlayedDate,
+                    LastUpdated = DateTime.UtcNow
                 };
                 
                 // Check if we have previous state
@@ -325,6 +326,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             try
             {
+                // Skip processing if the item is a playlist itself - playlists updating shouldn't trigger other playlist refreshes
+                if (item is MediaBrowser.Controller.Playlists.Playlist)
+                {
+                    _logger.LogDebug("Skipping auto-refresh for playlist item '{ItemName}' - playlists don't trigger other playlist refreshes", item.Name);
+                    return;
+                }
+                
                 // Find playlists that might be affected by this change
                 var affectedPlaylistIds = await GetAffectedPlaylistsAsync(item, changeType, triggeringUserId).ConfigureAwait(false);
                 
@@ -816,13 +824,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 Instance = null;
             
             _logger.LogDebug("AutoRefreshService disposed");
-        }
-        
-        private enum LibraryChangeType
-        {
-            Added,
-            Removed,
-            Updated
         }
     }
 }
