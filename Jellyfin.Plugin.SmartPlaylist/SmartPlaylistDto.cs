@@ -36,6 +36,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility
         public AutoRefreshMode AutoRefresh { get; set; } = AutoRefreshMode.Never; // Default to never for backward compatibility
+        public bool? RefreshOnSchedule { get; set; } // Nullable for backward compatibility - true for existing playlists, false for new ones
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]

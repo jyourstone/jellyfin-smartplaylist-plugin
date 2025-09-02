@@ -59,7 +59,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Key format: "MediaType+FieldType" (e.g., "Movie+IsPlayed", "Episode+SeriesName")
         private readonly ConcurrentDictionary<string, HashSet<string>> _ruleTypeToPlaylistsCache = new();
         private volatile bool _cacheInitialized = false;
-        private readonly object _cacheInitLock = new();
         
         // Batch processing for library events (add/remove) to avoid spam during bulk operations
         private readonly ConcurrentDictionary<string, DateTime> _pendingLibraryRefreshes = new();
@@ -712,7 +711,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     fields.AddRange(new[] { 
                         "IsPlayed", "PlayCount", "LastPlayedDate", "IsFavorite",
                         "FolderPath", "Genres", "Studios", "Tags", "ProductionYear",
-                        "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber"
+                        "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber",
+                        "NextUnwatched"
                     });
                     break;
             }

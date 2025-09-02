@@ -45,5 +45,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         /// Gets or sets the default auto-refresh mode for new playlists.
         /// </summary>
         public AutoRefreshMode DefaultAutoRefresh { get; set; } = AutoRefreshMode.OnLibraryChanges;
+        
+        /// <summary>
+        /// Gets or sets the default scheduled refresh setting for new playlists.
+        /// </summary>
+        public bool DefaultRefreshOnSchedule { get; set; } = false;
     }
 } 

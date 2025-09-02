@@ -213,9 +213,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var allDtos = await plStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
                 
                 // Filter playlists by media type for this specific task
-                var relevantDtos = FilterPlaylistsByMediaType(allDtos).ToArray();
+                var mediaTypeFilteredDtos = FilterPlaylistsByMediaType(allDtos);
                 
-                logger.LogInformation("Found {RelevantCount} relevant playlists out of {TotalCount} total (handling {MediaTypes})", 
+                // Filter by RefreshOnSchedule setting (backward compatibility: true if not set)
+                var relevantDtos = mediaTypeFilteredDtos
+                    .Where(dto => dto.RefreshOnSchedule ?? true) // Default to true for backward compatibility
+                    .ToArray();
+                
+                logger.LogInformation("Found {RelevantCount} relevant playlists out of {TotalCount} total (handling {MediaTypes}, RefreshOnSchedule=true)", 
                     relevantDtos.Length, allDtos.Length, GetHandledMediaTypes());
                 
                 if (relevantDtos.Length == 0)
