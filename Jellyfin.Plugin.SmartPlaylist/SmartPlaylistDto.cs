@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 
 namespace Jellyfin.Plugin.SmartPlaylist
@@ -31,7 +33,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<string> MediaTypes 
         { 
             get => _mediaTypes;
-            set => _mediaTypes = value != null ? new List<string>(value) : []; // Always create a defensive copy
+            set
+            {
+                var source = value ?? [];
+                // Keep only known types and remove duplicates (ordinal)
+                _mediaTypes = source
+                    .Where(mt => Constants.MediaTypes.MediaTypeToBaseItemKind.ContainsKey(mt))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+            }
         }
         public bool Enabled { get; set; } = true; // Default to enabled
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
