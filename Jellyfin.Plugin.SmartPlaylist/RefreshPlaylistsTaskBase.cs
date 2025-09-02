@@ -339,8 +339,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 
                                 // OPTIMIZATION: Get media specifically for this playlist's media types using cache
                                 // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
-                                var mediaTypesKey = MediaTypesKey.Create(dto.MediaTypes, dto);
-                                var mediaTypesForClosure = dto.MediaTypes; // Avoid capturing entire dto in closure
+                                var mediaTypesForClosure = dto.MediaTypes?.ToList() ?? []; // Create defensive copy to prevent accidental modifications
+                                var mediaTypesKey = MediaTypesKey.Create(mediaTypesForClosure, dto);
                                 // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
                                 // where failures typically indicate serious issues that should fail fast
                                 // rather than retry repeatedly during the same scheduled task execution.

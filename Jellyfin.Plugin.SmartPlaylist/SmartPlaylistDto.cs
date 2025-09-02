@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 
 namespace Jellyfin.Plugin.SmartPlaylist
@@ -31,7 +33,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
-        public List<string> MediaTypes { get; set; } = []; // Pre-filter media types
+        private List<string> _mediaTypes = [];
+        
+        /// <summary>
+        /// Pre-filter media types with validation to prevent corruption
+        /// </summary>
+        public List<string> MediaTypes 
+        { 
+            get => _mediaTypes;
+            set
+            {
+                var source = value ?? [];
+                // Keep only known types and remove duplicates (ordinal)
+                _mediaTypes = source
+                    .Where(mt => Constants.MediaTypes.MediaTypeToBaseItemKind.ContainsKey(mt))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+            }
+        }
         public bool Enabled { get; set; } = true; // Default to enabled
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility
