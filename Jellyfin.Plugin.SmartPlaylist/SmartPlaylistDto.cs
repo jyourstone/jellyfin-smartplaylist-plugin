@@ -23,7 +23,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
-        public List<string> MediaTypes { get; set; } = []; // Pre-filter media types
+        private List<string> _mediaTypes = [];
+        
+        /// <summary>
+        /// Pre-filter media types with validation to prevent corruption
+        /// </summary>
+        public List<string> MediaTypes 
+        { 
+            get => _mediaTypes;
+            set => _mediaTypes = value != null ? new List<string>(value) : []; // Always create a defensive copy
+        }
         public bool Enabled { get; set; } = true; // Default to enabled
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility

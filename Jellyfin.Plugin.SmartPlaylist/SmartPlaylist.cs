@@ -42,7 +42,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             FileName = dto.FileName;
             UserId = dto.UserId;
             Order = OrderFactory.CreateOrder(dto.Order.Name);
-            MediaTypes = dto.MediaTypes ?? [];
+            MediaTypes = dto.MediaTypes != null ? new List<string>(dto.MediaTypes) : []; // Create defensive copy to prevent corruption
             MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
             MaxPlayTimeMinutes = dto.MaxPlayTimeMinutes ?? 0; // Default to 0 (unlimited) for backwards compatibility
 
