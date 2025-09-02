@@ -40,5 +40,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         /// Leave empty to not add a suffix.
         /// </summary>
         public string PlaylistNameSuffix { get; set; } = "[Smart]";
+
+        /// <summary>
+        /// Gets or sets the default auto-refresh mode for new playlists.
+        /// </summary>
+        public AutoRefreshMode DefaultAutoRefresh { get; set; } = AutoRefreshMode.OnLibraryChanges;
     }
 } 
