@@ -96,7 +96,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Subscribe to user data events (for playback status changes)
             _userDataManager.UserDataSaved += OnUserDataSaved;
             
-            _logger.LogDebug("AutoRefreshService initialized with immediate refresh (no delay)");
+            _logger.LogDebug("AutoRefreshService initialized (library batch delay: {DelaySeconds}s; user data: immediate)", _batchDelay.TotalSeconds);
             
             // Initialize the rule cache in the background
             _ = Task.Run(InitializeRuleCache);
@@ -403,7 +403,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private void AddPlaylistToRuleCache(SmartPlaylistDto playlist)
         {
-            var mediaTypes = playlist.MediaTypes?.ToList() ?? new List<string> { "Unknown" };
+            var mediaTypes = playlist.MediaTypes?.ToList() ?? [.. MediaTypes.All];
             
             // Handle playlists with no rules - they should be refreshed for any change to their media types
             if (playlist.ExpressionSets == null || !playlist.ExpressionSets.Any() || 
@@ -470,8 +470,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 _ruleTypeToPlaylistsCache.Clear();
                 _cacheInitialized = false;
-                _ = Task.Run(InitializeRuleCache);
             }
+            
+            // Start cache initialization outside the lock to avoid holding it unnecessarily
+            _ = Task.Run(InitializeRuleCache);
         }
         
         public void UpdatePlaylistInCache(SmartPlaylistDto playlist)
@@ -495,8 +497,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error updating cache for playlist '{PlaylistName}' - invalidating cache", playlist.Name);
-                    InvalidateRuleCache();
+                    // Clear cache and mark as uninitialized, but don't call InvalidateRuleCache to avoid recursive lock
+                    _ruleTypeToPlaylistsCache.Clear();
+                    _cacheInitialized = false;
                 }
+            }
+            
+            // If we had an error and cleared the cache, reinitialize it outside the lock
+            if (!_cacheInitialized)
+            {
+                _ = Task.Run(InitializeRuleCache);
             }
         }
         
@@ -514,8 +524,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error removing playlist {PlaylistId} from cache - invalidating cache", playlistId);
-                    InvalidateRuleCache();
+                    // Clear cache and mark as uninitialized, but don't call InvalidateRuleCache to avoid recursive lock
+                    _ruleTypeToPlaylistsCache.Clear();
+                    _cacheInitialized = false;
                 }
+            }
+            
+            // If we had an error and cleared the cache, reinitialize it outside the lock
+            if (!_cacheInitialized)
+            {
+                _ = Task.Run(InitializeRuleCache);
             }
         }
         
@@ -706,7 +724,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var fields = new List<string>();
             
             // Always check these fields for any change
-            fields.AddRange(new[] { "Name", "DateCreated", "DateModified", "CommunityRating", "CriticRating" });
+            fields.AddRange(["Name", "DateCreated", "DateModified", "CommunityRating", "CriticRating"]);
             
             // Add fields specific to change type
             switch (changeType)
@@ -714,37 +732,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 case LibraryChangeType.Added:
                 case LibraryChangeType.Removed:
                     // Library changes affect these fields
-                    fields.AddRange(new[] { "FolderPath", "Genres", "Studios", "Tags", "ProductionYear" });
+                    fields.AddRange(["FolderPath", "Genres", "Studios", "Tags", "ProductionYear"]);
                     break;
                     
                 case LibraryChangeType.Updated:
                     // Updates could affect any field, including playback status
-                    fields.AddRange(new[] { 
+                    fields.AddRange([
                         "IsPlayed", "PlayCount", "LastPlayedDate", "IsFavorite",
                         "FolderPath", "Genres", "Studios", "Tags", "ProductionYear",
                         "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber",
                         "NextUnwatched"
-                    });
+                    ]);
                     break;
             }
             
             return fields.Distinct().ToList();
         }
         
-        private string GetMediaTypeFromItem(BaseItem item)
-        {
-            return item switch
-            {
-                MediaBrowser.Controller.Entities.Movies.Movie => MediaTypes.Movie,
-                MediaBrowser.Controller.Entities.TV.Episode => MediaTypes.Episode, 
-                MediaBrowser.Controller.Entities.TV.Series => MediaTypes.Series,
-                MediaBrowser.Controller.Entities.Audio.Audio => MediaTypes.Audio,
-                MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
-                MediaBrowser.Controller.Entities.Photo => "Photo",
-                MediaBrowser.Controller.Entities.Book => "Book",
-                _ => "Unknown"
-            };
-        }
+        private string GetMediaTypeFromItem(BaseItem item) => GetMediaTypeForItem(item);
         
         private bool IsItemRelevantToPlaylist(BaseItem item, SmartPlaylistDto playlist)
         {
@@ -762,11 +767,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Map Jellyfin item types to our MediaTypes constants
             return item switch
             {
-                MediaBrowser.Controller.Entities.Movies.Movie => Constants.MediaTypes.Movie,
-                MediaBrowser.Controller.Entities.TV.Series => Constants.MediaTypes.Series,
-                MediaBrowser.Controller.Entities.TV.Episode => Constants.MediaTypes.Episode,
-                MediaBrowser.Controller.Entities.Audio.Audio => Constants.MediaTypes.Audio,
-                MediaBrowser.Controller.Entities.MusicVideo => Constants.MediaTypes.MusicVideo,
+                MediaBrowser.Controller.Entities.Movies.Movie => MediaTypes.Movie,
+                MediaBrowser.Controller.Entities.TV.Series => MediaTypes.Series,
+                MediaBrowser.Controller.Entities.TV.Episode => MediaTypes.Episode,
+                MediaBrowser.Controller.Entities.Audio.Audio => MediaTypes.Audio,
+                MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
+                MediaBrowser.Controller.Entities.Photo => MediaTypes.Photo,
+                MediaBrowser.Controller.Entities.Book => MediaTypes.Book,
                 _ => "Unknown"
             };
         }
