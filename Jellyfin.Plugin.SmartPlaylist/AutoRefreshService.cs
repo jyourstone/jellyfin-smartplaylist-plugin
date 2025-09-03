@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Data.Events.Users;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
@@ -59,6 +60,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Key format: "MediaType+FieldType" (e.g., "Movie+IsPlayed", "Episode+SeriesName")
         private readonly ConcurrentDictionary<string, HashSet<string>> _ruleTypeToPlaylistsCache = new();
         private volatile bool _cacheInitialized = false;
+        private readonly object _cacheInvalidationLock = new();
         
         // Batch processing for library events (add/remove) to avoid spam during bulk operations
         private readonly ConcurrentDictionary<string, DateTime> _pendingLibraryRefreshes = new();
@@ -464,47 +466,56 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         public void InvalidateRuleCache()
         {
-            _ruleTypeToPlaylistsCache.Clear();
-            _cacheInitialized = false;
-            _ = Task.Run(InitializeRuleCache);
+            lock (_cacheInvalidationLock)
+            {
+                _ruleTypeToPlaylistsCache.Clear();
+                _cacheInitialized = false;
+                _ = Task.Run(InitializeRuleCache);
+            }
         }
         
         public void UpdatePlaylistInCache(SmartPlaylistDto playlist)
         {
-            if (!_cacheInitialized) return;
-            
-            try
+            lock (_cacheInvalidationLock)
             {
-                // Remove old entries for this playlist
-                RemovePlaylistFromRuleCache(playlist.Id);
+                if (!_cacheInitialized) return;
                 
-                // Add new entries if playlist is enabled and has auto-refresh
-                if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
+                try
                 {
-                    AddPlaylistToRuleCache(playlist);
-                    _logger.LogDebug("Updated cache for playlist '{PlaylistName}'", playlist.Name);
+                    // Remove old entries for this playlist
+                    RemovePlaylistFromRuleCache(playlist.Id);
+                    
+                    // Add new entries if playlist is enabled and has auto-refresh
+                    if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
+                    {
+                        AddPlaylistToRuleCache(playlist);
+                        _logger.LogDebug("Updated cache for playlist '{PlaylistName}'", playlist.Name);
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating cache for playlist '{PlaylistName}' - invalidating cache", playlist.Name);
-                InvalidateRuleCache();
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating cache for playlist '{PlaylistName}' - invalidating cache", playlist.Name);
+                    InvalidateRuleCache();
+                }
             }
         }
         
         public void RemovePlaylistFromCache(string playlistId)
         {
-            if (!_cacheInitialized) return;
-            
-            try
+            lock (_cacheInvalidationLock)
             {
-                RemovePlaylistFromRuleCache(playlistId);
-                _logger.LogDebug("Removed playlist {PlaylistId} from cache", playlistId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error removing playlist {PlaylistId} from cache - invalidating cache", playlistId);
-                InvalidateRuleCache();
+                if (!_cacheInitialized) return;
+                
+                try
+                {
+                    RemovePlaylistFromRuleCache(playlistId);
+                    _logger.LogDebug("Removed playlist {PlaylistId} from cache", playlistId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing playlist {PlaylistId} from cache - invalidating cache", playlistId);
+                    InvalidateRuleCache();
+                }
             }
         }
         
@@ -724,11 +735,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return item switch
             {
-                MediaBrowser.Controller.Entities.Movies.Movie => "Movie",
-                MediaBrowser.Controller.Entities.TV.Episode => "Episode", 
-                MediaBrowser.Controller.Entities.TV.Series => "Series",
-                MediaBrowser.Controller.Entities.Audio.Audio => "Audio",
-                MediaBrowser.Controller.Entities.MusicVideo => "MusicVideo",
+                MediaBrowser.Controller.Entities.Movies.Movie => MediaTypes.Movie,
+                MediaBrowser.Controller.Entities.TV.Episode => MediaTypes.Episode, 
+                MediaBrowser.Controller.Entities.TV.Series => MediaTypes.Series,
+                MediaBrowser.Controller.Entities.Audio.Audio => MediaTypes.Audio,
+                MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
                 MediaBrowser.Controller.Entities.Photo => "Photo",
                 MediaBrowser.Controller.Entities.Book => "Book",
                 _ => "Unknown"
