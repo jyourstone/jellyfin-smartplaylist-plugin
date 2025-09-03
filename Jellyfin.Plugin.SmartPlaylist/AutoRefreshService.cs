@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Data.Events.Users;
+using Jellyfin.Plugin.SmartPlaylist.Constants;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
@@ -59,7 +60,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Key format: "MediaType+FieldType" (e.g., "Movie+IsPlayed", "Episode+SeriesName")
         private readonly ConcurrentDictionary<string, HashSet<string>> _ruleTypeToPlaylistsCache = new();
         private volatile bool _cacheInitialized = false;
-        private readonly object _cacheInitLock = new();
+        private readonly object _cacheInvalidationLock = new();
         
         // Batch processing for library events (add/remove) to avoid spam during bulk operations
         private readonly ConcurrentDictionary<string, DateTime> _pendingLibraryRefreshes = new();
@@ -95,7 +96,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Subscribe to user data events (for playback status changes)
             _userDataManager.UserDataSaved += OnUserDataSaved;
             
-            _logger.LogDebug("AutoRefreshService initialized with immediate refresh (no delay)");
+            _logger.LogDebug("AutoRefreshService initialized (library batch delay: {DelaySeconds}s; user data: immediate)", _batchDelay.TotalSeconds);
             
             // Initialize the rule cache in the background
             _ = Task.Run(InitializeRuleCache);
@@ -402,7 +403,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private void AddPlaylistToRuleCache(SmartPlaylistDto playlist)
         {
-            var mediaTypes = playlist.MediaTypes?.ToList() ?? new List<string> { "Unknown" };
+            var mediaTypes = playlist.MediaTypes?.ToList() ?? [.. MediaTypes.All];
             
             // Handle playlists with no rules - they should be refreshed for any change to their media types
             if (playlist.ExpressionSets == null || !playlist.ExpressionSets.Any() || 
@@ -465,47 +466,74 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         public void InvalidateRuleCache()
         {
-            _ruleTypeToPlaylistsCache.Clear();
-            _cacheInitialized = false;
+            lock (_cacheInvalidationLock)
+            {
+                _ruleTypeToPlaylistsCache.Clear();
+                _cacheInitialized = false;
+            }
+            
+            // Start cache initialization outside the lock to avoid holding it unnecessarily
             _ = Task.Run(InitializeRuleCache);
         }
         
         public void UpdatePlaylistInCache(SmartPlaylistDto playlist)
         {
-            if (!_cacheInitialized) return;
-            
-            try
+            lock (_cacheInvalidationLock)
             {
-                // Remove old entries for this playlist
-                RemovePlaylistFromRuleCache(playlist.Id);
+                if (!_cacheInitialized) return;
                 
-                // Add new entries if playlist is enabled and has auto-refresh
-                if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
+                try
                 {
-                    AddPlaylistToRuleCache(playlist);
-                    _logger.LogDebug("Updated cache for playlist '{PlaylistName}'", playlist.Name);
+                    // Remove old entries for this playlist
+                    RemovePlaylistFromRuleCache(playlist.Id);
+                    
+                    // Add new entries if playlist is enabled and has auto-refresh
+                    if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
+                    {
+                        AddPlaylistToRuleCache(playlist);
+                        _logger.LogDebug("Updated cache for playlist '{PlaylistName}'", playlist.Name);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating cache for playlist '{PlaylistName}' - invalidating cache", playlist.Name);
+                    // Clear cache and mark as uninitialized, but don't call InvalidateRuleCache to avoid recursive lock
+                    _ruleTypeToPlaylistsCache.Clear();
+                    _cacheInitialized = false;
                 }
             }
-            catch (Exception ex)
+            
+            // If we had an error and cleared the cache, reinitialize it outside the lock
+            if (!_cacheInitialized)
             {
-                _logger.LogError(ex, "Error updating cache for playlist '{PlaylistName}' - invalidating cache", playlist.Name);
-                InvalidateRuleCache();
+                _ = Task.Run(InitializeRuleCache);
             }
         }
         
         public void RemovePlaylistFromCache(string playlistId)
         {
-            if (!_cacheInitialized) return;
-            
-            try
+            lock (_cacheInvalidationLock)
             {
-                RemovePlaylistFromRuleCache(playlistId);
-                _logger.LogDebug("Removed playlist {PlaylistId} from cache", playlistId);
+                if (!_cacheInitialized) return;
+                
+                try
+                {
+                    RemovePlaylistFromRuleCache(playlistId);
+                    _logger.LogDebug("Removed playlist {PlaylistId} from cache", playlistId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing playlist {PlaylistId} from cache - invalidating cache", playlistId);
+                    // Clear cache and mark as uninitialized, but don't call InvalidateRuleCache to avoid recursive lock
+                    _ruleTypeToPlaylistsCache.Clear();
+                    _cacheInitialized = false;
+                }
             }
-            catch (Exception ex)
+            
+            // If we had an error and cleared the cache, reinitialize it outside the lock
+            if (!_cacheInitialized)
             {
-                _logger.LogError(ex, "Error removing playlist {PlaylistId} from cache - invalidating cache", playlistId);
-                InvalidateRuleCache();
+                _ = Task.Run(InitializeRuleCache);
             }
         }
         
@@ -696,7 +724,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var fields = new List<string>();
             
             // Always check these fields for any change
-            fields.AddRange(new[] { "Name", "DateCreated", "DateModified", "CommunityRating", "CriticRating" });
+            fields.AddRange(["Name", "DateCreated", "DateModified", "CommunityRating", "CriticRating"]);
             
             // Add fields specific to change type
             switch (changeType)
@@ -704,36 +732,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 case LibraryChangeType.Added:
                 case LibraryChangeType.Removed:
                     // Library changes affect these fields
-                    fields.AddRange(new[] { "FolderPath", "Genres", "Studios", "Tags", "ProductionYear" });
+                    fields.AddRange(["FolderPath", "Genres", "Studios", "Tags", "ProductionYear"]);
                     break;
                     
                 case LibraryChangeType.Updated:
                     // Updates could affect any field, including playback status
-                    fields.AddRange(new[] { 
+                    fields.AddRange([
                         "IsPlayed", "PlayCount", "LastPlayedDate", "IsFavorite",
                         "FolderPath", "Genres", "Studios", "Tags", "ProductionYear",
-                        "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber"
-                    });
+                        "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber",
+                        "NextUnwatched"
+                    ]);
                     break;
             }
             
             return fields.Distinct().ToList();
         }
         
-        private string GetMediaTypeFromItem(BaseItem item)
-        {
-            return item switch
-            {
-                MediaBrowser.Controller.Entities.Movies.Movie => "Movie",
-                MediaBrowser.Controller.Entities.TV.Episode => "Episode", 
-                MediaBrowser.Controller.Entities.TV.Series => "Series",
-                MediaBrowser.Controller.Entities.Audio.Audio => "Audio",
-                MediaBrowser.Controller.Entities.MusicVideo => "MusicVideo",
-                MediaBrowser.Controller.Entities.Photo => "Photo",
-                MediaBrowser.Controller.Entities.Book => "Book",
-                _ => "Unknown"
-            };
-        }
+        private string GetMediaTypeFromItem(BaseItem item) => GetMediaTypeForItem(item);
         
         private bool IsItemRelevantToPlaylist(BaseItem item, SmartPlaylistDto playlist)
         {
@@ -751,11 +767,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Map Jellyfin item types to our MediaTypes constants
             return item switch
             {
-                MediaBrowser.Controller.Entities.Movies.Movie => Constants.MediaTypes.Movie,
-                MediaBrowser.Controller.Entities.TV.Series => Constants.MediaTypes.Series,
-                MediaBrowser.Controller.Entities.TV.Episode => Constants.MediaTypes.Episode,
-                MediaBrowser.Controller.Entities.Audio.Audio => Constants.MediaTypes.Audio,
-                MediaBrowser.Controller.Entities.MusicVideo => Constants.MediaTypes.MusicVideo,
+                MediaBrowser.Controller.Entities.Movies.Movie => MediaTypes.Movie,
+                MediaBrowser.Controller.Entities.TV.Series => MediaTypes.Series,
+                MediaBrowser.Controller.Entities.TV.Episode => MediaTypes.Episode,
+                MediaBrowser.Controller.Entities.Audio.Audio => MediaTypes.Audio,
+                MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
+                MediaBrowser.Controller.Entities.Photo => MediaTypes.Photo,
+                MediaBrowser.Controller.Entities.Book => MediaTypes.Book,
                 _ => "Unknown"
             };
         }

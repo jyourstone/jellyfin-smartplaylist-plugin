@@ -68,6 +68,7 @@ The web interface is organized into three tabs:
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
     -   Configure auto-refresh behavior (Never, On Library Changes, On All Changes).
+    -   Control participation in scheduled refresh tasks (useful for randomized playlists).
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
@@ -79,6 +80,7 @@ The web interface is organized into three tabs:
     -   Set the default max items and max play time for new playlists.
     -   Configure custom prefix and suffix for playlist names.
     -   Set the default auto-refresh mode for new playlists.
+    -   Set the default scheduled refresh participation for new playlists.
     -   Export all playlists to a ZIP file for backup or transfer.
     -   Import playlists from a ZIP file with duplicate detection.
     -   Manually trigger a refresh for all smart playlists.
@@ -124,7 +126,7 @@ The Export/Import feature allows you to backup your smart playlist configuration
 
 Smart playlists can update automatically in multiple ways:
 
-#### **🚀 Real-Time Auto-Refresh (New!)**
+#### **🚀 Real-Time Auto-Refresh**
 Configure playlists to refresh automatically when your library changes:
 
 - **Per-Playlist Setting**: Each playlist can be set to `Never`, `On Library Changes`, or `On All Changes`
@@ -143,6 +145,23 @@ Configure playlists to refresh automatically when your library changes:
 - **🎬 Media SmartPlaylists**: Runs by default **hourly** (handles movies, TV shows, readable books, music videos, home videos, and photos)
 
 These tasks can be configured in the Jellyfin admin dashboard.
+
+#### **🎲 Scheduled Refresh Control**
+Each playlist has a **"Refresh on scheduled tasks"** setting that controls whether it participates in the scheduled refresh tasks:
+
+- **Per-Playlist Setting**: Enable/disable scheduled refresh for individual playlists
+- **Global Default**: Set the default behavior for new playlists in Settings (defaults to `false`)
+- **Backward Compatibility**: Existing playlists default to `true` (continue participating in scheduled tasks)
+
+**Perfect for Randomized Playlists:**
+- Enable scheduled refresh for randomized playlists to get fresh random order daily/hourly
+- Disable for rule-based playlists that rely on real-time auto-refresh instead
+- Mix and match: some playlists on schedule, others auto-refresh only
+
+**Example Use Cases:**
+- **Daily Random Mix**: Random sorted playlist with scheduled refresh enabled → new random order each day
+- **Continue Watching**: NextUnwatched playlist with auto-refresh on all changes → instant updates when episodes are watched
+- **New Releases**: Date-based playlist with auto-refresh on library changes → updates immediately when content is added
 
 #### **Manual Refresh**
 - Use the **"Refresh All Playlists"** button in the Settings tab to trigger both tasks immediately
