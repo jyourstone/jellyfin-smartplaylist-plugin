@@ -853,6 +853,10 @@
             if (autoRefreshElement) {
                 autoRefreshElement.value = defaultAutoRefresh;
             }
+            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
+            if (refreshOnScheduleElement) {
+                refreshOnScheduleElement.checked = config.DefaultRefreshOnSchedule || false;
+            }
             
             // Set up schedule trigger selector and event handlers
             const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
@@ -3178,6 +3182,9 @@
             if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
+            
+            const defaultRefreshOnScheduleEl = page.querySelector('#defaultRefreshOnSchedule');
+            if (defaultRefreshOnScheduleEl) defaultRefreshOnScheduleEl.checked = config.DefaultRefreshOnSchedule || false;
             if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
             if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
             
@@ -3238,6 +3245,7 @@
             }
             
             config.DefaultAutoRefresh = page.querySelector('#defaultAutoRefresh').value || 'OnLibraryChanges';
+            config.DefaultRefreshOnSchedule = page.querySelector('#defaultRefreshOnSchedule').checked || false;
             
             // Save default schedule settings
             const defaultScheduleTriggerValue = page.querySelector('#defaultScheduleTrigger').value;
