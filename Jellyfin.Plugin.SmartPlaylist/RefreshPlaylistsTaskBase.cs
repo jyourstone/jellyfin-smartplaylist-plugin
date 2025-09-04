@@ -215,12 +215,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Filter playlists by media type for this specific task
                 var mediaTypeFilteredDtos = FilterPlaylistsByMediaType(allDtos);
                 
-                // Filter by RefreshOnSchedule setting (backward compatibility: true if not set)
+                // Filter by custom schedule settings (backward compatibility logic):
+                // - ScheduleTrigger == null: Setting doesn't exist, use legacy tasks for backward compatibility
+                // - ScheduleTrigger == "": User explicitly selected "No schedule", skip legacy tasks
+                // - ScheduleTrigger has value: User has custom schedule, skip legacy tasks
                 var relevantDtos = mediaTypeFilteredDtos
-                    .Where(dto => dto.RefreshOnSchedule ?? true) // Default to true for backward compatibility
+                    .Where(dto => dto.ScheduleTrigger == null) // Only null (no setting) uses legacy tasks
                     .ToArray();
                 
-                logger.LogInformation("Found {RelevantCount} relevant playlists out of {TotalCount} total (handling {MediaTypes}, RefreshOnSchedule=true)", 
+                logger.LogInformation("Found {RelevantCount} relevant playlists out of {TotalCount} total (handling {MediaTypes}, no custom schedule)", 
                     relevantDtos.Length, allDtos.Length, GetHandledMediaTypes());
                 
                 if (relevantDtos.Length == 0)

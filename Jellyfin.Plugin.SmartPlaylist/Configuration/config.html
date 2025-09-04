@@ -332,23 +332,44 @@
                         <div class="selectContainer" style="margin-bottom: 1em;">
                             <label class="selectLabel" for="autoRefreshMode">Auto-refresh on library changes:</label>
                             <select id="autoRefreshMode" is="emby-select" class="emby-select-withcolor emby-select">
-                                <option value="Never">Never - Manual refresh only</option>
-                                <option value="OnLibraryChanges">On library changes - When items are added/removed</option>
-                                <option value="OnAllChanges">On all changes - Including playback status changes</option>
+                                <!-- Auto-refresh options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Controls when this playlist automatically refreshes based on library changes. Note: Frequent updates may impact performance.</div>
                         </div>
 
-                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em;">
-                            <label class="emby-checkbox-label">
-                                <input type="checkbox" is="emby-checkbox" id="refreshOnSchedule" data-embycheckbox="true" class="emby-checkbox">
-                                <span class="checkboxLabel">Refresh on scheduled tasks</span>
-                                <span class="checkboxOutline">
-                                    <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
-                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
-                                </span>
-                            </label>
-                            <div class="fieldDescription">When enabled, this playlist will be refreshed when scheduled refresh tasks run. Useful for randomized playlists that need periodic re-shuffling.</div>
+                        <div class="selectContainer" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="scheduleTrigger">Scheduled refresh:</label>
+                            <select id="scheduleTrigger" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Schedule trigger options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Configure custom refresh schedule for this playlist. Select "No schedule" to disable all scheduled refreshes.</div>
+                        </div>
+
+                        <!-- Day of Week Selector (for Weekly) -->
+                        <div id="scheduleDayContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="scheduleDayOfWeek">Day of week:</label>
+                            <select id="scheduleDayOfWeek" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Day of week options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Day of the week for the scheduled refresh.</div>
+                        </div>
+
+                        <!-- Schedule Time Selector (for Daily/Weekly) -->
+                        <div id="scheduleTimeContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="scheduleTime">Time:</label>
+                            <select id="scheduleTime" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Time options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Time of day for the scheduled refresh.</div>
+                        </div>
+
+                        <!-- Interval Selector (for Interval) -->
+                        <div id="scheduleIntervalContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="scheduleInterval">Every:</label>
+                            <select id="scheduleInterval" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Interval options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Interval between scheduled refreshes.</div>
                         </div>
 
                         <div style="margin-top: 2em;">
@@ -425,23 +446,44 @@
                         <div class="selectContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="selectLabel" for="defaultAutoRefresh">Default Auto-refresh Mode</label>
                             <select id="defaultAutoRefresh" is="emby-select" class="emby-select-withcolor emby-select">
-                                <option value="Never">Never - Manual refresh only</option>
-                                <option value="OnLibraryChanges">On library changes - When items are added/removed</option>
-                                <option value="OnAllChanges">On all changes - Including playback status changes</option>
+                                <!-- Auto-refresh options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Default auto-refresh mode for new smart playlists. Existing playlists keep their current setting.</div>
                         </div>
 
-                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em;">
-                            <label class="emby-checkbox-label">
-                                <input type="checkbox" is="emby-checkbox" id="defaultRefreshOnSchedule" data-embycheckbox="true" class="emby-checkbox">
-                                <span class="checkboxLabel">Refresh on scheduled tasks</span>
-                                <span class="checkboxOutline">
-                                    <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
-                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
-                                </span>
-                            </label>
-                            <div class="fieldDescription">Default setting for whether new playlists participate in scheduled refresh tasks. Existing playlists keep their current setting.</div>
+                        <div class="selectContainer" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="defaultScheduleTrigger">Default scheduled refresh:</label>
+                            <select id="defaultScheduleTrigger" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Schedule trigger options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Default schedule type for new playlists. "No schedule" disables all scheduled refreshes for new playlists.</div>
+                        </div>
+
+                        <!-- Default Day of Week -->
+                        <div id="defaultScheduleDayContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="defaultScheduleDayOfWeek">Default day of week:</label>
+                            <select id="defaultScheduleDayOfWeek" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Day of week options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Default day of the week for Weekly schedules.</div>
+                        </div>
+
+                        <!-- Default Schedule Time -->
+                        <div id="defaultScheduleTimeContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="defaultScheduleTime">Default time:</label>
+                            <select id="defaultScheduleTime" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Time options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Default time for Daily/Weekly schedules.</div>
+                        </div>
+
+                        <!-- Default Interval -->
+                        <div id="defaultScheduleIntervalContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="defaultScheduleInterval">Default interval:</label>
+                            <select id="defaultScheduleInterval" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Interval options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Default interval for Interval schedules.</div>
                         </div>
 
                         <h2 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h2>

@@ -43,6 +43,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private readonly ISmartPlaylistStore _playlistStore;
         private readonly IPlaylistService _playlistService;
         private readonly IUserDataManager _userDataManager;
+        private readonly IUserManager _userManager;
+        private readonly PlaylistRefreshCache _playlistRefreshCache;
         
         // Static reference for API access to cache management
         public static AutoRefreshService Instance { get; private set; }
@@ -67,24 +69,48 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private readonly Timer _batchProcessTimer;
         private readonly TimeSpan _batchDelay = TimeSpan.FromSeconds(3); // Short delay for batching library events
         
+        // Schedule checking for custom playlist schedules
+        private readonly Timer _scheduleTimer;
+        private readonly TimeSpan _scheduleCheckInterval = TimeSpan.FromMinutes(15); // Check every 15 minutes
+        
         public AutoRefreshService(
             ILibraryManager libraryManager,
             ILogger<AutoRefreshService> logger,
             ISmartPlaylistStore playlistStore,
             IPlaylistService playlistService,
-            IUserDataManager userDataManager)
+            IUserDataManager userDataManager,
+            IUserManager userManager)
         {
             _libraryManager = libraryManager;
             _logger = logger;
             _playlistStore = playlistStore;
             _playlistService = playlistService;
             _userDataManager = userDataManager;
+            _userManager = userManager;
+            
+            // Initialize cache helper
+            _playlistRefreshCache = new PlaylistRefreshCache(
+                libraryManager,
+                userManager,
+                (PlaylistService)playlistService,
+                (SmartPlaylistStore)playlistStore,
+                logger);
             
             // Set static instance for API access
             Instance = this;
             
             // Initialize batch processing timer (runs every 1 second to check for pending refreshes)
             _batchProcessTimer = new Timer(ProcessPendingBatchRefreshes, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+            
+            // Initialize schedule checking timer - align to 15-minute boundaries (:00, :15, :30, :45)
+            var now = DateTime.Now;
+            var nextQuarterHour = CalculateNextQuarterHour(now);
+            var delayToNextQuarter = nextQuarterHour - now;
+            
+            _logger.LogDebug("Schedule timer: Current time {Now}, next check at {NextCheck}, delay {Delay}", 
+                now, nextQuarterHour, delayToNextQuarter);
+            
+            _scheduleTimer = new Timer(CheckScheduledRefreshes, null, delayToNextQuarter, _scheduleCheckInterval);
             
 
             
@@ -790,26 +816,54 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     _logger.LogInformation("Auto-refreshing {PlaylistCount} smart playlists due to playback status changes", playlistIds.Count);
                 }
+                else
+                {
+                    _logger.LogInformation("Auto-refreshing {PlaylistCount} smart playlists due to library changes", playlistIds.Count);
+                }
                 
-                var refreshTasks = playlistIds.Select(async playlistId =>
+                // Load all playlists first
+                var playlists = new List<SmartPlaylistDto>();
+                foreach (var playlistId in playlistIds)
                 {
                     try
                     {
                         var playlist = await _playlistStore.GetSmartPlaylistAsync(Guid.Parse(playlistId));
                         if (playlist != null)
                         {
-                            var (success, message, _) = await _playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist);
-                            _logger.LogDebug("Auto-refresh completed for playlist '{PlaylistName}': {Success} - {Message}", 
-                                playlist.Name, success, message);
+                            playlists.Add(playlist);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error auto-refreshing playlist {PlaylistId}", playlistId);
+                        _logger.LogError(ex, "Error loading playlist {PlaylistId} for batch refresh", playlistId);
                     }
-                });
+                }
                 
-                await Task.WhenAll(refreshTasks);
+                if (playlists.Any())
+                {
+                    // Use the cache helper for efficient batch processing
+                    _logger.LogDebug("Processing {PlaylistCount} playlists using advanced caching", playlists.Count);
+                    
+                    var results = await _playlistRefreshCache.RefreshPlaylistsWithCacheAsync(
+                        playlists, 
+                        updateLastRefreshTime: false, // Don't update LastScheduledRefresh for library updates
+                        CancellationToken.None);
+
+                    // Log individual results
+                    foreach (var result in results)
+                    {
+                        if (result.Success)
+                        {
+                            _logger.LogDebug("Auto-refresh completed for playlist '{PlaylistName}' in {ElapsedTime}ms: {Message}", 
+                                result.PlaylistName, result.ElapsedMilliseconds, result.Message);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Auto-refresh failed for playlist '{PlaylistName}': {Message}", 
+                                result.PlaylistName, result.Message);
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -817,6 +871,203 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
         
+        // Helper method to calculate next 15-minute boundary
+        private static DateTime CalculateNextQuarterHour(DateTime now)
+        {
+            // Calculate minutes to next quarter hour (0, 15, 30, 45)
+            var currentMinute = now.Minute;
+            var nextQuarterMinute = ((currentMinute / 15) + 1) * 15;
+            
+            // Handle hour rollover
+            if (nextQuarterMinute >= 60)
+            {
+                return new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddHours(1);
+            }
+            else
+            {
+                return new DateTime(now.Year, now.Month, now.Day, now.Hour, nextQuarterMinute, 0);
+            }
+        }
+        
+        // Schedule checking methods
+        private async void CheckScheduledRefreshes(object state)
+        {
+            if (_disposed) return;
+            
+            try
+            {
+                _logger.LogDebug("Checking for scheduled playlist refreshes (15-minute boundary check)...");
+                
+                var allPlaylists = await _playlistStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
+                var scheduledPlaylists = allPlaylists.Where(p => p.ScheduleTrigger != null && p.Enabled).ToList();
+                
+                if (!scheduledPlaylists.Any())
+                {
+                    _logger.LogDebug("No playlists with custom schedules found");
+                    return;
+                }
+                
+                var now = DateTime.Now;
+                _logger.LogDebug("Schedule check: Current time is {CurrentTime} (Kind: {Kind})", now, now.Kind);
+                var duePlaylist = scheduledPlaylists.Where(p => IsPlaylistDueForRefresh(p, now)).ToList();
+                
+                if (duePlaylist.Any())
+                {
+                    _logger.LogInformation("Found {Count} playlists due for scheduled refresh", duePlaylist.Count);
+                    await RefreshScheduledPlaylists(duePlaylist).ConfigureAwait(false);
+                }
+                else
+                {
+                    _logger.LogDebug("No playlists are due for scheduled refresh");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking scheduled refreshes");
+            }
+        }
+        
+        private bool IsPlaylistDueForRefresh(SmartPlaylistDto playlist, DateTime now)
+        {
+            if (playlist.ScheduleTrigger == null) return false;
+            
+            return playlist.ScheduleTrigger switch
+            {
+                ScheduleTrigger.Daily => IsDailyDue(playlist, now),
+                ScheduleTrigger.Weekly => IsWeeklyDue(playlist, now),
+                ScheduleTrigger.Interval => IsIntervalDue(playlist, now),
+                _ => false
+            };
+        }
+        
+        private bool IsDailyDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3); // Default 3:00 AM
+            
+            // Check if current time matches the scheduled time (hour and minute)
+            var isDue = now.Hour == scheduledTime.Hours && now.Minute == scheduledTime.Minutes;
+            
+            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm}, Scheduled={Scheduled:hh\\:mm}, Due={Due}", 
+                playlist.Name, now, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsWeeklyDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var scheduledDay = playlist.ScheduleDayOfWeek ?? DayOfWeek.Sunday;
+            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
+            
+            // Check if current day and time matches the scheduled day and time
+            var isDue = now.DayOfWeek == scheduledDay && 
+                       now.Hour == scheduledTime.Hours && 
+                       now.Minute == scheduledTime.Minutes;
+            
+            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm}, Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
+                playlist.Name, now, scheduledDay, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
+            
+            // Check if current time aligns with interval boundaries
+            bool isDue = false;
+            
+            if (interval == TimeSpan.FromMinutes(15))
+                isDue = now.Minute % 15 == 0;
+            else if (interval == TimeSpan.FromMinutes(30))
+                isDue = now.Minute % 30 == 0;
+            else if (interval == TimeSpan.FromHours(1))
+                isDue = now.Minute == 0;
+            else if (interval == TimeSpan.FromHours(2))
+                isDue = now.Minute == 0 && now.Hour % 2 == 0;
+            else if (interval == TimeSpan.FromHours(3))
+                isDue = now.Minute == 0 && now.Hour % 3 == 0;
+            else if (interval == TimeSpan.FromHours(4))
+                isDue = now.Minute == 0 && now.Hour % 4 == 0;
+            else if (interval == TimeSpan.FromHours(6))
+                isDue = now.Minute == 0 && now.Hour % 6 == 0;
+            else if (interval == TimeSpan.FromHours(8))
+                isDue = now.Minute == 0 && now.Hour % 8 == 0;
+            else if (interval == TimeSpan.FromHours(12))
+                isDue = now.Minute == 0 && now.Hour % 12 == 0;
+            else if (interval == TimeSpan.FromHours(24))
+                isDue = now.Minute == 0 && now.Hour == 0; // Midnight
+            else
+            {
+                // For non-standard intervals, fall back to simple modulo logic
+                var totalMinutes = (int)interval.TotalMinutes;
+                var currentMinutesFromMidnight = now.Hour * 60 + now.Minute;
+                isDue = currentMinutesFromMidnight % totalMinutes == 0;
+            }
+            
+            _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm}, Interval={Interval}, Due={Due}", 
+                playlist.Name, now, interval, isDue);
+            
+            return isDue;
+        }
+        
+        private async Task RefreshScheduledPlaylists(List<SmartPlaylistDto> playlists)
+        {
+            if (!playlists.Any())
+            {
+                return;
+            }
+
+            _logger.LogDebug("Refreshing {PlaylistCount} scheduled playlists using advanced caching", playlists.Count);
+            
+            try
+            {
+                // Use the cache helper for efficient batch processing
+                var results = await _playlistRefreshCache.RefreshPlaylistsWithCacheAsync(
+                    playlists, 
+                    updateLastRefreshTime: true, // Update LastScheduledRefresh for scheduled refreshes
+                    CancellationToken.None);
+
+                // Log individual results
+                foreach (var result in results)
+                {
+                    if (result.Success)
+                    {
+                        _logger.LogDebug("Successfully refreshed scheduled playlist: {PlaylistName} in {ElapsedTime}ms", 
+                            result.PlaylistName, result.ElapsedMilliseconds);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to refresh scheduled playlist {PlaylistName}: {Message}", 
+                            result.PlaylistName, result.Message);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to refresh scheduled playlists with caching - falling back to individual refresh");
+                
+                // Fallback to individual refresh without caching
+                foreach (var playlist in playlists)
+                {
+                    try
+                    {
+                        _logger.LogDebug("Refreshing scheduled playlist (fallback): {PlaylistName}", playlist.Name);
+                        
+                        await _playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist).ConfigureAwait(false);
+                        
+                        playlist.LastScheduledRefresh = DateTime.Now;
+                        await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
+                        
+                        _logger.LogDebug("Successfully refreshed scheduled playlist (fallback): {PlaylistName}", playlist.Name);
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        _logger.LogError(fallbackEx, "Fallback refresh also failed for playlist {PlaylistName}", playlist.Name);
+                    }
+                }
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -828,8 +1079,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
             _libraryManager.ItemUpdated -= OnItemUpdated;
             _userDataManager.UserDataSaved -= OnUserDataSaved;
             
-            // Dispose timer
+            // Dispose timers
             _batchProcessTimer?.Dispose();
+            _scheduleTimer?.Dispose();
             
             // Clear pending refreshes
             _pendingLibraryRefreshes.Clear();

@@ -1,3 +1,4 @@
+using System;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.SmartPlaylist.Configuration
@@ -47,8 +48,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         public AutoRefreshMode DefaultAutoRefresh { get; set; } = AutoRefreshMode.OnLibraryChanges;
         
         /// <summary>
-        /// Gets or sets the default scheduled refresh setting for new playlists.
+        /// Gets or sets the default schedule trigger for new playlists.
         /// </summary>
-        public bool DefaultRefreshOnSchedule { get; set; } = false;
+        public ScheduleTrigger? DefaultScheduleTrigger { get; set; } = null; // No schedule by default
+        
+        /// <summary>
+        /// Gets or sets the default schedule time for Daily/Weekly triggers.
+        /// </summary>
+        public TimeSpan DefaultScheduleTime { get; set; } = TimeSpan.FromHours(0); // Midnight (00:00) default
+        
+        /// <summary>
+        /// Gets or sets the default day of week for Weekly triggers.
+        /// </summary>
+        public DayOfWeek DefaultScheduleDayOfWeek { get; set; } = DayOfWeek.Sunday; // Sunday default
+        
+        /// <summary>
+        /// Gets or sets the default interval for Interval triggers.
+        /// </summary>
+        public TimeSpan DefaultScheduleInterval { get; set; } = TimeSpan.FromHours(24); // 24 hours default
     }
 } 

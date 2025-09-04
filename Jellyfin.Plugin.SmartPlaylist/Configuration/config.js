@@ -23,6 +23,174 @@
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
+    // Helper functions to generate common option sets (DRY principle)
+    function generateTimeOptions(defaultValue) {
+        var options = '';
+        for (var hour = 0; hour < 24; hour++) {
+            for (var minute = 0; minute < 60; minute += 15) {
+                var timeValue = (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
+                var displayTime = formatTimeForUser(hour, minute);
+                var selected = timeValue === defaultValue ? ' selected' : '';
+                options += '<option value="' + timeValue + '"' + selected + '>' + displayTime + '</option>';
+            }
+        }
+        return options;
+    }
+    
+    // Format time according to user's locale preferences
+    function formatTimeForUser(hour, minute) {
+        // Use browser locale for time formatting
+        var locale = navigator.language || navigator.userLanguage || 'en-US';
+        
+        // Create a Date object for formatting
+        var date = new Date();
+        date.setHours(hour);
+        date.setMinutes(minute);
+        date.setSeconds(0);
+        
+        // Use Intl.DateTimeFormat for locale-aware time formatting
+        try {
+            return new Intl.DateTimeFormat(locale, {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: isLocale12Hour(locale)
+            }).format(date);
+        } catch (e) {
+            // Fallback to manual formatting if Intl is not available
+            return formatTimeFallback(hour, minute, isLocale12Hour(locale));
+        }
+    }
+    
+    
+    // Get browser locale for time formatting
+    function fetchUserLocale() {
+        return Promise.resolve(navigator.language || navigator.userLanguage || 'en-US');
+    }
+    
+    
+    // Determine if locale uses 12-hour format
+    function isLocale12Hour(locale) {
+        // Only US English and a few other locales use 12-hour format
+        var locale12Hour = ['en-US', 'en-us', 'en-CA', 'en-ca', 'en-AU', 'en-au', 'en-NZ', 'en-nz'];
+        
+        var localeCode = locale.toLowerCase();
+        for (var i = 0; i < locale12Hour.length; i++) {
+            if (localeCode.indexOf(locale12Hour[i]) === 0) {
+                return true; // Use 12-hour format
+            }
+        }
+        
+        // Default to 24-hour format for most of the world
+        return false;
+    }
+    
+    // Fallback time formatting for older browsers
+    function formatTimeFallback(hour, minute, use12Hour) {
+        var displayMinute = minute < 10 ? '0' + minute : minute;
+        
+        if (use12Hour) {
+            var displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+            var ampm = hour < 12 ? 'AM' : 'PM';
+            return displayHour + ':' + displayMinute + ' ' + ampm;
+        } else {
+            var displayHour = hour < 10 ? '0' + hour : hour;
+            return displayHour + ':' + displayMinute;
+        }
+    }
+    
+    function generateAutoRefreshOptions(defaultValue) {
+        var options = [
+            { value: 'Never', label: 'Never - Manual/scheduled refresh only' },
+            { value: 'OnLibraryChanges', label: 'On library changes - When items are added/removed' },
+            { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' }
+        ];
+        var html = '';
+        for (var i = 0; i < options.length; i++) {
+            var selected = options[i].value === defaultValue ? ' selected' : '';
+            html += '<option value="' + options[i].value + '"' + selected + '>' + options[i].label + '</option>';
+        }
+        return html;
+    }
+    
+    function generateScheduleTriggerOptions(defaultValue, includeNoSchedule) {
+        var options = [];
+        if (includeNoSchedule) {
+            options.push({ value: '', label: 'No schedule' });
+        }
+        options.push(
+            { value: 'Daily', label: 'Daily' },
+            { value: 'Weekly', label: 'Weekly' },
+            { value: 'Interval', label: 'Interval' }
+        );
+        var html = '';
+        for (var i = 0; i < options.length; i++) {
+            var selected = options[i].value === defaultValue ? ' selected' : '';
+            html += '<option value="' + options[i].value + '"' + selected + '>' + options[i].label + '</option>';
+        }
+        return html;
+    }
+    
+    function generateDayOfWeekOptions(defaultValue) {
+        var days = [
+            { value: '0', label: 'Sunday' },
+            { value: '1', label: 'Monday' },
+            { value: '2', label: 'Tuesday' },
+            { value: '3', label: 'Wednesday' },
+            { value: '4', label: 'Thursday' },
+            { value: '5', label: 'Friday' },
+            { value: '6', label: 'Saturday' }
+        ];
+        var html = '';
+        for (var i = 0; i < days.length; i++) {
+            var selected = days[i].value === defaultValue ? ' selected' : '';
+            html += '<option value="' + days[i].value + '"' + selected + '>' + days[i].label + '</option>';
+        }
+        return html;
+    }
+    
+    function convertDayOfWeekToValue(dayOfWeek) {
+        if (dayOfWeek === undefined || dayOfWeek === null) {
+            return '0'; // Default to Sunday
+        }
+        
+        // Handle numeric values (0-6)
+        if (typeof dayOfWeek === 'number') {
+            return dayOfWeek.toString();
+        }
+        
+        // Handle string values ("Sunday", etc.)
+        if (typeof dayOfWeek === 'string') {
+            const dayMap = {
+                'Sunday': '0', 'Monday': '1', 'Tuesday': '2', 'Wednesday': '3',
+                'Thursday': '4', 'Friday': '5', 'Saturday': '6'
+            };
+            return dayMap[dayOfWeek] || '0';
+        }
+        
+        return '0'; // Fallback to Sunday
+    }
+
+    function generateIntervalOptions(defaultValue) {
+        var intervals = [
+            { value: '00:15:00', label: '15 minutes' },
+            { value: '00:30:00', label: '30 minutes' },
+            { value: '01:00:00', label: '1 hour' },
+            { value: '02:00:00', label: '2 hours' },
+            { value: '03:00:00', label: '3 hours' },
+            { value: '04:00:00', label: '4 hours' },
+            { value: '06:00:00', label: '6 hours' },
+            { value: '08:00:00', label: '8 hours' },
+            { value: '12:00:00', label: '12 hours' },
+            { value: '1.00:00:00', label: '24 hours' }
+        ];
+        var html = '';
+        for (var i = 0; i < intervals.length; i++) {
+            var selected = intervals[i].value === defaultValue ? ' selected' : '';
+            html += '<option value="' + intervals[i].value + '"' + selected + '>' + intervals[i].label + '</option>';
+        }
+        return html;
+    }
+    
     // Centralized styling configuration
     const STYLES = {
         // Logic group styles
@@ -498,9 +666,130 @@
         generateMediaTypeCheckboxes(page);
     };
 
+    // Helper function to show/hide schedule containers based on selected trigger
+    function updateScheduleContainers(page, triggerValue) {
+        const timeContainer = page.querySelector('#scheduleTimeContainer');
+        const dayContainer = page.querySelector('#scheduleDayContainer');
+        const intervalContainer = page.querySelector('#scheduleIntervalContainer');
+        
+        if (timeContainer) timeContainer.classList.add('hide');
+        if (dayContainer) dayContainer.classList.add('hide');
+        if (intervalContainer) intervalContainer.classList.add('hide');
+        
+        if (triggerValue === 'Daily') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+        } else if (triggerValue === 'Weekly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayContainer) dayContainer.classList.remove('hide');
+        } else if (triggerValue === 'Interval') {
+            if (intervalContainer) intervalContainer.classList.remove('hide');
+        }
+    }
+    
+    // Helper function to format schedule display text
+    function formatScheduleDisplay(playlist) {
+        if (!playlist.ScheduleTrigger) {
+            // undefined/null = legacy tasks, "" = explicit no schedule
+            return playlist.ScheduleTrigger === "" ? 'No schedule' : 'Legacy Jellyfin tasks';
+        }
+        
+        if (playlist.ScheduleTrigger === 'Daily') {
+            const time = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            return 'Daily at ' + time;
+        } else if (playlist.ScheduleTrigger === 'Weekly') {
+            const time = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const day = days[playlist.ScheduleDayOfWeek] || 'Sunday';
+            return 'Weekly on ' + day + ' at ' + time;
+        } else if (playlist.ScheduleTrigger === 'Interval') {
+            const interval = playlist.ScheduleInterval || '1.00:00:00';
+            if (interval === '00:15:00') return 'Every 15 minutes';
+            if (interval === '00:30:00') return 'Every 30 minutes';
+            if (interval === '01:00:00') return 'Every hour';
+            if (interval === '02:00:00') return 'Every 2 hours';
+            if (interval === '06:00:00') return 'Every 6 hours';
+            if (interval === '12:00:00') return 'Every 12 hours';
+            if (interval === '1.00:00:00') return 'Every 24 hours';
+            return 'Every ' + interval;
+        }
+        
+        return playlist.ScheduleTrigger;
+    }
+    
+    // Helper function for default schedule containers
+    function updateDefaultScheduleContainers(page, triggerValue) {
+        const timeContainer = page.querySelector('#defaultScheduleTimeContainer');
+        const dayContainer = page.querySelector('#defaultScheduleDayContainer');
+        const intervalContainer = page.querySelector('#defaultScheduleIntervalContainer');
+        
+        if (timeContainer) timeContainer.classList.add('hide');
+        if (dayContainer) dayContainer.classList.add('hide');
+        if (intervalContainer) intervalContainer.classList.add('hide');
+        
+        if (triggerValue === 'Daily') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+        } else if (triggerValue === 'Weekly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayContainer) dayContainer.classList.remove('hide');
+        } else if (triggerValue === 'Interval') {
+            if (intervalContainer) intervalContainer.classList.remove('hide');
+        }
+    }
+
     function populateStaticSelects(page) {
         // Initialize page elements
         initializePageElements(page);
+        
+        // Populate all common selectors dynamically (DRY principle)
+        const scheduleTimeElement = page.querySelector('#scheduleTime');
+        if (scheduleTimeElement) {
+            scheduleTimeElement.innerHTML = generateTimeOptions('00:00'); // Default to midnight
+        }
+        
+        const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+        if (defaultScheduleTimeElement) {
+            defaultScheduleTimeElement.innerHTML = generateTimeOptions('00:00'); // Default to midnight
+        }
+        
+        const autoRefreshElement = page.querySelector('#autoRefreshMode');
+        if (autoRefreshElement) {
+            autoRefreshElement.innerHTML = generateAutoRefreshOptions('OnLibraryChanges');
+        }
+        
+        const defaultAutoRefreshElement = page.querySelector('#defaultAutoRefresh');
+        if (defaultAutoRefreshElement) {
+            defaultAutoRefreshElement.innerHTML = generateAutoRefreshOptions('OnLibraryChanges');
+        }
+        
+        const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+        if (scheduleTriggerElement) {
+            scheduleTriggerElement.innerHTML = generateScheduleTriggerOptions('', true); // Include "No schedule"
+        }
+        
+        const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+        if (defaultScheduleTriggerElement) {
+            defaultScheduleTriggerElement.innerHTML = generateScheduleTriggerOptions('', true); // Include "No schedule"
+        }
+        
+        const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+        if (scheduleDayElement) {
+            scheduleDayElement.innerHTML = generateDayOfWeekOptions('0'); // Default Sunday
+        }
+        
+        const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
+        if (defaultScheduleDayElement) {
+            defaultScheduleDayElement.innerHTML = generateDayOfWeekOptions('0'); // Default Sunday
+        }
+        
+        const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+        if (scheduleIntervalElement) {
+            scheduleIntervalElement.innerHTML = generateIntervalOptions('1.00:00:00'); // Default 24 hours
+        }
+        
+        const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+        if (defaultScheduleIntervalElement) {
+            defaultScheduleIntervalElement.innerHTML = generateIntervalOptions('1.00:00:00'); // Default 24 hours
+        }
         
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
@@ -564,10 +853,61 @@
             if (autoRefreshElement) {
                 autoRefreshElement.value = defaultAutoRefresh;
             }
-            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-            if (refreshOnScheduleElement) {
-                refreshOnScheduleElement.checked = config.DefaultRefreshOnSchedule || false;
+            
+            // Set up schedule trigger selector and event handlers
+            const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+            if (scheduleTriggerElement) {
+                scheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                scheduleTriggerElement.addEventListener('change', function() {
+                    updateScheduleContainers(page, this.value);
+                });
+                // Initialize containers based on current value
+                updateScheduleContainers(page, scheduleTriggerElement.value);
             }
+            
+            // Set up default schedule values
+            const scheduleTimeElement = page.querySelector('#scheduleTime');
+            if (scheduleTimeElement && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5); // Extract HH:MM from HH:MM:SS
+                scheduleTimeElement.value = timeString;
+            }
+            
+            const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+            if (scheduleDayElement) {
+                scheduleDayElement.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
+            }
+            
+            const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+            if (scheduleIntervalElement && config.DefaultScheduleInterval) {
+                scheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
+            
+            // Set up global default schedule settings and event handlers
+            const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+            if (defaultScheduleTriggerElement) {
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                defaultScheduleTriggerElement.addEventListener('change', function() {
+                    updateDefaultScheduleContainers(page, this.value);
+                });
+                updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
+            }
+            
+            const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+            if (defaultScheduleTimeElement && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5); // Extract HH:MM from HH:MM:SS
+                defaultScheduleTimeElement.value = timeString;
+            }
+            
+            const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
+            if (defaultScheduleDayElement) {
+                defaultScheduleDayElement.value = config.DefaultScheduleDayOfWeek !== undefined ? config.DefaultScheduleDayOfWeek.toString() : '0';
+            }
+            
+            const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+            if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
+            
             
             // Populate settings tab dropdowns with current configuration values
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
@@ -1503,7 +1843,23 @@
             const isPublic = page.querySelector('#playlistIsPublic').checked || false;
             const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
             const autoRefreshMode = page.querySelector('#autoRefreshMode')?.value || 'Never';
-            const refreshOnSchedule = page.querySelector('#refreshOnSchedule')?.checked || false;
+            // Capture schedule settings
+            const scheduleTriggerValue = page.querySelector('#scheduleTrigger')?.value;
+            const scheduleTrigger = scheduleTriggerValue === '' ? '' : (scheduleTriggerValue || null);
+            const scheduleTimeValue = page.querySelector('#scheduleTime')?.value;
+            // Only set scheduleTime for Daily/Weekly, not for Interval
+            const scheduleTime = (scheduleTrigger === 'Daily' || scheduleTrigger === 'Weekly') && scheduleTimeValue 
+                ? scheduleTimeValue + ':00' : null;
+            
+            // Only set scheduleDayOfWeek for Weekly
+            const scheduleDayOfWeekValue = page.querySelector('#scheduleDayOfWeek')?.value;
+            const scheduleDayOfWeek = scheduleTrigger === 'Weekly' && scheduleDayOfWeekValue 
+                ? parseInt(scheduleDayOfWeekValue) : null;
+                
+            // Only set scheduleInterval for Interval
+            const scheduleIntervalValue = page.querySelector('#scheduleInterval')?.value;
+            const scheduleInterval = scheduleTrigger === 'Interval' && scheduleIntervalValue 
+                ? scheduleIntervalValue : null;
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             const maxItemsInput = maxItemsElement?.value || '';
             let maxItems;
@@ -1543,7 +1899,10 @@
                 MaxItems: maxItems,
                 MaxPlayTimeMinutes: maxPlayTimeMinutes,
                 AutoRefresh: autoRefreshMode,
-                RefreshOnSchedule: refreshOnSchedule
+                ScheduleTrigger: scheduleTrigger,
+                ScheduleTime: scheduleTime,
+                ScheduleDayOfWeek: scheduleDayOfWeek,
+                ScheduleInterval: scheduleInterval
             };
 
             // Add ID if in edit mode
@@ -1635,9 +1994,27 @@
             if (autoRefreshElement) {
                 autoRefreshElement.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
             }
-            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-            if (refreshOnScheduleElement) {
-                refreshOnScheduleElement.checked = config.DefaultRefreshOnSchedule || false;
+            // Set default schedule values from config
+            const defaultScheduleTriggerForForm = page.querySelector('#scheduleTrigger');
+            if (defaultScheduleTriggerForForm) {
+                defaultScheduleTriggerForForm.value = config.DefaultScheduleTrigger || '';
+                updateScheduleContainers(page, defaultScheduleTriggerForForm.value);
+            }
+            
+            const defaultScheduleTimeForForm = page.querySelector('#scheduleTime');
+            if (defaultScheduleTimeForForm && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5);
+                defaultScheduleTimeForForm.value = timeString;
+            }
+            
+            const defaultScheduleDayForForm = page.querySelector('#scheduleDayOfWeek');
+            if (defaultScheduleDayForForm) {
+                defaultScheduleDayForForm.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
+            }
+            
+            const defaultScheduleIntervalForForm = page.querySelector('#scheduleInterval');
+            if (defaultScheduleIntervalForForm && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalForForm.value = config.DefaultScheduleInterval;
             }
         }).catch(() => {
             page.querySelector('#sortBy').value = 'Name';
@@ -1656,9 +2033,11 @@
             if (autoRefreshElement) {
                 autoRefreshElement.value = 'OnLibraryChanges';
             }
-            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-            if (refreshOnScheduleElement) {
-                refreshOnScheduleElement.checked = false; // Default for new playlists
+            // Set fallback schedule defaults
+            const fallbackScheduleTrigger = page.querySelector('#scheduleTrigger');
+            if (fallbackScheduleTrigger) {
+                fallbackScheduleTrigger.value = ''; // No schedule by default
+                updateScheduleContainers(page, '');
             }
         });
         
@@ -1994,11 +2373,31 @@
                     const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
                     const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
                     const autoRefreshMode = playlist.AutoRefresh || 'Never';
-                    const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
+                    const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
                                              autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
                                              autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
-                    const refreshOnSchedule = playlist.RefreshOnSchedule !== undefined ? playlist.RefreshOnSchedule : true; // Default to true for backward compatibility
-                    const refreshOnScheduleDisplay = refreshOnSchedule ? 'Yes' : 'No';
+                    const scheduleDisplay = formatScheduleDisplay(playlist);
+                    
+                    // Format last scheduled refresh display
+                    let lastRefreshDisplay = 'Unknown';
+                    if (playlist.LastScheduledRefresh) {
+                        const lastRefresh = new Date(playlist.LastScheduledRefresh);
+                        const now = new Date();
+                        const diffMs = now - lastRefresh;
+                        const diffMins = Math.floor(diffMs / 60000);
+                        const diffHours = Math.floor(diffMins / 60);
+                        const diffDays = Math.floor(diffHours / 24);
+                        
+                        if (diffMins < 1) {
+                            lastRefreshDisplay = 'Just now';
+                        } else if (diffMins < 60) {
+                            lastRefreshDisplay = diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
+                        } else if (diffHours < 24) {
+                            lastRefreshDisplay = diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+                        } else {
+                            lastRefreshDisplay = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
+                        }
+                    }
                     const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                     const userName = await resolveUsername(apiClient, playlist);
                     const playlistId = playlist.Id || 'NO_ID';
@@ -2020,7 +2419,8 @@
                         '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
                         '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
                         '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
-                        '<strong>Scheduled refresh:</strong> ' + refreshOnScheduleDisplay + '<br>' +
+                        '<strong>Scheduled refresh:</strong> ' + scheduleDisplay + '<br>' +
+                        '<strong>Last scheduled refresh:</strong> ' + lastRefreshDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
@@ -2237,8 +2637,28 @@
             const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
                                      autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
                                      autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
-            const refreshOnSchedule = playlist.RefreshOnSchedule !== undefined ? playlist.RefreshOnSchedule : true; // Default to true for backward compatibility
-            const refreshOnScheduleDisplay = refreshOnSchedule ? 'Yes' : 'No';
+            const scheduleDisplay = formatScheduleDisplay(playlist);
+            
+            // Format last scheduled refresh display
+            let lastRefreshDisplay = 'Never';
+            if (playlist.LastScheduledRefresh) {
+                const lastRefresh = new Date(playlist.LastScheduledRefresh);
+                const now = new Date();
+                const diffMs = now - lastRefresh;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMins / 60);
+                const diffDays = Math.floor(diffHours / 24);
+                
+                if (diffMins < 1) {
+                    lastRefreshDisplay = 'Just now';
+                } else if (diffMins < 60) {
+                    lastRefreshDisplay = diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
+                } else if (diffHours < 24) {
+                    lastRefreshDisplay = diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+                } else {
+                    lastRefreshDisplay = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
+                }
+            }
             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
             const userName = await resolveUsername(apiClient, playlist);
             const playlistId = playlist.Id || 'NO_ID';
@@ -2260,7 +2680,8 @@
                 '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
                 '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
                 '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
-                '<strong>Scheduled refresh:</strong> ' + refreshOnScheduleDisplay + '<br>' +
+                '<strong>Scheduled refresh:</strong> ' + scheduleDisplay + '<br>' +
+                '<strong>Last scheduled refresh:</strong> ' + lastRefreshDisplay + '<br>' +
                 '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                 '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
@@ -2474,11 +2895,30 @@
                     autoRefreshElement.value = autoRefreshValue;
                 }
                 
-                // Handle RefreshOnSchedule with backward compatibility (true for existing playlists, false for new ones)
-                const refreshOnScheduleValue = playlist.RefreshOnSchedule !== undefined ? playlist.RefreshOnSchedule : true;
-                const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-                if (refreshOnScheduleElement) {
-                    refreshOnScheduleElement.checked = refreshOnScheduleValue;
+                // Handle schedule settings with backward compatibility
+                const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+                if (scheduleTriggerElement) {
+                    scheduleTriggerElement.value = playlist.ScheduleTrigger || '';
+                    scheduleTriggerElement.addEventListener('change', function() {
+                        updateScheduleContainers(page, this.value);
+                    });
+                    updateScheduleContainers(page, playlist.ScheduleTrigger || '');
+                }
+                
+                const scheduleTimeElement = page.querySelector('#scheduleTime');
+                if (scheduleTimeElement && playlist.ScheduleTime) {
+                    const timeString = playlist.ScheduleTime.substring(0, 5);
+                    scheduleTimeElement.value = timeString;
+                }
+                
+                const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+                if (scheduleDayElement && playlist.ScheduleDayOfWeek !== undefined) {
+                    scheduleDayElement.value = convertDayOfWeekToValue(playlist.ScheduleDayOfWeek);
+                }
+                
+                const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+                if (scheduleIntervalElement && playlist.ScheduleInterval) {
+                    scheduleIntervalElement.value = playlist.ScheduleInterval;
                 }
                 
                 // Handle MaxItems with backward compatibility for existing playlists
@@ -2738,11 +3178,31 @@
             if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
-            
-            const defaultRefreshOnScheduleEl = page.querySelector('#defaultRefreshOnSchedule');
-            if (defaultRefreshOnScheduleEl) defaultRefreshOnScheduleEl.checked = config.DefaultRefreshOnSchedule || false;
             if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
-            if (playlistNameSuffixEl) playlistNameSuffixEl.value = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
+            if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
+            
+            // Load schedule configuration values
+            const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+            if (defaultScheduleTriggerElement) {
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
+            }
+            
+            const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+            if (defaultScheduleTimeElement && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5); // Extract HH:MM from HH:MM:SS
+                defaultScheduleTimeElement.value = timeString;
+            }
+            
+            const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
+            if (defaultScheduleDayElement) {
+                defaultScheduleDayElement.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
+            }
+            
+            const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+            if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
             
             // Update playlist name preview
             updatePlaylistNamePreview(page);
@@ -2778,7 +3238,16 @@
             }
             
             config.DefaultAutoRefresh = page.querySelector('#defaultAutoRefresh').value || 'OnLibraryChanges';
-            config.DefaultRefreshOnSchedule = page.querySelector('#defaultRefreshOnSchedule').checked || false;
+            
+            // Save default schedule settings
+            const defaultScheduleTriggerValue = page.querySelector('#defaultScheduleTrigger').value;
+            config.DefaultScheduleTrigger = defaultScheduleTriggerValue === '' ? '' : (defaultScheduleTriggerValue || null);
+            
+            const defaultScheduleTimeValue = page.querySelector('#defaultScheduleTime').value;
+            config.DefaultScheduleTime = defaultScheduleTimeValue ? defaultScheduleTimeValue + ':00' : '00:00:00';
+            
+            config.DefaultScheduleDayOfWeek = parseInt(page.querySelector('#defaultScheduleDayOfWeek').value) || 0;
+            config.DefaultScheduleInterval = page.querySelector('#defaultScheduleInterval').value || '1.00:00:00';
             
             // Save playlist naming configuration
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
@@ -2882,6 +3351,7 @@
         
         // Coordinate all async initialization
         Promise.all([
+            fetchUserLocale(), // Fetch user's locale preferences first
             populateStaticSelects(page), // Make synchronous function async
             loadUsers(page),
             loadAndPopulateFields()

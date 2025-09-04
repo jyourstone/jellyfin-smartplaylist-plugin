@@ -22,6 +22,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
         OnAllChanges = 2     // Any metadata updates (including playback status)
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum ScheduleTrigger
+    {
+        Daily = 0,    // Once per day at specified time
+        Weekly = 1,   // Once per week on specified day/time  
+        Interval = 2  // Every X hours/minutes
+    }
+
     [Serializable]
     public class SmartPlaylistDto
     {
@@ -55,7 +63,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility
         public AutoRefreshMode AutoRefresh { get; set; } = AutoRefreshMode.Never; // Default to never for backward compatibility
-        public bool? RefreshOnSchedule { get; set; } // Nullable for backward compatibility - true for existing playlists, false for new ones
+        
+        // Custom scheduling properties (null = no custom schedule, use legacy tasks)
+        public ScheduleTrigger? ScheduleTrigger { get; set; } = null;
+        public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly (e.g., 15:00)
+        public DayOfWeek? ScheduleDayOfWeek { get; set; } // Day of week for Weekly
+        public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
+        public DateTime? LastScheduledRefresh { get; set; } // When was this playlist last refreshed via schedule
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
