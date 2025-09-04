@@ -192,19 +192,40 @@
         return html;
     }
     
+    // HTML escaping function to prevent XSS vulnerabilities
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // Safe DOM manipulation helper to prevent XSS vulnerabilities
-    function populateSelectElement(selectElement, optionsHtml) {
+    // Now accepts an array of {value, label, selected} objects instead of HTML strings
+    function populateSelectElement(selectElement, optionsData) {
         // Clear existing options
         selectElement.innerHTML = '';
         
-        // Create a temporary container to parse the HTML safely
-        var tempDiv = document.createElement('div');
-        tempDiv.innerHTML = optionsHtml;
-        
-        // Move all option elements to the select
-        var options = tempDiv.querySelectorAll('option');
-        for (var i = 0; i < options.length; i++) {
-            selectElement.appendChild(options[i]);
+        // If optionsData is a string (legacy), convert it safely
+        if (typeof optionsData === 'string') {
+            // Parse HTML safely using temporary container (legacy support)
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = optionsData;
+            var options = tempDiv.querySelectorAll('option');
+            for (var i = 0; i < options.length; i++) {
+                selectElement.appendChild(options[i]);
+            }
+        } else if (Array.isArray(optionsData)) {
+            // Modern safe approach: create option elements programmatically
+            optionsData.forEach(function(optionData) {
+                var option = document.createElement('option');
+                option.value = optionData.value || '';
+                option.textContent = optionData.label || optionData.value || '';
+                if (optionData.selected) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            });
         }
     }
     
@@ -2334,7 +2355,7 @@
                         if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
                             const userName = await resolveUserIdToName(apiClient, rule.UserId);
                             if (userName) {
-                                userInfo = ' for user "' + userName + '"';
+                                userInfo = ' for user "' + escapeHtml(userName) + '"';
                             }
                         }
                         
@@ -2350,7 +2371,9 @@
                             collectionsInfo = ' (including episodes within series)';
                         }
                         
-                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + collectionsInfo + '</span>';
+                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' +
+                                     escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' +
+                                     userInfo + nextUnwatchedInfo + collectionsInfo + '</span>';
                     }
                     
                     rulesHtml += '</div>';
@@ -2410,7 +2433,7 @@
                 let html = '<div class="inputContainer">';
                 html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #666;">';
                 html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                        (searchTerm ? ' matching "' + searchTerm + '"' : '') +
+                        (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
                         ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
                 html += '</div></div>';
                 
@@ -2456,30 +2479,43 @@
                     const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
                     const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
                     
+                    // Escape all dynamic content to prevent XSS
+                    const eName = escapeHtml(playlist.Name || '');
+                    const eFileName = escapeHtml(playlist.FileName || '');
+                    const eUserName = escapeHtml(userName || '');
+                    const eMediaTypes = escapeHtml(mediaTypes);
+                    const eSortName = escapeHtml(sortName);
+                    const eMaxItems = escapeHtml(maxItemsDisplay);
+                    const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
+                    const eAutoRefreshDisplay = escapeHtml(autoRefreshDisplay);
+                    const eScheduleDisplay = escapeHtml(scheduleDisplay);
+                    const eLastRefreshDisplay = escapeHtml(lastRefreshDisplay);
+                    const ePlaylistId = escapeHtml(playlistId);
+                    
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
-                        '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                        '<h4 style="margin-top: 0;">' + eName + '</h4>' +
                         '<div class="field-description">' +
-                        '<strong>File:</strong> ' + playlist.FileName + '<br>' +
-                        '<strong>User:</strong> ' + userName + '<br>' +
-                        '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                        '<strong>File:</strong> ' + eFileName + '<br>' +
+                        '<strong>User:</strong> ' + eUserName + '<br>' +
+                        '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
                         '<strong>Rules:</strong><br>' + rulesHtml + 
-                        '<strong>Sort:</strong> ' + sortName + '<br>' +
-                        '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
-                        '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
-                        '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
-                        '<strong>Scheduled refresh:</strong> ' + scheduleDisplay + '<br>' +
-                        '<strong>Last scheduled refresh:</strong> ' + lastRefreshDisplay + '<br>' +
+                        '<strong>Sort:</strong> ' + eSortName + '<br>' +
+                        '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
+                        '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
+                        '<strong>Auto-refresh:</strong> ' + eAutoRefreshDisplay + '<br>' +
+                        '<strong>Scheduled refresh:</strong> ' + eScheduleDisplay + '<br>' +
+                        '<strong>Last scheduled refresh:</strong> ' + eLastRefreshDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
                         '<div style="margin-top: 1em;">' +
-                        '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                        '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Refresh</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
                         (isEnabled ? 
-                            '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
-                            '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                            '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
+                            '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
                         ) +
-                        '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
                         '</div>' +
                         '</div>';
                 }
@@ -2494,7 +2530,7 @@
         }).catch(err => {
             console.error('Error loading playlists:', err);
             let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
-            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + escapeHtml(errorMessage) + '</p></div>';
             
             // Re-enable search input even on error
             setSearchInputState(page, false);
@@ -2654,7 +2690,7 @@
             
         } catch (err) {
             console.error('Error during search:', err);
-            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + err.message + '</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + escapeHtml(err && err.message ? err.message : 'Unknown error') + '</p></div>';
         }
     }
 

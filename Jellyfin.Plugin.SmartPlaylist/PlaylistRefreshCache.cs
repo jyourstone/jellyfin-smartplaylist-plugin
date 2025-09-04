@@ -56,6 +56,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var results = new List<PlaylistRefreshResult>();
             
+            if (playlists == null)
+            {
+                _logger.LogWarning("Playlists parameter is null, returning empty results");
+                return results;
+            }
+            
             if (!playlists.Any())
             {
                 return results;
@@ -90,16 +96,49 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     var userId = kvp.Key;
                     var userPlaylists = kvp.Value;
-                    if (!userMediaCache.ContainsKey(userId))
+                    
+                    // Use TryGetValue to avoid double lookup and handle missing cache entries
+                    if (!userMediaCache.TryGetValue(userId, out var relevantUserMedia))
                     {
-                        continue; // User not found, already logged warning
+                        _logger.LogWarning("No cached media found for user {UserId}, adding failure results for {PlaylistCount} playlists", userId, userPlaylists.Count);
+                        
+                        // Add failure results for all playlists of this user instead of silently dropping them
+                        foreach (var playlist in userPlaylists)
+                        {
+                            results.Add(new PlaylistRefreshResult
+                            {
+                                PlaylistId = playlist.Id,
+                                PlaylistName = playlist.Name,
+                                Success = false,
+                                Message = $"User {userId} not found or cache missing",
+                                JellyfinPlaylistId = null
+                            });
+                        }
+                        continue;
                     }
 
                     var user = _userManager.GetUserById(userId);
-                    var relevantUserMedia = userMediaCache[userId];
+                    if (user == null)
+                    {
+                        _logger.LogError("User {UserId} not found in UserManager, adding failure results for {PlaylistCount} playlists", userId, userPlaylists.Count);
+                        
+                        // Add failure results for all playlists of this user
+                        foreach (var playlist in userPlaylists)
+                        {
+                            results.Add(new PlaylistRefreshResult
+                            {
+                                PlaylistId = playlist.Id,
+                                PlaylistName = playlist.Name,
+                                Success = false,
+                                Message = $"User {userId} not found in system",
+                                JellyfinPlaylistId = null
+                            });
+                        }
+                        continue;
+                    }
                     
                     _logger.LogDebug("Processing {PlaylistCount} playlists for user {Username} using cached media ({MediaCount} items)", 
-                        userPlaylists.Count, user?.Username ?? "Unknown", relevantUserMedia.Length);
+                        userPlaylists.Count, user.Username, relevantUserMedia.Length);
 
                     // Use the same advanced caching as legacy tasks
                     var userResults = await ProcessUserPlaylistsWithAdvancedCachingAsync(
