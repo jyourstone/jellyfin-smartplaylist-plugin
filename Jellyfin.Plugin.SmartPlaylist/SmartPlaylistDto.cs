@@ -28,7 +28,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         None = 0,     // Explicitly no schedule (different from null which means legacy tasks)
         Daily = 1,    // Once per day at specified time
         Weekly = 2,   // Once per week on specified day/time  
-        Interval = 3  // Every X hours/minutes
+        Monthly = 3,  // Once per month on specified day and time
+        Interval = 4  // Every X hours/minutes
     }
 
     [Serializable]
@@ -67,8 +68,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         // Custom scheduling properties (null = no custom schedule, use legacy tasks)
         public ScheduleTrigger? ScheduleTrigger { get; set; } = null;
-        public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly (e.g., 15:00)
+        public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly/Monthly (e.g., 15:00)
         public DayOfWeek? ScheduleDayOfWeek { get; set; } // Day of week for Weekly
+        public int? ScheduleDayOfMonth { get; set; } // Day of month for Monthly (1-31)
         public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
         public DateTime? LastRefreshed { get; set; } // When was this playlist last refreshed (any trigger)
         

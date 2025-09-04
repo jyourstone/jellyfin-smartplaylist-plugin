@@ -941,6 +941,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 ScheduleTrigger.Daily => IsDailyDue(playlist, now),
                 ScheduleTrigger.Weekly => IsWeeklyDue(playlist, now),
+                ScheduleTrigger.Monthly => IsMonthlyDue(playlist, now),
                 ScheduleTrigger.Interval => IsIntervalDue(playlist, now),
                 _ => false
             };
@@ -971,6 +972,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm}, Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
                 playlist.Name, now, scheduledDay, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsMonthlyDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var scheduledDayOfMonth = playlist.ScheduleDayOfMonth ?? 1; // Default to 1st of month
+            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
+            
+            // Handle months with fewer days (e.g., Feb 30th becomes Feb 28th/29th)
+            var daysInCurrentMonth = DateTime.DaysInMonth(now.Year, now.Month);
+            var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
+            
+            // Check if current day and time matches the scheduled day and time
+            var isDue = now.Day == effectiveDayOfMonth && 
+                       now.Hour == scheduledTime.Hours && 
+                       now.Minute == scheduledTime.Minutes;
+            
+            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm}, Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
+                playlist.Name, now, effectiveDayOfMonth, scheduledTime, isDue);
             
             return isDue;
         }

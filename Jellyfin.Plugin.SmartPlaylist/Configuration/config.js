@@ -121,6 +121,7 @@
         options.push(
             { value: 'Daily', label: 'Daily' },
             { value: 'Weekly', label: 'Weekly' },
+            { value: 'Monthly', label: 'Monthly' },
             { value: 'Interval', label: 'Interval' }
         );
         var html = '';
@@ -141,6 +142,25 @@
             { value: '5', label: 'Friday' },
             { value: '6', label: 'Saturday' }
         ];
+        var html = '';
+        for (var i = 0; i < days.length; i++) {
+            var selected = days[i].value === defaultValue ? ' selected' : '';
+            html += '<option value="' + days[i].value + '"' + selected + '>' + days[i].label + '</option>';
+        }
+        return html;
+    }
+    
+    function generateDayOfMonthOptions(defaultValue) {
+        var days = [];
+        for (var i = 1; i <= 31; i++) {
+            var suffix = '';
+            if (i === 1 || i === 21 || i === 31) suffix = 'st';
+            else if (i === 2 || i === 22) suffix = 'nd';
+            else if (i === 3 || i === 23) suffix = 'rd';
+            else suffix = 'th';
+            
+            days.push({ value: i.toString(), label: i + suffix });
+        }
         var html = '';
         for (var i = 0; i < days.length; i++) {
             var selected = days[i].value === defaultValue ? ' selected' : '';
@@ -756,10 +776,12 @@
     function updateScheduleContainers(page, triggerValue) {
         const timeContainer = page.querySelector('#scheduleTimeContainer');
         const dayContainer = page.querySelector('#scheduleDayContainer');
+        const dayOfMonthContainer = page.querySelector('#scheduleDayOfMonthContainer');
         const intervalContainer = page.querySelector('#scheduleIntervalContainer');
         
         if (timeContainer) timeContainer.classList.add('hide');
         if (dayContainer) dayContainer.classList.add('hide');
+        if (dayOfMonthContainer) dayOfMonthContainer.classList.add('hide');
         if (intervalContainer) intervalContainer.classList.add('hide');
         
         if (triggerValue === 'Daily') {
@@ -767,6 +789,9 @@
         } else if (triggerValue === 'Weekly') {
             if (timeContainer) timeContainer.classList.remove('hide');
             if (dayContainer) dayContainer.classList.remove('hide');
+        } else if (triggerValue === 'Monthly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
         } else if (triggerValue === 'Interval') {
             if (intervalContainer) intervalContainer.classList.remove('hide');
         }
@@ -791,6 +816,13 @@
             const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const day = days[playlist.ScheduleDayOfWeek] || 'Sunday';
             return 'Weekly on ' + day + ' at ' + time;
+        } else if (playlist.ScheduleTrigger === 'Monthly') {
+            const time = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const dayOfMonth = playlist.ScheduleDayOfMonth || 1;
+            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+                          (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
+                          (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + time;
         } else if (playlist.ScheduleTrigger === 'Interval') {
             const interval = playlist.ScheduleInterval || '1.00:00:00';
             if (interval === '00:15:00') return 'Every 15 minutes';
@@ -864,6 +896,11 @@
         const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
         if (scheduleDayElement) {
             populateSelectElement(scheduleDayElement, generateDayOfWeekOptions('0')); // Default Sunday
+        }
+        
+        const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
+        if (scheduleDayOfMonthElement) {
+            populateSelectElement(scheduleDayOfMonthElement, generateDayOfMonthOptions('1')); // Default 1st
         }
         
         const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
@@ -947,7 +984,7 @@
             // Set up schedule trigger selector and event handlers
             const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
             if (scheduleTriggerElement) {
-                scheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                scheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
                 scheduleTriggerElement.addEventListener('change', function() {
                     updateScheduleContainers(page, this.value);
                 });
@@ -1936,14 +1973,19 @@
             const scheduleTriggerValue = getElementValue(page, '#scheduleTrigger');
             const scheduleTrigger = scheduleTriggerValue === '' ? 'None' : (scheduleTriggerValue || null);
             const scheduleTimeValue = getElementValue(page, '#scheduleTime');
-            // Only set scheduleTime for Daily/Weekly, not for Interval
-            const scheduleTime = (scheduleTrigger === 'Daily' || scheduleTrigger === 'Weekly') && scheduleTimeValue 
+            // Only set scheduleTime for Daily/Weekly/Monthly, not for Interval
+            const scheduleTime = (scheduleTrigger === 'Daily' || scheduleTrigger === 'Weekly' || scheduleTrigger === 'Monthly') && scheduleTimeValue 
                 ? scheduleTimeValue + ':00' : null;
             
             // Only set scheduleDayOfWeek for Weekly
             const scheduleDayOfWeekValue = getElementValue(page, '#scheduleDayOfWeek');
             const scheduleDayOfWeek = scheduleTrigger === 'Weekly' && scheduleDayOfWeekValue 
                 ? parseInt(scheduleDayOfWeekValue) : null;
+                
+            // Only set scheduleDayOfMonth for Monthly
+            const scheduleDayOfMonthValue = getElementValue(page, '#scheduleDayOfMonth');
+            const scheduleDayOfMonth = scheduleTrigger === 'Monthly' && scheduleDayOfMonthValue 
+                ? parseInt(scheduleDayOfMonthValue) : null;
                 
             // Only set scheduleInterval for Interval
             const scheduleIntervalValue = getElementValue(page, '#scheduleInterval');
@@ -1991,6 +2033,7 @@
                 ScheduleTrigger: scheduleTrigger,
                 ScheduleTime: scheduleTime,
                 ScheduleDayOfWeek: scheduleDayOfWeek,
+                ScheduleDayOfMonth: scheduleDayOfMonth,
                 ScheduleInterval: scheduleInterval
             };
 
@@ -3095,6 +3138,11 @@
                 const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
                 if (scheduleDayElement && playlist.ScheduleDayOfWeek !== undefined) {
                     scheduleDayElement.value = convertDayOfWeekToValue(playlist.ScheduleDayOfWeek);
+                }
+                
+                const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
+                if (scheduleDayOfMonthElement && playlist.ScheduleDayOfMonth !== undefined) {
+                    scheduleDayOfMonthElement.value = playlist.ScheduleDayOfMonth.toString();
                 }
                 
                 const scheduleIntervalElement = page.querySelector('#scheduleInterval');

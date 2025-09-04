@@ -354,7 +354,16 @@
                             <div class="fieldDescription">Day of the week for the scheduled refresh.</div>
                         </div>
 
-                        <!-- Schedule Time Selector (for Daily/Weekly) -->
+                        <!-- Day of Month Selector (for Monthly) -->
+                        <div id="scheduleDayOfMonthContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                            <label class="selectLabel" for="scheduleDayOfMonth">Day of month:</label>
+                            <select id="scheduleDayOfMonth" is="emby-select" class="emby-select-withcolor emby-select">
+                                <!-- Day of month options populated dynamically by JavaScript -->
+                            </select>
+                            <div class="fieldDescription">Day of the month for the scheduled refresh.</div>
+                        </div>
+
+                        <!-- Schedule Time Selector (for Daily/Weekly/Monthly) -->
                         <div id="scheduleTimeContainer" class="selectContainer hide" style="margin-bottom: 1em;">
                             <label class="selectLabel" for="scheduleTime">Time:</label>
                             <select id="scheduleTime" is="emby-select" class="emby-select-withcolor emby-select">

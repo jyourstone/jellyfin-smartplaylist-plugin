@@ -144,7 +144,7 @@ Configure playlists to refresh automatically when your library changes:
 Configure individual playlists with their own custom refresh schedules:
 
 - **Per-Playlist Scheduling**: Each playlist can have its own schedule
-- **Schedule Types**: Daily (at specific time), Weekly (specific day and time), or Interval (every X minutes/hours)
+- **Schedule Types**: Daily (at specific time), Weekly (specific day and time), Monthly (specific day and time), or Interval (every X minutes/hours)
 - **Flexible Intervals**: 15min, 30min, 1h, 2h, 3h, 4h, 6h, 8h, 12h, or 24h intervals
 - **Backward Compatible**: Existing playlists continue using legacy Jellyfin scheduled tasks
 - **User Visibility**: Clear indication of which scheduling system each playlist uses
@@ -152,6 +152,7 @@ Configure individual playlists with their own custom refresh schedules:
 **Schedule Options:**
 - **Daily**: Refresh at a specific time each day (e.g., 3:00 AM)
 - **Weekly**: Refresh on a specific day and time each week (e.g., Sunday at 8:00 PM)  
+- **Monthly**: Refresh on a specific day and time each month (e.g., 1st at 2:00 AM)
 - **Interval**: Refresh at regular intervals (e.g., every 2 hours, every 30 minutes)
 - **No schedule**: Disable all scheduled refreshes (auto-refresh and manual only)
 
@@ -168,6 +169,7 @@ These tasks can be configured in the Jellyfin admin dashboard and will only proc
 **Custom Scheduling Examples:**
 - **Daily Random Mix**: Random sorted playlist with Daily schedule at 6:00 AM → fresh random order every morning
 - **Weekly Discoveries**: New content playlist with Weekly schedule on Sunday at 8:00 PM → weekly refresh for weekend planning
+- **Monthly Archive**: Year-based movie playlist with Monthly schedule on the 1st at 2:00 AM → monthly refresh for archival content
 - **Background Refresh**: Mood-based music playlist with 4-hour intervals → regular updates without being intrusive
 
 **Auto-Refresh Examples:**
