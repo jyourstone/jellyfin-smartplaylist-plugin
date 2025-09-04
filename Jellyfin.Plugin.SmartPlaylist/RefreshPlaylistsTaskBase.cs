@@ -217,7 +217,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 // Filter by custom schedule settings (backward compatibility logic):
                 // - ScheduleTrigger == null: Setting doesn't exist, use legacy tasks for backward compatibility
-                // - ScheduleTrigger == "": User explicitly selected "No schedule", skip legacy tasks
+                // - ScheduleTrigger == "None": User explicitly selected "No schedule", skip legacy tasks
                 // - ScheduleTrigger has value: User has custom schedule, skip legacy tasks
                 var relevantDtos = mediaTypeFilteredDtos
                     .Where(dto => dto.ScheduleTrigger == null) // Only null (no setting) uses legacy tasks
@@ -370,6 +370,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 playlistStopwatch.Stop();
                                 if (success)
                                 {
+                                    // Save the playlist to persist LastRefreshed timestamp
+                                    await plStore.SaveAsync(dto);
+                                    
                                     logger.LogDebug("Playlist {PlaylistName} processed successfully in {ElapsedTime}ms: {Message}", 
                                         dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
                                 }

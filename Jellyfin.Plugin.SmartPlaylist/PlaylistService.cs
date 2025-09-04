@@ -72,7 +72,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             Func<SmartPlaylistDto, Task> saveCallback = null,
             CancellationToken cancellationToken = default)
         {
-            return await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, cancellationToken);
+            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, cancellationToken);
+            
+            // Update LastRefreshed timestamp for successful refreshes (any trigger)
+            if (success)
+            {
+                dto.LastRefreshed = DateTime.UtcNow;
+                _logger.LogDebug("Updated LastRefreshed timestamp for cached playlist: {PlaylistName}", dto.Name);
+            }
+            
+            return (success, message, jellyfinPlaylistId);
         }
 
         /// <summary>
@@ -303,6 +312,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var allUserMedia = GetAllUserMedia(user, dto.MediaTypes, dto).ToArray();
                 
                 var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, cancellationToken);
+                
+                // Update LastRefreshed timestamp for successful refreshes (any trigger)
+                if (success)
+                {
+                    dto.LastRefreshed = DateTime.UtcNow;
+                    _logger.LogDebug("Updated LastRefreshed timestamp for playlist: {PlaylistName}", dto.Name);
+                }
                 
                 stopwatch.Stop();
                 _logger.LogDebug("Single playlist refresh completed in {ElapsedMs}ms: {Message}", stopwatch.ElapsedMilliseconds, message);

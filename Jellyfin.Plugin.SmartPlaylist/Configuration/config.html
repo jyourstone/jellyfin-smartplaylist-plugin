@@ -383,7 +383,11 @@
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <form style="margin-top:2em;">
                         <div class="inputContainer" style="margin-bottom: 1em;">
-                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised block">Refresh List</button>
+                            <button type="button" is="emby-button" id="refreshPlaylistsBtn" class="emby-button raised block">Refresh All Playlists</button>
+                        </div>
+                        
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised block">Reload List</button>
                         </div>
                         
                         <div class="inputContainer" style="margin-bottom: 1em;">
@@ -443,12 +447,14 @@
                             <div class="fieldDescription">Default maximum play time in minutes for new smart playlists. Set to 0 for no limit.</div>
                         </div>
 
+                        <h2 class="sectionTitle" style="margin-top: 2em;">Refresh Settings</h2>
+
                         <div class="selectContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="selectLabel" for="defaultAutoRefresh">Default Auto-refresh Mode</label>
                             <select id="defaultAutoRefresh" is="emby-select" class="emby-select-withcolor emby-select">
                                 <!-- Auto-refresh options populated dynamically by JavaScript -->
                             </select>
-                            <div class="fieldDescription">Default auto-refresh mode for new smart playlists. Existing playlists keep their current setting.</div>
+                            <div class="fieldDescription">Default auto-refresh mode for new smart playlists.</div>
                         </div>
 
                         <div class="selectContainer" style="margin-bottom: 1em;">
@@ -456,7 +462,7 @@
                             <select id="defaultScheduleTrigger" is="emby-select" class="emby-select-withcolor emby-select">
                                 <!-- Schedule trigger options populated dynamically by JavaScript -->
                             </select>
-                            <div class="fieldDescription">Default schedule type for new playlists. "No schedule" disables all scheduled refreshes for new playlists.</div>
+                            <div class="fieldDescription">Default schedule type for new smart playlists.</div>
                         </div>
 
                         <!-- Default Day of Week -->
@@ -531,7 +537,10 @@
 
                         <div style="margin-top: 2em;">
                             <button type="button" is="emby-button" id="saveSettingsBtn" class="button-submit emby-button block">Save Settings</button>
-                            <button type="button" is="emby-button" id="refreshPlaylistsBtn" class="emby-button raised block" style="margin-top: 0.5em;">Refresh All Playlists</button>
+                        </div>
+                        
+                        <div class="fieldDescription" style="margin-top: 1em; padding: 0.75em; background: rgba(255,255,255,0.05); border-radius: 1px;">
+                            <strong>Note:</strong> After saving settings, refresh your browser to see the new default values in the "Create Playlist" tab.
                         </div>
                     </form>
                 </div>

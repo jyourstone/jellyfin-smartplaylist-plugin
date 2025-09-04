@@ -930,6 +930,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 if (success)
                 {
+                    // Save the playlist to persist LastRefreshed timestamp
+                    await playlistStore.SaveAsync(playlist);
+                    _logger.LogDebug("Saved LastRefreshed timestamp for manually refreshed playlist: {PlaylistName}", playlist.Name);
+                    
                     _logger.LogInformation("Successfully refreshed single playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
                     return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
                 }

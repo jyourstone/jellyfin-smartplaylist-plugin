@@ -194,9 +194,9 @@
     
     // HTML escaping function to prevent XSS vulnerabilities
     function escapeHtml(text) {
-        if (!text) return '';
+        if (text == null) return ''; // Only treat null/undefined as empty
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text); // Convert to string to handle numbers like 0
         return div.innerHTML;
     }
 
@@ -775,8 +775,12 @@
     // Helper function to format schedule display text
     function formatScheduleDisplay(playlist) {
         if (!playlist.ScheduleTrigger) {
-            // undefined/null = legacy tasks, "" = explicit no schedule
-            return playlist.ScheduleTrigger === "" ? 'No schedule' : 'Legacy Jellyfin tasks';
+            // undefined = legacy tasks (property doesn't exist), null = legacy tasks  
+            return 'Legacy Jellyfin tasks';
+        }
+        
+        if (playlist.ScheduleTrigger === 'None') {
+            return 'No schedule';
         }
         
         if (playlist.ScheduleTrigger === 'Daily') {
@@ -971,7 +975,7 @@
             // Set up global default schedule settings and event handlers
             const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
             if (defaultScheduleTriggerElement) {
-                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
                 defaultScheduleTriggerElement.addEventListener('change', function() {
                     updateDefaultScheduleContainers(page, this.value);
                 });
@@ -1930,7 +1934,7 @@
             const autoRefreshMode = getElementValue(page, '#autoRefreshMode', 'Never');
             // Capture schedule settings with helper functions
             const scheduleTriggerValue = getElementValue(page, '#scheduleTrigger');
-            const scheduleTrigger = scheduleTriggerValue === '' ? '' : (scheduleTriggerValue || null);
+            const scheduleTrigger = scheduleTriggerValue === '' ? 'None' : (scheduleTriggerValue || null);
             const scheduleTimeValue = getElementValue(page, '#scheduleTime');
             // Only set scheduleTime for Daily/Weekly, not for Interval
             const scheduleTime = (scheduleTrigger === 'Daily' || scheduleTrigger === 'Weekly') && scheduleTimeValue 
@@ -2075,7 +2079,7 @@
             // Set default schedule values from config
             const defaultScheduleTriggerForForm = page.querySelector('#scheduleTrigger');
             if (defaultScheduleTriggerForForm) {
-                defaultScheduleTriggerForForm.value = config.DefaultScheduleTrigger || '';
+                defaultScheduleTriggerForForm.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
                 updateScheduleContainers(page, defaultScheduleTriggerForForm.value);
             }
             
@@ -2451,8 +2455,8 @@
                     
                     // Format last scheduled refresh display
                     let lastRefreshDisplay = 'Unknown';
-                    if (playlist.LastScheduledRefresh) {
-                        const lastRefresh = new Date(playlist.LastScheduledRefresh);
+                    if (playlist.LastRefreshed) {
+                        const lastRefresh = new Date(playlist.LastRefreshed);
                         const now = new Date();
                         const diffMs = now - lastRefresh;
                         const diffMins = Math.floor(diffMs / 60000);
@@ -2504,7 +2508,7 @@
                         '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
                         '<strong>Auto-refresh:</strong> ' + eAutoRefreshDisplay + '<br>' +
                         '<strong>Scheduled refresh:</strong> ' + eScheduleDisplay + '<br>' +
-                        '<strong>Last scheduled refresh:</strong> ' + eLastRefreshDisplay + '<br>' +
+                        '<strong>Last refreshed:</strong> ' + eLastRefreshDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
@@ -2604,6 +2608,78 @@
             
             // Search in legacy username field (for backward compatibility)
             if (playlist.User && playlist.User.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in LastRefreshed field
+            if (playlist.LastRefreshed) {
+                const lastRefresh = new Date(playlist.LastRefreshed);
+                const now = new Date();
+                const diffMs = now - lastRefresh;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMins / 60);
+                const diffDays = Math.floor(diffHours / 24);
+                
+                let lastRefreshDisplay = '';
+                if (diffMins < 1) {
+                    lastRefreshDisplay = 'just now';
+                } else if (diffMins < 60) {
+                    lastRefreshDisplay = diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
+                } else if (diffHours < 24) {
+                    lastRefreshDisplay = diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+                } else {
+                    lastRefreshDisplay = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
+                }
+                
+                if (lastRefreshDisplay.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+                
+                // Also search for "unknown" if LastRefreshed is null/undefined
+                if (searchTerm === 'unknown' && !playlist.LastRefreshed) {
+                    return true;
+                }
+            } else if (searchTerm === 'unknown' || searchTerm === 'never') {
+                return true;
+            }
+            
+            // Search in AutoRefresh field
+            if (playlist.AutoRefresh) {
+                const autoRefreshMode = playlist.AutoRefresh;
+                let autoRefreshDisplay = '';
+                if (autoRefreshMode === 'Never') {
+                    autoRefreshDisplay = 'manual/scheduled only';
+                } else if (autoRefreshMode === 'OnLibraryChanges') {
+                    autoRefreshDisplay = 'on library changes';
+                } else if (autoRefreshMode === 'OnAllChanges') {
+                    autoRefreshDisplay = 'on all changes';
+                } else {
+                    autoRefreshDisplay = autoRefreshMode.toLowerCase();
+                }
+                
+                if (autoRefreshDisplay.includes(searchTerm)) {
+                    return true;
+                }
+                
+                // Also search for the enum values directly
+                if (autoRefreshMode.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+            }
+            
+            // Search in ScheduleTrigger field
+            if (playlist.ScheduleTrigger) {
+                const scheduleDisplay = formatScheduleDisplay(playlist);
+                if (scheduleDisplay.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+                
+                // Also search for the enum values directly
+                if (playlist.ScheduleTrigger.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+            } else if (searchTerm === 'legacy' || searchTerm === 'jellyfin' || searchTerm === 'tasks') {
+                // Search for legacy tasks when ScheduleTrigger is null/undefined
                 return true;
             }
             
@@ -2707,7 +2783,7 @@
         let html = '<div class="inputContainer">';
         html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 1px; border-left: 3px solid #666;">';
         html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                (searchTerm ? ' matching "' + searchTerm + '"' : '') +
+                (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
                 ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
         html += '</div></div>';
         
@@ -2725,8 +2801,8 @@
             
             // Format last scheduled refresh display
             let lastRefreshDisplay = 'Never';
-            if (playlist.LastScheduledRefresh) {
-                const lastRefresh = new Date(playlist.LastScheduledRefresh);
+            if (playlist.LastRefreshed) {
+                const lastRefresh = new Date(playlist.LastRefreshed);
                 const now = new Date();
                 const diffMs = now - lastRefresh;
                 const diffMins = Math.floor(diffMs / 60000);
@@ -2753,30 +2829,43 @@
             const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
             const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
             
+            // Escape all dynamic content to prevent XSS
+            const eName = escapeHtml(playlist.Name || '');
+            const eFileName = escapeHtml(playlist.FileName || '');
+            const eUserName = escapeHtml(userName || '');
+            const eMediaTypes = escapeHtml(mediaTypes);
+            const eSortName = escapeHtml(sortName);
+            const eMaxItems = escapeHtml(maxItemsDisplay);
+            const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
+            const eAutoRefresh = escapeHtml(autoRefreshDisplay);
+            const eSchedule = escapeHtml(scheduleDisplay);
+            const eLastRefresh = escapeHtml(lastRefreshDisplay);
+            const ePlaylistId = escapeHtml(playlistId);
+            
             html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
-                '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                '<h4 style="margin-top: 0;">' + eName + '</h4>' +
                 '<div class="field-description">' +
-                '<strong>File:</strong> ' + playlist.FileName + '<br>' +
-                '<strong>User:</strong> ' + userName + '<br>' +
-                '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                '<strong>File:</strong> ' + eFileName + '<br>' +
+                '<strong>User:</strong> ' + eUserName + '<br>' +
+                '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
                 '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
-                '<strong>Sort:</strong> ' + sortName + '<br>' +
-                '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
-                '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
-                '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
-                '<strong>Scheduled refresh:</strong> ' + scheduleDisplay + '<br>' +
-                '<strong>Last scheduled refresh:</strong> ' + lastRefreshDisplay + '<br>' +
+                '<strong>Sort:</strong> ' + eSortName + '<br>' +
+                '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
+                '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
+                '<strong>Auto-refresh:</strong> ' + eAutoRefresh + '<br>' +
+                '<strong>Scheduled refresh:</strong> ' + eSchedule + '<br>' +
+                '<strong>Last refreshed:</strong> ' + eLastRefresh + '<br>' +
                 '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                 '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
                 '<div style="margin-top: 1em;">' +
-                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Refresh</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
                 (isEnabled ? 
-                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
-                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
+                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
                 ) +
-                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
                 '</div>' +
                 '</div>';
         }
@@ -2796,6 +2885,12 @@
         }).then(() => {
             Dashboard.hideLoadingMsg();
             showNotification('Playlist "' + playlistName + '" has been refreshed successfully.', 'success');
+            
+            // Auto-refresh the playlist list to show updated LastRefreshed timestamp
+            const page = document.querySelector('.SmartPlaylistConfigurationPage');
+            if (page) {
+                loadPlaylistList(page);
+            }
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlist:', err);
@@ -2982,11 +3077,13 @@
                 // Handle schedule settings with backward compatibility
                 const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
                 if (scheduleTriggerElement) {
-                    scheduleTriggerElement.value = playlist.ScheduleTrigger || '';
+                    // Convert "None" back to empty string for form display
+                    const triggerValue = playlist.ScheduleTrigger === 'None' ? '' : (playlist.ScheduleTrigger || '');
+                    scheduleTriggerElement.value = triggerValue;
                     scheduleTriggerElement.addEventListener('change', function() {
                         updateScheduleContainers(page, this.value);
                     });
-                    updateScheduleContainers(page, playlist.ScheduleTrigger || '');
+                    updateScheduleContainers(page, triggerValue);
                 }
                 
                 const scheduleTimeElement = page.querySelector('#scheduleTime');
@@ -3269,7 +3366,7 @@
             // Load schedule configuration values
             const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
             if (defaultScheduleTriggerElement) {
-                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
                 updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
             }
             
@@ -3326,7 +3423,7 @@
             
             // Save default schedule settings
             const defaultScheduleTriggerValue = page.querySelector('#defaultScheduleTrigger').value;
-            config.DefaultScheduleTrigger = defaultScheduleTriggerValue === '' ? '' : (defaultScheduleTriggerValue || null);
+            config.DefaultScheduleTrigger = defaultScheduleTriggerValue === '' ? 'None' : (defaultScheduleTriggerValue || null);
             
             const defaultScheduleTimeValue = page.querySelector('#defaultScheduleTime').value;
             config.DefaultScheduleTime = defaultScheduleTimeValue ? defaultScheduleTimeValue + ':00' : '00:00:00';
@@ -3362,6 +3459,12 @@
         }).then(() => {
             Dashboard.hideLoadingMsg();
             showNotification('SmartPlaylist refresh tasks have been triggered. All smart playlists will be updated shortly.', 'success');
+            
+            // Auto-refresh the playlist list to show updated LastRefreshed timestamps
+            const page = document.querySelector('.SmartPlaylistConfigurationPage');
+            if (page) {
+                loadPlaylistList(page);
+            }
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);

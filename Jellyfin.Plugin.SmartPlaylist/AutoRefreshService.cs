@@ -846,7 +846,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     var results = await _playlistRefreshCache.RefreshPlaylistsWithCacheAsync(
                         playlists, 
-                        updateLastRefreshTime: false, // Don't update LastScheduledRefresh for library updates
+                        updateLastRefreshTime: false, // Don't update LastRefreshed for library updates (will be updated per playlist)
                         CancellationToken.None);
 
                     // Log individual results
@@ -905,7 +905,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Checking for scheduled playlist refreshes (15-minute boundary check)...");
                 
                 var allPlaylists = await _playlistStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-                var scheduledPlaylists = allPlaylists.Where(p => p.ScheduleTrigger != null && p.Enabled).ToList();
+                var scheduledPlaylists = allPlaylists.Where(p => p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None && p.Enabled).ToList();
                 
                 if (!scheduledPlaylists.Any())
                 {
@@ -935,7 +935,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private bool IsPlaylistDueForRefresh(SmartPlaylistDto playlist, DateTime now)
         {
-            if (playlist.ScheduleTrigger == null) return false;
+            if (playlist.ScheduleTrigger == null || playlist.ScheduleTrigger == ScheduleTrigger.None) return false;
             
             return playlist.ScheduleTrigger switch
             {
@@ -1030,7 +1030,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Use the cache helper for efficient batch processing
                 var results = await _playlistRefreshCache.RefreshPlaylistsWithCacheAsync(
                     playlists, 
-                    updateLastRefreshTime: true, // Update LastScheduledRefresh for scheduled refreshes
+                    updateLastRefreshTime: true, // Update LastRefreshed for scheduled refreshes
                     CancellationToken.None);
 
                 // Log individual results
@@ -1061,7 +1061,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         
                         await _playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist).ConfigureAwait(false);
                         
-                        playlist.LastScheduledRefresh = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
+                        playlist.LastRefreshed = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
                         await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
                         
                         _logger.LogDebug("Successfully refreshed scheduled playlist (fallback): {PlaylistName}", playlist.Name);

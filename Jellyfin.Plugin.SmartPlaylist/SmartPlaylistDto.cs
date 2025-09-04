@@ -25,9 +25,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ScheduleTrigger
     {
-        Daily = 0,    // Once per day at specified time
-        Weekly = 1,   // Once per week on specified day/time  
-        Interval = 2  // Every X hours/minutes
+        None = 0,     // Explicitly no schedule (different from null which means legacy tasks)
+        Daily = 1,    // Once per day at specified time
+        Weekly = 2,   // Once per week on specified day/time  
+        Interval = 3  // Every X hours/minutes
     }
 
     [Serializable]
@@ -69,7 +70,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly (e.g., 15:00)
         public DayOfWeek? ScheduleDayOfWeek { get; set; } // Day of week for Weekly
         public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
-        public DateTime? LastScheduledRefresh { get; set; } // When was this playlist last refreshed via schedule
+        public DateTime? LastRefreshed { get; set; } // When was this playlist last refreshed (any trigger)
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
