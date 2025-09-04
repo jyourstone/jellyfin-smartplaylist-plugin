@@ -88,12 +88,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
             _userDataManager = userDataManager;
             _userManager = userManager;
             
-            // Initialize cache helper
+            // Initialize cache helper - using interfaces for proper dependency injection
             _playlistRefreshCache = new PlaylistRefreshCache(
                 libraryManager,
                 userManager,
-                (PlaylistService)playlistService,
-                (SmartPlaylistStore)playlistStore,
+                playlistService,
+                playlistStore,
                 logger);
             
             // Set static instance for API access
@@ -876,17 +876,23 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             // Calculate minutes to next quarter hour (0, 15, 30, 45)
             var currentMinute = now.Minute;
+            var currentSecond = now.Second;
             var nextQuarterMinute = ((currentMinute / 15) + 1) * 15;
             
-            // Handle hour rollover
-            if (nextQuarterMinute >= 60)
+            // Start with current time truncated to the hour
+            var baseTime = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
+            
+            // Add the calculated minutes - DateTime.AddMinutes handles all rollovers automatically
+            var result = baseTime.AddMinutes(nextQuarterMinute);
+            
+            // If we're exactly on a quarter hour boundary (e.g., 14:15:00), 
+            // we still want the next boundary to allow for processing time
+            if (currentMinute % 15 == 0 && currentSecond == 0)
             {
-                return new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddHours(1);
+                result = result.AddMinutes(15);
             }
-            else
-            {
-                return new DateTime(now.Year, now.Month, now.Day, now.Hour, nextQuarterMinute, 0);
-            }
+            
+            return result;
         }
         
         // Schedule checking methods
@@ -1055,7 +1061,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         
                         await _playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist).ConfigureAwait(false);
                         
-                        playlist.LastScheduledRefresh = DateTime.Now;
+                        playlist.LastScheduledRefresh = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
                         await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
                         
                         _logger.LogDebug("Successfully refreshed scheduled playlist (fallback): {PlaylistName}", playlist.Name);

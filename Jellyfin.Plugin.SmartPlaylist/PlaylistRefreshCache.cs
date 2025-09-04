@@ -22,19 +22,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
     {
         private readonly ILibraryManager _libraryManager;
         private readonly IUserManager _userManager;
-        private readonly PlaylistService _playlistService;
-        private readonly SmartPlaylistStore _playlistStore;
+        private readonly IPlaylistService _playlistService;
+        private readonly ISmartPlaylistStore _playlistStore;
         private readonly ILogger _logger;
 
-        // Cache storage
-        private readonly Dictionary<Guid, BaseItem[]> _userMediaCache = new();
-        private readonly Dictionary<Guid, (int mediaCount, int playlistCount)> _userCacheStats = new();
+        // No longer using instance-level cache - converted to per-invocation for thread safety
         
         public PlaylistRefreshCache(
             ILibraryManager libraryManager,
             IUserManager userManager,
-            PlaylistService playlistService,
-            SmartPlaylistStore playlistStore,
+            IPlaylistService playlistService,
+            ISmartPlaylistStore playlistStore,
             ILogger logger)
         {
             _libraryManager = libraryManager;
@@ -68,6 +66,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             try
             {
+                // Create per-invocation cache dictionaries for thread safety
+                var userMediaCache = new Dictionary<Guid, BaseItem[]>();
+                var userCacheStats = new Dictionary<Guid, (int mediaCount, int playlistCount)>();
+                
                 // Group playlists by user (same as legacy tasks)
                 var playlistsByUser = playlists
                     .Where(p => p.UserId != Guid.Empty)
@@ -81,20 +83,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
 
                 // Build user media cache ONCE for all playlists
-                await BuildUserMediaCacheAsync(playlistsByUser);
+                await BuildUserMediaCacheAsync(playlistsByUser, userMediaCache, userCacheStats);
 
                 // Process playlists using cached media
                 foreach (var kvp in playlistsByUser)
                 {
                     var userId = kvp.Key;
                     var userPlaylists = kvp.Value;
-                    if (!_userMediaCache.ContainsKey(userId))
+                    if (!userMediaCache.ContainsKey(userId))
                     {
                         continue; // User not found, already logged warning
                     }
 
                     var user = _userManager.GetUserById(userId);
-                    var relevantUserMedia = _userMediaCache[userId];
+                    var relevantUserMedia = userMediaCache[userId];
                     
                     _logger.LogDebug("Processing {PlaylistCount} playlists for user {Username} using cached media ({MediaCount} items)", 
                         userPlaylists.Count, user?.Username ?? "Unknown", relevantUserMedia.Length);
@@ -109,12 +111,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 totalStopwatch.Stop();
                 
                 // Log cache effectiveness summary
-                var totalProcessedPlaylists = _userCacheStats.Values.Sum(s => s.playlistCount);
-                var totalCachedItems = _userCacheStats.Values.Sum(s => s.mediaCount);
+                var totalProcessedPlaylists = userCacheStats.Values.Sum(s => s.playlistCount);
+                var totalCachedItems = userCacheStats.Values.Sum(s => s.mediaCount);
                 var successCount = results.Count(r => r.Success);
                 
                 _logger.LogInformation("Cached refresh completed in {ElapsedTime}ms: {SuccessCount}/{TotalCount} playlists processed using {CachedItemCount} cached media items across {UserCount} users", 
-                    totalStopwatch.ElapsedMilliseconds, successCount, totalProcessedPlaylists, totalCachedItems, _userCacheStats.Count);
+                    totalStopwatch.ElapsedMilliseconds, successCount, totalProcessedPlaylists, totalCachedItems, userCacheStats.Count);
 
                 return results;
             }
@@ -138,12 +140,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             finally
             {
-                // Clear cache after use
-                ClearCache();
+                // No longer need to clear cache - using per-invocation dictionaries for thread safety
             }
         }
 
-        private Task BuildUserMediaCacheAsync(Dictionary<Guid, List<SmartPlaylistDto>> playlistsByUser)
+        private Task BuildUserMediaCacheAsync(
+            Dictionary<Guid, List<SmartPlaylistDto>> playlistsByUser, 
+            Dictionary<Guid, BaseItem[]> userMediaCache,
+            Dictionary<Guid, (int mediaCount, int playlistCount)> userCacheStats)
         {
             foreach (var kvp in playlistsByUser)
             {
@@ -161,8 +165,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var relevantUserMedia = GetRelevantUserMedia(user);
                 mediaFetchStopwatch.Stop();
                 
-                _userMediaCache[userId] = relevantUserMedia;
-                _userCacheStats[userId] = (relevantUserMedia.Length, userPlaylists.Count);
+                userMediaCache[userId] = relevantUserMedia;
+                userCacheStats[userId] = (relevantUserMedia.Length, userPlaylists.Count);
                 
                 _logger.LogDebug("Cached {MediaCount} items for user {Username} ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists", 
                     relevantUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylists.Count);
@@ -219,7 +223,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     if (success && updateLastRefreshTime)
                     {
-                        playlist.LastScheduledRefresh = DateTime.Now;
+                        playlist.LastScheduledRefresh = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
                         await _playlistStore.SaveAsync(playlist);
                     }
                     
@@ -268,30 +272,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private BaseItem[] GetRelevantUserMedia(User user)
         {
-            // Get all media types that might be needed by any playlist
-            // This mirrors the logic from RefreshPlaylistsTaskBase
+            // Get all supported media types that might be needed by any playlist
+            // Use the centralized MediaTypes constants to ensure completeness
             var allUserMedia = new List<BaseItem>();
             
-            // Get movies
-            allUserMedia.AddRange(_libraryManager.GetItemList(new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = new[] { BaseItemKind.Movie },
-                IsVirtualItem = false,
-                Recursive = true
-            }));
+            // Get all supported BaseItemKind types from the MediaTypes constants
+            var supportedItemTypes = Constants.MediaTypes.MediaTypeToBaseItemKind.Values.ToArray();
             
-            // Get episodes  
+            // Single query to get all supported media types at once (more efficient)
             allUserMedia.AddRange(_libraryManager.GetItemList(new InternalItemsQuery(user)
             {
-                IncludeItemTypes = new[] { BaseItemKind.Episode },
-                IsVirtualItem = false,
-                Recursive = true
-            }));
-            
-            // Get audio
-            allUserMedia.AddRange(_libraryManager.GetItemList(new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = new[] { BaseItemKind.Audio },
+                IncludeItemTypes = supportedItemTypes,
                 IsVirtualItem = false,
                 Recursive = true
             }));
@@ -299,11 +290,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return allUserMedia.ToArray();
         }
 
-        private void ClearCache()
-        {
-            _userMediaCache.Clear();
-            _userCacheStats.Clear();
-        }
+        // ClearCache method removed - no longer needed with per-invocation cache dictionaries
     }
 
     /// <summary>
