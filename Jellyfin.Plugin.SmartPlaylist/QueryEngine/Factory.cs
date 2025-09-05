@@ -54,8 +54,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         // Per-refresh cache classes for better performance within single playlist processing
         public class RefreshCache
         {
-            public Dictionary<Guid, BaseItem[]> SeriesEpisodes { get; } = [];
-            public Dictionary<string, (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
+            public Dictionary<(Guid SeriesId, Guid UserId), BaseItem[]> SeriesEpisodes { get; } = [];
+            public Dictionary<(Guid SeriesId, Guid UserId, bool IncludeUnwatchedSeries), (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
             public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
             public BaseItem[] AllCollections { get; set; } = null;
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
@@ -1034,7 +1034,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                             var targetUser = GetUserById(userDataManager, userGuid);
                                             if (targetUser != null)
                                             {
-                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
+                                                var episodesForUser = GetCachedSeriesEpisodes(seriesGuid, targetUser, libraryManager, cache, logger);
+                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(episodesForUser, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
                                                 operand.NextUnwatchedByUser[userId] = isNextUnwatched;
                                             }
                                         }
@@ -1116,13 +1117,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <returns>Array of all episodes in the series</returns>
         private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
         {
-            if (cache.SeriesEpisodes.TryGetValue(seriesId, out var cachedEpisodes))
+            var key = (seriesId, user.Id);
+            if (cache.SeriesEpisodes.TryGetValue(key, out var cachedEpisodes))
             {
-                logger?.LogDebug("Using cached episodes for series {SeriesId} ({EpisodeCount} episodes)", seriesId, cachedEpisodes.Length);
+                logger?.LogDebug("Using cached episodes for series {SeriesId} user {UserId} ({EpisodeCount} episodes)", seriesId, user.Id, cachedEpisodes.Length);
                 return cachedEpisodes;
             }
 
-            logger?.LogDebug("Fetching episodes for series {SeriesId} from database (cache miss)", seriesId);
+            logger?.LogDebug("Fetching episodes for series {SeriesId} user {UserId} from database (cache miss)", seriesId, user.Id);
             
             // Note: Using SeriesId as ParentId - this works for standard episodes but may need
             // adjustment for special cases like virtual or merged series
@@ -1134,9 +1136,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             };
             
             var episodes = libraryManager.GetItemsResult(episodeQuery).Items.ToArray();
-            logger?.LogDebug("Cached {EpisodeCount} episodes for series {SeriesId}", episodes.Length, seriesId);
+            logger?.LogDebug("Cached {EpisodeCount} episodes for series {SeriesId} user {UserId}", episodes.Length, seriesId, user.Id);
             
-            cache.SeriesEpisodes[seriesId] = episodes;
+            cache.SeriesEpisodes[key] = episodes;
             return episodes;
         }
 
@@ -1160,7 +1162,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             // Use per-refresh cache to avoid O(E²) recomputation for large series
             // Cache is scoped to single refresh, so no staleness issues across refreshes
-            var cacheKey = $"{seriesId}:{user.Id}:{includeUnwatchedSeries}";
+            var cacheKey = (seriesId, user.Id, includeUnwatchedSeries);
             if (!cache.NextUnwatched.TryGetValue(cacheKey, out var result))
             {
                 logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId}", seriesId, user.Id);

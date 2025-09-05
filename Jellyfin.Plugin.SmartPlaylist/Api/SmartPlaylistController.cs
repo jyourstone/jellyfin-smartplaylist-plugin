@@ -75,7 +75,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         // Wrapper class to adapt the controller logger for PlaylistService
         private class PlaylistServiceLogger(ILogger logger) : ILogger<PlaylistService>
         {
-            private readonly ILogger logger = logger;
 
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
             {
@@ -1214,7 +1213,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 return Ok(new { 
                     message = "Schedule timer restarted successfully",
                     isRunning = isRunning,
-                    nextScheduledCheck = nextCheck?.ToString("yyyy-MM-dd HH:mm:ss")
+                    nextScheduledCheck = nextCheck?.ToString("o")
                 });
             }
             catch (Exception ex)
@@ -1245,8 +1244,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 return Ok(new { 
                     isRunning = isRunning,
-                    nextScheduledCheck = nextCheck?.ToString("yyyy-MM-dd HH:mm:ss"),
-                    currentTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                    nextScheduledCheck = nextCheck?.ToString("o"),
+                    currentTime = DateTime.Now.ToString("o")
                 });
             }
             catch (Exception ex)
