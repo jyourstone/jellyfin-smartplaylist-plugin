@@ -1142,8 +1142,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         /// <summary>
         /// Determines if the current episode is the next unwatched episode for a user.
-        /// Note: NextUnwatched calculations are not cached to ensure real-time accuracy
-        /// when user watch status changes during playlist processing.
+        /// Note: NextUnwatched is cached per refresh (per series/user/flag) to avoid recomputation,
+        /// using live IsPlayed() data at calculation time.
         /// </summary>
         /// <param name="allEpisodes">All episodes in the series</param>
         /// <param name="currentEpisode">The episode to check</param>

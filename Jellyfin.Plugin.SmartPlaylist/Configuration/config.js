@@ -86,6 +86,28 @@
         const diffDays = Math.floor(diffHours / 24);
         return diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
     }
+
+    // Toggle schedule containers based on trigger value (DRY helper)
+    function toggleScheduleContainers(page, prefix, triggerValue) {
+        const timeContainer = page.querySelector(`#${prefix}scheduleTimeContainer`);
+        const dayContainer = page.querySelector(`#${prefix}scheduleDayContainer`);
+        const dayOfMonthContainer = page.querySelector(`#${prefix}scheduleDayOfMonthContainer`);
+        const intervalContainer = page.querySelector(`#${prefix}scheduleIntervalContainer`);
+
+        [timeContainer, dayContainer, dayOfMonthContainer, intervalContainer].forEach(el => { if (el) el.classList.add('hide'); });
+
+        if (triggerValue === 'Daily') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+        } else if (triggerValue === 'Weekly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayContainer) dayContainer.classList.remove('hide');
+        } else if (triggerValue === 'Monthly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
+        } else if (triggerValue === 'Interval') {
+            if (intervalContainer) intervalContainer.classList.remove('hide');
+        }
+    }
     
     // Fallback time formatting for older browsers
     function formatTimeFallback(hour, minute, use12Hour) {
@@ -763,27 +785,7 @@
 
     // Helper function to show/hide schedule containers based on selected trigger
     function updateScheduleContainers(page, triggerValue) {
-        const timeContainer = page.querySelector('#scheduleTimeContainer');
-        const dayContainer = page.querySelector('#scheduleDayContainer');
-        const dayOfMonthContainer = page.querySelector('#scheduleDayOfMonthContainer');
-        const intervalContainer = page.querySelector('#scheduleIntervalContainer');
-        
-        if (timeContainer) timeContainer.classList.add('hide');
-        if (dayContainer) dayContainer.classList.add('hide');
-        if (dayOfMonthContainer) dayOfMonthContainer.classList.add('hide');
-        if (intervalContainer) intervalContainer.classList.add('hide');
-        
-        if (triggerValue === 'Daily') {
-            if (timeContainer) timeContainer.classList.remove('hide');
-        } else if (triggerValue === 'Weekly') {
-            if (timeContainer) timeContainer.classList.remove('hide');
-            if (dayContainer) dayContainer.classList.remove('hide');
-        } else if (triggerValue === 'Monthly') {
-            if (timeContainer) timeContainer.classList.remove('hide');
-            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
-        } else if (triggerValue === 'Interval') {
-            if (intervalContainer) intervalContainer.classList.remove('hide');
-        }
+        toggleScheduleContainers(page, '', triggerValue);
     }
     
     // Helper function to format schedule display text
@@ -835,27 +837,7 @@
     
     // Helper function for default schedule containers
     function updateDefaultScheduleContainers(page, triggerValue) {
-        const timeContainer = page.querySelector('#defaultScheduleTimeContainer');
-        const dayContainer = page.querySelector('#defaultScheduleDayContainer');
-        const dayOfMonthContainer = page.querySelector('#defaultScheduleDayOfMonthContainer');
-        const intervalContainer = page.querySelector('#defaultScheduleIntervalContainer');
-        
-        if (timeContainer) timeContainer.classList.add('hide');
-        if (dayContainer) dayContainer.classList.add('hide');
-        if (dayOfMonthContainer) dayOfMonthContainer.classList.add('hide');
-        if (intervalContainer) intervalContainer.classList.add('hide');
-        
-        if (triggerValue === 'Daily') {
-            if (timeContainer) timeContainer.classList.remove('hide');
-        } else if (triggerValue === 'Weekly') {
-            if (timeContainer) timeContainer.classList.remove('hide');
-            if (dayContainer) dayContainer.classList.remove('hide');
-        } else if (triggerValue === 'Monthly') {
-            if (timeContainer) timeContainer.classList.remove('hide');
-            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
-        } else if (triggerValue === 'Interval') {
-            if (intervalContainer) intervalContainer.classList.remove('hide');
-        }
+        toggleScheduleContainers(page, 'default', triggerValue);
     }
 
     function populateStaticSelects(page) {

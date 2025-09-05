@@ -70,8 +70,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private readonly TimeSpan _batchDelay = TimeSpan.FromSeconds(3); // Short delay for batching library events
         
         // Schedule checking for custom playlist schedules
-        private readonly Timer _scheduleTimer;
-        private readonly TimeSpan _scheduleCheckInterval = TimeSpan.FromMinutes(15); // Check every 15 minutes
+        private Timer _scheduleTimer;
         
         public AutoRefreshService(
             ILibraryManager libraryManager,
@@ -103,14 +102,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             _batchProcessTimer = new Timer(ProcessPendingBatchRefreshes, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
             
             // Initialize schedule checking timer - align to 15-minute boundaries (:00, :15, :30, :45)
-            var now = DateTime.Now;
-            var nextQuarterHour = CalculateNextQuarterHour(now);
-            var delayToNextQuarter = nextQuarterHour - now;
-            
-            _logger.LogDebug("Schedule timer: Current time {Now}, next check at {NextCheck}, delay {Delay}", 
-                now, nextQuarterHour, delayToNextQuarter);
-            
-            _scheduleTimer = new Timer(CheckScheduledRefreshes, null, delayToNextQuarter, _scheduleCheckInterval);
+            InitializeScheduleTimer();
             
 
             
@@ -868,7 +860,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         if (result.Success)
                         {
-                            _logger.LogDebug("Auto-refresh completed for playlist '{PlaylistName}' in {ElapsedTime}ms: {Message}", 
+                            _logger.LogInformation("Auto-refresh completed for playlist '{PlaylistName}' in {ElapsedTime}ms: {Message}", 
                                 result.PlaylistName, result.ElapsedMilliseconds, result.Message);
                         }
                         else
@@ -877,6 +869,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 result.PlaylistName, result.Message);
                         }
                     }
+                    
+                    var successCount = results.Count(r => r.Success);
+                    var failureCount = results.Count(r => !r.Success);
+                    _logger.LogInformation("Batch auto-refresh completed: {SuccessCount} successful, {FailureCount} failed", 
+                        successCount, failureCount);
                 }
             }
             catch (Exception ex)
@@ -885,12 +882,61 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
         
+        // Initialize or restart the schedule timer
+        private void InitializeScheduleTimer()
+        {
+            try
+            {
+                // Dispose existing timer if it exists
+                _scheduleTimer?.Dispose();
+                
+                var now = DateTime.Now;
+                var nextQuarterHour = CalculateNextQuarterHour(now);
+                var delayToNextQuarter = nextQuarterHour - now;
+                
+                _logger.LogDebug("Schedule timer: Current time {Now}, next check at {NextCheck}, delay {Delay}", 
+                    now, nextQuarterHour, delayToNextQuarter);
+                
+                // Use a one-shot timer that reschedules itself after each execution
+                _scheduleTimer = new Timer(CheckScheduledRefreshes, null, delayToNextQuarter, Timeout.InfiniteTimeSpan);
+                
+                _logger.LogInformation("Schedule timer initialized successfully - will check every 15 minutes starting at {NextCheck}", nextQuarterHour);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize schedule timer");
+            }
+        }
+
+        // Public method to restart the schedule timer (useful for debugging or manual restart)
+        public void RestartScheduleTimer()
+        {
+            _logger.LogInformation("Restarting schedule timer...");
+            InitializeScheduleTimer();
+        }
+
+        // Public method to check if the schedule timer is running
+        public bool IsScheduleTimerRunning()
+        {
+            return _scheduleTimer != null && !_disposed;
+        }
+
+        // Public method to get the next scheduled check time
+        public DateTime? GetNextScheduledCheckTime()
+        {
+            if (_scheduleTimer == null || _disposed)
+                return null;
+                
+            var now = DateTime.Now;
+            return CalculateNextQuarterHour(now);
+        }
+
+
         // Helper method to calculate next 15-minute boundary
         private static DateTime CalculateNextQuarterHour(DateTime now)
         {
-            // Calculate minutes to next quarter hour (0, 15, 30, 45)
+            // Calculate the next 15-minute boundary (0, 15, 30, 45)
             var currentMinute = now.Minute;
-            var currentSecond = now.Second;
             var nextQuarterMinute = ((currentMinute / 15) + 1) * 15;
             
             // Start with current time truncated to the hour, preserving the DateTimeKind
@@ -899,11 +945,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Add the calculated minutes - DateTime.AddMinutes handles all rollovers automatically
             var result = baseTime.AddMinutes(nextQuarterMinute);
             
-            // If we're exactly on a quarter hour boundary (e.g., 14:15:00), 
-            // we still want the next boundary to allow for processing time
-            if (currentMinute % 15 == 0 && currentSecond == 0)
+            // If we're exactly on a quarter hour boundary, add a small buffer (5 seconds) 
+            // to ensure we don't miss the boundary due to processing delays
+            if (currentMinute % 15 == 0 && now.Second < 5)
             {
-                result = result.AddMinutes(15);
+                result = result.AddSeconds(5);
             }
             
             return result;
@@ -916,7 +962,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             try
             {
-                _logger.LogDebug("Checking for scheduled playlist refreshes (15-minute boundary check)...");
+                var now = DateTime.Now;
+                _logger.LogDebug("Checking for scheduled playlist refreshes (15-minute boundary check) at {CurrentTime}", now);
                 
                 var allPlaylists = await _playlistStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
                 var scheduledPlaylists = allPlaylists.Where(p => p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None && p.Enabled).ToList();
@@ -927,23 +974,54 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return;
                 }
                 
-                var now = DateTime.Now;
-                _logger.LogDebug("Schedule check: Current time is {CurrentTime} (Kind: {Kind})", now, now.Kind);
+                _logger.LogDebug("Found {Count} playlists with schedules: {PlaylistNames}", 
+                    scheduledPlaylists.Count, 
+                    string.Join(", ", scheduledPlaylists.Select(p => $"'{p.Name}' ({p.ScheduleTrigger})")));
+                
                 var duePlaylist = scheduledPlaylists.Where(p => IsPlaylistDueForRefresh(p, now)).ToList();
                 
                 if (duePlaylist.Any())
                 {
-                    _logger.LogInformation("Found {Count} playlists due for scheduled refresh", duePlaylist.Count);
+                    _logger.LogInformation("Found {Count} playlists due for scheduled refresh: {PlaylistNames}", 
+                        duePlaylist.Count, 
+                        string.Join(", ", duePlaylist.Select(p => $"'{p.Name}'")));
                     await RefreshScheduledPlaylists(duePlaylist).ConfigureAwait(false);
                 }
                 else
                 {
-                    _logger.LogDebug("No playlists are due for scheduled refresh");
+                    _logger.LogDebug("No playlists are due for scheduled refresh at {CurrentTime}", now);
                 }
+                
+                // Reschedule the timer for the next quarter-hour boundary
+                RescheduleTimer();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error checking scheduled refreshes");
+                // Still reschedule even if there was an error
+                RescheduleTimer();
+            }
+        }
+        
+        // Reschedule the timer for the next quarter-hour boundary
+        private void RescheduleTimer()
+        {
+            if (_disposed || _scheduleTimer == null) return;
+            
+            try
+            {
+                var now = DateTime.Now;
+                var nextQuarterHour = CalculateNextQuarterHour(now);
+                var delayToNextQuarter = nextQuarterHour - now;
+                
+                _logger.LogDebug("Rescheduling timer: Current time {Now}, next check at {NextCheck}, delay {Delay}", 
+                    now, nextQuarterHour, delayToNextQuarter);
+                
+                _scheduleTimer.Change(delayToNextQuarter, Timeout.InfiniteTimeSpan);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reschedule timer");
             }
         }
         
@@ -1018,9 +1096,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
             bool isDue = false;
             
             if (interval == TimeSpan.FromMinutes(15))
-                isDue = now.Minute % 15 == 0;
+            {
+                // Check if we're within 2 minutes of a 15-minute boundary (0, 15, 30, 45)
+                var minutesFromBoundary = now.Minute % 15;
+                var secondsFromBoundary = now.Second;
+                var totalSecondsFromBoundary = minutesFromBoundary * 60 + secondsFromBoundary;
+                isDue = totalSecondsFromBoundary <= 120; // 2 minutes buffer
+            }
             else if (interval == TimeSpan.FromMinutes(30))
-                isDue = now.Minute % 30 == 0;
+            {
+                // Check if we're within 2 minutes of a 30-minute boundary (0, 30)
+                var minutesFromBoundary = now.Minute % 30;
+                var secondsFromBoundary = now.Second;
+                var totalSecondsFromBoundary = minutesFromBoundary * 60 + secondsFromBoundary;
+                isDue = totalSecondsFromBoundary <= 120; // 2 minutes buffer
+            }
             else if (interval == TimeSpan.FromHours(1))
                 isDue = now.Minute == 0;
             else if (interval == TimeSpan.FromHours(2))
@@ -1073,7 +1163,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     if (result.Success)
                     {
-                        _logger.LogDebug("Successfully refreshed scheduled playlist: {PlaylistName} in {ElapsedTime}ms", 
+                        _logger.LogInformation("Successfully refreshed scheduled playlist: {PlaylistName} in {ElapsedTime}ms", 
                             result.PlaylistName, result.ElapsedMilliseconds);
                     }
                     else
@@ -1099,7 +1189,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         playlist.LastRefreshed = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
                         await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
                         
-                        _logger.LogDebug("Successfully refreshed scheduled playlist (fallback): {PlaylistName}", playlist.Name);
+                        _logger.LogInformation("Successfully refreshed scheduled playlist (fallback): {PlaylistName}", playlist.Name);
                     }
                     catch (Exception fallbackEx)
                     {
