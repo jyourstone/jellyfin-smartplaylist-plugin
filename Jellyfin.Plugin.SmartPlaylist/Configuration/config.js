@@ -8,6 +8,7 @@
         base: 'Plugins/SmartPlaylist',
         users: 'Plugins/SmartPlaylist/users',
         refresh: 'Plugins/SmartPlaylist/refresh',
+        refreshDirect: 'Plugins/SmartPlaylist/refresh-direct',
         export: 'Plugins/SmartPlaylist/export',
         import: 'Plugins/SmartPlaylist/import'
     };
@@ -3451,11 +3452,11 @@
         
         getApiClient().ajax({
             type: "POST",
-            url: getApiClient().getUrl(ENDPOINTS.refresh),
+            url: getApiClient().getUrl(ENDPOINTS.refreshDirect),
             contentType: 'application/json'
         }).then(() => {
             Dashboard.hideLoadingMsg();
-            showNotification('SmartPlaylist refresh tasks have been triggered. All smart playlists will be updated shortly.', 'success');
+            showNotification('All smart playlists have been refreshed successfully.', 'success');
             
             // Auto-refresh the playlist list to show updated LastRefreshed timestamps
             const page = document.querySelector('.SmartPlaylistConfigurationPage');
@@ -3465,7 +3466,7 @@
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);
-            handleApiError(err, 'Failed to trigger playlist refresh');
+            handleApiError(err, 'Failed to refresh playlists');
         });
     }
     

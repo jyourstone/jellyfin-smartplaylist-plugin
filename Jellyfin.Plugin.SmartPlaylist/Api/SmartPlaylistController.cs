@@ -38,7 +38,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         IPlaylistManager playlistManager,
         IUserDataManager userDataManager,
         IProviderManager providerManager,
-        IHttpContextAccessor httpContextAccessor) : ControllerBase
+        IHttpContextAccessor httpContextAccessor,
+        IManualRefreshService manualRefreshService) : ControllerBase
     {
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
         private readonly IUserManager _userManager = userManager;
@@ -48,6 +49,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         private readonly IUserDataManager _userDataManager = userDataManager;
         private readonly IProviderManager _providerManager = providerManager;
         private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
+        private readonly IManualRefreshService _manualRefreshService = manualRefreshService;
 
         private SmartPlaylistStore GetPlaylistStore()
         {
@@ -923,8 +925,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return NotFound("Smart playlist not found");
                 }
                 
-                var playlistService = GetPlaylistService();
-                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist);
+                // Use the manual refresh service for consistency
+                var (success, message, jellyfinPlaylistId) = await _manualRefreshService.RefreshSinglePlaylistAsync(playlist);
                 
                 if (success)
                 {
@@ -949,13 +951,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     // Save the playlist to persist LastRefreshed timestamp (and JellyfinPlaylistId if updated)
                     await playlistStore.SaveAsync(playlist);
                     
-                    logger.LogInformation("Successfully refreshed single playlist: {PlaylistId} - {PlaylistName} (Jellyfin ID: {JellyfinPlaylistId})", 
-                        id, playlist.Name, playlist.JellyfinPlaylistId ?? "none");
                     return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
                 }
                 else
                 {
-                    logger.LogWarning("Failed to refresh single playlist: {PlaylistId} - {PlaylistName}. Error: {ErrorMessage}", id, playlist.Name, message);
                     return BadRequest(new { message });
                 }
             }
@@ -995,6 +994,47 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error triggering smart playlist refresh");
             }
         }
+
+        /// <summary>
+        /// Directly refresh all smart playlists without using Jellyfin scheduled tasks.
+        /// This method performs the same work as the scheduled tasks but bypasses the task system.
+        /// Unlike the legacy task-based refresh, this processes ALL playlists since it's a manual operation.
+        /// </summary>
+        /// <returns>Success message.</returns>
+        [HttpPost("refresh-direct")]
+        public async Task<ActionResult> RefreshAllPlaylistsDirect()
+        {
+            try
+            {
+                var playlistService = GetPlaylistService();
+                
+                // Try to acquire the refresh lock with immediate return
+                var (lockSuccess, lockMessage) = await playlistService.TryRefreshAllPlaylistsAsync();
+                
+                if (!lockSuccess)
+                {
+                    return Conflict(new { message = lockMessage });
+                }
+
+                // Use the dedicated service to perform the actual refresh work
+                var result = await _manualRefreshService.RefreshAllPlaylistsAsync();
+                
+                if (result.Success)
+                {
+                    return Ok(new { message = result.Message });
+                }
+                else
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError, result.Message);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error during direct playlist refresh");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error during direct playlist refresh");
+            }
+        }
+
 
         /// <summary>
         /// Export all smart playlists as a ZIP file.
