@@ -38,7 +38,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         IPlaylistManager playlistManager,
         IUserDataManager userDataManager,
         IProviderManager providerManager,
-        IHttpContextAccessor httpContextAccessor,
         IManualRefreshService manualRefreshService) : ControllerBase
     {
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
@@ -48,7 +47,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         private readonly IPlaylistManager _playlistManager = playlistManager;
         private readonly IUserDataManager _userDataManager = userDataManager;
         private readonly IProviderManager _providerManager = providerManager;
-        private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
         private readonly IManualRefreshService _manualRefreshService = manualRefreshService;
 
         private SmartPlaylistStore GetPlaylistStore()
@@ -1006,17 +1004,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         {
             try
             {
-                var playlistService = GetPlaylistService();
-                
-                // Try to acquire the refresh lock with immediate return
-                var (lockSuccess, lockMessage) = await playlistService.TryRefreshAllPlaylistsAsync();
-                
-                if (!lockSuccess)
-                {
-                    return Conflict(new { message = lockMessage });
-                }
-
-                // Use the dedicated service to perform the actual refresh work
+                // The ManualRefreshService now handles lock acquisition internally for the entire operation
                 var result = await _manualRefreshService.RefreshAllPlaylistsAsync();
                 
                 if (result.Success)
@@ -1028,10 +1016,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     return StatusCode(StatusCodes.Status500InternalServerError, result.Message);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                logger.LogInformation("Manual playlist refresh was cancelled by client");
+                return StatusCode(StatusCodes.Status499ClientClosedRequest, "Refresh operation was cancelled");
+            }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error during direct playlist refresh");
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error during direct playlist refresh");
+                logger.LogError(ex, "Error during manual playlist refresh");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error during manual playlist refresh");
             }
         }
 

@@ -156,37 +156,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                 }
                 
-                // Fallback to name-based lookup using OLD format (for backward compatibility)
-                if (existingPlaylist == null)
-                {
-                    // Use the old hardcoded format for finding existing playlists
-                    var oldFormatName = dto.Name + " [Smart]";
-                    existingPlaylist = GetPlaylistByName(user, oldFormatName);
-                    if (existingPlaylist != null)
-                    {
-                        logger.LogDebug("Found existing playlist by old format name: {PlaylistName}", oldFormatName);
-                        
-                        // Save the Jellyfin playlist ID now that we found it
-                        dto.JellyfinPlaylistId = existingPlaylist.Id.ToString();
-                        if (saveCallback != null)
-                        {
-                            try
-                            {
-                                await saveCallback(dto);
-                                logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for playlist found by name fallback {PlaylistName}", 
-                                    existingPlaylist.Id, dto.Name);
-                            }
-                            catch (Exception saveEx)
-                            {
-                                logger.LogWarning(saveEx, "Failed to save playlist DTO after name fallback for {PlaylistName}, but continuing with operation", dto.Name);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        logger.LogDebug("No playlist found by old format name: {PlaylistName}", oldFormatName);
-                    }
-                }
+                // Note: Legacy name-based fallback removed - all playlists should now have JellyfinPlaylistId
                 
                 // Now that we've found the existing playlist (or not), apply the new naming format
                 var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(dto.Name);

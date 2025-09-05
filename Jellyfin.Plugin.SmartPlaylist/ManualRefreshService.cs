@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -51,6 +52,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         ILogger<ManualRefreshService> logger,
         Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) : IManualRefreshService
     {
+        // Global lock to prevent concurrent manual refresh operations
+        private static readonly SemaphoreSlim _globalRefreshLock = new(1, 1);
+        
+        // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
+        private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
         private readonly IUserManager _userManager = userManager;
         private readonly ILibraryManager _libraryManager = libraryManager;
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
@@ -77,39 +83,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         /// <summary>
-        /// Gets the user ID for a playlist, handling migration from old User field to new UserId field.
-        /// This is a simplified version of the logic from SmartPlaylistController.
+        /// Gets the user ID for a playlist.
         /// </summary>
         /// <param name="playlist">The playlist.</param>
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
         private Task<Guid> GetPlaylistUserIdAsync(SmartPlaylistDto playlist)
         {
-            // If new UserId field is set and not empty, use it
-            if (playlist.UserId != Guid.Empty)
-            {
-                return Task.FromResult(playlist.UserId);
-            }
-
-            // Handle migration from old User field (backward compatibility)
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (!string.IsNullOrEmpty(playlist.User))
-            {
-                var user = _userManager.GetUserByName(playlist.User);
-                if (user != null)
-                {
-                    _logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'",
-                        playlist.Name, playlist.User, user.Id);
-                    
-                    // Update the playlist with the resolved user ID
-                    playlist.UserId = user.Id;
-                    playlist.User = null; // Clear the old field
-                    
-                    return Task.FromResult(user.Id);
-                }
-            }
-#pragma warning restore CS0618
-
-            return Task.FromResult(Guid.Empty);
+            return Task.FromResult(playlist.UserId);
         }
 
         /// <summary>
@@ -133,14 +113,25 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// Refresh all smart playlists manually without using Jellyfin scheduled tasks.
         /// This method performs the same work as the scheduled tasks but processes ALL playlists
         /// regardless of their ScheduleTrigger settings, since this is a manual operation.
+        /// This method uses immediate failure if another refresh is already in progress.
         /// </summary>
         public async Task<(bool Success, string Message)> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
             
+            // Declare cache variables at method level so they're accessible in finally for cleanup
+            var allUserMediaTypeCaches = new List<ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>>();
+            
+            // Prevent concurrent manual refresh runs with immediate failure
+            if (!await _globalRefreshLock.WaitAsync(0, cancellationToken))
+            {
+                _logger.LogInformation("Manual refresh request rejected - another refresh is already in progress");
+                return (false, "A playlist refresh is already in progress. Please try again shortly.");
+            }
+            
             try
             {
-                _logger.LogInformation("Starting direct refresh of all smart playlists (manual trigger)");
+                _logger.LogInformation("Starting manual refresh of all smart playlists (acquired refresh lock)");
 
                 // Create playlist store
                 var fileSystem = new SmartPlaylistFileSystem(_applicationPaths);
@@ -195,22 +186,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} playlists after user resolution", 
                     playlistsByUser.Count, resolvedPlaylists.Count);
 
-                // Cache media per user
-                var userMediaCache = new Dictionary<Guid, BaseItem[]>();
-                
-                foreach (var (userId, userPlaylistPairs) in playlistsByUser)
-                {
-                    var user = userPlaylistPairs.First().user;
-                    
-                    // Get all media for this user (both audio and non-audio)
-                    var allUserMedia = playlistService.GetAllUserMediaForPlaylist(user, new List<string>()).ToArray();
-                    userMediaCache[userId] = allUserMedia;
-                    
-                    _logger.LogDebug("Cached {MediaCount} items for user '{Username}' ({UserId}) - will be shared across {PlaylistCount} playlists", 
-                        allUserMedia.Length, user.Username, userId, userPlaylistPairs.Count);
-                }
-
-                // Process playlists using cached media
+                // Process playlists with proper MediaTypes filtering
                 var processedCount = 0;
                 var successCount = 0;
                 var failureCount = 0;
@@ -219,38 +195,74 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     var user = userPlaylistPairs.First().user;
                     var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
-                    var relevantUserMedia = userMediaCache[userId];
                     
-                    _logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached media ({MediaCount} items)", 
-                        userPlaylists.Count, user.Username, relevantUserMedia.Length);
+                    _logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}'", 
+                        userPlaylists.Count, user.Username);
+
+                    // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
+                    // Use Lazy<T> to ensure value factory executes only once per key, even under concurrent access
+                    var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>();
+                    allUserMediaTypeCaches.Add(userMediaTypeCache); // Track for cleanup
 
                     foreach (var dto in userPlaylists)
                     {
+                        var playlistStopwatch = Stopwatch.StartNew();
                         try
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
-                            // Get playlist-specific media based on MediaTypes
-                            var playlistSpecificMedia = playlistService.GetAllUserMediaForPlaylist(user, dto.MediaTypes?.ToList() ?? new List<string>(), dto).ToArray();
+                            // Validate that the playlist user is valid
+                            if (user.Id == Guid.Empty)
+                            {
+                                _logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
+                                failureCount++;
+                                processedCount++;
+                                continue;
+                            }
+
+                            // OPTIMIZATION: Get media specifically for this playlist's media types using cache
+                            // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
+                            var mediaTypesForClosure = dto.MediaTypes?.ToList() ?? []; // Create defensive copy to prevent accidental modifications
+                            var mediaTypesKey = MediaTypesKey.Create(mediaTypesForClosure, dto);
                             
+                            // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
+                            // where failures typically indicate serious issues that should fail fast
+                            // rather than retry repeatedly during the same manual refresh operation.
+                            var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
+                                new Lazy<BaseItem[]>(() =>
+                                {
+                                    var media = playlistService.GetAllUserMediaForPlaylist(user, mediaTypesForClosure, dto).ToArray();
+                                    _logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
+                                        media.Length, mediaTypesKey, user.Username);
+                                    return media;
+                                }, LazyThreadSafetyMode.ExecutionAndPublication)
+                            ).Value;
+                            
+                            _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items", 
+                                dto.Name, mediaTypesKey, playlistSpecificMedia.Length);
+
                             var refreshResult = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                 dto, 
                                 user, 
-                                playlistSpecificMedia,
+                                playlistSpecificMedia, // Use properly filtered and cached media
                                 async (updatedDto) => await plStore.SaveAsync(updatedDto),
                                 cancellationToken);
                             
+                            playlistStopwatch.Stop();
                             if (refreshResult.Success)
                             {
-                                // Save the playlist to persist LastRefreshed timestamp
+                                // Save the playlist to persist LastRefreshed timestamp (same as legacy tasks)
                                 await plStore.SaveAsync(dto);
+                                
                                 successCount++;
-                                _logger.LogDebug("Playlist {PlaylistName} processed successfully: {Message}", dto.Name, refreshResult.Message);
+                                _logger.LogDebug("Playlist {PlaylistName} processed successfully in {ElapsedTime}ms: {Message}", 
+                                    dto.Name, playlistStopwatch.ElapsedMilliseconds, refreshResult.Message);
                             }
                             else
                             {
                                 failureCount++;
-                                _logger.LogWarning("Playlist {PlaylistName} processing failed: {Message}", dto.Name, refreshResult.Message);
+                                _logger.LogWarning("Playlist {PlaylistName} processing failed after {ElapsedTime}ms: {Message}", 
+                                    dto.Name, playlistStopwatch.ElapsedMilliseconds, refreshResult.Message);
                             }
                             
                             processedCount++;
@@ -262,9 +274,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         catch (Exception ex)
                         {
+                            playlistStopwatch.Stop();
                             failureCount++;
                             processedCount++;
-                            _logger.LogError(ex, "Error processing playlist {PlaylistName}", dto.Name);
+                            _logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
                         }
                     }
                 }
@@ -278,14 +291,35 @@ namespace Jellyfin.Plugin.SmartPlaylist
             catch (OperationCanceledException)
             {
                 stopwatch.Stop();
-                _logger.LogInformation("Direct playlist refresh was cancelled (after {ElapsedTime}ms)", stopwatch.ElapsedMilliseconds);
+                _logger.LogInformation("Manual playlist refresh was cancelled (after {ElapsedTime}ms)", stopwatch.ElapsedMilliseconds);
                 return (false, "Refresh operation was cancelled");
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogError(ex, "Error during direct playlist refresh (after {ElapsedTime}ms)", stopwatch.ElapsedMilliseconds);
-                return (false, $"Error during direct playlist refresh: {ex.Message}");
+                _logger.LogError(ex, "Error during manual playlist refresh (after {ElapsedTime}ms)", stopwatch.ElapsedMilliseconds);
+                return (false, $"Error during manual playlist refresh: {ex.Message}");
+            }
+            finally
+            {
+                // Clean up memory - explicitly clear the caches to free memory from large media collections
+                // This prevents memory leaks when processing large libraries with thousands of media items
+                if (allUserMediaTypeCaches != null && allUserMediaTypeCaches.Count > 0)
+                {
+                    var totalCaches = allUserMediaTypeCaches.Count;
+                    var totalCacheEntries = allUserMediaTypeCaches.Sum(cache => cache.Count);
+                    _logger.LogDebug("Cleaning up {CacheCount} media type caches containing {TotalEntries} cache entries", 
+                        totalCaches, totalCacheEntries);
+                    
+                    foreach (var cache in allUserMediaTypeCaches)
+                    {
+                        cache.Clear();
+                    }
+                    allUserMediaTypeCaches.Clear();
+                }
+                
+                _globalRefreshLock.Release();
+                _logger.LogDebug("Released manual refresh lock");
             }
         }
 
