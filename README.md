@@ -157,12 +157,10 @@ Configure individual playlists with their own custom refresh schedules:
 - **No schedule**: Disable all scheduled refreshes (auto-refresh and manual only)
 
 #### **📅 Legacy Scheduled Tasks**
-For playlists without custom schedules, the original Jellyfin scheduled tasks are still used:
+For old playlists where custom schedules do not exist, the original Jellyfin scheduled tasks are still used:
 
 - **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM** (handles music and audiobooks)
 - **🎬 Media SmartPlaylists**: Runs by default **hourly** (handles movies, TV shows, readable books, music videos, home videos, and photos)
-
-These tasks can be configured in the Jellyfin admin dashboard and will only process playlists that don't have custom schedules.
 
 #### **🎯 Example Use Cases**
 

@@ -1140,7 +1140,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
-        /// Determines if the current episode is the next unwatched episode for a user, with caching.
+        /// Determines if the current episode is the next unwatched episode for a user.
+        /// Note: NextUnwatched calculations are not cached to ensure real-time accuracy
+        /// when user watch status changes during playlist processing.
         /// </summary>
         /// <param name="allEpisodes">All episodes in the series</param>
         /// <param name="currentEpisode">The episode to check</param>
@@ -1155,30 +1157,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
             int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, ILogger logger)
         {
-            // Create cache key combining series, user, settings, and a time-based component
-            // The time component ensures cache invalidation when user data changes
-            // Use minute-level precision to balance cache efficiency with responsiveness
-            var timeComponent = DateTime.UtcNow.ToString("yyyyMMddHHmm");
-            var cacheKey = $"{seriesId}|{user.Id}|{includeUnwatchedSeries}|{timeComponent}";
+            // NextUnwatched calculations are not cached to ensure real-time accuracy
+            // when user watch status changes during playlist processing.
+            // This prevents stale cache data from causing incorrect NextUnwatched results.
+            logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId} (no caching for real-time accuracy)", seriesId, user.Id);
             
-            if (cache.NextUnwatched.TryGetValue(cacheKey, out var cachedResult))
-            {
-                logger?.LogDebug("Using cached next unwatched calculation for series {SeriesId}, user {UserId}", seriesId, user.Id);
-                
-                // Check if the current episode matches the cached next unwatched episode
-                return cachedResult.NextEpisodeId.HasValue && 
-                       cachedResult.NextEpisodeId.Value == currentEpisode.Id &&
-                       cachedResult.Season == currentSeason && 
-                       cachedResult.Episode == currentEpisodeNumber;
-            }
-            
-            logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId} (cache miss)", seriesId, user.Id);
-            
-            // Calculate the next unwatched episode
+            // Calculate the next unwatched episode fresh each time
             var result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
-            
-            // Cache the result for future use within this refresh
-            cache.NextUnwatched[cacheKey] = result;
             
             // Check if the current episode matches the calculated next unwatched episode
             return result.NextEpisodeId.HasValue && 
@@ -1197,13 +1182,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 // Use the original logic to find the next unwatched episode
                 var episodeList = allEpisodes.ToList();
-                
-                // Cache IsPlayed results for all episodes to avoid repeated expensive calls
-                var isPlayedCache = new Dictionary<BaseItem, bool>();
-                foreach (var episode in episodeList)
-                {
-                    isPlayedCache[episode] = episode.IsPlayed(user);
-                }
                 
                 // Create a list of episode info with season/episode numbers (excluding season 0 specials)
                 var episodeInfos = new List<(BaseItem Episode, int Season, int EpisodeNum, bool IsWatched)>();
@@ -1225,7 +1203,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         // Skip season 0 (specials) and only include episodes with valid season/episode numbers
                         if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
                         {
-                            var isWatched = isPlayedCache[episode];
+                            // Call IsPlayed() fresh each time to ensure real-time accuracy
+                            var isWatched = episode.IsPlayed(user);
                             episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
                         }
                     }

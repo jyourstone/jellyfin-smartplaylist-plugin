@@ -64,18 +64,13 @@
     
     // Determine if locale uses 12-hour format
     function isLocale12Hour(locale) {
-        // Only US English and a few other locales use 12-hour format
-        var locale12Hour = ['en-US', 'en-us', 'en-CA', 'en-ca', 'en-AU', 'en-au', 'en-NZ', 'en-nz'];
-        
-        var localeCode = locale.toLowerCase();
-        for (var i = 0; i < locale12Hour.length; i++) {
-            if (localeCode.indexOf(locale12Hour[i]) === 0) {
-                return true; // Use 12-hour format
-            }
+        try {
+            return new Intl.DateTimeFormat(locale, { hour: 'numeric' })
+                .resolvedOptions().hour12 === true;
+        } catch (_) {
+            // Fallback heuristic: default to 24h if unsure
+            return false;
         }
-        
-        // Default to 24-hour format for most of the world
-        return false;
     }
     
     // Fallback time formatting for older browsers
@@ -576,7 +571,7 @@
         
         // Use direct visibility control since we already have the element
         if (clearSearchBtn) {
-            clearSearchBtn.style.display = disabled ? 'none' : 'block';
+            clearSearchBtn.style.display = disabled ? 'none' : 'flex';
         }
     };
 
@@ -789,27 +784,33 @@
         }
         
         if (playlist.ScheduleTrigger === 'Daily') {
-            const time = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            return 'Daily at ' + time;
+            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            return 'Daily at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Weekly') {
-            const time = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
             const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const day = days[playlist.ScheduleDayOfWeek] || 'Sunday';
-            return 'Weekly on ' + day + ' at ' + time;
+            return 'Weekly on ' + day + ' at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Monthly') {
-            const time = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const dayOfMonth = playlist.ScheduleDayOfMonth || 1;
+            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            const dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
             const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
                           (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
                           (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
-            return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + time;
+            return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Interval') {
             const interval = playlist.ScheduleInterval || '1.00:00:00';
             if (interval === '00:15:00') return 'Every 15 minutes';
             if (interval === '00:30:00') return 'Every 30 minutes';
             if (interval === '01:00:00') return 'Every hour';
             if (interval === '02:00:00') return 'Every 2 hours';
+            if (interval === '03:00:00') return 'Every 3 hours';
+            if (interval === '04:00:00') return 'Every 4 hours';
             if (interval === '06:00:00') return 'Every 6 hours';
+            if (interval === '08:00:00') return 'Every 8 hours';
             if (interval === '12:00:00') return 'Every 12 hours';
             if (interval === '1.00:00:00') return 'Every 24 hours';
             return 'Every ' + interval;
@@ -975,9 +976,12 @@
             const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
             if (scheduleTriggerElement) {
                 scheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
-                scheduleTriggerElement.addEventListener('change', function() {
-                    updateScheduleContainers(page, this.value);
-                });
+                if (!scheduleTriggerElement._spListenerAdded) {
+                    scheduleTriggerElement.addEventListener('change', function() {
+                        updateScheduleContainers(page, this.value);
+                    });
+                    scheduleTriggerElement._spListenerAdded = true;
+                }
                 // Initialize containers based on current value
                 updateScheduleContainers(page, scheduleTriggerElement.value);
             }
@@ -3115,9 +3119,12 @@
                     // Convert "None" back to empty string for form display
                     const triggerValue = playlist.ScheduleTrigger === 'None' ? '' : (playlist.ScheduleTrigger || '');
                     scheduleTriggerElement.value = triggerValue;
-                    scheduleTriggerElement.addEventListener('change', function() {
-                        updateScheduleContainers(page, this.value);
-                    });
+                    if (!scheduleTriggerElement._spListenerAdded) {
+                        scheduleTriggerElement.addEventListener('change', function() {
+                            updateScheduleContainers(page, this.value);
+                        });
+                        scheduleTriggerElement._spListenerAdded = true;
+                    }
                     updateScheduleContainers(page, triggerValue);
                 }
                 
