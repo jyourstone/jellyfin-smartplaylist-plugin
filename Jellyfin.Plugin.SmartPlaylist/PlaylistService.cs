@@ -386,6 +386,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         /// <summary>
+        /// Attempts to acquire the global refresh lock without blocking.
+        /// Returns immediately with success/failure result for manual refresh operations.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token</param>
+        /// <returns>Tuple of (success, disposable) - disposable is null if acquisition failed</returns>
+        public static async Task<(bool Success, IDisposable LockHandle)> TryAcquireRefreshLockAsync(CancellationToken cancellationToken = default)
+        {
+            if (await _refreshOperationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                return (true, new RefreshLockDisposable());
+            }
+            return (false, null);
+        }
+
+        /// <summary>
         /// Helper class to ensure the refresh lock is properly released.
         /// </summary>
         private class RefreshLockDisposable : IDisposable
@@ -701,42 +716,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private Playlist GetPlaylistByName(User user, string name)
-        {
-            var query = new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = [BaseItemKind.Playlist],
-                Recursive = true,
-                Name = name
-            };
-            
-            return _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
-        }
+        // Removed: legacy name-based lookup helper (no longer used after migration to JellyfinPlaylistId)
 
         private User GetPlaylistUser(SmartPlaylistDto playlist)
         {
-            // If new UserId field is set and not empty, use it
+            // All playlists should now have UserId set - legacy User field migration is no longer supported
             if (playlist.UserId != Guid.Empty)
             {
                 return _userManager.GetUserById(playlist.UserId);
             }
-
-            // Legacy migration: if old User field is set, try to find the user
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (!string.IsNullOrEmpty(playlist.User))
-            {
-                var user = _userManager.GetUserByName(playlist.User);
-                if (user != null)
-                {
-                    _logger.LogDebug("Found legacy user '{UserName}' for playlist '{PlaylistName}'", playlist.User, playlist.Name);
-                    return user;
-                }
-                else
-                {
-                    _logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
-                }
-            }
-#pragma warning restore CS0618 // Type or member is obsolete
 
             return null;
         }

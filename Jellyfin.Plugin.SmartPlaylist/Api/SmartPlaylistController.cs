@@ -1013,13 +1013,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
                 else
                 {
+                    // Map "already in progress" to HTTP 409 Conflict for better API semantics
+                    if (result.Message.Contains("already in progress"))
+                    {
+                        return Conflict(new { message = result.Message });
+                    }
                     return StatusCode(StatusCodes.Status500InternalServerError, result.Message);
                 }
             }
             catch (OperationCanceledException)
             {
                 logger.LogInformation("Manual playlist refresh was cancelled by client");
-                return StatusCode(StatusCodes.Status499ClientClosedRequest, "Refresh operation was cancelled");
+                return StatusCode(499, "Refresh operation was cancelled");
             }
             catch (Exception ex)
             {

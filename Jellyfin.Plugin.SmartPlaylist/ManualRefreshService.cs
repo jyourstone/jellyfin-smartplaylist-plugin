@@ -52,11 +52,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         ILogger<ManualRefreshService> logger,
         Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) : IManualRefreshService
     {
-        // Global lock to prevent concurrent manual refresh operations
-        private static readonly SemaphoreSlim _globalRefreshLock = new(1, 1);
-        
-        // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
-        private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
+        // Note: Manual refresh now uses the shared PlaylistService lock to prevent concurrent operations
         private readonly IUserManager _userManager = userManager;
         private readonly ILibraryManager _libraryManager = libraryManager;
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
@@ -122,8 +118,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Declare cache variables at method level so they're accessible in finally for cleanup
             var allUserMediaTypeCaches = new List<ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>>();
             
-            // Prevent concurrent manual refresh runs with immediate failure
-            if (!await _globalRefreshLock.WaitAsync(0, cancellationToken))
+            // Try to acquire the shared refresh lock (same as scheduled tasks) with immediate failure
+            var (lockAcquired, lockHandle) = await PlaylistService.TryAcquireRefreshLockAsync(cancellationToken);
+            if (!lockAcquired)
             {
                 _logger.LogInformation("Manual refresh request rejected - another refresh is already in progress");
                 return (false, "A playlist refresh is already in progress. Please try again shortly.");
@@ -318,8 +315,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     allUserMediaTypeCaches.Clear();
                 }
                 
-                _globalRefreshLock.Release();
-                _logger.LogDebug("Released manual refresh lock");
+                lockHandle?.Dispose();
+                _logger.LogDebug("Released shared refresh lock");
             }
         }
 
