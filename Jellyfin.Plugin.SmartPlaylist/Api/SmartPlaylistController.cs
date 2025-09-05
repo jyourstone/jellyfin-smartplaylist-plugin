@@ -928,16 +928,29 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 
                 if (success)
                 {
-                    // Update the playlist with the returned Jellyfin playlist ID
-                    playlist.JellyfinPlaylistId = jellyfinPlaylistId;
+                    // Update the playlist with the returned Jellyfin playlist ID only if it's valid
+                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                    {
+                        playlist.JellyfinPlaylistId = jellyfinPlaylistId;
+                        logger.LogDebug("Updated JellyfinPlaylistId to {JellyfinPlaylistId} for manually refreshed playlist: {PlaylistName}", 
+                            jellyfinPlaylistId, playlist.Name);
+                    }
+                    else if (string.IsNullOrEmpty(playlist.JellyfinPlaylistId))
+                    {
+                        logger.LogWarning("No Jellyfin playlist ID returned for manually refreshed playlist: {PlaylistName}, and no existing ID to preserve", 
+                            playlist.Name);
+                    }
+                    else
+                    {
+                        logger.LogWarning("No Jellyfin playlist ID returned for manually refreshed playlist: {PlaylistName}, preserving existing ID: {ExistingId}", 
+                            playlist.Name, playlist.JellyfinPlaylistId);
+                    }
                     
-                    // Save the playlist to persist both LastRefreshed timestamp and JellyfinPlaylistId
+                    // Save the playlist to persist LastRefreshed timestamp (and JellyfinPlaylistId if updated)
                     await playlistStore.SaveAsync(playlist);
-                    logger.LogDebug("Saved LastRefreshed timestamp and JellyfinPlaylistId {JellyfinPlaylistId} for manually refreshed playlist: {PlaylistName}", 
-                        jellyfinPlaylistId, playlist.Name);
                     
                     logger.LogInformation("Successfully refreshed single playlist: {PlaylistId} - {PlaylistName} (Jellyfin ID: {JellyfinPlaylistId})", 
-                        id, playlist.Name, jellyfinPlaylistId);
+                        id, playlist.Name, playlist.JellyfinPlaylistId ?? "none");
                     return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
                 }
                 else
