@@ -211,11 +211,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         logger.LogDebug("Updated existing playlist: {PlaylistName}", existingPlaylist.Name);
                     }
                     
-                    // Update the playlist items
+                    // Update the playlist items (includes metadata refresh)
                     await UpdatePlaylistPublicStatusAsync(existingPlaylist, dto.Public, newLinkedChildren, dto, cancellationToken);
-                    
-                    // Refresh metadata
-                    await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken);
                     
                     logger.LogDebug("Successfully updated existing playlist: {PlaylistName} with {ItemCount} items", 
                         existingPlaylist.Name, newLinkedChildren.Length);
