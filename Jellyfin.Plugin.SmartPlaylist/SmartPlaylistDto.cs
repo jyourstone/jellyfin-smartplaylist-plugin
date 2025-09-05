@@ -22,6 +22,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
         OnAllChanges = 2     // Any metadata updates (including playback status)
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum ScheduleTrigger
+    {
+        None = 0,     // Explicitly no schedule (different from null which means legacy tasks)
+        Daily = 1,    // Once per day at specified time
+        Weekly = 2,   // Once per week on specified day/time  
+        Monthly = 3,  // Once per month on specified day and time
+        Interval = 4  // Every X hours/minutes
+    }
+
     [Serializable]
     public class SmartPlaylistDto
     {
@@ -55,7 +65,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public int? MaxItems { get; set; } // Nullable to support backwards compatibility
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility
         public AutoRefreshMode AutoRefresh { get; set; } = AutoRefreshMode.Never; // Default to never for backward compatibility
-        public bool? RefreshOnSchedule { get; set; } // Nullable for backward compatibility - true for existing playlists, false for new ones
+        
+        // Custom scheduling properties (null = no custom schedule, use legacy tasks)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ScheduleTrigger? ScheduleTrigger { get; set; } = null;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly/Monthly (e.g., 15:00)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DayOfWeek? ScheduleDayOfWeek { get; set; } // Day of week for Weekly
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? ScheduleDayOfMonth { get; set; } // Day of month for Monthly (1-31)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? LastRefreshed { get; set; } // When was this playlist last refreshed (any trigger)
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]

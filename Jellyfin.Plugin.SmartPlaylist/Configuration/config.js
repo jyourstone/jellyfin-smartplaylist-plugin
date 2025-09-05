@@ -23,6 +23,285 @@
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
+    // Helper functions to generate common option sets (DRY principle)
+    function generateTimeOptions(defaultValue) {
+        var options = [];
+        for (var hour = 0; hour < 24; hour++) {
+            for (var minute = 0; minute < 60; minute += 15) {
+                var timeValue = (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
+                var displayTime = formatTimeForUser(hour, minute);
+                var selected = timeValue === defaultValue;
+                options.push({ value: timeValue, label: displayTime, selected: selected });
+            }
+        }
+        return options;
+    }
+    
+    // Format time according to user's locale preferences
+    function formatTimeForUser(hour, minute) {
+        // Use browser locale for time formatting
+        var locale = navigator.language || navigator.userLanguage || 'en-US';
+        
+        // Create a Date object for formatting
+        var date = new Date();
+        date.setHours(hour);
+        date.setMinutes(minute);
+        date.setSeconds(0);
+        
+        // Use Intl.DateTimeFormat for locale-aware time formatting
+        try {
+            return new Intl.DateTimeFormat(locale, {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: isLocale12Hour(locale)
+            }).format(date);
+        } catch (e) {
+            // Fallback to manual formatting if Intl is not available
+            return formatTimeFallback(hour, minute, isLocale12Hour(locale));
+        }
+    }
+    
+    
+    // Determine if locale uses 12-hour format
+    function isLocale12Hour(locale) {
+        try {
+            return new Intl.DateTimeFormat(locale, { hour: 'numeric' })
+                .resolvedOptions().hour12 === true;
+        } catch (_) {
+            // Fallback heuristic: default to 24h if unsure
+            return false;
+        }
+    }
+
+    // Format relative time from ISO string (e.g., "2 minutes ago", "3 hours ago")
+    function formatRelativeTimeFromIso(isoString, emptyText = 'Unknown') {
+        if (!isoString) return emptyText;
+        const ts = Date.parse(isoString);
+        if (Number.isNaN(ts)) return emptyText;
+        const diffMins = Math.floor((Date.now() - ts) / 60000);
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+        const diffDays = Math.floor(diffHours / 24);
+        return diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
+    }
+
+    // Toggle schedule containers based on trigger value (DRY helper)
+    function toggleScheduleContainers(page, prefix, triggerValue) {
+        const timeContainer = page.querySelector(`#${prefix}scheduleTimeContainer`);
+        const dayContainer = page.querySelector(`#${prefix}scheduleDayContainer`);
+        const dayOfMonthContainer = page.querySelector(`#${prefix}scheduleDayOfMonthContainer`);
+        const intervalContainer = page.querySelector(`#${prefix}scheduleIntervalContainer`);
+
+        [timeContainer, dayContainer, dayOfMonthContainer, intervalContainer].forEach(el => { if (el) el.classList.add('hide'); });
+
+        if (triggerValue === 'Daily') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+        } else if (triggerValue === 'Weekly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayContainer) dayContainer.classList.remove('hide');
+        } else if (triggerValue === 'Monthly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
+        } else if (triggerValue === 'Interval') {
+            if (intervalContainer) intervalContainer.classList.remove('hide');
+        }
+    }
+    
+    // Fallback time formatting for older browsers
+    function formatTimeFallback(hour, minute, use12Hour) {
+        var displayMinute = minute < 10 ? '0' + minute : minute;
+        var displayHour; // Declare once to avoid redeclaration error
+        
+        if (use12Hour) {
+            displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+            var ampm = hour < 12 ? 'AM' : 'PM';
+            return displayHour + ':' + displayMinute + ' ' + ampm;
+        } else {
+            displayHour = hour < 10 ? '0' + hour : hour;
+            return displayHour + ':' + displayMinute;
+        }
+    }
+    
+    function generateAutoRefreshOptions(defaultValue) {
+        var options = [
+            { value: 'Never', label: 'Never - Manual/scheduled refresh only' },
+            { value: 'OnLibraryChanges', label: 'On library changes - When items are added/removed' },
+            { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' }
+        ];
+        // Mark the default option as selected
+        for (var i = 0; i < options.length; i++) {
+            options[i].selected = options[i].value === defaultValue;
+        }
+        return options;
+    }
+    
+    function generateScheduleTriggerOptions(defaultValue, includeNoSchedule) {
+        var options = [];
+        if (includeNoSchedule) {
+            options.push({ value: '', label: 'No schedule' });
+        }
+        options.push(
+            { value: 'Daily', label: 'Daily' },
+            { value: 'Weekly', label: 'Weekly' },
+            { value: 'Monthly', label: 'Monthly' },
+            { value: 'Interval', label: 'Interval' }
+        );
+        // Mark the default option as selected
+        for (var i = 0; i < options.length; i++) {
+            options[i].selected = options[i].value === defaultValue;
+        }
+        return options;
+    }
+    
+    function generateDayOfWeekOptions(defaultValue) {
+        var days = [
+            { value: '0', label: 'Sunday' },
+            { value: '1', label: 'Monday' },
+            { value: '2', label: 'Tuesday' },
+            { value: '3', label: 'Wednesday' },
+            { value: '4', label: 'Thursday' },
+            { value: '5', label: 'Friday' },
+            { value: '6', label: 'Saturday' }
+        ];
+        // Mark the default option as selected
+        for (var i = 0; i < days.length; i++) {
+            days[i].selected = days[i].value === defaultValue;
+        }
+        return days;
+    }
+    
+    function generateDayOfMonthOptions(defaultValue) {
+        var days = [];
+        for (var i = 1; i <= 31; i++) {
+            var suffix = '';
+            if (i === 1 || i === 21 || i === 31) suffix = 'st';
+            else if (i === 2 || i === 22) suffix = 'nd';
+            else if (i === 3 || i === 23) suffix = 'rd';
+            else suffix = 'th';
+            
+            days.push({ value: i.toString(), label: i + suffix });
+        }
+        // Mark the default option as selected
+        for (var j = 0; j < days.length; j++) {
+            days[j].selected = days[j].value === defaultValue;
+        }
+        return days;
+    }
+    
+    function convertDayOfWeekToValue(dayOfWeek) {
+        if (dayOfWeek === undefined || dayOfWeek === null) {
+            return '0'; // Default to Sunday
+        }
+        
+        // Handle numeric values (0-6)
+        if (typeof dayOfWeek === 'number') {
+            return dayOfWeek.toString();
+        }
+        
+        // Handle string values ("Sunday", etc.)
+        if (typeof dayOfWeek === 'string') {
+            const dayMap = {
+                'Sunday': '0', 'Monday': '1', 'Tuesday': '2', 'Wednesday': '3',
+                'Thursday': '4', 'Friday': '5', 'Saturday': '6'
+            };
+            return dayMap[dayOfWeek] || '0';
+        }
+        
+        return '0'; // Fallback to Sunday
+    }
+
+    function generateIntervalOptions(defaultValue) {
+        var intervals = [
+            { value: '00:15:00', label: '15 minutes' },
+            { value: '00:30:00', label: '30 minutes' },
+            { value: '01:00:00', label: '1 hour' },
+            { value: '02:00:00', label: '2 hours' },
+            { value: '03:00:00', label: '3 hours' },
+            { value: '04:00:00', label: '4 hours' },
+            { value: '06:00:00', label: '6 hours' },
+            { value: '08:00:00', label: '8 hours' },
+            { value: '12:00:00', label: '12 hours' },
+            { value: '1.00:00:00', label: '24 hours' }
+        ];
+        // Mark the default option as selected
+        for (var i = 0; i < intervals.length; i++) {
+            intervals[i].selected = intervals[i].value === defaultValue;
+        }
+        return intervals;
+    }
+    
+    // HTML escaping function to prevent XSS vulnerabilities
+    function escapeHtml(text) {
+        if (text == null) return ''; // Only treat null/undefined as empty
+        const div = document.createElement('div');
+        div.textContent = String(text); // Convert to string to handle numbers like 0
+        return div.innerHTML;
+    }
+
+    // Safe DOM manipulation helper to prevent XSS vulnerabilities
+    // Accepts an array of {value, label, selected} objects
+    function populateSelectElement(selectElement, optionsData) {
+        // Clear existing options
+        selectElement.innerHTML = '';
+        
+        if (Array.isArray(optionsData)) {
+            // Create option elements programmatically
+            optionsData.forEach(function(optionData) {
+                var option = document.createElement('option');
+                option.value = optionData.value || '';
+                option.textContent = optionData.label || optionData.value || '';
+                if (optionData.selected) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            });
+        }
+    }
+    
+    // DOM Helper Functions to reduce repetition and improve maintainability
+    
+    /**
+     * Get element value safely with optional default
+     */
+    function getElementValue(page, selector, defaultValue = '') {
+        const element = page.querySelector(selector);
+        return element ? element.value : defaultValue;
+    }
+    
+    /**
+     * Get element checked state safely with optional default
+     */
+    function getElementChecked(page, selector, defaultValue = false) {
+        const element = page.querySelector(selector);
+        return element ? element.checked : defaultValue;
+    }
+    
+    /**
+     * Set element value safely (only if element exists)
+     */
+    function setElementValue(page, selector, value) {
+        const element = page.querySelector(selector);
+        if (element) {
+            element.value = value;
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Set element checked state safely (only if element exists)
+     */
+    function setElementChecked(page, selector, checked) {
+        const element = page.querySelector(selector);
+        if (element) {
+            element.checked = checked;
+            return true;
+        }
+        return false;
+    }   
+    
     // Centralized styling configuration
     const STYLES = {
         // Logic group styles
@@ -326,8 +605,9 @@
             searchInput.placeholder = placeholder;
         }
         
+        // Use direct visibility control since we already have the element
         if (clearSearchBtn) {
-            clearSearchBtn.style.display = disabled ? 'none' : 'block';
+            clearSearchBtn.style.display = disabled ? 'none' : 'flex';
         }
     };
 
@@ -359,12 +639,17 @@
 
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
+        // Use helper function for notification styling
         notificationArea.textContent = message;
-        notificationArea.style.color = 'white';
-        notificationArea.style.backgroundColor = 
-            type === 'success' ? '#3e8e41' : 
-            type === 'warning' ? '#ff9800' : '#d9534f';
-        notificationArea.style.display = 'block';
+        const notificationStyles = {
+            color: 'white',
+            backgroundColor: type === 'success' ? '#3e8e41' : 
+                            type === 'warning' ? '#ff9800' : '#d9534f',
+            display: 'block'
+        };
+        Object.entries(notificationStyles).forEach(([property, value]) => {
+            notificationArea.style[property] = value;
+        });
 
         clearTimeout(notificationTimeout);
         notificationTimeout = setTimeout(() => {
@@ -498,9 +783,127 @@
         generateMediaTypeCheckboxes(page);
     };
 
+    // Helper function to show/hide schedule containers based on selected trigger
+    function updateScheduleContainers(page, triggerValue) {
+        toggleScheduleContainers(page, '', triggerValue);
+    }
+    
+    // Helper function to format schedule display text
+    function formatScheduleDisplay(playlist) {
+        if (!playlist.ScheduleTrigger) {
+            // undefined = legacy tasks (property doesn't exist), null = legacy tasks  
+            return 'Legacy Jellyfin tasks';
+        }
+        
+        if (playlist.ScheduleTrigger === 'None') {
+            return 'No schedule';
+        }
+        
+        if (playlist.ScheduleTrigger === 'Daily') {
+            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            return 'Daily at ' + formatTimeForUser(h, m);
+        } else if (playlist.ScheduleTrigger === 'Weekly') {
+            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const day = days[playlist.ScheduleDayOfWeek] || 'Sunday';
+            return 'Weekly on ' + day + ' at ' + formatTimeForUser(h, m);
+        } else if (playlist.ScheduleTrigger === 'Monthly') {
+            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            const dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
+            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+                          (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
+                          (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + formatTimeForUser(h, m);
+        } else if (playlist.ScheduleTrigger === 'Interval') {
+            const interval = playlist.ScheduleInterval || '1.00:00:00';
+            if (interval === '00:15:00') return 'Every 15 minutes';
+            if (interval === '00:30:00') return 'Every 30 minutes';
+            if (interval === '01:00:00') return 'Every hour';
+            if (interval === '02:00:00') return 'Every 2 hours';
+            if (interval === '03:00:00') return 'Every 3 hours';
+            if (interval === '04:00:00') return 'Every 4 hours';
+            if (interval === '06:00:00') return 'Every 6 hours';
+            if (interval === '08:00:00') return 'Every 8 hours';
+            if (interval === '12:00:00') return 'Every 12 hours';
+            if (interval === '1.00:00:00') return 'Every 24 hours';
+            return 'Every ' + interval;
+        }
+        
+        return playlist.ScheduleTrigger;
+    }
+    
+    // Helper function for default schedule containers
+    function updateDefaultScheduleContainers(page, triggerValue) {
+        toggleScheduleContainers(page, 'default', triggerValue);
+    }
+
     function populateStaticSelects(page) {
         // Initialize page elements
         initializePageElements(page);
+        
+        // Populate all common selectors dynamically (DRY principle) - using safe DOM manipulation
+        const scheduleTimeElement = page.querySelector('#scheduleTime');
+        if (scheduleTimeElement) {
+            populateSelectElement(scheduleTimeElement, generateTimeOptions('00:00')); // Default to midnight
+        }
+        
+        const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+        if (defaultScheduleTimeElement) {
+            populateSelectElement(defaultScheduleTimeElement, generateTimeOptions('00:00')); // Default to midnight
+        }
+        
+        const autoRefreshElement = page.querySelector('#autoRefreshMode');
+        if (autoRefreshElement) {
+            populateSelectElement(autoRefreshElement, generateAutoRefreshOptions('OnLibraryChanges'));
+        }
+        
+        const defaultAutoRefreshElement = page.querySelector('#defaultAutoRefresh');
+        if (defaultAutoRefreshElement) {
+            populateSelectElement(defaultAutoRefreshElement, generateAutoRefreshOptions('OnLibraryChanges'));
+        }
+        
+        const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+        if (scheduleTriggerElement) {
+            populateSelectElement(scheduleTriggerElement, generateScheduleTriggerOptions('', true)); // Include "No schedule"
+        }
+        
+        const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+        if (defaultScheduleTriggerElement) {
+            populateSelectElement(defaultScheduleTriggerElement, generateScheduleTriggerOptions('', true)); // Include "No schedule"
+        }
+        
+        const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+        if (scheduleDayElement) {
+            populateSelectElement(scheduleDayElement, generateDayOfWeekOptions('0')); // Default Sunday
+        }
+        
+        const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
+        if (scheduleDayOfMonthElement) {
+            populateSelectElement(scheduleDayOfMonthElement, generateDayOfMonthOptions('1')); // Default 1st
+        }
+        
+        const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
+        if (defaultScheduleDayElement) {
+            populateSelectElement(defaultScheduleDayElement, generateDayOfWeekOptions('0')); // Default Sunday
+        }
+        
+        const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+        if (defaultScheduleDayOfMonthElement) {
+            populateSelectElement(defaultScheduleDayOfMonthElement, generateDayOfMonthOptions('1')); // Default 1st
+        }
+        
+        const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+        if (scheduleIntervalElement) {
+            populateSelectElement(scheduleIntervalElement, generateIntervalOptions('1.00:00:00')); // Default 24 hours
+        }
+        
+        const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+        if (defaultScheduleIntervalElement) {
+            populateSelectElement(defaultScheduleIntervalElement, generateIntervalOptions('1.00:00:00')); // Default 24 hours
+        }
         
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
@@ -564,10 +967,69 @@
             if (autoRefreshElement) {
                 autoRefreshElement.value = defaultAutoRefresh;
             }
-            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-            if (refreshOnScheduleElement) {
-                refreshOnScheduleElement.checked = config.DefaultRefreshOnSchedule || false;
+            
+            // Set up schedule trigger selector and event handlers
+            const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+            if (scheduleTriggerElement) {
+                scheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
+                if (!scheduleTriggerElement._spListenerAdded) {
+                    scheduleTriggerElement.addEventListener('change', function() {
+                        updateScheduleContainers(page, this.value);
+                    });
+                    scheduleTriggerElement._spListenerAdded = true;
+                }
+                // Initialize containers based on current value
+                updateScheduleContainers(page, scheduleTriggerElement.value);
             }
+            
+            // Set up default schedule values
+            const scheduleTimeElement = page.querySelector('#scheduleTime');
+            if (scheduleTimeElement && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5); // Extract HH:MM from HH:MM:SS
+                scheduleTimeElement.value = timeString;
+            }
+            
+            const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+            if (scheduleDayElement) {
+                scheduleDayElement.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
+            }
+            
+            const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+            if (scheduleIntervalElement && config.DefaultScheduleInterval) {
+                scheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
+            
+            // Set up global default schedule settings and event handlers
+            const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+            if (defaultScheduleTriggerElement) {
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
+                defaultScheduleTriggerElement.addEventListener('change', function() {
+                    updateDefaultScheduleContainers(page, this.value);
+                });
+                updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
+            }
+            
+            const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+            if (defaultScheduleTimeElement && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5); // Extract HH:MM from HH:MM:SS
+                defaultScheduleTimeElement.value = timeString;
+            }
+            
+            const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
+            if (defaultScheduleDayElement) {
+                defaultScheduleDayElement.value = config.DefaultScheduleDayOfWeek !== undefined ? config.DefaultScheduleDayOfWeek.toString() : '0';
+            }
+            
+            const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthElement) {
+                defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
+            }
+            
+            const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+            if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
+            
             
             // Populate settings tab dropdowns with current configuration values
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
@@ -1416,7 +1878,7 @@
     async function createPlaylist(page) {
         try {
             const apiClient = getApiClient();
-            const playlistName = page.querySelector('#playlistName').value;
+            const playlistName = getElementValue(page, '#playlistName');
 
             if (!playlistName) {
                 showNotification('Playlist name is required.');
@@ -1493,19 +1955,39 @@
                 return;
             }
 
-            const sortByElement = page.querySelector('#sortBy');
-            const sortOrderElement = page.querySelector('#sortOrder');
-            const sortByValue = sortByElement?.value || 'Name';
-            const sortOrderValue = sortOrderElement?.value || 'Ascending';
+            // Use helper functions for cleaner form data collection
+            const sortByValue = getElementValue(page, '#sortBy', 'Name');
+            const sortOrderValue = getElementValue(page, '#sortOrder', 'Ascending');
             
             // Special handling for Random - it doesn't need Ascending/Descending
             const orderName = sortByValue === 'Random' ? 'Random' : sortByValue + ' ' + sortOrderValue;
-            const isPublic = page.querySelector('#playlistIsPublic').checked || false;
-            const isEnabled = page.querySelector('#playlistIsEnabled').checked !== false; // Default to true if checkbox doesn't exist
-            const autoRefreshMode = page.querySelector('#autoRefreshMode')?.value || 'Never';
-            const refreshOnSchedule = page.querySelector('#refreshOnSchedule')?.checked || false;
-            const maxItemsElement = page.querySelector('#playlistMaxItems');
-            const maxItemsInput = maxItemsElement?.value || '';
+            const isPublic = getElementChecked(page, '#playlistIsPublic', false);
+            const isEnabled = getElementChecked(page, '#playlistIsEnabled', true); // Default to true
+            const autoRefreshMode = getElementValue(page, '#autoRefreshMode', 'Never');
+            // Capture schedule settings with helper functions
+            const scheduleTriggerValue = getElementValue(page, '#scheduleTrigger');
+            const scheduleTrigger = scheduleTriggerValue === '' ? 'None' : (scheduleTriggerValue || null);
+            const scheduleTimeValue = getElementValue(page, '#scheduleTime');
+            // Only set scheduleTime for Daily/Weekly/Monthly, not for Interval
+            const scheduleTime = (scheduleTrigger === 'Daily' || scheduleTrigger === 'Weekly' || scheduleTrigger === 'Monthly') && scheduleTimeValue 
+                ? scheduleTimeValue + ':00' : null;
+            
+            // Only set scheduleDayOfWeek for Weekly
+            const scheduleDayOfWeekValue = getElementValue(page, '#scheduleDayOfWeek');
+            const scheduleDayOfWeek = scheduleTrigger === 'Weekly' && scheduleDayOfWeekValue 
+                ? parseInt(scheduleDayOfWeekValue) : null;
+                
+            // Only set scheduleDayOfMonth for Monthly
+            const scheduleDayOfMonthValue = getElementValue(page, '#scheduleDayOfMonth');
+            const scheduleDayOfMonth = scheduleTrigger === 'Monthly' && scheduleDayOfMonthValue 
+                ? parseInt(scheduleDayOfMonthValue) : null;
+                
+            // Only set scheduleInterval for Interval
+            const scheduleIntervalValue = getElementValue(page, '#scheduleInterval');
+            const scheduleInterval = scheduleTrigger === 'Interval' && scheduleIntervalValue 
+                ? scheduleIntervalValue : null;
+            // Handle maxItems with validation using helper function
+            const maxItemsInput = getElementValue(page, '#playlistMaxItems');
             let maxItems;
             if (maxItemsInput === '') {
                 maxItems = 500;
@@ -1514,8 +1996,8 @@
                 maxItems = isNaN(parsedValue) ? 500 : parsedValue;
             }
 
-            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
-            const maxPlayTimeMinutesInput = maxPlayTimeMinutesElement?.value || '';
+            // Handle maxPlayTimeMinutes with helper function
+            const maxPlayTimeMinutesInput = getElementValue(page, '#playlistMaxPlayTimeMinutes');
             let maxPlayTimeMinutes;
             if (maxPlayTimeMinutesInput === '') {
                 maxPlayTimeMinutes = 0;
@@ -1524,8 +2006,8 @@
                 maxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
             }
 
-            // Get selected user ID from dropdown
-            const userId = page.querySelector('#playlistUser').value;
+            // Get selected user ID from dropdown using helper function
+            const userId = getElementValue(page, '#playlistUser');
             
             if (!userId) {
                 showNotification('Please select a playlist owner.');
@@ -1543,7 +2025,11 @@
                 MaxItems: maxItems,
                 MaxPlayTimeMinutes: maxPlayTimeMinutes,
                 AutoRefresh: autoRefreshMode,
-                RefreshOnSchedule: refreshOnSchedule
+                ScheduleTrigger: scheduleTrigger,
+                ScheduleTime: scheduleTime,
+                ScheduleDayOfWeek: scheduleDayOfWeek,
+                ScheduleDayOfMonth: scheduleDayOfMonth,
+                ScheduleInterval: scheduleInterval
             };
 
             // Add ID if in edit mode
@@ -1602,7 +2088,7 @@
     function clearForm(page) {
         // Only handle form clearing - edit mode management should be done by caller
         
-        page.querySelector('#playlistName').value = '';
+        setElementValue(page, '#playlistName', '');
         
         // Clean up all existing event listeners before clearing rules
         const rulesContainer = page.querySelector('#rules-container');
@@ -1619,46 +2105,55 @@
         
         const apiClient = getApiClient();
         apiClient.getPluginConfiguration(getPluginId()).then(config => {
-            page.querySelector('#sortBy').value = config.DefaultSortBy || 'Name';
-            page.querySelector('#sortOrder').value = config.DefaultSortOrder || 'Ascending';
-            page.querySelector('#playlistIsPublic').checked = config.DefaultMakePublic || false;
-            page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
-            const maxItemsElement = page.querySelector('#playlistMaxItems');
-            if (maxItemsElement) {
-                maxItemsElement.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            setElementValue(page, '#sortBy', config.DefaultSortBy || 'Name');
+            setElementValue(page, '#sortOrder', config.DefaultSortOrder || 'Ascending');
+            setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
+            setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
+            const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            setElementValue(page, '#playlistMaxItems', defaultMaxItems);
+            const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
+            setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
+            // Set default schedule values from config
+            const defaultScheduleTriggerForForm = page.querySelector('#scheduleTrigger');
+            if (defaultScheduleTriggerForForm) {
+                defaultScheduleTriggerForForm.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
+                updateScheduleContainers(page, defaultScheduleTriggerForForm.value);
             }
-            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
-            if (maxPlayTimeMinutesElement) {
-                maxPlayTimeMinutesElement.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            
+            const defaultScheduleTimeForForm = page.querySelector('#scheduleTime');
+            if (defaultScheduleTimeForForm && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5);
+                defaultScheduleTimeForForm.value = timeString;
             }
-            const autoRefreshElement = page.querySelector('#autoRefreshMode');
-            if (autoRefreshElement) {
-                autoRefreshElement.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
+            
+            const defaultScheduleDayForForm = page.querySelector('#scheduleDayOfWeek');
+            if (defaultScheduleDayForForm) {
+                defaultScheduleDayForForm.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
             }
-            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-            if (refreshOnScheduleElement) {
-                refreshOnScheduleElement.checked = config.DefaultRefreshOnSchedule || false;
+            
+            const defaultScheduleDayOfMonthForForm = page.querySelector('#scheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthForForm) {
+                defaultScheduleDayOfMonthForForm.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
+            }
+            
+            const defaultScheduleIntervalForForm = page.querySelector('#scheduleInterval');
+            if (defaultScheduleIntervalForForm && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalForForm.value = config.DefaultScheduleInterval;
             }
         }).catch(() => {
-            page.querySelector('#sortBy').value = 'Name';
-            page.querySelector('#sortOrder').value = 'Ascending';
-            page.querySelector('#playlistIsPublic').checked = false;
-            page.querySelector('#playlistIsEnabled').checked = true; // Default to enabled
-            const maxItemsElement = page.querySelector('#playlistMaxItems');
-            if (maxItemsElement) {
-                maxItemsElement.value = 500;
-            }
-            const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
-            if (maxPlayTimeMinutesElement) {
-                maxPlayTimeMinutesElement.value = 0;
-            }
-            const autoRefreshElement = page.querySelector('#autoRefreshMode');
-            if (autoRefreshElement) {
-                autoRefreshElement.value = 'OnLibraryChanges';
-            }
-            const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-            if (refreshOnScheduleElement) {
-                refreshOnScheduleElement.checked = false; // Default for new playlists
+            setElementValue(page, '#sortBy', 'Name');
+            setElementValue(page, '#sortOrder', 'Ascending');
+            setElementChecked(page, '#playlistIsPublic', false);
+            setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
+            setElementValue(page, '#playlistMaxItems', 500);
+            setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
+            setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
+            // Set fallback schedule defaults
+            const fallbackScheduleTrigger = page.querySelector('#scheduleTrigger');
+            if (fallbackScheduleTrigger) {
+                fallbackScheduleTrigger.value = ''; // No schedule by default
+                updateScheduleContainers(page, '');
             }
         });
         
@@ -1815,19 +2310,11 @@
     }
 
     async function resolveUsername(apiClient, playlist) {
-        // Handle both old User field and new UserId field
         if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
-            try {
-                const user = await apiClient.getUser(playlist.UserId);
-                return user?.Name || 'Unknown User';
-            } catch (err) {
-                console.error('Error resolving user ID ' + playlist.UserId + ':', err);
-                return 'Unknown User';
-            }
-        } else if (playlist.User) {
-            // Legacy format - username is directly stored
-            return playlist.User;
+            const name = await resolveUserIdToName(apiClient, playlist.UserId);
+            return name || 'Unknown User';
         }
+        if (playlist.User) return playlist.User; // legacy
         return 'Unknown User';
     }
 
@@ -1907,7 +2394,7 @@
                         if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
                             const userName = await resolveUserIdToName(apiClient, rule.UserId);
                             if (userName) {
-                                userInfo = ' for user "' + userName + '"';
+                                userInfo = ' for user "' + escapeHtml(userName) + '"';
                             }
                         }
                         
@@ -1923,7 +2410,9 @@
                             collectionsInfo = ' (including episodes within series)';
                         }
                         
-                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' + fieldName + ' ' + operator + ' "' + value + '"' + userInfo + nextUnwatchedInfo + collectionsInfo + '</span>';
+                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' +
+                                     escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' +
+                                     userInfo + nextUnwatchedInfo + collectionsInfo + '</span>';
                     }
                     
                     rulesHtml += '</div>';
@@ -1983,7 +2472,7 @@
                 let html = '<div class="inputContainer">';
                 html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #666;">';
                 html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                        (searchTerm ? ' matching "' + searchTerm + '"' : '') +
+                        (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
                         ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
                 html += '</div></div>';
                 
@@ -1994,11 +2483,13 @@
                     const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
                     const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
                     const autoRefreshMode = playlist.AutoRefresh || 'Never';
-                    const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
+                    const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
                                              autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
                                              autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
-                    const refreshOnSchedule = playlist.RefreshOnSchedule !== undefined ? playlist.RefreshOnSchedule : true; // Default to true for backward compatibility
-                    const refreshOnScheduleDisplay = refreshOnSchedule ? 'Yes' : 'No';
+                    const scheduleDisplay = formatScheduleDisplay(playlist);
+                    
+                    // Format last scheduled refresh display
+                    const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Unknown');
                     const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                     const userName = await resolveUsername(apiClient, playlist);
                     const playlistId = playlist.Id || 'NO_ID';
@@ -2009,29 +2500,43 @@
                     const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
                     const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
                     
+                    // Escape all dynamic content to prevent XSS
+                    const eName = escapeHtml(playlist.Name || '');
+                    const eFileName = escapeHtml(playlist.FileName || '');
+                    const eUserName = escapeHtml(userName || '');
+                    const eMediaTypes = escapeHtml(mediaTypes);
+                    const eSortName = escapeHtml(sortName);
+                    const eMaxItems = escapeHtml(maxItemsDisplay);
+                    const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
+                    const eAutoRefreshDisplay = escapeHtml(autoRefreshDisplay);
+                    const eScheduleDisplay = escapeHtml(scheduleDisplay);
+                    const eLastRefreshDisplay = escapeHtml(lastRefreshDisplay);
+                    const ePlaylistId = escapeHtml(playlistId);
+                    
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
-                        '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                        '<h4 style="margin-top: 0;">' + eName + '</h4>' +
                         '<div class="field-description">' +
-                        '<strong>File:</strong> ' + playlist.FileName + '<br>' +
-                        '<strong>User:</strong> ' + userName + '<br>' +
-                        '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                        '<strong>File:</strong> ' + eFileName + '<br>' +
+                        '<strong>User:</strong> ' + eUserName + '<br>' +
+                        '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
                         '<strong>Rules:</strong><br>' + rulesHtml + 
-                        '<strong>Sort:</strong> ' + sortName + '<br>' +
-                        '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
-                        '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
-                        '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
-                        '<strong>Scheduled refresh:</strong> ' + refreshOnScheduleDisplay + '<br>' +
+                        '<strong>Sort:</strong> ' + eSortName + '<br>' +
+                        '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
+                        '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
+                        '<strong>Auto-refresh:</strong> ' + eAutoRefreshDisplay + '<br>' +
+                        '<strong>Scheduled refresh:</strong> ' + eScheduleDisplay + '<br>' +
+                        '<strong>Last refreshed:</strong> ' + eLastRefreshDisplay + '<br>' +
                         '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                         '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                         '</div>' +
                         '<div style="margin-top: 1em;">' +
-                        '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                        '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Refresh</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
                         (isEnabled ? 
-                            '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
-                            '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                            '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
+                            '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
                         ) +
-                        '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                        '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
                         '</div>' +
                         '</div>';
                 }
@@ -2046,7 +2551,7 @@
         }).catch(err => {
             console.error('Error loading playlists:', err);
             let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
-            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + errorMessage + '</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + escapeHtml(errorMessage) + '</p></div>';
             
             // Re-enable search input even on error
             setSearchInputState(page, false);
@@ -2120,6 +2625,62 @@
             
             // Search in legacy username field (for backward compatibility)
             if (playlist.User && playlist.User.toLowerCase().includes(searchTerm)) {
+                return true;
+            }
+            
+            // Search in LastRefreshed field
+            if (playlist.LastRefreshed) {
+                const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, '');
+                
+                if (lastRefreshDisplay.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+                
+                // Also search for "unknown" if LastRefreshed is null/undefined
+                if (searchTerm === 'unknown' && !playlist.LastRefreshed) {
+                    return true;
+                }
+            } else if (searchTerm === 'unknown' || searchTerm === 'never') {
+                return true;
+            }
+            
+            // Search in AutoRefresh field
+            if (playlist.AutoRefresh) {
+                const autoRefreshMode = playlist.AutoRefresh;
+                let autoRefreshDisplay = '';
+                if (autoRefreshMode === 'Never') {
+                    autoRefreshDisplay = 'manual/scheduled only';
+                } else if (autoRefreshMode === 'OnLibraryChanges') {
+                    autoRefreshDisplay = 'on library changes';
+                } else if (autoRefreshMode === 'OnAllChanges') {
+                    autoRefreshDisplay = 'on all changes';
+                } else {
+                    autoRefreshDisplay = autoRefreshMode.toLowerCase();
+                }
+                
+                if (autoRefreshDisplay.includes(searchTerm)) {
+                    return true;
+                }
+                
+                // Also search for the enum values directly
+                if (autoRefreshMode.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+            }
+            
+            // Search in ScheduleTrigger field
+            if (playlist.ScheduleTrigger) {
+                const scheduleDisplay = formatScheduleDisplay(playlist);
+                if (scheduleDisplay.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+                
+                // Also search for the enum values directly
+                if (playlist.ScheduleTrigger.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+            } else if (searchTerm === 'legacy' || searchTerm === 'jellyfin' || searchTerm === 'tasks') {
+                // Search for legacy tasks when ScheduleTrigger is null/undefined
                 return true;
             }
             
@@ -2206,7 +2767,7 @@
             
         } catch (err) {
             console.error('Error during search:', err);
-            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + err.message + '</p></div>';
+            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + escapeHtml(err && err.message ? err.message : 'Unknown error') + '</p></div>';
         }
     }
 
@@ -2223,7 +2784,7 @@
         let html = '<div class="inputContainer">';
         html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 1px; border-left: 3px solid #666;">';
         html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                (searchTerm ? ' matching "' + searchTerm + '"' : '') +
+                (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
                 ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
         html += '</div></div>';
         
@@ -2234,11 +2795,13 @@
             const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
             const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
             const autoRefreshMode = playlist.AutoRefresh || 'Never';
-            const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
+            const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
                                      autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
                                      autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
-            const refreshOnSchedule = playlist.RefreshOnSchedule !== undefined ? playlist.RefreshOnSchedule : true; // Default to true for backward compatibility
-            const refreshOnScheduleDisplay = refreshOnSchedule ? 'Yes' : 'No';
+            const scheduleDisplay = formatScheduleDisplay(playlist);
+            
+            // Format last scheduled refresh display
+            const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Never');
             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
             const userName = await resolveUsername(apiClient, playlist);
             const playlistId = playlist.Id || 'NO_ID';
@@ -2249,29 +2812,43 @@
             const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
             const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
             
+            // Escape all dynamic content to prevent XSS
+            const eName = escapeHtml(playlist.Name || '');
+            const eFileName = escapeHtml(playlist.FileName || '');
+            const eUserName = escapeHtml(userName || '');
+            const eMediaTypes = escapeHtml(mediaTypes);
+            const eSortName = escapeHtml(sortName);
+            const eMaxItems = escapeHtml(maxItemsDisplay);
+            const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
+            const eAutoRefresh = escapeHtml(autoRefreshDisplay);
+            const eSchedule = escapeHtml(scheduleDisplay);
+            const eLastRefresh = escapeHtml(lastRefreshDisplay);
+            const ePlaylistId = escapeHtml(playlistId);
+            
             html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
-                '<h4 style="margin-top: 0;">' + playlist.Name + '</h4>' +
+                '<h4 style="margin-top: 0;">' + eName + '</h4>' +
                 '<div class="field-description">' +
-                '<strong>File:</strong> ' + playlist.FileName + '<br>' +
-                '<strong>User:</strong> ' + userName + '<br>' +
-                '<strong>Media Types:</strong> ' + mediaTypes + '<br>' +
+                '<strong>File:</strong> ' + eFileName + '<br>' +
+                '<strong>User:</strong> ' + eUserName + '<br>' +
+                '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
                 '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
-                '<strong>Sort:</strong> ' + sortName + '<br>' +
-                '<strong>Max Items:</strong> ' + maxItemsDisplay + '<br>' +
-                '<strong>Max Play Time:</strong> ' + maxPlayTimeDisplay + '<br>' +
-                '<strong>Auto-refresh:</strong> ' + autoRefreshDisplay + '<br>' +
-                '<strong>Scheduled refresh:</strong> ' + refreshOnScheduleDisplay + '<br>' +
+                '<strong>Sort:</strong> ' + eSortName + '<br>' +
+                '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
+                '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
+                '<strong>Auto-refresh:</strong> ' + eAutoRefresh + '<br>' +
+                '<strong>Scheduled refresh:</strong> ' + eSchedule + '<br>' +
+                '<strong>Last refreshed:</strong> ' + eLastRefresh + '<br>' +
                 '<strong>Visibility:</strong> ' + isPublic + '<br>' +
                 '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
                 '<div style="margin-top: 1em;">' +
-                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + playlistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Refresh</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
                 (isEnabled ? 
-                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Disable</button>' :
-                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '" style="margin-right: 0.5em;">Enable</button>'
+                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
+                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
                 ) +
-                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + playlistId + '" data-playlist-name="' + playlist.Name + '">Delete</button>' +
+                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
                 '</div>' +
                 '</div>';
         }
@@ -2291,6 +2868,12 @@
         }).then(() => {
             Dashboard.hideLoadingMsg();
             showNotification('Playlist "' + playlistName + '" has been refreshed successfully.', 'success');
+            
+            // Auto-refresh the playlist list to show updated LastRefreshed timestamp
+            const page = document.querySelector('.SmartPlaylistConfigurationPage');
+            if (page) {
+                loadPlaylistList(page);
+            }
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlist:', err);
@@ -2462,10 +3045,10 @@
             }
             
             try {
-                // Populate form with playlist data
-                page.querySelector('#playlistName').value = playlist.Name || '';
-                page.querySelector('#playlistIsPublic').checked = playlist.Public || false;
-                page.querySelector('#playlistIsEnabled').checked = playlist.Enabled !== false; // Default to true for backward compatibility
+                // Populate form with playlist data using helper functions
+                setElementValue(page, '#playlistName', playlist.Name || '');
+                setElementChecked(page, '#playlistIsPublic', playlist.Public || false);
+                setElementChecked(page, '#playlistIsEnabled', playlist.Enabled !== false); // Default to true for backward compatibility
                 
                 // Handle AutoRefresh with backward compatibility
                 const autoRefreshValue = playlist.AutoRefresh !== undefined ? playlist.AutoRefresh : 'Never';
@@ -2474,11 +3057,40 @@
                     autoRefreshElement.value = autoRefreshValue;
                 }
                 
-                // Handle RefreshOnSchedule with backward compatibility (true for existing playlists, false for new ones)
-                const refreshOnScheduleValue = playlist.RefreshOnSchedule !== undefined ? playlist.RefreshOnSchedule : true;
-                const refreshOnScheduleElement = page.querySelector('#refreshOnSchedule');
-                if (refreshOnScheduleElement) {
-                    refreshOnScheduleElement.checked = refreshOnScheduleValue;
+                // Handle schedule settings with backward compatibility
+                const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+                if (scheduleTriggerElement) {
+                    // Convert "None" back to empty string for form display
+                    const triggerValue = playlist.ScheduleTrigger === 'None' ? '' : (playlist.ScheduleTrigger || '');
+                    scheduleTriggerElement.value = triggerValue;
+                    if (!scheduleTriggerElement._spListenerAdded) {
+                        scheduleTriggerElement.addEventListener('change', function() {
+                            updateScheduleContainers(page, this.value);
+                        });
+                        scheduleTriggerElement._spListenerAdded = true;
+                    }
+                    updateScheduleContainers(page, triggerValue);
+                }
+                
+                const scheduleTimeElement = page.querySelector('#scheduleTime');
+                if (scheduleTimeElement && playlist.ScheduleTime) {
+                    const timeString = playlist.ScheduleTime.substring(0, 5);
+                    scheduleTimeElement.value = timeString;
+                }
+                
+                const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+                if (scheduleDayElement && playlist.ScheduleDayOfWeek !== undefined) {
+                    scheduleDayElement.value = convertDayOfWeekToValue(playlist.ScheduleDayOfWeek);
+                }
+                
+                const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
+                if (scheduleDayOfMonthElement && playlist.ScheduleDayOfMonth !== undefined) {
+                    scheduleDayOfMonthElement.value = playlist.ScheduleDayOfMonth.toString();
+                }
+                
+                const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+                if (scheduleIntervalElement && playlist.ScheduleInterval) {
+                    scheduleIntervalElement.value = playlist.ScheduleInterval;
                 }
                 
                 // Handle MaxItems with backward compatibility for existing playlists
@@ -2514,7 +3126,7 @@
                 
                 // Set the playlist owner
                 if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
-                    page.querySelector('#playlistUser').value = playlist.UserId;
+                    setElementValue(page, '#playlistUser', playlist.UserId);
                 } else if (playlist.User) {
                     // Legacy support: try to find user by username (simplified)
                     // Since this is legacy, just warn the user and use current user as fallback
@@ -2739,10 +3351,36 @@
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
             
-            const defaultRefreshOnScheduleEl = page.querySelector('#defaultRefreshOnSchedule');
-            if (defaultRefreshOnScheduleEl) defaultRefreshOnScheduleEl.checked = config.DefaultRefreshOnSchedule || false;
             if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
-            if (playlistNameSuffixEl) playlistNameSuffixEl.value = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
+            if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
+            
+            // Load schedule configuration values
+            const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+            if (defaultScheduleTriggerElement) {
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
+                updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
+            }
+            
+            const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+            if (defaultScheduleTimeElement && config.DefaultScheduleTime) {
+                const timeString = config.DefaultScheduleTime.substring(0, 5); // Extract HH:MM from HH:MM:SS
+                defaultScheduleTimeElement.value = timeString;
+            }
+            
+            const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
+            if (defaultScheduleDayElement) {
+                defaultScheduleDayElement.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
+            }
+            
+            const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthElement) {
+                defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
+            }
+            
+            const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+            if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
             
             // Update playlist name preview
             updatePlaylistNamePreview(page);
@@ -2778,7 +3416,17 @@
             }
             
             config.DefaultAutoRefresh = page.querySelector('#defaultAutoRefresh').value || 'OnLibraryChanges';
-            config.DefaultRefreshOnSchedule = page.querySelector('#defaultRefreshOnSchedule').checked || false;
+            
+            // Save default schedule settings
+            const defaultScheduleTriggerValue = page.querySelector('#defaultScheduleTrigger').value;
+            config.DefaultScheduleTrigger = defaultScheduleTriggerValue === '' ? 'None' : (defaultScheduleTriggerValue || null);
+            
+            const defaultScheduleTimeValue = page.querySelector('#defaultScheduleTime').value;
+            config.DefaultScheduleTime = defaultScheduleTimeValue ? defaultScheduleTimeValue + ':00' : '00:00:00';
+            
+            config.DefaultScheduleDayOfWeek = parseInt(page.querySelector('#defaultScheduleDayOfWeek').value) || 0;
+            config.DefaultScheduleDayOfMonth = parseInt(page.querySelector('#defaultScheduleDayOfMonth').value) || 1;
+            config.DefaultScheduleInterval = page.querySelector('#defaultScheduleInterval').value || '1.00:00:00';
             
             // Save playlist naming configuration
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
@@ -2808,6 +3456,12 @@
         }).then(() => {
             Dashboard.hideLoadingMsg();
             showNotification('SmartPlaylist refresh tasks have been triggered. All smart playlists will be updated shortly.', 'success');
+            
+            // Auto-refresh the playlist list to show updated LastRefreshed timestamps
+            const page = document.querySelector('.SmartPlaylistConfigurationPage');
+            if (page) {
+                loadPlaylistList(page);
+            }
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);
@@ -2950,7 +3604,6 @@
 
         // Hide webkit scrollbar (best effort)
         tabSlider.style.setProperty('scrollbar-width', 'thin');
-        tabSlider.style.setProperty('-webkit-scrollbar', 'display: none');
 
         // --- TAB BUTTON STYLES ---
         var tabButtons = tabSlider.querySelectorAll('.emby-tab-button');

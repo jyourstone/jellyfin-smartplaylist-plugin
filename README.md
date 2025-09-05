@@ -68,7 +68,7 @@ The web interface is organized into three tabs:
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
     -   Configure auto-refresh behavior (Never, On Library Changes, On All Changes).
-    -   Control participation in scheduled refresh tasks (useful for randomized playlists).
+    -   Set custom refresh schedule (Daily, Weekly, Monthly, Interval or No schedule).
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.
@@ -80,7 +80,7 @@ The web interface is organized into three tabs:
     -   Set the default max items and max play time for new playlists.
     -   Configure custom prefix and suffix for playlist names.
     -   Set the default auto-refresh mode for new playlists.
-    -   Set the default scheduled refresh participation for new playlists.
+    -   Set the default custom schedule settings for new playlists (schedule type, time, day of week/day of month, interval).
     -   Export all playlists to a ZIP file for backup or transfer.
     -   Import playlists from a ZIP file with duplicate detection.
     -   Manually trigger a refresh for all smart playlists.
@@ -140,11 +140,45 @@ Configure playlists to refresh automatically when your library changes:
 - **On Library Changes**: Refresh when items are added, removed, or metadata is updated
 - **On All Changes**: Also refresh immediately when playback status changes (watched, favorites, etc.)
 
-#### **Scheduled Tasks**
+#### **🕐 Custom Playlist Scheduling**
+Configure individual playlists with their own refresh schedules:
+
+- **Per-playlist scheduling**: Each playlist can have its own schedule.
+- **Schedule types**: Daily (at a specific time), Weekly (specific day and time), Monthly (specific day and time), or Interval (every X minutes/hours).
+- **Flexible intervals**: 15 min, 30 min, 1 h, 2 h, 3 h, 4 h, 6 h, 8 h, 12 h, or 24 h.
+- **Backward compatible**: Existing playlists continue using legacy Jellyfin scheduled tasks.
+- **User visibility**: Clear indication of which scheduling system each playlist uses.
+
+**Schedule options:**
+- **Daily**: Refresh at a specific time each day (e.g., 3:00 AM).
+- **Weekly**: Refresh on a specific day and time each week (e.g., Sunday at 8:00 PM).
+- **Monthly**: Refresh on a specific day and time each month (e.g., 1st at 2:00 AM).
+- **Interval**: Refresh at regular intervals (e.g., every 2 hours, every 30 minutes).
+- **No schedule**: Disable all scheduled refreshes (auto-refresh and manual only).
+
+#### **📅 Legacy Scheduled Tasks**
+For old playlists where custom schedules do not exist, the original Jellyfin scheduled tasks are still used:
+
 - **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM** (handles music and audiobooks)
 - **🎬 Media SmartPlaylists**: Runs by default **hourly** (handles movies, TV shows, readable books, music videos, home videos, and photos)
 
-These tasks can be configured in the Jellyfin admin dashboard.
+#### **🎯 Example Use Cases**
+
+**Custom scheduling examples:**
+- **Daily Random Mix**: Random-sorted playlist with a Daily schedule at 6:00 AM → fresh random order every morning.
+- **Weekly Discoveries**: New-content playlist with a Weekly schedule on Sunday at 8:00 PM → weekly refresh for weekend planning.
+- **Monthly Archive**: Year-based movie playlist with a Monthly schedule on the 1st at 2:00 AM → monthly refresh for archival content.
+- **Background Refresh**: Mood-based music playlist with 4-hour intervals → regular updates without being intrusive.
+
+**Auto-Refresh Examples:**
+- **Continue Watching**: NextUnwatched playlist with auto-refresh on all changes → instant updates when episodes are watched
+- **New Releases**: Date-based playlist with auto-refresh on library changes → updates immediately when content is added
+- **Favorites Collection**: Favorite-based playlist with auto-refresh on all changes → updates when items are favorited/unfavorited
+
+**Mixed Approach:**
+Combine both systems for optimal performance:
+- Use **custom scheduling** for playlists that benefit from regular refresh (random order, time-based rules)
+- Use **auto-refresh** for playlists that need immediate updates (playback status, new additions)
 
 #### **🎲 Scheduled Refresh Control**
 Each playlist has a **"Refresh on scheduled tasks"** setting that controls whether it participates in the scheduled refresh tasks:

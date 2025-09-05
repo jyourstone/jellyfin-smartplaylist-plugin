@@ -48,9 +48,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
                 var playlistService = new PlaylistService(userManager, libraryManager, playlistManager, userDataManager, playlistServiceLogger, providerManager);
                 
-                _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, userDataManager);
+                _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, userDataManager, userManager);
                 
-                _logger.LogInformation("SmartPlaylist AutoRefreshService started successfully");
+                _logger.LogInformation("SmartPlaylist AutoRefreshService started successfully (schedule timer initialized)");
             }
             catch (Exception ex)
             {

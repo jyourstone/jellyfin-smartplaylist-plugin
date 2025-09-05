@@ -54,8 +54,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         // Per-refresh cache classes for better performance within single playlist processing
         public class RefreshCache
         {
-            public Dictionary<Guid, BaseItem[]> SeriesEpisodes { get; } = [];
-            public Dictionary<string, (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
+            public Dictionary<(Guid SeriesId, Guid UserId), BaseItem[]> SeriesEpisodes { get; } = [];
+            public Dictionary<(Guid SeriesId, Guid UserId, bool IncludeUnwatchedSeries), (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
             public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
             public BaseItem[] AllCollections { get; set; } = null;
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
@@ -95,7 +95,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (playCountProp != null)
             {
                 var playCountValue = playCountProp.GetValue(userData);
-                operand.PlayCountByUser[userId] = playCountValue != null ? (int)playCountValue : 0;
+                var playCount = ExtractIntValue(playCountValue);
+                operand.PlayCountByUser[userId] = playCount.GetValueOrDefault(0);
             }
             else
             {
@@ -1033,7 +1034,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                             var targetUser = GetUserById(userDataManager, userGuid);
                                             if (targetUser != null)
                                             {
-                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
+                                                var episodesForUser = GetCachedSeriesEpisodes(seriesGuid, targetUser, libraryManager, cache, logger);
+                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(episodesForUser, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
                                                 operand.NextUnwatchedByUser[userId] = isNextUnwatched;
                                             }
                                         }
@@ -1115,13 +1117,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <returns>Array of all episodes in the series</returns>
         private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
         {
-            if (cache.SeriesEpisodes.TryGetValue(seriesId, out var cachedEpisodes))
+            var key = (seriesId, user.Id);
+            if (cache.SeriesEpisodes.TryGetValue(key, out var cachedEpisodes))
             {
-                logger?.LogDebug("Using cached episodes for series {SeriesId} ({EpisodeCount} episodes)", seriesId, cachedEpisodes.Length);
+                logger?.LogDebug("Using cached episodes for series {SeriesId} user {UserId} ({EpisodeCount} episodes)", seriesId, user.Id, cachedEpisodes.Length);
                 return cachedEpisodes;
             }
 
-            logger?.LogDebug("Fetching episodes for series {SeriesId} from database (cache miss)", seriesId);
+            logger?.LogDebug("Fetching episodes for series {SeriesId} user {UserId} from database (cache miss)", seriesId, user.Id);
             
             // Note: Using SeriesId as ParentId - this works for standard episodes but may need
             // adjustment for special cases like virtual or merged series
@@ -1133,14 +1136,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             };
             
             var episodes = libraryManager.GetItemsResult(episodeQuery).Items.ToArray();
-            logger?.LogDebug("Cached {EpisodeCount} episodes for series {SeriesId}", episodes.Length, seriesId);
+            logger?.LogDebug("Cached {EpisodeCount} episodes for series {SeriesId} user {UserId}", episodes.Length, seriesId, user.Id);
             
-            cache.SeriesEpisodes[seriesId] = episodes;
+            cache.SeriesEpisodes[key] = episodes;
             return episodes;
         }
 
         /// <summary>
-        /// Determines if the current episode is the next unwatched episode for a user, with caching.
+        /// Determines if the current episode is the next unwatched episode for a user.
+        /// Note: NextUnwatched is cached per refresh (per series/user/flag) to avoid recomputation,
+        /// using live IsPlayed() data at calculation time.
         /// </summary>
         /// <param name="allEpisodes">All episodes in the series</param>
         /// <param name="currentEpisode">The episode to check</param>
@@ -1155,27 +1160,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
             int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, ILogger logger)
         {
-            // Create cache key combining series, user, and settings
-            var cacheKey = $"{seriesId}|{user.Id}|{includeUnwatchedSeries}";
-            
-            if (cache.NextUnwatched.TryGetValue(cacheKey, out var cachedResult))
+            // Use per-refresh cache to avoid O(E²) recomputation for large series
+            // Cache is scoped to single refresh, so no staleness issues across refreshes
+            var cacheKey = (seriesId, user.Id, includeUnwatchedSeries);
+            if (!cache.NextUnwatched.TryGetValue(cacheKey, out var result))
             {
-                logger?.LogDebug("Using cached next unwatched calculation for series {SeriesId}, user {UserId}", seriesId, user.Id);
-                
-                // Check if the current episode matches the cached next unwatched episode
-                return cachedResult.NextEpisodeId.HasValue && 
-                       cachedResult.NextEpisodeId.Value == currentEpisode.Id &&
-                       cachedResult.Season == currentSeason && 
-                       cachedResult.Episode == currentEpisodeNumber;
+                logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId}", seriesId, user.Id);
+                result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
+                cache.NextUnwatched[cacheKey] = result;
             }
-            
-            logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId} (cache miss)", seriesId, user.Id);
-            
-            // Calculate the next unwatched episode
-            var result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
-            
-            // Cache the result for future use within this refresh
-            cache.NextUnwatched[cacheKey] = result;
             
             // Check if the current episode matches the calculated next unwatched episode
             return result.NextEpisodeId.HasValue && 
@@ -1194,13 +1187,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 // Use the original logic to find the next unwatched episode
                 var episodeList = allEpisodes.ToList();
-                
-                // Cache IsPlayed results for all episodes to avoid repeated expensive calls
-                var isPlayedCache = new Dictionary<BaseItem, bool>();
-                foreach (var episode in episodeList)
-                {
-                    isPlayedCache[episode] = episode.IsPlayed(user);
-                }
                 
                 // Create a list of episode info with season/episode numbers (excluding season 0 specials)
                 var episodeInfos = new List<(BaseItem Episode, int Season, int EpisodeNum, bool IsWatched)>();
@@ -1222,7 +1208,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         // Skip season 0 (specials) and only include episodes with valid season/episode numbers
                         if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
                         {
-                            var isWatched = isPlayedCache[episode];
+                            // Call IsPlayed() fresh each time to ensure real-time accuracy
+                            var isWatched = episode.IsPlayed(user);
                             episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
                         }
                     }
