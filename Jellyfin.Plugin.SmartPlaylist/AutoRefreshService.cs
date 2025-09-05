@@ -849,6 +849,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         updateLastRefreshTime: false, // Don't update LastRefreshed for library updates (will be updated per playlist)
                         CancellationToken.None);
 
+                    // Save updated playlists to persist LastRefreshed timestamps
+                    foreach (var playlist in playlists)
+                    {
+                        try
+                        {
+                            await _playlistStore.SaveAsync(playlist);
+                            _logger.LogDebug("Saved updated playlist '{PlaylistName}' with LastRefreshed timestamp", playlist.Name);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to save updated playlist '{PlaylistName}'", playlist.Name);
+                        }
+                    }
+
                     // Log individual results
                     foreach (var result in results)
                     {
@@ -879,8 +893,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var currentSecond = now.Second;
             var nextQuarterMinute = ((currentMinute / 15) + 1) * 15;
             
-            // Start with current time truncated to the hour
-            var baseTime = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
+            // Start with current time truncated to the hour, preserving the DateTimeKind
+            var baseTime = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, now.Kind);
             
             // Add the calculated minutes - DateTime.AddMinutes handles all rollovers automatically
             var result = baseTime.AddMinutes(nextQuarterMinute);

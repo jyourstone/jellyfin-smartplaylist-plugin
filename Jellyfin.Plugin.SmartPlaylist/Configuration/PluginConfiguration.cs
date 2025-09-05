@@ -63,6 +63,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         public DayOfWeek DefaultScheduleDayOfWeek { get; set; } = DayOfWeek.Sunday; // Sunday default
         
         /// <summary>
+        /// Gets or sets the default day of month for Monthly triggers.
+        /// </summary>
+        public int DefaultScheduleDayOfMonth { get; set; } = 1; // 1st of month default
+        
+        /// <summary>
         /// Gets or sets the default interval for Interval triggers.
         /// </summary>
         public TimeSpan DefaultScheduleInterval { get; set; } = TimeSpan.FromHours(24); // 24 hours default

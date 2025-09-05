@@ -68,7 +68,7 @@ The web interface is organized into three tabs:
     -   Decide if the playlist should be public or private.
     -   Choose whether or not to enable the playlist.
     -   Configure auto-refresh behavior (Never, On Library Changes, On All Changes).
-    -   Set custom refresh schedule (Daily, Weekly, Interval or No schedule).
+    -   Set custom refresh schedule (Daily, Weekly, Monthly, Interval or No schedule).
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   See the rules, sorting, and other details for each playlist.
     -   Edit existing playlists to modify rules, ownership, or settings.

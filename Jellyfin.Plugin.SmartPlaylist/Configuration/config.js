@@ -25,13 +25,13 @@
     
     // Helper functions to generate common option sets (DRY principle)
     function generateTimeOptions(defaultValue) {
-        var options = '';
+        var options = [];
         for (var hour = 0; hour < 24; hour++) {
             for (var minute = 0; minute < 60; minute += 15) {
                 var timeValue = (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
                 var displayTime = formatTimeForUser(hour, minute);
-                var selected = timeValue === defaultValue ? ' selected' : '';
-                options += '<option value="' + timeValue + '"' + selected + '>' + displayTime + '</option>';
+                var selected = timeValue === defaultValue;
+                options.push({ value: timeValue, label: displayTime, selected: selected });
             }
         }
         return options;
@@ -59,12 +59,6 @@
             // Fallback to manual formatting if Intl is not available
             return formatTimeFallback(hour, minute, isLocale12Hour(locale));
         }
-    }
-    
-    
-    // Get browser locale for time formatting
-    function fetchUserLocale() {
-        return Promise.resolve(navigator.language || navigator.userLanguage || 'en-US');
     }
     
     
@@ -105,12 +99,11 @@
             { value: 'OnLibraryChanges', label: 'On library changes - When items are added/removed' },
             { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' }
         ];
-        var html = '';
+        // Mark the default option as selected
         for (var i = 0; i < options.length; i++) {
-            var selected = options[i].value === defaultValue ? ' selected' : '';
-            html += '<option value="' + options[i].value + '"' + selected + '>' + options[i].label + '</option>';
+            options[i].selected = options[i].value === defaultValue;
         }
-        return html;
+        return options;
     }
     
     function generateScheduleTriggerOptions(defaultValue, includeNoSchedule) {
@@ -124,12 +117,11 @@
             { value: 'Monthly', label: 'Monthly' },
             { value: 'Interval', label: 'Interval' }
         );
-        var html = '';
+        // Mark the default option as selected
         for (var i = 0; i < options.length; i++) {
-            var selected = options[i].value === defaultValue ? ' selected' : '';
-            html += '<option value="' + options[i].value + '"' + selected + '>' + options[i].label + '</option>';
+            options[i].selected = options[i].value === defaultValue;
         }
-        return html;
+        return options;
     }
     
     function generateDayOfWeekOptions(defaultValue) {
@@ -142,12 +134,11 @@
             { value: '5', label: 'Friday' },
             { value: '6', label: 'Saturday' }
         ];
-        var html = '';
+        // Mark the default option as selected
         for (var i = 0; i < days.length; i++) {
-            var selected = days[i].value === defaultValue ? ' selected' : '';
-            html += '<option value="' + days[i].value + '"' + selected + '>' + days[i].label + '</option>';
+            days[i].selected = days[i].value === defaultValue;
         }
-        return html;
+        return days;
     }
     
     function generateDayOfMonthOptions(defaultValue) {
@@ -161,12 +152,11 @@
             
             days.push({ value: i.toString(), label: i + suffix });
         }
-        var html = '';
-        for (var i = 0; i < days.length; i++) {
-            var selected = days[i].value === defaultValue ? ' selected' : '';
-            html += '<option value="' + days[i].value + '"' + selected + '>' + days[i].label + '</option>';
+        // Mark the default option as selected
+        for (var j = 0; j < days.length; j++) {
+            days[j].selected = days[j].value === defaultValue;
         }
-        return html;
+        return days;
     }
     
     function convertDayOfWeekToValue(dayOfWeek) {
@@ -204,12 +194,11 @@
             { value: '12:00:00', label: '12 hours' },
             { value: '1.00:00:00', label: '24 hours' }
         ];
-        var html = '';
+        // Mark the default option as selected
         for (var i = 0; i < intervals.length; i++) {
-            var selected = intervals[i].value === defaultValue ? ' selected' : '';
-            html += '<option value="' + intervals[i].value + '"' + selected + '>' + intervals[i].label + '</option>';
+            intervals[i].selected = intervals[i].value === defaultValue;
         }
-        return html;
+        return intervals;
     }
     
     // HTML escaping function to prevent XSS vulnerabilities
@@ -221,22 +210,13 @@
     }
 
     // Safe DOM manipulation helper to prevent XSS vulnerabilities
-    // Now accepts an array of {value, label, selected} objects instead of HTML strings
+    // Accepts an array of {value, label, selected} objects
     function populateSelectElement(selectElement, optionsData) {
         // Clear existing options
         selectElement.innerHTML = '';
         
-        // If optionsData is a string (legacy), convert it safely
-        if (typeof optionsData === 'string') {
-            // Parse HTML safely using temporary container (legacy support)
-            var tempDiv = document.createElement('div');
-            tempDiv.innerHTML = optionsData;
-            var options = tempDiv.querySelectorAll('option');
-            for (var i = 0; i < options.length; i++) {
-                selectElement.appendChild(options[i]);
-            }
-        } else if (Array.isArray(optionsData)) {
-            // Modern safe approach: create option elements programmatically
+        if (Array.isArray(optionsData)) {
+            // Create option elements programmatically
             optionsData.forEach(function(optionData) {
                 var option = document.createElement('option');
                 option.value = optionData.value || '';
@@ -842,10 +822,12 @@
     function updateDefaultScheduleContainers(page, triggerValue) {
         const timeContainer = page.querySelector('#defaultScheduleTimeContainer');
         const dayContainer = page.querySelector('#defaultScheduleDayContainer');
+        const dayOfMonthContainer = page.querySelector('#defaultScheduleDayOfMonthContainer');
         const intervalContainer = page.querySelector('#defaultScheduleIntervalContainer');
         
         if (timeContainer) timeContainer.classList.add('hide');
         if (dayContainer) dayContainer.classList.add('hide');
+        if (dayOfMonthContainer) dayOfMonthContainer.classList.add('hide');
         if (intervalContainer) intervalContainer.classList.add('hide');
         
         if (triggerValue === 'Daily') {
@@ -853,6 +835,9 @@
         } else if (triggerValue === 'Weekly') {
             if (timeContainer) timeContainer.classList.remove('hide');
             if (dayContainer) dayContainer.classList.remove('hide');
+        } else if (triggerValue === 'Monthly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
         } else if (triggerValue === 'Interval') {
             if (intervalContainer) intervalContainer.classList.remove('hide');
         }
@@ -906,6 +891,11 @@
         const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
         if (defaultScheduleDayElement) {
             populateSelectElement(defaultScheduleDayElement, generateDayOfWeekOptions('0')); // Default Sunday
+        }
+        
+        const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+        if (defaultScheduleDayOfMonthElement) {
+            populateSelectElement(defaultScheduleDayOfMonthElement, generateDayOfMonthOptions('1')); // Default 1st
         }
         
         const scheduleIntervalElement = page.querySelector('#scheduleInterval');
@@ -1028,6 +1018,11 @@
             const defaultScheduleDayElement = page.querySelector('#defaultScheduleDayOfWeek');
             if (defaultScheduleDayElement) {
                 defaultScheduleDayElement.value = config.DefaultScheduleDayOfWeek !== undefined ? config.DefaultScheduleDayOfWeek.toString() : '0';
+            }
+            
+            const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthElement) {
+                defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
             }
             
             const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
@@ -2137,6 +2132,11 @@
                 defaultScheduleDayForForm.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
             }
             
+            const defaultScheduleDayOfMonthForForm = page.querySelector('#scheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthForForm) {
+                defaultScheduleDayOfMonthForForm.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
+            }
+            
             const defaultScheduleIntervalForForm = page.querySelector('#scheduleInterval');
             if (defaultScheduleIntervalForForm && config.DefaultScheduleInterval) {
                 defaultScheduleIntervalForForm.value = config.DefaultScheduleInterval;
@@ -2310,19 +2310,11 @@
     }
 
     async function resolveUsername(apiClient, playlist) {
-        // Handle both old User field and new UserId field
         if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
-            try {
-                const user = await apiClient.getUser(playlist.UserId);
-                return user?.Name || 'Unknown User';
-            } catch (err) {
-                console.error('Error resolving user ID ' + playlist.UserId + ':', err);
-                return 'Unknown User';
-            }
-        } else if (playlist.User) {
-            // Legacy format - username is directly stored
-            return playlist.User;
+            const name = await resolveUserIdToName(apiClient, playlist.UserId);
+            return name || 'Unknown User';
         }
+        if (playlist.User) return playlist.User; // legacy
         return 'Unknown User';
     }
 
@@ -2837,7 +2829,7 @@
             const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
             const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
             const autoRefreshMode = playlist.AutoRefresh || 'Never';
-            const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual only' :
+            const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
                                      autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
                                      autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
             const scheduleDisplay = formatScheduleDisplay(playlist);
@@ -3429,6 +3421,11 @@
                 defaultScheduleDayElement.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
             }
             
+            const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthElement) {
+                defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
+            }
+            
             const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
             if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
                 defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
@@ -3477,6 +3474,7 @@
             config.DefaultScheduleTime = defaultScheduleTimeValue ? defaultScheduleTimeValue + ':00' : '00:00:00';
             
             config.DefaultScheduleDayOfWeek = parseInt(page.querySelector('#defaultScheduleDayOfWeek').value) || 0;
+            config.DefaultScheduleDayOfMonth = parseInt(page.querySelector('#defaultScheduleDayOfMonth').value) || 1;
             config.DefaultScheduleInterval = page.querySelector('#defaultScheduleInterval').value || '1.00:00:00';
             
             // Save playlist naming configuration
@@ -3587,7 +3585,6 @@
         
         // Coordinate all async initialization
         Promise.all([
-            fetchUserLocale(), // Fetch user's locale preferences first
             populateStaticSelects(page), // Make synchronous function async
             loadUsers(page),
             loadAndPopulateFields()

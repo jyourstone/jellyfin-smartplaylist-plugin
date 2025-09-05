@@ -1155,8 +1155,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
             int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, ILogger logger)
         {
-            // Create cache key combining series, user, and settings
-            var cacheKey = $"{seriesId}|{user.Id}|{includeUnwatchedSeries}";
+            // Create cache key combining series, user, settings, and a time-based component
+            // The time component ensures cache invalidation when user data changes
+            // Use minute-level precision to balance cache efficiency with responsiveness
+            var timeComponent = DateTime.UtcNow.ToString("yyyyMMddHHmm");
+            var cacheKey = $"{seriesId}|{user.Id}|{includeUnwatchedSeries}|{timeComponent}";
             
             if (cache.NextUnwatched.TryGetValue(cacheKey, out var cachedResult))
             {

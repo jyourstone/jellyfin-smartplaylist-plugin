@@ -67,11 +67,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public AutoRefreshMode AutoRefresh { get; set; } = AutoRefreshMode.Never; // Default to never for backward compatibility
         
         // Custom scheduling properties (null = no custom schedule, use legacy tasks)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ScheduleTrigger? ScheduleTrigger { get; set; } = null;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly/Monthly (e.g., 15:00)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DayOfWeek? ScheduleDayOfWeek { get; set; } // Day of week for Weekly
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? ScheduleDayOfMonth { get; set; } // Day of month for Monthly (1-31)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? LastRefreshed { get; set; } // When was this playlist last refreshed (any trigger)
         
         // Legacy support - for migration from old User field
