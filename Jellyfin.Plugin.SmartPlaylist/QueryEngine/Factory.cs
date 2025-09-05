@@ -95,7 +95,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (playCountProp != null)
             {
                 var playCountValue = playCountProp.GetValue(userData);
-                operand.PlayCountByUser[userId] = playCountValue != null ? (int)playCountValue : 0;
+                var playCount = ExtractIntValue(playCountValue);
+                operand.PlayCountByUser[userId] = playCount.GetValueOrDefault(0);
             }
             else
             {
@@ -1157,13 +1158,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
             int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, ILogger logger)
         {
-            // NextUnwatched calculations are not cached to ensure real-time accuracy
-            // when user watch status changes during playlist processing.
-            // This prevents stale cache data from causing incorrect NextUnwatched results.
-            logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId} (no caching for real-time accuracy)", seriesId, user.Id);
-            
-            // Calculate the next unwatched episode fresh each time
-            var result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
+            // Use per-refresh cache to avoid O(E²) recomputation for large series
+            // Cache is scoped to single refresh, so no staleness issues across refreshes
+            var cacheKey = $"{seriesId}:{user.Id}:{includeUnwatchedSeries}";
+            if (!cache.NextUnwatched.TryGetValue(cacheKey, out var result))
+            {
+                logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId}", seriesId, user.Id);
+                result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
+                cache.NextUnwatched[cacheKey] = result;
+            }
             
             // Check if the current episode matches the calculated next unwatched episode
             return result.NextEpisodeId.HasValue && 

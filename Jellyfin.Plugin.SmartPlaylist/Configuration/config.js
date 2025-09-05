@@ -72,6 +72,20 @@
             return false;
         }
     }
+
+    // Format relative time from ISO string (e.g., "2 minutes ago", "3 hours ago")
+    function formatRelativeTimeFromIso(isoString, emptyText = 'Unknown') {
+        if (!isoString) return emptyText;
+        const ts = Date.parse(isoString);
+        if (Number.isNaN(ts)) return emptyText;
+        const diffMins = Math.floor((Date.now() - ts) / 60000);
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+        const diffDays = Math.floor(diffHours / 24);
+        return diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
+    }
     
     // Fallback time formatting for older browsers
     function formatTimeFallback(hour, minute, use12Hour) {
@@ -2493,25 +2507,7 @@
                     const scheduleDisplay = formatScheduleDisplay(playlist);
                     
                     // Format last scheduled refresh display
-                    let lastRefreshDisplay = 'Unknown';
-                    if (playlist.LastRefreshed) {
-                        const lastRefresh = new Date(playlist.LastRefreshed);
-                        const now = new Date();
-                        const diffMs = now - lastRefresh;
-                        const diffMins = Math.floor(diffMs / 60000);
-                        const diffHours = Math.floor(diffMins / 60);
-                        const diffDays = Math.floor(diffHours / 24);
-                        
-                        if (diffMins < 1) {
-                            lastRefreshDisplay = 'Just now';
-                        } else if (diffMins < 60) {
-                            lastRefreshDisplay = diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
-                        } else if (diffHours < 24) {
-                            lastRefreshDisplay = diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
-                        } else {
-                            lastRefreshDisplay = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
-                        }
-                    }
+                    const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Unknown');
                     const sortName = playlist.Order ? playlist.Order.Name : 'Default';
                     const userName = await resolveUsername(apiClient, playlist);
                     const playlistId = playlist.Id || 'NO_ID';
@@ -2652,23 +2648,7 @@
             
             // Search in LastRefreshed field
             if (playlist.LastRefreshed) {
-                const lastRefresh = new Date(playlist.LastRefreshed);
-                const now = new Date();
-                const diffMs = now - lastRefresh;
-                const diffMins = Math.floor(diffMs / 60000);
-                const diffHours = Math.floor(diffMins / 60);
-                const diffDays = Math.floor(diffHours / 24);
-                
-                let lastRefreshDisplay = '';
-                if (diffMins < 1) {
-                    lastRefreshDisplay = 'just now';
-                } else if (diffMins < 60) {
-                    lastRefreshDisplay = diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
-                } else if (diffHours < 24) {
-                    lastRefreshDisplay = diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
-                } else {
-                    lastRefreshDisplay = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
-                }
+                const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, '');
                 
                 if (lastRefreshDisplay.toLowerCase().includes(searchTerm)) {
                     return true;
@@ -2839,25 +2819,7 @@
             const scheduleDisplay = formatScheduleDisplay(playlist);
             
             // Format last scheduled refresh display
-            let lastRefreshDisplay = 'Never';
-            if (playlist.LastRefreshed) {
-                const lastRefresh = new Date(playlist.LastRefreshed);
-                const now = new Date();
-                const diffMs = now - lastRefresh;
-                const diffMins = Math.floor(diffMs / 60000);
-                const diffHours = Math.floor(diffMins / 60);
-                const diffDays = Math.floor(diffHours / 24);
-                
-                if (diffMins < 1) {
-                    lastRefreshDisplay = 'Just now';
-                } else if (diffMins < 60) {
-                    lastRefreshDisplay = diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
-                } else if (diffHours < 24) {
-                    lastRefreshDisplay = diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
-                } else {
-                    lastRefreshDisplay = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
-                }
-            }
+            const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Never');
             const sortName = playlist.Order ? playlist.Order.Name : 'Default';
             const userName = await resolveUsername(apiClient, playlist);
             const playlistId = playlist.Id || 'NO_ID';
@@ -3660,7 +3622,6 @@
 
         // Hide webkit scrollbar (best effort)
         tabSlider.style.setProperty('scrollbar-width', 'thin');
-        tabSlider.style.setProperty('-webkit-scrollbar', 'display: none');
 
         // --- TAB BUTTON STYLES ---
         var tabButtons = tabSlider.querySelectorAll('.emby-tab-button');
