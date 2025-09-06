@@ -125,15 +125,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
                     dto.Name, newItems.Length, allUserMedia.Length);
                 
-                var newLinkedChildren = newItems.Select(itemId => 
-                {
-                    var item = _libraryManager.GetItemById(itemId);
-                    return new LinkedChild 
-                    { 
-                        ItemId = itemId,
-                        Path = item?.Path  // Set the Path property to prevent cleanup task from removing items
-                    };
-                }).ToArray();
+                // Create a lookup dictionary for O(1) access while preserving order from newItems
+                var mediaLookup = allUserMedia.ToDictionary(m => m.Id, m => m);
+                var newLinkedChildren = newItems
+                    .Where(itemId => mediaLookup.ContainsKey(itemId))
+                    .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
+                    .ToArray();
 
                 // Try to find existing playlist by Jellyfin playlist ID first, then by current naming format, then by old format
                 Playlist existingPlaylist = null;
@@ -195,7 +192,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     else
                     {
                         // Fallback to share manipulation check when OpenAccess property is not available
-                        isCurrentlyPublic = existingPlaylist.Shares.Any();
+                        isCurrentlyPublic = existingPlaylist.Shares?.Any() ?? false;
                     }
                     
                     var publicStatusChanged = isCurrentlyPublic != dto.Public;
@@ -635,7 +632,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 // Fallback to share manipulation if OpenAccess property is not available
                 _logger.LogWarning("OpenAccess property not found or not writable, falling back to share manipulation");
-                if (isPublic && !playlist.Shares.Any())
+                if (isPublic && !(playlist.Shares?.Any() ?? false))
                 {
                     _logger.LogDebug("Making playlist {PlaylistName} public by adding share", playlist.Name);
                     var ownerId = playlist.OwnerUserId;
@@ -645,7 +642,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     currentShares.Add(newShare);
                     playlist.Shares = currentShares;
                 }
-                else if (!isPublic && playlist.Shares.Any())
+                else if (!isPublic && (playlist.Shares?.Any() ?? false))
                 {
                     _logger.LogDebug("Making playlist {PlaylistName} private by clearing shares", playlist.Name);
                     playlist.Shares = [];
@@ -661,7 +658,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
-            bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : playlist.Shares.Any();
+            bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : (playlist.Shares?.Any() ?? false);
             _logger.LogDebug("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
                 playlist.Name, isFinallyPublic, playlist.Shares?.Count ?? 0);
             
@@ -686,7 +683,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (_libraryManager.GetItemById(result.Id) is Playlist newPlaylist)
             {
                 _logger.LogDebug("Retrieved new playlist: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
-                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, (newPlaylist.Shares?.Any() ?? false));
                 
                 newPlaylist.LinkedChildren = linkedChildren;
 
@@ -699,7 +696,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
-                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, (newPlaylist.Shares?.Any() ?? false));
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
