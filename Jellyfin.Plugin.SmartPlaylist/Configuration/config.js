@@ -2108,9 +2108,10 @@
                 contentType: 'application/json'
             }).then(() => {
                 Dashboard.hideLoadingMsg();
-                const actionPast = editState.editMode ? 'updated' : 'created';
-                const actionFuture = editState.editMode ? 'updated' : 'generated';
-                showNotification('Playlist "' + playlistName + '" ' + actionPast + '. The playlist has been ' + actionFuture + '.', 'success');
+                const message = editState.editMode ? 
+                    'Playlist "' + playlistName + '" updated successfully.' : 
+                    'Playlist "' + playlistName + '" created. The playlist has been generated.';
+                showNotification(message, 'success');
                 
                 // Exit edit mode and clear form
                 if (editState.editMode) {
