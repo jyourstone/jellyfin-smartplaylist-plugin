@@ -707,7 +707,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "ReleaseDate Ascending", Label = "Release Date Ascending" },
                     new { Value = "ReleaseDate Descending", Label = "Release Date Descending" },
                     new { Value = "CommunityRating Ascending", Label = "Community Rating Ascending" },
-                    new { Value = "CommunityRating Descending", Label = "Community Rating Descending" }
+                    new { Value = "CommunityRating Descending", Label = "Community Rating Descending" },
+                    new { Value = "PlayCount (owner) Ascending", Label = "Play Count (owner) Ascending" },
+                    new { Value = "PlayCount (owner) Descending", Label = "Play Count (owner) Descending" }
                 }
             };
 

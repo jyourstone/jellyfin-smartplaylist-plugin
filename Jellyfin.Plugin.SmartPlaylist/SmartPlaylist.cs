@@ -645,7 +645,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Apply ordering and limits with error handling
                 try
                 {
-                    var orderedResults = Order?.OrderBy(expandedResults) ?? expandedResults;
+                    var orderedResults = Order?.OrderBy(expandedResults, user, userDataManager, logger) ?? expandedResults;
                     
                     // Apply limits (items and/or time)
                     if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
@@ -1513,6 +1513,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "ReleaseDate Descending", () => new ReleaseDateOrderDesc() },
             { "CommunityRating Ascending", () => new CommunityRatingOrder() },
             { "CommunityRating Descending", () => new CommunityRatingOrderDesc() },
+            { "PlayCount (owner) Ascending", () => new PlayCountOrder() },
+            { "PlayCount (owner) Descending", () => new PlayCountOrderDesc() },
             { "Random", () => new RandomOrder() },
             { "NoOrder", () => new NoOrder() }
         };
@@ -1646,6 +1648,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public virtual IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
             return items ?? [];
+        }
+        
+        public virtual IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            // Default implementation falls back to the simple OrderBy method
+            return OrderBy(items);
         }
     }
 
@@ -1788,6 +1796,78 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
             return items == null ? [] : items.OrderByDescending(x => x.CommunityRating ?? 0);
+        }
+    }
+
+    public class PlayCountOrder : Order
+    {
+        public override string Name => "PlayCount (owner) Ascending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            if (items == null) return [];
+            
+            try
+            {
+                return items.OrderBy(item =>
+                {
+                    try
+                    {
+                        if (userDataManager != null && user != null)
+                        {
+                            var userData = userDataManager.GetUserData(user, item);
+                            return userData?.PlayCount ?? 0;
+                        }
+                        return 0;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error getting PlayCount for item {ItemName} for user {UserId}", item.Name, user?.Id);
+                        return 0;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error sorting by PlayCount for user {UserId}", user?.Id);
+                return items; // Return unsorted items on error
+            }
+        }
+    }
+
+    public class PlayCountOrderDesc : Order
+    {
+        public override string Name => "PlayCount (owner) Descending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            if (items == null) return [];
+            
+            try
+            {
+                return items.OrderByDescending(item =>
+                {
+                    try
+                    {
+                        if (userDataManager != null && user != null)
+                        {
+                            var userData = userDataManager.GetUserData(user, item);
+                            return userData?.PlayCount ?? 0;
+                        }
+                        return 0;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error getting PlayCount for item {ItemName} for user {UserId}", item.Name, user?.Id);
+                        return 0;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error sorting by PlayCount for user {UserId}", user?.Id);
+                return items; // Return unsorted items on error
+            }
         }
     }
 }
