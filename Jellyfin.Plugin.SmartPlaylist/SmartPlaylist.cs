@@ -1664,14 +1664,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
     {
         protected abstract T GetSortValue(BaseItem item);
         protected abstract bool IsDescending { get; }
+        protected virtual IComparer<T> Comparer => Comparer<T>.Default;
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
             if (items == null) return [];
             
             return IsDescending 
-                ? items.OrderByDescending(GetSortValue)
-                : items.OrderBy(GetSortValue);
+                ? items.OrderByDescending(GetSortValue, Comparer)
+                : items.OrderBy(GetSortValue, Comparer);
         }
     }
 
@@ -1694,9 +1695,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             try
             {
                 // Pre-fetch all user data to avoid repeated database calls during sorting
-                var sortValueCache = new Dictionary<BaseItem, int>();
+                var list = items as IList<BaseItem> ?? items.ToList();
+                var sortValueCache = new Dictionary<BaseItem, int>(list.Count);
                 
-                foreach (var item in items)
+                foreach (var item in list)
                 {
                     try
                     {
@@ -1712,8 +1714,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
                 // Sort using cached values (no more database calls)
                 return IsDescending 
-                    ? items.OrderByDescending(item => sortValueCache.GetValueOrDefault(item, 0))
-                    : items.OrderBy(item => sortValueCache.GetValueOrDefault(item, 0));
+                    ? list.OrderByDescending(item => sortValueCache[item])
+                    : list.OrderBy(item => sortValueCache[item]);
             }
             catch (Exception ex)
             {
@@ -1772,6 +1774,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name Ascending";
         protected override bool IsDescending => false;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
+        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
     }
 
     public class NameOrderDesc : PropertyOrder<string>
@@ -1779,6 +1782,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name Descending";
         protected override bool IsDescending => true;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
+        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
     }
 
     public class DateCreatedOrder : PropertyOrder<DateTime>
@@ -1857,7 +1861,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (playCountProp != null)
                 {
                     var playCountValue = playCountProp.GetValue(userData);
-                    return playCountValue as int? ?? 0;
+                    if (playCountValue is int pc)
+                        return pc;
+                    if (playCountValue != null)
+                        return Convert.ToInt32(playCountValue);
                 }
                 return 0;
             }
@@ -1883,7 +1890,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (playCountProp != null)
                 {
                     var playCountValue = playCountProp.GetValue(userData);
-                    return playCountValue as int? ?? 0;
+                    if (playCountValue is int pc)
+                        return pc;
+                    if (playCountValue != null)
+                        return Convert.ToInt32(playCountValue);
                 }
                 return 0;
             }
