@@ -645,7 +645,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Apply ordering and limits with error handling
                 try
                 {
-                    var orderedResults = Order?.OrderBy(expandedResults) ?? expandedResults;
+                    var orderedResults = Order?.OrderBy(expandedResults, user, userDataManager, logger) ?? expandedResults;
                     
                     // Apply limits (items and/or time)
                     if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
@@ -1513,6 +1513,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "ReleaseDate Descending", () => new ReleaseDateOrderDesc() },
             { "CommunityRating Ascending", () => new CommunityRatingOrder() },
             { "CommunityRating Descending", () => new CommunityRatingOrderDesc() },
+            { "PlayCount (owner) Ascending", () => new PlayCountOrder() },
+            { "PlayCount (owner) Descending", () => new PlayCountOrderDesc() },
             { "Random", () => new RandomOrder() },
             { "NoOrder", () => new NoOrder() }
         };
@@ -1647,6 +1649,86 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return items ?? [];
         }
+        
+        public virtual IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            // Default implementation falls back to the simple OrderBy method
+            return OrderBy(items);
+        }
+    }
+
+    /// <summary>
+    /// Generic base class for simple property-based sorting to eliminate code duplication
+    /// </summary>
+    public abstract class PropertyOrder<T> : Order where T : IComparable<T>
+    {
+        protected abstract T GetSortValue(BaseItem item);
+        protected abstract bool IsDescending { get; }
+        protected virtual IComparer<T> Comparer => Comparer<T>.Default;
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+            
+            return IsDescending 
+                ? items.OrderByDescending(GetSortValue, Comparer)
+                : items.OrderBy(GetSortValue, Comparer);
+        }
+    }
+
+    /// <summary>
+    /// Base class for user-data-based sorting with safe caching and error handling
+    /// </summary>
+    public abstract class UserDataOrder : Order
+    {
+        protected abstract bool IsDescending { get; }
+        
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            if (items == null) return [];
+            if (userDataManager == null || user == null)
+            {
+                logger?.LogWarning("UserDataManager or User is null for {OrderType} sorting, returning unsorted items", GetType().Name);
+                return items;
+            }
+
+            try
+            {
+                // Pre-fetch all user data to avoid repeated database calls during sorting
+                var list = items as IList<BaseItem> ?? items.ToList();
+                var sortValueCache = new Dictionary<BaseItem, int>(list.Count);
+                
+                foreach (var item in list)
+                {
+                    try
+                    {
+                        var userData = userDataManager.GetUserData(user, item);
+                        sortValueCache[item] = GetUserDataValue(userData, item, logger);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error getting user data for item {ItemName} for user {UserId}", item.Name, user.Id);
+                        sortValueCache[item] = 0; // Default value on error
+                    }
+                }
+
+                // Sort using cached values (no more database calls)
+                // Add DateCreated as tie-breaker for deterministic ordering when values are equal
+                // This puts newer items first when PlayCount is the same, improving discoverability
+                return IsDescending 
+                    ? list.OrderByDescending(item => sortValueCache[item])
+                           .ThenByDescending(item => item.DateCreated)
+                    : list.OrderBy(item => sortValueCache[item])
+                           .ThenByDescending(item => item.DateCreated);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error in {OrderType} sorting for user {UserId}, returning unsorted items", GetType().Name, user.Id);
+                return items; // Return unsorted items on error
+            }
+        }
+
+        protected abstract int GetUserDataValue(object userData, BaseItem item, ILogger logger);
     }
 
     public class NoOrder : Order
@@ -1677,64 +1759,48 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
     }
 
-    public class ProductionYearOrder : Order
+    public class ProductionYearOrder : PropertyOrder<int>
     {
         public override string Name => "ProductionYear Ascending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            return items == null ? [] : items.OrderBy(x => x.ProductionYear ?? 0);
-        }
+        protected override bool IsDescending => false;
+        protected override int GetSortValue(BaseItem item) => item.ProductionYear ?? 0;
     }
 
-    public class ProductionYearOrderDesc : Order
+    public class ProductionYearOrderDesc : PropertyOrder<int>
     {
         public override string Name => "ProductionYear Descending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            return items == null ? [] : items.OrderByDescending(x => x.ProductionYear ?? 0);
-        }
+        protected override bool IsDescending => true;
+        protected override int GetSortValue(BaseItem item) => item.ProductionYear ?? 0;
     }
 
-    public class NameOrder : Order
+    public class NameOrder : PropertyOrder<string>
     {
         public override string Name => "Name Ascending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            return items == null ? [] : items.OrderBy(x => x.Name ?? "");
-        }
+        protected override bool IsDescending => false;
+        protected override string GetSortValue(BaseItem item) => item.Name ?? "";
+        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
     }
 
-    public class NameOrderDesc : Order
+    public class NameOrderDesc : PropertyOrder<string>
     {
         public override string Name => "Name Descending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            return items == null ? [] : items.OrderByDescending(x => x.Name ?? "");
-        }
+        protected override bool IsDescending => true;
+        protected override string GetSortValue(BaseItem item) => item.Name ?? "";
+        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
     }
 
-    public class DateCreatedOrder : Order
+    public class DateCreatedOrder : PropertyOrder<DateTime>
     {
         public override string Name => "DateCreated Ascending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            return items == null ? [] : items.OrderBy(x => x.DateCreated);
-        }
+        protected override bool IsDescending => false;
+        protected override DateTime GetSortValue(BaseItem item) => item.DateCreated;
     }
 
-    public class DateCreatedOrderDesc : Order
+    public class DateCreatedOrderDesc : PropertyOrder<DateTime>
     {
         public override string Name => "DateCreated Descending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            return items == null ? [] : items.OrderByDescending(x => x.DateCreated);
-        }
+        protected override bool IsDescending => true;
+        protected override DateTime GetSortValue(BaseItem item) => item.DateCreated;
     }
 
     public class ReleaseDateOrder : Order
@@ -1771,23 +1837,75 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
     }
 
-    public class CommunityRatingOrder : Order
+    public class CommunityRatingOrder : PropertyOrder<float>
     {
         public override string Name => "CommunityRating Ascending";
+        protected override bool IsDescending => false;
+        protected override float GetSortValue(BaseItem item) => item.CommunityRating ?? 0;
+    }
 
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+    public class CommunityRatingOrderDesc : PropertyOrder<float>
+    {
+        public override string Name => "CommunityRating Descending";
+        protected override bool IsDescending => true;
+        protected override float GetSortValue(BaseItem item) => item.CommunityRating ?? 0;
+    }
+
+    public class PlayCountOrder : UserDataOrder
+    {
+        public override string Name => "PlayCount (owner) Ascending";
+        protected override bool IsDescending => false;
+        
+        protected override int GetUserDataValue(object userData, BaseItem item, ILogger logger)
         {
-            return items == null ? [] : items.OrderBy(x => x.CommunityRating ?? 0);
+            try
+            {
+                // Use reflection to safely extract PlayCount from userData
+                var playCountProp = userData?.GetType().GetProperty("PlayCount");
+                if (playCountProp != null)
+                {
+                    var playCountValue = playCountProp.GetValue(userData);
+                    if (playCountValue is int pc)
+                        return pc;
+                    if (playCountValue != null)
+                        return Convert.ToInt32(playCountValue);
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Error extracting PlayCount from userData for item {ItemName}", item.Name);
+                return 0;
+            }
         }
     }
 
-    public class CommunityRatingOrderDesc : Order
+    public class PlayCountOrderDesc : UserDataOrder
     {
-        public override string Name => "CommunityRating Descending";
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        public override string Name => "PlayCount (owner) Descending";
+        protected override bool IsDescending => true;
+        
+        protected override int GetUserDataValue(object userData, BaseItem item, ILogger logger)
         {
-            return items == null ? [] : items.OrderByDescending(x => x.CommunityRating ?? 0);
+            try
+            {
+                // Use reflection to safely extract PlayCount from userData
+                var playCountProp = userData?.GetType().GetProperty("PlayCount");
+                if (playCountProp != null)
+                {
+                    var playCountValue = playCountProp.GetValue(userData);
+                    if (playCountValue is int pc)
+                        return pc;
+                    if (playCountValue != null)
+                        return Convert.ToInt32(playCountValue);
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Error extracting PlayCount from userData for item {ItemName}", item.Name);
+                return 0;
+            }
         }
     }
 }
