@@ -3614,21 +3614,26 @@
 
     // Shared navigation helper functions (moved to global scope)
     function getCurrentTab() {
-        var hash = window.location.hash;
-        var match = hash.match(/[?&]tab=([^&]*)/);
+        const hash = window.location.hash;
+        const match = hash.match(/[?&]tab=([^&]*)/);
         return match ? decodeURIComponent(match[1]) : 'create';
     }
     
     function updateUrl(tabId) {
-        var hash = window.location.hash;
-        var newHash;
+        let hash = window.location.hash;
+        let newHash;
+
+        // Ensure hash starts with # for proper parsing by getCurrentTab
+        if (!hash) {
+            hash = '#';
+        }
 
         if (hash.includes('tab=')) {
             // Replace existing tab parameter
             newHash = hash.replace(/([?&])tab=[^&]*/, '$1tab=' + encodeURIComponent(tabId));
         } else {
             // Add tab parameter
-            var separator = hash.includes('?') ? '&' : '?';
+            const separator = hash.includes('?') ? '&' : '?';
             newHash = hash + separator + 'tab=' + encodeURIComponent(tabId);
         }
         
@@ -3959,6 +3964,12 @@
         if (page._searchTimeout) {
             clearTimeout(page._searchTimeout);
             page._searchTimeout = null;
+        }
+        
+        // Clean up notification timer
+        if (typeof notificationTimeout !== 'undefined' && notificationTimeout) {
+            clearTimeout(notificationTimeout);
+            notificationTimeout = null;
         }
         
         // Clean up navigation listeners
