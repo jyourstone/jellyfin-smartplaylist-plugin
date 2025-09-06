@@ -31,6 +31,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public const string Book = nameof(Book);
         public const string AudioBook = nameof(AudioBook);
         
+        // Fallback Type
+        public const string Unknown = nameof(Unknown);
+        
         /// <summary>
         /// Centralized mapping between BaseItemKind and MediaTypes.
         /// This is the single source of truth for all media type mappings.
