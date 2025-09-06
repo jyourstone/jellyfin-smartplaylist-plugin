@@ -1713,9 +1713,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
 
                 // Sort using cached values (no more database calls)
+                // Add DateCreated as tie-breaker for deterministic ordering when values are equal
+                // This puts newer items first when PlayCount is the same, improving discoverability
                 return IsDescending 
                     ? list.OrderByDescending(item => sortValueCache[item])
-                    : list.OrderBy(item => sortValueCache[item]);
+                           .ThenByDescending(item => item.DateCreated)
+                    : list.OrderBy(item => sortValueCache[item])
+                           .ThenByDescending(item => item.DateCreated);
             }
             catch (Exception ex)
             {
