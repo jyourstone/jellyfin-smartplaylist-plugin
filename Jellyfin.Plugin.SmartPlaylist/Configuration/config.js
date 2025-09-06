@@ -417,31 +417,6 @@
             }
         },
 
-        // Tab slider styles
-        tabSlider: {
-            container: {
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                whiteSpace: 'nowrap',
-                scrollbarWidth: 'thin',
-                msOverflowStyle: 'auto',
-                marginBottom: '1em',
-                paddingBottom: '0.5em',
-                position: 'relative',
-                width: '100%',
-                minHeight: '44px',
-                background: 'inherit'
-            },
-            button: {
-                display: 'inline-block',
-                whiteSpace: 'nowrap',
-                flexShrink: '0',
-                minWidth: 'auto',
-                flex: 'none',
-                minHeight: '40px',
-                verticalAlign: 'middle'
-            }
-        },
 
         // Layout fixes
         layout: {
@@ -640,13 +615,31 @@
 
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        // Use helper function for notification styling
-        notificationArea.textContent = message;
+        // Add type prefix for better clarity
+        let prefixedMessage = message;
+        if (type === 'success') {
+            prefixedMessage = '✓ ' + message;
+        } else if (type === 'warning') {
+            prefixedMessage = '⚠ ' + message;
+        } else if (type === 'error') {
+            prefixedMessage = '✗ ' + message;
+        }
+
+        // Enhanced styling to match Jellyfin's native look better
+        notificationArea.textContent = prefixedMessage;
         const notificationStyles = {
-            color: 'white',
-            backgroundColor: type === 'success' ? '#3e8e41' : 
-                            type === 'warning' ? '#ff9800' : '#d9534f',
-            display: 'block'
+            color: 'rgba(255, 255, 255, 0.9)',
+            backgroundColor: type === 'success' ? '#4caf50' : 
+                            type === 'warning' ? '#ff9800' : '#f44336',
+            display: 'block',
+            borderRadius: '4px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            // Fix the right-side cutoff by removing the layout constraints
+            maxWidth: 'none',
+            marginRight: '0',
+            width: '100%',
+            boxSizing: 'border-box'
         };
         Object.entries(notificationStyles).forEach(([property, value]) => {
             notificationArea.style[property] = value;
@@ -655,7 +648,7 @@
         clearTimeout(notificationTimeout);
         notificationTimeout = setTimeout(() => {
             notificationArea.style.display = 'none';
-        }, 10000);
+        }, 8000); // Slightly shorter timeout
     }
 
     function handleApiError(err, defaultMessage) {
@@ -2101,7 +2094,7 @@
                     if (submitBtn) submitBtn.textContent = 'Create Playlist';
                     
                     // Restore tab button text
-                    const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
+                    const createTabButton = page.querySelector('a[data-tab="create"]');
                     if (createTabButton) {
                         createTabButton.textContent = 'Create Playlist';
                     }
@@ -3325,14 +3318,36 @@
                 page.querySelector('#submitBtn').textContent = 'Update Playlist';
                 
                 // Update tab button text
-                const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
+                const createTabButton = page.querySelector('a[data-tab="create"]');
                 if (createTabButton) {
                     createTabButton.textContent = 'Edit Playlist';
                 }
                 
                 // Switch to create tab (which becomes edit tab)
-                const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
-                createTab.click();
+                updateUrl('create');
+                
+                // Manually trigger tab switch since we're not using hash navigation
+                var navContainer = page.querySelector('.localnav');
+                if (navContainer) {
+                    var createTab = navContainer.querySelector('a[data-tab="create"]');
+                    if (createTab) {
+                        // Simulate the tab switching logic
+                        var navButtons = navContainer.querySelectorAll('a[data-tab]');
+                        navButtons.forEach(function(btn) {
+                            btn.classList.remove('ui-btn-active');
+                        });
+                        createTab.classList.add('ui-btn-active');
+                        
+                        var tabContents = page.querySelectorAll('[data-tab-content]');
+                        tabContents.forEach(function(content) {
+                            if (content.getAttribute('data-tab-content') === 'create') {
+                                content.classList.remove('hide');
+                            } else {
+                                content.classList.add('hide');
+                            }
+                        });
+                    }
+                }
                 
                 // Update button visibility after editing form is populated
                 updateRuleButtonVisibility(page);
@@ -3359,7 +3374,7 @@
         page.querySelector('#submitBtn').textContent = 'Create Playlist';
         
         // Restore tab button text
-        const createTabButton = page.querySelector('.emby-tab-button[data-tab="create"] .emby-button-foreground');
+        const createTabButton = page.querySelector('a[data-tab="create"]');
         if (createTabButton) {
             createTabButton.textContent = 'Create Playlist';
         }
@@ -3610,8 +3625,8 @@
         // Set up event listeners (these don't depend on async operations)
         setupEventListeners(page);
         
-        // Set up tab slider functionality
-        setupTabSlider(page);
+        // Set up navigation functionality
+        setupNavigation(page);
         
         // Load configuration (this can run independently)
         loadConfiguration(page);
@@ -3620,94 +3635,110 @@
         applyNotificationLayoutFix(page);
     }
 
-    function setupTabSlider(page) {
-        var tabSlider = page.querySelector('.emby-tabs-slider');
-        if (!tabSlider) return;
+    function setupNavigation(page) {
+        var navContainer = page.querySelector('.localnav');
+        if (!navContainer) {
+            return;
+        }
         
-        // Prevent multiple setups on the same slider
-        if (tabSlider._sliderInitialized) return;
-        tabSlider._sliderInitialized = true;
+        // Prevent multiple setups on the same navigation
+        if (navContainer._navInitialized) return;
+        navContainer._navInitialized = true;
 
-        // --- FORCE PARENT CONTAINERS TO ALLOW SCROLLING ---
-        var parent = tabSlider.parentElement;
-        while (parent && parent !== document.body) {
-            parent.style.overflowX = 'visible';
-            parent.style.overflowY = 'visible';
-            parent.style.width = '100%';
-            parent = parent.parentElement;
+        // Apply Jellyfin's native styling to the navigation container
+        applyStyles(navContainer, {
+            marginBottom: '2.2em'
+        });
+
+        // Get the current tab from URL hash parameters or default to 'create'
+        function getCurrentTab() {
+            var hash = window.location.hash;
+            var match = hash.match(/[?&]tab=([^&]*)/);
+            return match ? decodeURIComponent(match[1]) : 'create';
         }
-
-        // --- TAB SLIDER STYLES ---
-        applyStyles(tabSlider, STYLES.tabSlider.container);
-
-        // Hide webkit scrollbar (best effort)
-        tabSlider.style.setProperty('scrollbar-width', 'thin');
-
-        // --- TAB BUTTON STYLES ---
-        var tabButtons = tabSlider.querySelectorAll('.emby-tab-button');
-        for (var i = 0; i < tabButtons.length; i++) {
-            var button = tabButtons[i];
-            applyStyles(button, STYLES.tabSlider.button);
-            button.style.marginRight = (i < tabButtons.length - 1) ? '0.5em' : '0';
-        }
-
-        // --- LISTENER LOGIC (unchanged) ---
-        tabSlider._sliderListeners = [];
-        function checkOverflow() {
-            var existingIndicator = tabSlider.querySelector('.tab-overflow-indicator');
-            if (existingIndicator) existingIndicator.remove(); }
-        checkOverflow();
-        var resizeHandler = function() { checkOverflow(); };
-        window.addEventListener('resize', resizeHandler);
-        tabSlider._sliderListeners.push({ element: window, event: 'resize', handler: resizeHandler });
-        var wheelHandler = function(e) {
-            if (e.deltaY !== 0) {
-                e.preventDefault();
-                tabSlider.scrollLeft += e.deltaY;
+        
+        // Update the URL with the current tab (in the hash portion)
+        function updateUrl(tabId) {
+            var hash = window.location.hash;
+            var newHash;
+            
+            if (hash.includes('tab=')) {
+                // Replace existing tab parameter
+                newHash = hash.replace(/([?&])tab=[^&]*/, '$1tab=' + encodeURIComponent(tabId));
+            } else {
+                // Add tab parameter
+                var separator = hash.includes('?') ? '&' : '?';
+                newHash = hash + separator + 'tab=' + encodeURIComponent(tabId);
             }
-        };
-        tabSlider.addEventListener('wheel', wheelHandler);
-        tabSlider._sliderListeners.push({ element: tabSlider, event: 'wheel', handler: wheelHandler });
-        var isScrolling = false;
-        var startX = 0;
-        var scrollLeft = 0;
-        var touchStartHandler = function(e) {
-            isScrolling = true;
-            startX = e.touches[0].pageX - tabSlider.offsetLeft;
-            scrollLeft = tabSlider.scrollLeft;
-        };
-        tabSlider.addEventListener('touchstart', touchStartHandler);
-        tabSlider._sliderListeners.push({ element: tabSlider, event: 'touchstart', handler: touchStartHandler });
-        var touchMoveHandler = function(e) {
-            if (!isScrolling) return;
-            e.preventDefault();
-            var x = e.touches[0].pageX - tabSlider.offsetLeft;
-            var walk = (x - startX) * 2;
-            tabSlider.scrollLeft = scrollLeft - walk;
-        };
-        tabSlider.addEventListener('touchmove', touchMoveHandler);
-        tabSlider._sliderListeners.push({ element: tabSlider, event: 'touchmove', handler: touchMoveHandler });
-        var touchEndHandler = function() { isScrolling = false; };
-        tabSlider.addEventListener('touchend', touchEndHandler);
-        tabSlider._sliderListeners.push({ element: tabSlider, event: 'touchend', handler: touchEndHandler });
-        function scrollToActiveTab() {
-            var activeTab = tabSlider.querySelector('.emby-tab-button-active');
-            if (activeTab) {
-                var tabRect = activeTab.getBoundingClientRect();
-                var sliderRect = tabSlider.getBoundingClientRect();
-                if (tabRect.left < sliderRect.left || tabRect.right > sliderRect.right) {
-                    activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            
+            window.history.replaceState({}, '', window.location.pathname + window.location.search + newHash);
+        }
+
+        // Set active tab based on hash
+        function setActiveTab(tabId) {
+            var navButtons = navContainer.querySelectorAll('a[data-tab]');
+            var tabContents = page.querySelectorAll('[data-tab-content]');
+            
+            // Update navigation buttons
+            navButtons.forEach(function(btn) {
+                if (btn.getAttribute('data-tab') === tabId) {
+                    btn.classList.add('ui-btn-active');
+                } else {
+                    btn.classList.remove('ui-btn-active');
                 }
+            });
+            
+            // Update tab content visibility
+            tabContents.forEach(function(content) {
+                var contentTabId = content.getAttribute('data-tab-content');
+                if (contentTabId === tabId) {
+                    content.classList.remove('hide');
+                } else {
+                    content.classList.add('hide');
+                }
+            });
+            
+            // Load playlist list when switching to manage tab
+            if (tabId === 'manage') {
+                loadPlaylistList(page);
             }
         }
-        var clickHandler = function(e) {
-            if (e.target.closest('.emby-tab-button')) {
-                setTimeout(scrollToActiveTab, 100);
-            }
-        };
-        tabSlider.addEventListener('click', clickHandler);
-        tabSlider._sliderListeners.push({ element: tabSlider, event: 'click', handler: clickHandler });
-        setTimeout(scrollToActiveTab, 100);
+
+        // Handle navigation clicks
+        var navButtons = navContainer.querySelectorAll('a[data-tab]');
+        navButtons.forEach(function(button) {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                var tabId = button.getAttribute('data-tab');
+                
+                // Update URL with tab parameter (preserving the plugin page URL)
+                updateUrl(tabId);
+                
+                // Hide any open modals when switching tabs
+                var modal = page.querySelector('#delete-confirm-modal');
+                if (modal && !modal.classList.contains('hide')) {
+                    modal.classList.add('hide');
+                    cleanupModalListeners(modal);
+                }
+                
+                setActiveTab(tabId);
+            });
+        });
+
+        // Handle popstate events (back/forward navigation)
+        function handlePopState() {
+            var currentTab = getCurrentTab();
+            setActiveTab(currentTab);
+        }
+        
+        window.addEventListener('popstate', handlePopState);
+        
+        // Store the event listener for cleanup
+        navContainer._popStateListener = handlePopState;
+        
+        // Set initial active tab
+        var initialTab = getCurrentTab();
+        setActiveTab(initialTab);
     }
 
     // Helper function to update the live preview of playlist names
@@ -3906,62 +3937,6 @@
     document.addEventListener('pageshow', function (e) {
         const page = e.target;
         if (page.classList.contains('SmartPlaylistConfigurationPage')) {
-            const tabButtons = page.querySelectorAll('.emby-tab-button');
-            const tabContents = page.querySelectorAll('[data-tab-content]');
-            
-            // Only add tab listeners once per page to prevent duplicates
-            if (!page._tabListenersInitialized) {
-                page._tabListenersInitialized = true;
-                
-                // Create AbortController for tab listeners
-                const tabAbortController = createAbortController();
-                const tabSignal = tabAbortController.signal;
-                
-                // Store controller on the page for cleanup
-                page._tabAbortController = tabAbortController;
-                
-                tabButtons.forEach(button => {
-                    button.addEventListener('click', () => {
-                        const tabId = button.getAttribute('data-tab');
-                        
-                        // Hide any open modals when switching tabs and clean up listeners
-                        const modal = page.querySelector('#delete-confirm-modal');
-                        if (modal && !modal.classList.contains('hide')) {
-                            modal.classList.add('hide');
-                            cleanupModalListeners(modal);
-                        }
-                        
-                        tabButtons.forEach(btn => btn.classList.remove('is-active', 'emby-tab-button-active'));
-                        button.classList.add('is-active', 'emby-tab-button-active');
-                        tabContents.forEach(content => {
-                            content.classList.toggle('hide', content.getAttribute('data-tab-content') !== tabId);
-                        });
-                        if (tabId === 'manage') { loadPlaylistList(page); }
-                        
-                        // Scroll to the clicked tab if it's not fully visible
-                        setTimeout(() => {
-                            const tabSlider = page.querySelector('.emby-tabs-slider');
-                            if (tabSlider) {
-                                const buttonRect = button.getBoundingClientRect();
-                                const sliderRect = tabSlider.getBoundingClientRect();
-                                
-                                if (buttonRect.left < sliderRect.left || buttonRect.right > sliderRect.right) {
-                                    button.scrollIntoView({
-                                        behavior: 'smooth',
-                                        block: 'nearest',
-                                        inline: 'center'
-                                    });
-                                }
-                            }
-                        }, 50);
-                    }, getEventListenerOptions(tabSignal));
-                });
-            }
-            
-            const createTab = page.querySelector('.emby-tab-button[data-tab="create"]');
-            if (createTab && !createTab.classList.contains('is-active')) {
-                createTab.click();
-            }
             initPage(page);
         }
     });
@@ -4002,21 +3977,17 @@
             page._searchTimeout = null;
         }
         
-        // Clean up tab slider listeners (including window event listeners)
-        const tabSlider = page.querySelector('.emby-tabs-slider');
-        if (tabSlider && tabSlider._sliderListeners) {
-            tabSlider._sliderListeners.forEach(listener => {
-                if (listener.element && listener.event && listener.handler) {
-                    try {
-                        listener.element.removeEventListener(listener.event, listener.handler);
-                    } catch (e) {
-                        // Ignore errors when removing listeners (element might be gone)
-                        console.warn('Failed to remove event listener:', e);
-                    }
-                }
-            });
-            tabSlider._sliderListeners = null;
-            tabSlider._sliderInitialized = false;
+        // Clean up navigation listeners
+        const navContainer = page.querySelector('.localnav');
+        if (navContainer && navContainer._popStateListener) {
+            try {
+                window.removeEventListener('popstate', navContainer._popStateListener);
+            } catch (e) {
+                // Ignore errors when removing listeners
+                console.warn('Failed to remove popstate listener:', e);
+            }
+            navContainer._popStateListener = null;
+            navContainer._navInitialized = false;
         }
         
         // Reset page-specific initialization flags and edit state
