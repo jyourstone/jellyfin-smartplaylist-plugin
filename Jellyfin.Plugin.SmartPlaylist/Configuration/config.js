@@ -641,9 +641,9 @@
             width: '100%',
             boxSizing: 'border-box'
         };
-        Object.entries(notificationStyles).forEach(([property, value]) => {
-            notificationArea.style[property] = value;
-        });
+        
+        // Use applyStyles helper for consistent styling with !important rules
+        applyStyles(notificationArea, notificationStyles);
 
         clearTimeout(notificationTimeout);
         notificationTimeout = setTimeout(() => {
@@ -3255,8 +3255,8 @@
                                             }
                                         }
                                                     } else if (expression.Operator === 'IsIn' || expression.Operator === 'IsNotIn') {
-                    // For tag-based inputs, the tags are already created by setValueInput
-                    // and the hidden input is already synced - no additional assignment needed
+                                    // For tag-based inputs, the tags are already created by setValueInput
+                                    // and the hidden input is already synced - no additional assignment needed
                                     } else {
                                         // For regular inputs, set the value directly
                                         valueInput.value = expression.TargetValue;
@@ -3308,7 +3308,7 @@
                     createInitialLogicGroup(page);
                 }
                 
-                                        // If we get here, form population was successful - now enter edit mode
+                // If we get here, form population was successful - now enter edit mode
                 setPageEditState(page, true, playlistId);
                 
                 // Update UI to show edit mode
@@ -3323,31 +3323,8 @@
                     createTabButton.textContent = 'Edit Playlist';
                 }
                 
-                // Switch to create tab (which becomes edit tab)
-                updateUrl('create');
-                
-                // Manually trigger tab switch since we're not using hash navigation
-                var navContainer = page.querySelector('.localnav');
-                if (navContainer) {
-                    var createTab = navContainer.querySelector('a[data-tab="create"]');
-                    if (createTab) {
-                        // Simulate the tab switching logic
-                        var navButtons = navContainer.querySelectorAll('a[data-tab]');
-                        navButtons.forEach(function(btn) {
-                            btn.classList.remove('ui-btn-active');
-                        });
-                        createTab.classList.add('ui-btn-active');
-                        
-                        var tabContents = page.querySelectorAll('[data-tab-content]');
-                        tabContents.forEach(function(content) {
-                            if (content.getAttribute('data-tab-content') === 'create') {
-                                content.classList.remove('hide');
-                            } else {
-                                content.classList.add('hide');
-                            }
-                        });
-                    }
-                }
+                // Switch to create tab (which becomes edit tab) using shared helper
+                switchToTab(page, 'create');
                 
                 // Update button visibility after editing form is populated
                 updateRuleButtonVisibility(page);
@@ -3635,6 +3612,64 @@
         applyNotificationLayoutFix(page);
     }
 
+    // Shared navigation helper functions (moved to global scope)
+    function getCurrentTab() {
+        var hash = window.location.hash;
+        var match = hash.match(/[?&]tab=([^&]*)/);
+        return match ? decodeURIComponent(match[1]) : 'create';
+    }
+    
+    function updateUrl(tabId) {
+        var hash = window.location.hash;
+        var newHash;
+
+        if (hash.includes('tab=')) {
+            // Replace existing tab parameter
+            newHash = hash.replace(/([?&])tab=[^&]*/, '$1tab=' + encodeURIComponent(tabId));
+        } else {
+            // Add tab parameter
+            var separator = hash.includes('?') ? '&' : '?';
+            newHash = hash + separator + 'tab=' + encodeURIComponent(tabId);
+        }
+        
+        window.history.replaceState({}, '', window.location.pathname + window.location.search + newHash);
+    }
+    
+
+    // Shared tab switching helper function
+    function switchToTab(page, tabId) {
+        var navContainer = page.querySelector('.localnav');
+        var navButtons = navContainer ? navContainer.querySelectorAll('a[data-tab]') : [];
+        var tabContents = page.querySelectorAll('[data-tab-content]');
+
+        // Update navigation buttons
+        navButtons.forEach(function(btn) {
+            if (btn.getAttribute('data-tab') === tabId) {
+                btn.classList.add('ui-btn-active');
+            } else {
+                btn.classList.remove('ui-btn-active');
+            }
+        });
+
+        // Update tab content visibility
+        tabContents.forEach(function(content) {
+            var contentTabId = content.getAttribute('data-tab-content');
+            if (contentTabId === tabId) {
+                content.classList.remove('hide');
+            } else {
+                content.classList.add('hide');
+            }
+        });
+
+        // Load playlist list when switching to manage tab
+        if (tabId === 'manage') {
+            loadPlaylistList(page);
+        }
+
+        // Update URL
+        updateUrl(tabId);
+    }
+
     function setupNavigation(page) {
         var navContainer = page.querySelector('.localnav');
         if (!navContainer) {
@@ -3650,59 +3685,21 @@
             marginBottom: '2.2em'
         });
 
-        // Get the current tab from URL hash parameters or default to 'create'
-        function getCurrentTab() {
-            var hash = window.location.hash;
-            var match = hash.match(/[?&]tab=([^&]*)/);
-            return match ? decodeURIComponent(match[1]) : 'create';
-        }
-        
-        // Update the URL with the current tab (in the hash portion)
-        function updateUrl(tabId) {
-            var hash = window.location.hash;
-            var newHash;
-            
-            if (hash.includes('tab=')) {
-                // Replace existing tab parameter
-                newHash = hash.replace(/([?&])tab=[^&]*/, '$1tab=' + encodeURIComponent(tabId));
-            } else {
-                // Add tab parameter
-                var separator = hash.includes('?') ? '&' : '?';
-                newHash = hash + separator + 'tab=' + encodeURIComponent(tabId);
-            }
-            
-            window.history.replaceState({}, '', window.location.pathname + window.location.search + newHash);
+        // Set initial active tab immediately to prevent flash
+        var initialTab = getCurrentTab();
+        switchToTab(page, initialTab);
+
+        // Use shared tab switching helper
+        function setActiveTab(tabId) {
+            switchToTab(page, tabId);
         }
 
-        // Set active tab based on hash
-        function setActiveTab(tabId) {
-            var navButtons = navContainer.querySelectorAll('a[data-tab]');
-            var tabContents = page.querySelectorAll('[data-tab-content]');
-            
-            // Update navigation buttons
-            navButtons.forEach(function(btn) {
-                if (btn.getAttribute('data-tab') === tabId) {
-                    btn.classList.add('ui-btn-active');
-                } else {
-                    btn.classList.remove('ui-btn-active');
-                }
-            });
-            
-            // Update tab content visibility
-            tabContents.forEach(function(content) {
-                var contentTabId = content.getAttribute('data-tab-content');
-                if (contentTabId === tabId) {
-                    content.classList.remove('hide');
-                } else {
-                    content.classList.add('hide');
-                }
-            });
-            
-            // Load playlist list when switching to manage tab
-            if (tabId === 'manage') {
-                loadPlaylistList(page);
-            }
-        }
+        // Create AbortController for navigation click listeners
+        var navAbortController = createAbortController();
+        var navSignal = navAbortController.signal;
+        
+        // Store controller for cleanup
+        navContainer._navAbortController = navAbortController;
 
         // Handle navigation clicks
         var navButtons = navContainer.querySelectorAll('a[data-tab]');
@@ -3711,9 +3708,6 @@
                 e.preventDefault();
                 var tabId = button.getAttribute('data-tab');
                 
-                // Update URL with tab parameter (preserving the plugin page URL)
-                updateUrl(tabId);
-                
                 // Hide any open modals when switching tabs
                 var modal = page.querySelector('#delete-confirm-modal');
                 if (modal && !modal.classList.contains('hide')) {
@@ -3721,24 +3715,14 @@
                     cleanupModalListeners(modal);
                 }
                 
+                // Use shared tab switching helper (includes URL update)
                 setActiveTab(tabId);
-            });
+            }, getEventListenerOptions(navSignal));
         });
 
-        // Handle popstate events (back/forward navigation)
-        function handlePopState() {
-            var currentTab = getCurrentTab();
-            setActiveTab(currentTab);
-        }
+        // Note: No popstate handler - tab navigation uses replaceState for URL bookmarking only
         
-        window.addEventListener('popstate', handlePopState);
-        
-        // Store the event listener for cleanup
-        navContainer._popStateListener = handlePopState;
-        
-        // Set initial active tab
-        var initialTab = getCurrentTab();
-        setActiveTab(initialTab);
+        // Initial tab already set above to prevent flash
     }
 
     // Helper function to update the live preview of playlist names
@@ -3979,14 +3963,19 @@
         
         // Clean up navigation listeners
         const navContainer = page.querySelector('.localnav');
-        if (navContainer && navContainer._popStateListener) {
-            try {
-                window.removeEventListener('popstate', navContainer._popStateListener);
-            } catch (e) {
-                // Ignore errors when removing listeners
-                console.warn('Failed to remove popstate listener:', e);
+        if (navContainer) {
+            // Clean up navigation click listeners via AbortController
+            if (navContainer._navAbortController) {
+                try {
+                    navContainer._navAbortController.abort();
+                } catch (e) {
+                    console.warn('Failed to abort navigation listeners:', e);
+                }
+                navContainer._navAbortController = null;
             }
-            navContainer._popStateListener = null;
+            
+            // Note: No popstate listener to clean up
+            
             navContainer._navInitialized = false;
         }
         
