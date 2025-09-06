@@ -934,6 +934,16 @@
             sortByContainer.appendChild(sortBySelect);
         }
         
+        // Add event listener to hide/show Sort Order based on Sort By selection
+        sortBySelect.addEventListener('change', function() {
+            const sortOrderInputContainer = sortOrderContainer.closest('.inputContainer');
+            if (this.value === 'Random' || this.value === 'NoOrder') {
+                sortOrderInputContainer.style.display = 'none';
+            } else {
+                sortOrderInputContainer.style.display = '';
+            }
+        });
+        
         let sortOrderSelect = page.querySelector('#sortOrder');
         if (!sortOrderSelect) {
             sortOrderSelect = document.createElement('select');
@@ -956,6 +966,14 @@
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
+            
+            // Initial hide/show of Sort Order based on default Sort By value
+            const sortOrderInputContainer = sortOrderContainer.closest('.inputContainer');
+            if (defaultSortBy === 'Random' || defaultSortBy === 'NoOrder') {
+                sortOrderInputContainer.style.display = 'none';
+            } else {
+                sortOrderInputContainer.style.display = '';
+            }
             page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
@@ -1038,6 +1056,24 @@
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
                 populateSelect(defaultSortBySetting, sortOptions, defaultSortBy); 
+                
+                // Add event listener for default settings Sort By dropdown
+                defaultSortBySetting.addEventListener('change', function() {
+                    const defaultSortOrderContainer = defaultSortOrderSetting.closest('.inputContainer');
+                    if (this.value === 'Random' || this.value === 'NoOrder') {
+                        defaultSortOrderContainer.style.display = 'none';
+                    } else {
+                        defaultSortOrderContainer.style.display = '';
+                    }
+                });
+                
+                // Initial hide/show for default settings
+                const defaultSortOrderContainer = defaultSortOrderSetting.closest('.inputContainer');
+                if (defaultSortBy === 'Random' || defaultSortBy === 'NoOrder') {
+                    defaultSortOrderContainer.style.display = 'none';
+                } else {
+                    defaultSortOrderContainer.style.display = '';
+                }
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
@@ -1075,6 +1111,20 @@
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
                 populateSelect(defaultSortBySetting, sortOptions, 'Name'); 
+                
+                // Add event listener for default settings Sort By dropdown (fallback case)
+                defaultSortBySetting.addEventListener('change', function() {
+                    const defaultSortOrderContainer = defaultSortOrderSetting.closest('.inputContainer');
+                    if (this.value === 'Random' || this.value === 'NoOrder') {
+                        defaultSortOrderContainer.style.display = 'none';
+                    } else {
+                        defaultSortOrderContainer.style.display = '';
+                    }
+                });
+                
+                // Initial state for fallback (Name doesn't need hiding)
+                const defaultSortOrderContainer = defaultSortOrderSetting.closest('.inputContainer');
+                defaultSortOrderContainer.style.display = '';
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, 'Ascending'); 
@@ -3154,6 +3204,14 @@
                 
                 page.querySelector('#sortBy').value = sortBy;
                 page.querySelector('#sortOrder').value = sortOrder;
+                
+                // Hide/show Sort Order based on loaded Sort By value
+                const sortOrderInputContainer = page.querySelector('#sortOrder-container').closest('.inputContainer');
+                if (sortBy === 'Random' || sortBy === 'NoOrder') {
+                    sortOrderInputContainer.style.display = 'none';
+                } else {
+                    sortOrderInputContainer.style.display = '';
+                }
                 
                 // Clear existing rules
                 const rulesContainer = page.querySelector('#rules-container');
