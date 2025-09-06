@@ -616,9 +616,7 @@
 
         // Add type prefix for better clarity
         let prefixedMessage = message;
-        if (type === 'success') {
-            prefixedMessage = '✓ ' + message;
-        } else if (type === 'warning') {
+        if (type === 'warning') {
             prefixedMessage = '⚠ ' + message;
         } else if (type === 'error') {
             prefixedMessage = '✗ ' + message;
@@ -635,12 +633,10 @@
             maxWidth: '400px',
             minWidth: '300px',
             padding: '16px 20px',
-            color: 'rgba(255, 255, 255, 0.95)',
-            backgroundColor: type === 'success' ? '#4caf50' : 
+            color: type === 'success' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            backgroundColor: type === 'success' ? 'rgba(40, 40, 40, 0.95)' : 
                             type === 'warning' ? '#ff9800' : '#f44336',
-            borderRadius: '3px',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
             fontSize: '16px',
             fontWeight: 'regular',
             textAlign: 'left',
@@ -3089,6 +3085,9 @@
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
+        // Always scroll to top when entering edit mode
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+                
         apiClient.ajax({
             type: "GET",
             url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId),
@@ -3360,7 +3359,9 @@
                 
                 // Update button visibility after editing form is populated
                 updateRuleButtonVisibility(page);
-                           
+            
+            showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
+                
             } catch (formError) {
                 console.error('Error populating form:', formError);
                 showNotification('Error loading playlist data: ' + formError.message);
