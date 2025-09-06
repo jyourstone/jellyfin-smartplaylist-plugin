@@ -638,7 +638,7 @@
                             type === 'warning' ? '#ff9800' : '#f44336',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
             fontSize: '16px',
-            fontWeight: 'regular',
+            fontWeight: 'normal',
             textAlign: 'left',
             zIndex: '10000',
             transform: 'translateY(100%)',
@@ -2570,7 +2570,7 @@
                     const ePlaylistId = escapeHtml(playlistId);
                     
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
-                        '<h4 style="margin-top: 0;">' + eName + '</h4>' +
+                        '<h3 style="margin-top: 0;">' + eName + '</h3>' +
                         '<div class="field-description">' +
                         '<strong>File:</strong> ' + eFileName + '<br>' +
                         '<strong>User:</strong> ' + eUserName + '<br>' +
@@ -3640,7 +3640,6 @@
         loadConfiguration(page);
 
         applyMainContainerLayoutFix(page);
-        applyNotificationLayoutFix(page);
     }
 
     // Shared navigation helper functions (moved to global scope)
@@ -4038,12 +4037,7 @@
         }
     }
 
-    function applyNotificationLayoutFix(page) {
-        var notificationArea = page.querySelector('#plugin-notification-area');
-        if (notificationArea) {
-            applyStyles(notificationArea, STYLES.layout.notification);
-        }
-    }
+    // (removed) applyNotificationLayoutFix – legacy in-page notification area no longer exists
 
     /**
      * Creates a tag-based input interface for IsIn/IsNotIn operators
