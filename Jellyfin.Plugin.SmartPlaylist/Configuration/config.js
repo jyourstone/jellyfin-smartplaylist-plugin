@@ -841,6 +841,13 @@
         toggleScheduleContainers(page, 'default', triggerValue);
     }
 
+    // Helper function to toggle Sort Order visibility based on Sort By value
+    function toggleSortOrderVisibility(sortOrderContainer, sortByValue) {
+        const container = sortOrderContainer ? sortOrderContainer.closest('.inputContainer') : null;
+        if (!container) return;
+        container.style.display = (sortByValue === 'Random' || sortByValue === 'NoOrder') ? 'none' : '';
+    }
+
     function populateStaticSelects(page) {
         // Initialize page elements
         initializePageElements(page);
@@ -934,6 +941,11 @@
             sortByContainer.appendChild(sortBySelect);
         }
         
+        // Add event listener to hide/show Sort Order based on Sort By selection
+        sortBySelect.addEventListener('change', function() {
+            toggleSortOrderVisibility(sortOrderContainer, this.value);
+        });
+        
         let sortOrderSelect = page.querySelector('#sortOrder');
         if (!sortOrderSelect) {
             sortOrderSelect = document.createElement('select');
@@ -956,6 +968,9 @@
             
             if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
             if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
+            
+            // Initial hide/show of Sort Order based on default Sort By value
+            toggleSortOrderVisibility(sortOrderContainer, defaultSortBy);
             page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
@@ -1038,6 +1053,14 @@
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
                 populateSelect(defaultSortBySetting, sortOptions, defaultSortBy); 
+                
+                // Add event listener for default settings Sort By dropdown
+                defaultSortBySetting.addEventListener('change', function() {
+                    toggleSortOrderVisibility(defaultSortOrderSetting, this.value);
+                });
+                
+                // Initial hide/show for default settings
+                toggleSortOrderVisibility(defaultSortOrderSetting, defaultSortBy);
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
@@ -1075,6 +1098,14 @@
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
                 populateSelect(defaultSortBySetting, sortOptions, 'Name'); 
+                
+                // Add event listener for default settings Sort By dropdown (fallback case)
+                defaultSortBySetting.addEventListener('change', function() {
+                    toggleSortOrderVisibility(defaultSortOrderSetting, this.value);
+                });
+                
+                // Initial state for fallback (Name doesn't need hiding)
+                toggleSortOrderVisibility(defaultSortOrderSetting, 'Name');
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
                 populateSelect(defaultSortOrderSetting, orderOptions, 'Ascending'); 
@@ -1961,8 +1992,10 @@
             const sortByValue = getElementValue(page, '#sortBy', 'Name');
             const sortOrderValue = getElementValue(page, '#sortOrder', 'Ascending');
             
-            // Special handling for Random - it doesn't need Ascending/Descending
-            const orderName = sortByValue === 'Random' ? 'Random' : sortByValue + ' ' + sortOrderValue;
+            // Special handling for Random and NoOrder - they don't need Ascending/Descending
+            const orderName = (sortByValue === 'Random' || sortByValue === 'NoOrder') 
+                ? sortByValue 
+                : sortByValue + ' ' + sortOrderValue;
             const isPublic = getElementChecked(page, '#playlistIsPublic', false);
             const isEnabled = getElementChecked(page, '#playlistIsEnabled', true); // Default to true
             const autoRefreshMode = getElementValue(page, '#autoRefreshMode', 'Never');
@@ -3141,9 +3174,9 @@
                 const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
                 
                 let sortBy, sortOrder;
-                if (orderName === 'Random') {
-                    // Special handling for Random - it doesn't have Ascending/Descending
-                    sortBy = 'Random';
+                if (orderName === 'Random' || orderName === 'NoOrder' || orderName === 'No Order') {
+                    // Special handling for Random/NoOrder - no Asc/Desc
+                    sortBy = (orderName === 'No Order') ? 'NoOrder' : orderName;
                     sortOrder = 'Ascending'; // Default sort order (though it won't be used)
                 } else {
                     // Normal parsing for other orders like "Name Ascending"
@@ -3154,6 +3187,9 @@
                 
                 page.querySelector('#sortBy').value = sortBy;
                 page.querySelector('#sortOrder').value = sortOrder;
+                
+                // Hide/show Sort Order based on loaded Sort By value
+                toggleSortOrderVisibility(page.querySelector('#sortOrder-container'), sortBy);
                 
                 // Clear existing rules
                 const rulesContainer = page.querySelector('#rules-container');
