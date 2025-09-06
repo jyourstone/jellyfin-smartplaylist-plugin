@@ -424,12 +424,8 @@
                 maxWidth: '830px',
                 boxSizing: 'border-box',
                 paddingRight: '25px'
-            },
-            notification: {
-                maxWidth: '805px',
-                marginRight: '25px',
-                boxSizing: 'border-box'
             }
+            // Notification styles removed - now using floating notifications
         }
     };
     
@@ -610,46 +606,78 @@
     }
 
     function showNotification(message, type = 'error') {
-        const notificationArea = document.querySelector('#plugin-notification-area');
-        if (!notificationArea) return;
-
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Create or get the floating notification container
+        let floatingNotification = document.querySelector('#floating-notification');
+        if (!floatingNotification) {
+            floatingNotification = document.createElement('div');
+            floatingNotification.id = 'floating-notification';
+            document.body.appendChild(floatingNotification);
+        }
 
         // Add type prefix for better clarity
         let prefixedMessage = message;
-        if (type === 'success') {
-            prefixedMessage = '✓ ' + message;
-        } else if (type === 'warning') {
+        if (type === 'warning') {
             prefixedMessage = '⚠ ' + message;
         } else if (type === 'error') {
             prefixedMessage = '✗ ' + message;
         }
 
-        // Enhanced styling to match Jellyfin's native look better
-        notificationArea.textContent = prefixedMessage;
-        const notificationStyles = {
-            color: 'rgba(255, 255, 255, 0.9)',
-            backgroundColor: type === 'success' ? '#4caf50' : 
-                            type === 'warning' ? '#ff9800' : '#f44336',
-            display: 'block',
-            borderRadius: '4px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            // Fix the right-side cutoff by removing the layout constraints
-            maxWidth: 'none',
-            marginRight: '0',
-            width: '100%',
-            boxSizing: 'border-box'
-        };
-        
-        // Use applyStyles helper for consistent styling with !important rules
-        applyStyles(notificationArea, notificationStyles);
+        // Set the message
+        floatingNotification.textContent = prefixedMessage;
 
+        // Apply floating notification styles - positioned like default Jellyfin notifications
+        const notificationStyles = {
+            position: 'fixed',
+            bottom: '20px',
+            left: '20px',
+            maxWidth: '400px',
+            minWidth: '300px',
+            padding: '16px 20px',
+            color: type === 'success' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            backgroundColor: type === 'success' ? 'rgba(40, 40, 40, 0.95)' : 
+                            type === 'warning' ? '#ff9800' : '#f44336',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+            fontSize: '16px',
+            fontWeight: 'normal',
+            textAlign: 'left',
+            zIndex: '10000',
+            transform: 'translateY(100%)',
+            opacity: '0',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxSizing: 'border-box',
+            pointerEvents: 'none' // Prevents interference with clicks
+        };
+
+        // Use applyStyles helper for consistent styling with !important rules
+        applyStyles(floatingNotification, notificationStyles);
+
+        // Animate in from bottom (like default Jellyfin notifications)
+        setTimeout(() => {
+            applyStyles(floatingNotification, {
+                transform: 'translateY(0)',
+                opacity: '1'
+            });
+        }, 10);
+
+        // Clear any existing timeout
         clearTimeout(notificationTimeout);
+        
+        // Animate out to bottom and remove after delay
         notificationTimeout = setTimeout(() => {
-            notificationArea.style.display = 'none';
-        }, 8000); // Slightly shorter timeout
+            applyStyles(floatingNotification, {
+                transform: 'translateY(100%)',
+                opacity: '0'
+            });
+            
+            // Remove from DOM after animation completes
+            setTimeout(() => {
+                if (floatingNotification && floatingNotification.parentNode) {
+                    floatingNotification.parentNode.removeChild(floatingNotification);
+                }
+            }, 300);
+        }, 8000); // 8 second display time
     }
+
 
     function handleApiError(err, defaultMessage) {
         // Try to extract meaningful error message from server response
@@ -2542,7 +2570,7 @@
                     const ePlaylistId = escapeHtml(playlistId);
                     
                     html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
-                        '<h4 style="margin-top: 0;">' + eName + '</h4>' +
+                        '<h3 style="margin-top: 0;">' + eName + '</h3>' +
                         '<div class="field-description">' +
                         '<strong>File:</strong> ' + eFileName + '<br>' +
                         '<strong>User:</strong> ' + eUserName + '<br>' +
@@ -3057,6 +3085,9 @@
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
+        // Always scroll to top when entering edit mode
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+                
         apiClient.ajax({
             type: "GET",
             url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId),
@@ -3609,7 +3640,6 @@
         loadConfiguration(page);
 
         applyMainContainerLayoutFix(page);
-        applyNotificationLayoutFix(page);
     }
 
     // Shared navigation helper functions (moved to global scope)
@@ -4007,12 +4037,7 @@
         }
     }
 
-    function applyNotificationLayoutFix(page) {
-        var notificationArea = page.querySelector('#plugin-notification-area');
-        if (notificationArea) {
-            applyStyles(notificationArea, STYLES.layout.notification);
-        }
-    }
+    // (removed) applyNotificationLayoutFix – legacy in-page notification area no longer exists
 
     /**
      * Creates a tag-based input interface for IsIn/IsNotIn operators
