@@ -125,15 +125,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items", 
                     dto.Name, newItems.Length, allUserMedia.Length);
                 
-                var newLinkedChildren = newItems.Select(itemId => 
-                {
-                    var item = _libraryManager.GetItemById(itemId);
-                    return new LinkedChild 
-                    { 
-                        ItemId = itemId,
-                        Path = item?.Path  // Set the Path property to prevent cleanup task from removing items
-                    };
-                }).ToArray();
+                // Create a lookup dictionary for O(1) access while preserving order from newItems
+                var mediaLookup = allUserMedia.ToDictionary(m => m.Id, m => m);
+                var newLinkedChildren = newItems
+                    .Where(itemId => mediaLookup.ContainsKey(itemId))
+                    .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
+                    .ToArray();
 
                 // Try to find existing playlist by Jellyfin playlist ID first, then by current naming format, then by old format
                 Playlist existingPlaylist = null;
@@ -156,37 +153,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     }
                 }
                 
-                // Fallback to name-based lookup using OLD format (for backward compatibility)
-                if (existingPlaylist == null)
-                {
-                    // Use the old hardcoded format for finding existing playlists
-                    var oldFormatName = dto.Name + " [Smart]";
-                    existingPlaylist = GetPlaylistByName(user, oldFormatName);
-                    if (existingPlaylist != null)
-                    {
-                        logger.LogDebug("Found existing playlist by old format name: {PlaylistName}", oldFormatName);
-                        
-                        // Save the Jellyfin playlist ID now that we found it
-                        dto.JellyfinPlaylistId = existingPlaylist.Id.ToString();
-                        if (saveCallback != null)
-                        {
-                            try
-                            {
-                                await saveCallback(dto);
-                                logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for playlist found by name fallback {PlaylistName}", 
-                                    existingPlaylist.Id, dto.Name);
-                            }
-                            catch (Exception saveEx)
-                            {
-                                logger.LogWarning(saveEx, "Failed to save playlist DTO after name fallback for {PlaylistName}, but continuing with operation", dto.Name);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        logger.LogDebug("No playlist found by old format name: {PlaylistName}", oldFormatName);
-                    }
-                }
+                // Note: Legacy name-based fallback removed - all playlists should now have JellyfinPlaylistId
                 
                 // Now that we've found the existing playlist (or not), apply the new naming format
                 var smartPlaylistName = PlaylistNameFormatter.FormatPlaylistName(dto.Name);
@@ -225,7 +192,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     else
                     {
                         // Fallback to share manipulation check when OpenAccess property is not available
-                        isCurrentlyPublic = existingPlaylist.Shares.Any();
+                        isCurrentlyPublic = existingPlaylist.Shares?.Any() ?? false;
                     }
                     
                     var publicStatusChanged = isCurrentlyPublic != dto.Public;
@@ -241,11 +208,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         logger.LogDebug("Updated existing playlist: {PlaylistName}", existingPlaylist.Name);
                     }
                     
-                    // Update the playlist items
+                    // Update the playlist items (includes metadata refresh)
                     await UpdatePlaylistPublicStatusAsync(existingPlaylist, dto.Public, newLinkedChildren, dto, cancellationToken);
-                    
-                    // Refresh metadata
-                    await RefreshPlaylistMetadataAsync(existingPlaylist, cancellationToken);
                     
                     logger.LogDebug("Successfully updated existing playlist: {PlaylistName} with {ItemCount} items", 
                         existingPlaylist.Name, newLinkedChildren.Length);
@@ -413,6 +377,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             await _refreshOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             return new RefreshLockDisposable();
+        }
+
+        /// <summary>
+        /// Attempts to acquire the global refresh lock without blocking.
+        /// Returns immediately with success/failure result for manual refresh operations.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token</param>
+        /// <returns>Tuple of (success, disposable) - disposable is null if acquisition failed</returns>
+        public static async Task<(bool Success, IDisposable LockHandle)> TryAcquireRefreshLockAsync(CancellationToken cancellationToken = default)
+        {
+            if (await _refreshOperationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                return (true, new RefreshLockDisposable());
+            }
+            return (false, null);
         }
 
         /// <summary>
@@ -653,7 +632,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 // Fallback to share manipulation if OpenAccess property is not available
                 _logger.LogWarning("OpenAccess property not found or not writable, falling back to share manipulation");
-                if (isPublic && !playlist.Shares.Any())
+                if (isPublic && !(playlist.Shares?.Any() ?? false))
                 {
                     _logger.LogDebug("Making playlist {PlaylistName} public by adding share", playlist.Name);
                     var ownerId = playlist.OwnerUserId;
@@ -663,7 +642,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     currentShares.Add(newShare);
                     playlist.Shares = currentShares;
                 }
-                else if (!isPublic && playlist.Shares.Any())
+                else if (!isPublic && (playlist.Shares?.Any() ?? false))
                 {
                     _logger.LogDebug("Making playlist {PlaylistName} private by clearing shares", playlist.Name);
                     playlist.Shares = [];
@@ -679,7 +658,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
-            bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : playlist.Shares.Any();
+            bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : (playlist.Shares?.Any() ?? false);
             _logger.LogDebug("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
                 playlist.Name, isFinallyPublic, playlist.Shares?.Count ?? 0);
             
@@ -704,7 +683,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (_libraryManager.GetItemById(result.Id) is Playlist newPlaylist)
             {
                 _logger.LogDebug("Retrieved new playlist: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
-                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, (newPlaylist.Shares?.Any() ?? false));
                 
                 newPlaylist.LinkedChildren = linkedChildren;
 
@@ -717,7 +696,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
-                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, newPlaylist.Shares.Any());
+                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, (newPlaylist.Shares?.Any() ?? false));
                 
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
@@ -731,42 +710,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
 
-        private Playlist GetPlaylistByName(User user, string name)
-        {
-            var query = new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = [BaseItemKind.Playlist],
-                Recursive = true,
-                Name = name
-            };
-            
-            return _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
-        }
+        // Removed: legacy name-based lookup helper (no longer used after migration to JellyfinPlaylistId)
 
         private User GetPlaylistUser(SmartPlaylistDto playlist)
         {
-            // If new UserId field is set and not empty, use it
+            // All playlists should now have UserId set - legacy User field migration is no longer supported
             if (playlist.UserId != Guid.Empty)
             {
                 return _userManager.GetUserById(playlist.UserId);
             }
-
-            // Legacy migration: if old User field is set, try to find the user
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (!string.IsNullOrEmpty(playlist.User))
-            {
-                var user = _userManager.GetUserByName(playlist.User);
-                if (user != null)
-                {
-                    _logger.LogDebug("Found legacy user '{UserName}' for playlist '{PlaylistName}'", playlist.User, playlist.Name);
-                    return user;
-                }
-                else
-                {
-                    _logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
-                }
-            }
-#pragma warning restore CS0618 // Type or member is obsolete
 
             return null;
         }

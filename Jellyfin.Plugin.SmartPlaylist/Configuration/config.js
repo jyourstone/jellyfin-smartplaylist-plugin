@@ -8,6 +8,7 @@
         base: 'Plugins/SmartPlaylist',
         users: 'Plugins/SmartPlaylist/users',
         refresh: 'Plugins/SmartPlaylist/refresh',
+        refreshDirect: 'Plugins/SmartPlaylist/refresh-direct',
         export: 'Plugins/SmartPlaylist/export',
         import: 'Plugins/SmartPlaylist/import'
     };
@@ -2359,7 +2360,7 @@
                 }
                 
                 if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                    rulesHtml += '<div style="border: 1px solid #555; padding: 0.5em; margin: 0.25em 0; border-radius: 2px; background: rgba(255,255,255,0.02);">';
+                    rulesHtml += '<div style="padding: 0.6em; background: rgba(255,255,255,0.02);">';
                     
                     for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
                         const rule = expressionSet.Expressions[ruleIndex];
@@ -2831,7 +2832,7 @@
                 '<strong>File:</strong> ' + eFileName + '<br>' +
                 '<strong>User:</strong> ' + eUserName + '<br>' +
                 '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
-                '<strong>Rules:</strong><br>' + rulesHtml + '<br>' +
+                '<strong>Rules:</strong><br>' + rulesHtml +
                 '<strong>Sort:</strong> ' + eSortName + '<br>' +
                 '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
                 '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
@@ -3451,11 +3452,11 @@
         
         getApiClient().ajax({
             type: "POST",
-            url: getApiClient().getUrl(ENDPOINTS.refresh),
+            url: getApiClient().getUrl(ENDPOINTS.refreshDirect),
             contentType: 'application/json'
         }).then(() => {
             Dashboard.hideLoadingMsg();
-            showNotification('SmartPlaylist refresh tasks have been triggered. All smart playlists will be updated shortly.', 'success');
+            showNotification('All smart playlists have been refreshed successfully.', 'success');
             
             // Auto-refresh the playlist list to show updated LastRefreshed timestamps
             const page = document.querySelector('.SmartPlaylistConfigurationPage');
@@ -3465,7 +3466,7 @@
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);
-            handleApiError(err, 'Failed to trigger playlist refresh');
+            handleApiError(err, 'Failed to refresh playlists');
         });
     }
     

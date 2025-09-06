@@ -18,6 +18,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
             serviceCollection.AddHostedService<AutoRefreshHostedService>();
+            serviceCollection.AddScoped<IManualRefreshService, ManualRefreshService>();
         }
     }
 }
