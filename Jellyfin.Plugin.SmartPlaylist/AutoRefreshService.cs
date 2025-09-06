@@ -637,21 +637,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 foreach (var playlist in autoRefreshPlaylists)
                 {
                     // Check if this playlist should be refreshed based on the change type
-                    bool shouldRefresh = changeType switch
-                    {
-                        LibraryChangeType.Added or LibraryChangeType.Removed => 
-                            playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
-                        LibraryChangeType.Updated => 
-                            // For Updated events, distinguish between library changes and user data changes
-                            // Library metadata updates should trigger OnLibraryChanges playlists
-                            // User data updates (playback status) should only trigger OnAllChanges playlists
-                            triggeringUserId.HasValue ? 
-                                playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges :  // User data change
-                                playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges, // Library metadata change
-                        _ => false
-                    };
-                    
-                    if (shouldRefresh)
+                    if (ShouldPlaylistRefreshForChangeType(playlist, changeType, triggeringUserId))
                     {
                         // Additional filtering: check if the item type matches the playlist's media types
                         if (IsItemRelevantToPlaylist(item, playlist))
@@ -720,72 +706,84 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
         
+        /// <summary>
+        /// Determines if a playlist should be refreshed based on the change type and auto-refresh mode.
+        /// </summary>
+        /// <param name="playlist">The playlist to check</param>
+        /// <param name="changeType">The type of change that occurred</param>
+        /// <param name="triggeringUserId">The user ID if this is a user data change, null for library changes</param>
+        /// <returns>True if the playlist should be refreshed</returns>
+        private static bool ShouldPlaylistRefreshForChangeType(SmartPlaylistDto playlist, LibraryChangeType changeType, Guid? triggeringUserId)
+        {
+            return changeType switch
+            {
+                LibraryChangeType.Added or LibraryChangeType.Removed => 
+                    playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+                LibraryChangeType.Updated => 
+                    // For Updated events, distinguish between library changes and user data changes
+                    // Library metadata updates should trigger OnLibraryChanges playlists
+                    // User data updates (playback status) should only trigger OnAllChanges playlists
+                    triggeringUserId.HasValue ? 
+                        playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges :  // User data change
+                        playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges, // Library metadata change
+                _ => false
+            };
+        }
+
         private async Task<List<string>> FilterPlaylistsByChangeTypeAsync(List<string> playlistIds, LibraryChangeType changeType, Guid? triggeringUserId)
         {
             var filteredPlaylists = new List<string>();
             
-            try
+            foreach (var playlistId in playlistIds)
             {
-                foreach (var playlistId in playlistIds)
+                try
                 {
-                    var playlist = await _playlistStore.GetSmartPlaylistAsync(Guid.Parse(playlistId)).ConfigureAwait(false);
-                    if (playlist == null || !playlist.Enabled) continue;
+                    // Parse playlist ID and fetch playlist data
+                    if (!Guid.TryParse(playlistId, out var playlistGuid))
+                    {
+                        _logger.LogWarning("Invalid playlist ID format '{PlaylistId}' - skipping", playlistId);
+                        continue;
+                    }
+                    
+                    var playlist = await _playlistStore.GetSmartPlaylistAsync(playlistGuid).ConfigureAwait(false);
+                    if (playlist == null)
+                    {
+                        _logger.LogDebug("Playlist {PlaylistId} not found - skipping", playlistId);
+                        continue;
+                    }
+                    
+                    if (!playlist.Enabled)
+                    {
+                        _logger.LogDebug("Playlist '{PlaylistName}' is disabled - skipping", playlist.Name);
+                        continue;
+                    }
                     
                     // Check if this playlist should be refreshed based on the change type
-                    bool shouldRefresh = changeType switch
+                    if (!ShouldPlaylistRefreshForChangeType(playlist, changeType, triggeringUserId))
                     {
-                        LibraryChangeType.Added or LibraryChangeType.Removed => 
-                            playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
-                        LibraryChangeType.Updated => 
-                            // For Updated events, distinguish between library changes and user data changes
-                            // Library metadata updates should trigger OnLibraryChanges playlists
-                            // User data updates (playback status) should only trigger OnAllChanges playlists
-                            triggeringUserId.HasValue ? 
-                                playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges :  // User data change
-                                playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges, // Library metadata change
-                        _ => false
-                    };
+                        _logger.LogDebug("Playlist '{PlaylistName}' auto-refresh mode {AutoRefresh} does not match change type {ChangeType} - skipping", 
+                            playlist.Name, playlist.AutoRefresh, changeType);
+                        continue;
+                    }
                     
-                    if (shouldRefresh)
+                    // User-specific filtering for UserData events (playback status changes)
+                    if (triggeringUserId.HasValue && !IsUserRelevantToPlaylist(triggeringUserId.Value, playlist))
                     {
-                        // User-specific filtering for UserData events (playback status changes)
-                        if (triggeringUserId.HasValue && !IsUserRelevantToPlaylist(triggeringUserId.Value, playlist))
-                        {
-                            continue;
-                        }
-                        
-                        filteredPlaylists.Add(playlistId);
+                        _logger.LogDebug("Playlist '{PlaylistName}' is not relevant to user {UserId} - skipping", 
+                            playlist.Name, triggeringUserId.Value);
+                        continue;
                     }
+                    
+                    filteredPlaylists.Add(playlistId);
+                    _logger.LogDebug("Playlist '{PlaylistName}' will be refreshed for {ChangeType} change", 
+                        playlist.Name, changeType);
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error filtering playlists by change type - returning all playlists");
-                return playlistIds; // Return all playlists if filtering fails
-            }
-            
-            return filteredPlaylists;
-        }
-        
-        private async Task<List<string>> FilterPlaylistsByUserAsync(List<string> playlistIds, Guid userId)
-        {
-            var filteredPlaylists = new List<string>();
-            
-            try
-            {
-                foreach (var playlistId in playlistIds)
+                catch (Exception ex)
                 {
-                    var playlist = await _playlistStore.GetSmartPlaylistAsync(Guid.Parse(playlistId)).ConfigureAwait(false);
-                    if (playlist != null && IsUserRelevantToPlaylist(userId, playlist))
-                    {
-                        filteredPlaylists.Add(playlistId);
-                    }
+                    _logger.LogError(ex, "Error processing playlist {PlaylistId} for change type filtering - skipping this playlist", playlistId);
+                    // Continue processing other playlists instead of failing the entire operation
+                    continue;
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error filtering playlists by user {UserId} - returning all playlists", userId);
-                return playlistIds; // Return all playlists if filtering fails
             }
             
             return filteredPlaylists;
@@ -846,7 +844,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
                 MediaBrowser.Controller.Entities.Photo => MediaTypes.Photo,
                 MediaBrowser.Controller.Entities.Book => MediaTypes.Book,
-                _ => "Unknown"
+                _ => MediaTypes.Unknown
             };
         }
         
