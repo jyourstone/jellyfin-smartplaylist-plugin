@@ -1,7 +1,7 @@
 # Jellyfin SmartPlaylist Plugin
 <div align="center">
     <p>
-        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" height="350"/><br />
+        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" height="350"/><br />
         <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Total GitHub Downloads" src="https://img.shields.io/github/downloads/jyourstone/jellyfin-smartplaylist-plugin/total"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/jyourstone/jellyfin-smartplaylist-plugin"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Build and Release" src="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/actions/workflows/release.yml/badge.svg"/></a> <a href="https://jellyfin.org/"><img alt="Jellyfin Version" src="https://img.shields.io/badge/Jellyfin-10.10-blue.svg"/></a>
     </p>        
 </div>
@@ -49,9 +49,9 @@ SmartPlaylist now features a modern web-based configuration interface through th
 
 <div align="center">
     <p>
-        <img alt="Create playlist page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_create.png" width="270" style="margin-right: 10px;"/>
-        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_manage.png" width="270" style="margin-right: 10px;"/>
-        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/config_page_settings.png" width="270"/>
+        <img alt="Create playlist page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create.png" width="270" style="margin-right: 10px;"/>
+        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" width="270" style="margin-right: 10px;"/>
+        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" width="270"/>
     </p>
 </div>
 
@@ -288,16 +288,24 @@ For example, create playlists for:
 ### From Repository
 Add this repository URL to your Jellyfin plugin catalog:
 ```
-https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/master/manifest.json
+https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/main/manifest.json
 ```
 
 ### Manual Installation
 Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to your Jellyfin plugins directory.
 
+### Try RC Releases (Unstable)
+Want to test the latest features before they're officially released? You can try release candidate (RC) versions using the unstable manifest:
+```
+https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/unstable/manifest.json
+```
+
+**⚠️ Warning**: RC releases are pre-release versions that may contain bugs or incomplete features. Use at your own risk and consider backing up your smart playlist configurations before upgrading.
+
 ## 🛠️ Development
 
 ### Building Locally
-For local development, see the [dev folder](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/tree/master/dev)
+For local development, see the [dev folder](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/tree/main/dev)
 
 ### Adding New Rule Fields
 
