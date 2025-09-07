@@ -846,9 +846,9 @@
                     if (!isNaN(numericValue) && numericValue >= 0 && numericValue <= 6) {
                         dayIndex = numericValue;
                     } else {
-                        // Try to match day name
+                        // Try to match day name (case-insensitive)
                         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                        const foundIndex = dayNames.indexOf(playlist.ScheduleDayOfWeek);
+                        const foundIndex = dayNames.findIndex(day => day.toLowerCase() === playlist.ScheduleDayOfWeek.toLowerCase());
                         if (foundIndex !== -1) {
                             dayIndex = foundIndex;
                         }
