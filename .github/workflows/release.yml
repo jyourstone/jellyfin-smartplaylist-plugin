@@ -89,7 +89,7 @@ jobs:
             echo 'EOM'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Update External Manifest
+      - name: Update External Manifest (Stable)
         if: steps.check_preview.outputs.is_preview != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
@@ -147,3 +147,66 @@ jobs:
           git add manifest.json
           git commit -m "Update manifest for SmartPlaylist v${VERSION}"
           git push
+
+      - name: Update External Manifest (Unstable)
+        if: steps.check_preview.outputs.is_preview == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+        run: |
+          # For preview/rc releases, use the full tag name as version
+          VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
+          FULL_VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
+          ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
+          CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
+          TARGET_ABI="${{ env.TARGET_ABI }}"
+          TIMESTAMP=$(date -u +'%Y-%m-%d')
+          CHANGELOG="${{ steps.read_release.outputs.body }}"
+          # Sanitize changelog: remove trailing "by @user in <link>" fragments GitHub adds
+          CLEAN_CHANGELOG=$(echo "$CHANGELOG" | sed -E 's/[[:space:]]*by @[[:alnum:]-]+ in https?:\/\/[^[:space:]]+//g')
+          MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
+          PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
+
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${MANIFEST_REPO}.git manifest-repo
+          cd manifest-repo
+          
+          # Switch to unstable branch (create if it doesn't exist)
+          git checkout unstable 2>/dev/null || git checkout -b unstable
+          
+          MANIFEST_FILE="manifest.json"
+
+          if [ ! -f "$MANIFEST_FILE" ]; then
+            echo "[]" > "$MANIFEST_FILE"
+          fi
+
+          NEW_PACKAGE=$(jq -n \
+            --arg version "$VERSION" \
+            --arg abi "$TARGET_ABI" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg checksum "$CHECKSUM" \
+            --arg changelog "$CLEAN_CHANGELOG" \
+            --arg timestamp "$TIMESTAMP" \
+            '{version: $version, targetAbi: $abi, sourceUrl: $url, checksum: $checksum, changelog: $changelog, timestamp: $timestamp}')
+
+          if ! jq -e --arg guid "$PLUGIN_GUID" 'any(.[]; .guid == $guid)' "$MANIFEST_FILE" > /dev/null; then
+            PLUGIN_ENTRY=$(jq -n \
+              --arg name "SmartPlaylist" \
+              --arg guid "$PLUGIN_GUID" \
+              --arg overview "SmartPlaylist plugin for Jellyfin (Unstable)." \
+              --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin. This is an unstable/preview version." \
+              --arg category "General" \
+              --arg owner "jyourstone" \
+              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" \
+              '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
+            jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
+          fi
+
+          jq --argjson new_package "$NEW_PACKAGE" --arg guid "$PLUGIN_GUID" \
+            '(.[] | select(.guid == $guid).versions) |= [$new_package] + .' \
+            "$MANIFEST_FILE" > tmp_manifest.json && mv tmp_manifest.json "$MANIFEST_FILE"
+
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add manifest.json
+          git commit -m "Update unstable manifest for SmartPlaylist v${FULL_VERSION}"
+          git push origin unstable
