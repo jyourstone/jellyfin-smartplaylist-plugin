@@ -823,17 +823,46 @@
         
         if (playlist.ScheduleTrigger === 'Daily') {
             const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            const parts = raw.split(':'); 
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3; // Don't use || operator with 0
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
             return 'Daily at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Weekly') {
             const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            const parts = raw.split(':'); 
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3; // Don't use || operator with 0
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
             const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const day = days[playlist.ScheduleDayOfWeek] || 'Sunday';
+            
+            // Handle different DayOfWeek value types (numeric, string name, or undefined)
+            let dayIndex = 0; // Default to Sunday
+            if (playlist.ScheduleDayOfWeek !== undefined && playlist.ScheduleDayOfWeek !== null) {
+                if (typeof playlist.ScheduleDayOfWeek === 'number') {
+                    // Numeric value (0-6)
+                    dayIndex = Math.max(0, Math.min(6, playlist.ScheduleDayOfWeek));
+                } else if (typeof playlist.ScheduleDayOfWeek === 'string') {
+                    // String value - could be numeric string or day name
+                    const numericValue = parseInt(playlist.ScheduleDayOfWeek, 10);
+                    if (!isNaN(numericValue) && numericValue >= 0 && numericValue <= 6) {
+                        dayIndex = numericValue;
+                    } else {
+                        // Try to match day name
+                        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                        const foundIndex = dayNames.indexOf(playlist.ScheduleDayOfWeek);
+                        if (foundIndex !== -1) {
+                            dayIndex = foundIndex;
+                        }
+                    }
+                }
+            }
+            
+            const day = days[dayIndex];
             return 'Weekly on ' + day + ' at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Monthly') {
             const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const parts = raw.split(':'); const h = parseInt(parts[0], 10) || 3; const m = parseInt(parts[1], 10) || 0;
+            const parts = raw.split(':'); 
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3; // Don't use || operator with 0
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
             const dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
             const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
                           (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
