@@ -133,7 +133,7 @@ jobs:
               --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin." \
               --arg category "General" \
               --arg owner "jyourstone" \
-              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" \
+              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" \
               '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
             jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
           fi
@@ -153,7 +153,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
-          # For preview/rc releases, use the full tag name as version
+          # Strip preview/rc suffixes for .NET versioning
           VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
           FULL_VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
           ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
@@ -196,7 +196,7 @@ jobs:
               --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin. This is an unstable/preview version." \
               --arg category "General" \
               --arg owner "jyourstone" \
-              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/master/images/logo.jpg" \
+              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" \
               '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
             jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
           fi
