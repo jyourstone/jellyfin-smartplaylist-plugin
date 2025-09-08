@@ -156,6 +156,64 @@
         return options;
     }
     
+    // Helper function to generate bulk actions HTML
+    function generateBulkActionsHTML(summaryText) {
+        let html = '';
+        html += '<div class="inputContainer" id="bulkActionsContainer" style="margin-bottom: 1em; display: none;">';
+        html += '<div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">';
+        
+        // Summary row at top
+        html += '<div id="playlist-summary" class="field-description" style="margin: 0 0 1em 0; padding: 0.5em; background: #2A2A2A; border-radius: 4px;">';
+        html += summaryText;
+        html += '</div>';
+        
+        // Layout: Left side (Select All, bulk actions) | Right side (Expand All, Reload List)
+        html += '<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1em;">';
+        
+        // Left side: Select All checkbox and bulk action buttons
+        html += '<div style="display: flex; align-items: center; gap: 0.75em; flex-wrap: wrap;">';
+        
+        // 1. Select All checkbox
+        html += '<label class="emby-checkbox-label" style="width: auto; min-width: auto;">';
+        html += '<input type="checkbox" id="selectAllCheckbox" data-embycheckbox="true" class="emby-checkbox">';
+        html += '<span class="checkboxLabel">Select All</span>';
+        html += '<span class="checkboxOutline">';
+        html += '<span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>';
+        html += '<span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>';
+        html += '</span>';
+        html += '</label>';
+        
+        // Selected count display
+        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999;">0 selected</span>';
+        
+        // 2. Enable button
+        html += '<button type="button" id="bulkEnableBtn" class="emby-button raised" disabled>Enable</button>';
+        
+        // 3. Disable button
+        html += '<button type="button" id="bulkDisableBtn" class="emby-button raised" disabled>Disable</button>';
+        
+        // 4. Delete button
+        html += '<button type="button" id="bulkDeleteBtn" class="emby-button raised button-delete" disabled>Delete</button>';
+        
+        html += '</div>'; // End left side
+        
+        // Right side: View control buttons
+        html += '<div style="display: flex; align-items: center; gap: 0.75em; flex-wrap: wrap;">';
+        
+        // 5. Expand All button
+        html += '<button type="button" id="expandAllBtn" class="emby-button raised">Expand All</button>';
+        
+        // 6. Reload List button
+        html += '<button type="button" id="refreshPlaylistListBtn" class="emby-button raised">Reload List</button>';
+        
+        html += '</div>'; // End right side
+        html += '</div>'; // End flex container
+        html += '</div>'; // End paperList
+        html += '</div>'; // End inputContainer
+        
+        return html;
+    }
+    
     function generateDayOfWeekOptions(defaultValue) {
         var days = [
             { value: '0', label: 'Sunday' },
@@ -1959,6 +2017,9 @@
     }
     
     async function createPlaylist(page) {
+        // Scroll to top when creating/updating playlist for better UX
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
         try {
             const apiClient = getApiClient();
             const playlistName = getElementValue(page, '#playlistName');
@@ -2156,6 +2217,13 @@
                     if (createTabButton) {
                         createTabButton.textContent = 'Create Playlist';
                     }
+                    
+                    // Switch to Manage tab and scroll to top after successful update
+                    switchToTab(page, 'manage');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    
+                    // Refresh the playlist list to show the updated playlist
+                    loadPlaylistList(page);
                 }
                 clearForm(page);
             }).catch(err => {
@@ -2400,7 +2468,6 @@
             const name = await resolveUserIdToName(apiClient, playlist.UserId);
             return name || 'Unknown User';
         }
-        if (playlist.User) return playlist.User; // legacy
         return 'Unknown User';
     }
 
@@ -2434,82 +2501,6 @@
         }
     }
 
-    // Helper function to generate rules HTML for playlist display
-    async function generatePlaylistRulesHtml(playlist, apiClient) {
-        let rulesHtml = '';
-        if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
-            for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
-                const expressionSet = playlist.ExpressionSets[groupIndex];
-                if (groupIndex > 0) {
-                    rulesHtml += '<strong style="color: #888;">OR</strong><br>';
-                }
-                
-                if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
-                    rulesHtml += '<div style="padding: 0.6em; background: rgba(255,255,255,0.02);">';
-                    
-                    for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
-                        const rule = expressionSet.Expressions[ruleIndex];
-                        if (ruleIndex > 0) {
-                            rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
-                        }
-                        
-                        let fieldName = rule.MemberName;
-                        if (fieldName === 'ItemType') fieldName = 'Media Type';
-                        let operator = rule.Operator;
-                        switch(operator) {
-                            case 'Equal': operator = 'equals'; break;
-                            case 'NotEqual': operator = 'not equals'; break;
-                            case 'Contains': operator = 'contains'; break;
-                            case 'NotContains': operator = "not contains"; break;
-                            case 'IsIn': operator = 'is in'; break;
-                            case 'IsNotIn': operator = 'is not in'; break;
-                            case 'GreaterThan': operator = '>'; break;
-                            case 'LessThan': operator = '<'; break;
-                            case 'After': operator = 'after'; break;
-                            case 'Before': operator = 'before'; break;
-                            case 'GreaterThanOrEqual': operator = '>='; break;
-                            case 'LessThanOrEqual': operator = '<='; break;
-                            case 'MatchRegex': operator = 'matches regex'; break;
-                        }
-                        let value = rule.TargetValue;
-                        if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
-                        if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
-                        
-                        // Check if this rule has a specific user
-                        let userInfo = '';
-                        if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
-                            const userName = await resolveUserIdToName(apiClient, rule.UserId);
-                            if (userName) {
-                                userInfo = ' for user "' + escapeHtml(userName) + '"';
-                            }
-                        }
-                        
-                        // Check for NextUnwatched specific options
-                        let nextUnwatchedInfo = '';
-                        if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries === false) {
-                            nextUnwatchedInfo = ' (excluding unwatched series)';
-                        }
-                        
-                        // Check for Collections specific options
-                        let collectionsInfo = '';
-                        if (rule.MemberName === 'Collections' && rule.IncludeEpisodesWithinSeries === true) {
-                            collectionsInfo = ' (including episodes within series)';
-                        }
-                        
-                        rulesHtml += '<span style="font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 2px; border-radius: 2px;">' +
-                                     escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' +
-                                     userInfo + nextUnwatchedInfo + collectionsInfo + '</span>';
-                    }
-                    
-                    rulesHtml += '</div>';
-                }
-            }
-        } else {
-            rulesHtml = '<em>No rules defined</em><br>';
-        }
-        return rulesHtml;
-    }
-
     // Helper function to format playlist display values
     function formatPlaylistDisplayValues(playlist) {
         const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
@@ -2532,6 +2523,7 @@
         
         container.innerHTML = '<p>Loading playlists...</p>';
         
+        
         apiClient.ajax({
             type: "GET",
             url: apiClient.getUrl(ENDPOINTS.base),
@@ -2540,93 +2532,68 @@
             if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
             return response.json();
         }).then(async playlists => {
+            // Ensure playlists is an array
+            if (!Array.isArray(playlists)) {
+                console.warn('API returned non-array playlists data, converting to empty array');
+                playlists = [];
+            }
+            
+            // Check if any playlists were skipped due to corruption
+            // This is a simple heuristic - if there are JSON files but fewer playlists loaded
+            // Note: This won't be 100% accurate but gives users a heads up
+            if (playlists.length > 0) {
+                console.log(`SmartPlaylist: Loaded ${playlists.length} playlist(s) successfully`);
+            }
+            
             // Store playlists data for filtering
             page._allPlaylists = playlists;
             
+            try {
+                // Populate user filter dropdown
+                await populateUserFilter(page, playlists);
+            } catch (err) {
+                console.error('Error populating user filter:', err);
+                // Continue even if user filter fails
+            }
+            
             if (playlists && playlists.length > 0) {
-                // Apply current search filter if any
-                const searchInput = page.querySelector('#playlistSearchInput');
-                const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
-                const filteredPlaylists = searchTerm ? filterPlaylists(playlists, searchTerm) : playlists;
+                // Apply all filters and sorting and display results
+                const filteredPlaylists = applyAllFiltersAndSort(page, playlists);
                 
-                // Calculate summary statistics for filtered results
+                // Use the existing playlist display logic instead of the async function for now
                 const totalPlaylists = playlists.length;
                 const filteredCount = filteredPlaylists.length;
                 const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
                 const disabledPlaylists = filteredCount - enabledPlaylists;
                 
-                let html = '<div class="inputContainer">';
-                html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px; border-left: 3px solid #666;">';
-                html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                        (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
+                let html = '';
+                
+                // Add bulk actions container after summary
+                const summaryText = '<strong>Summary:</strong> ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
                         ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
-                html += '</div></div>';
+                html += generateBulkActionsHTML(summaryText);
                 
                 // Process filtered playlists sequentially to resolve usernames
                 for (const playlist of filteredPlaylists) {
-                    const isPublic = playlist.Public ? 'Public' : 'Private';
-                    const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
-                    const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
-                    const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
-                    const autoRefreshMode = playlist.AutoRefresh || 'Never';
-                    const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
-                                             autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
-                                             autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
-                    const scheduleDisplay = formatScheduleDisplay(playlist);
+                    // Resolve username first
+                    const resolvedUserName = await resolveUsername(apiClient, playlist);
                     
-                    // Format last scheduled refresh display
-                    const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Unknown');
-                    const sortName = playlist.Order ? playlist.Order.Name : 'Default';
-                    const userName = await resolveUsername(apiClient, playlist);
-                    const playlistId = playlist.Id || 'NO_ID';
-                    const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
-                        playlist.MediaTypes.join(', ') : 'All Types';
+                    // Generate detailed rules display using helper function
+                    const rulesHtml = await generateRulesHtml(playlist, apiClient);
                     
-                    // Use helper functions to generate rules HTML and format display values
-                    const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
-                    const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
-                    
-                    // Escape all dynamic content to prevent XSS
-                    const eName = escapeHtml(playlist.Name || '');
-                    const eFileName = escapeHtml(playlist.FileName || '');
-                    const eUserName = escapeHtml(userName || '');
-                    const eMediaTypes = escapeHtml(mediaTypes);
-                    const eSortName = escapeHtml(sortName);
-                    const eMaxItems = escapeHtml(maxItemsDisplay);
-                    const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
-                    const eAutoRefreshDisplay = escapeHtml(autoRefreshDisplay);
-                    const eScheduleDisplay = escapeHtml(scheduleDisplay);
-                    const eLastRefreshDisplay = escapeHtml(lastRefreshDisplay);
-                    const ePlaylistId = escapeHtml(playlistId);
-                    
-                    html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 2px; margin-bottom: 1.5em;">' +
-                        '<h3 style="margin-top: 0;">' + eName + '</h3>' +
-                        '<div class="field-description">' +
-                        '<strong>File:</strong> ' + eFileName + '<br>' +
-                        '<strong>User:</strong> ' + eUserName + '<br>' +
-                        '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
-                        '<strong>Rules:</strong><br>' + rulesHtml + 
-                        '<strong>Sort:</strong> ' + eSortName + '<br>' +
-                        '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
-                        '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
-                        '<strong>Auto-refresh:</strong> ' + eAutoRefreshDisplay + '<br>' +
-                        '<strong>Scheduled refresh:</strong> ' + eScheduleDisplay + '<br>' +
-                        '<strong>Last refreshed:</strong> ' + eLastRefreshDisplay + '<br>' +
-                        '<strong>Visibility:</strong> ' + isPublic + '<br>' +
-                        '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
-                        '</div>' +
-                        '<div style="margin-top: 1em;">' +
-                        '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                        '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
-                        (isEnabled ? 
-                            '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
-                            '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
-                        ) +
-                        '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
-                        '</div>' +
-                        '</div>';
+                    // Use helper function to generate playlist HTML (DRY)
+                    html += generatePlaylistCardHtml(playlist, rulesHtml, resolvedUserName);
                 }
                 container.innerHTML = html;
+                
+                // Restore expand states from localStorage
+                restorePlaylistExpandStates(page);
+                
+                // Update expand all button text based on current states
+                updateExpandAllButtonText(page);
+                
+                // Update bulk actions visibility and state
+                updateBulkActionsVisibility(page);
             } else {
                 container.innerHTML = '<div class="inputContainer"><p>No smart playlists found.</p></div>';
             }
@@ -2645,7 +2612,7 @@
         });
     }
 
-    function filterPlaylists(playlists, searchTerm) {
+    function filterPlaylists(playlists, searchTerm, page) {
         if (!searchTerm) return playlists;
         
         return playlists.filter(playlist => {
@@ -2709,91 +2676,1097 @@
                 return true;
             }
             
-            // Search in legacy username field (for backward compatibility)
-            if (playlist.User && playlist.User.toLowerCase().includes(searchTerm)) {
-                return true;
-            }
-            
-            // Search in LastRefreshed field
-            if (playlist.LastRefreshed) {
-                const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, '');
-                
-                if (lastRefreshDisplay.toLowerCase().includes(searchTerm)) {
+            // Search in username (resolved from UserId)
+            if (page && page._usernameCache && playlist.UserId) {
+                const username = page._usernameCache.get(playlist.UserId);
+                if (username && username.toLowerCase().includes(searchTerm)) {
                     return true;
                 }
-                
-                // Also search for "unknown" if LastRefreshed is null/undefined
-                if (searchTerm === 'unknown' && !playlist.LastRefreshed) {
-                    return true;
-                }
-            } else if (searchTerm === 'unknown' || searchTerm === 'never') {
-                return true;
-            }
-            
-            // Search in AutoRefresh field
-            if (playlist.AutoRefresh) {
-                const autoRefreshMode = playlist.AutoRefresh;
-                let autoRefreshDisplay = '';
-                if (autoRefreshMode === 'Never') {
-                    autoRefreshDisplay = 'manual/scheduled only';
-                } else if (autoRefreshMode === 'OnLibraryChanges') {
-                    autoRefreshDisplay = 'on library changes';
-                } else if (autoRefreshMode === 'OnAllChanges') {
-                    autoRefreshDisplay = 'on all changes';
-                } else {
-                    autoRefreshDisplay = autoRefreshMode.toLowerCase();
-                }
-                
-                if (autoRefreshDisplay.includes(searchTerm)) {
-                    return true;
-                }
-                
-                // Also search for the enum values directly
-                if (autoRefreshMode.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-            }
-            
-            // Search in ScheduleTrigger field
-            if (playlist.ScheduleTrigger) {
-                const scheduleDisplay = formatScheduleDisplay(playlist);
-                if (scheduleDisplay.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-                
-                // Also search for the enum values directly
-                if (playlist.ScheduleTrigger.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-            } else if (searchTerm === 'legacy' || searchTerm === 'jellyfin' || searchTerm === 'tasks') {
-                // Search for legacy tasks when ScheduleTrigger is null/undefined
-                return true;
             }
             
             return false;
         });
     }
 
-    async function filterPlaylistsByUser(playlists, searchTerm) {
+
+    // ========================================
+    // PLAYLIST FILTERING & SORTING SYSTEM
+    // ========================================
+    
+    // Centralized filter configuration - eliminates DRY violations
+    const PLAYLIST_FILTER_CONFIGS = {
+        search: {
+            selector: '#playlistSearchInput',
+            defaultValue: '',
+            getValue: (element) => element ? element.value.trim().toLowerCase() : '',
+            filterFn: (playlists, searchTerm, page) => {
         if (!searchTerm) return playlists;
+                return filterPlaylists(playlists, searchTerm, page); // Use existing comprehensive search
+            }
+        },
+        mediaType: {
+            selector: '#mediaTypeFilter',
+            defaultValue: 'all',
+            getValue: (element) => element ? element.value : 'all',
+            filterFn: (playlists, mediaTypeFilter, page) => {
+                if (!mediaTypeFilter || mediaTypeFilter === 'all') return playlists;
+                
+                return playlists.filter(playlist => {
+                    const mediaTypes = playlist.MediaTypes || [];
+                    
+                    // Show playlists that contain the selected media type (inclusive filtering)
+                    return mediaTypes.includes(mediaTypeFilter);
+                });
+            }
+        },
+        visibility: {
+            selector: '#visibilityFilter',
+            defaultValue: 'all',
+            getValue: (element) => element ? element.value : 'all',
+            filterFn: (playlists, visibilityFilter, page) => {
+                if (!visibilityFilter || visibilityFilter === 'all') return playlists;
+                
+                return playlists.filter(playlist => {
+                    const isPublic = playlist.Public === true;
+                    
+                    switch (visibilityFilter) {
+                        case 'public':
+                            return isPublic;
+                        case 'private':
+                            return !isPublic;
+                        default:
+                            return true;
+                    }
+                });
+            }
+        },
+        user: {
+            selector: '#userFilter',
+            defaultValue: 'all',
+            getValue: (element) => element ? element.value : 'all',
+            filterFn: (playlists, userFilter, page) => {
+                if (!userFilter || userFilter === 'all') return playlists;
+                
+                return playlists.filter(playlist => {
+                    return playlist.UserId === userFilter;
+                });
+            }
+        },
+        sort: {
+            selector: '#playlistSortSelect',
+            defaultValue: 'name-asc',
+            getValue: (element) => element ? element.value : 'name-asc'
+            // Note: sorting is handled by sortPlaylists function, not as a filter
+        }
+    };
+
+    // Generic DOM query helper - eliminates repetitive querySelector patterns
+    function getFilterValue(page, filterKey) {
+        const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+        if (!config) return config?.defaultValue || '';
         
-        const apiClient = getApiClient();
-        const matchingPlaylists = [];
+        const element = page.querySelector(config.selector);
+        return config.getValue(element);
+    }
+
+    // Generic filter application function - replaces all individual filter functions
+    function applyFilter(playlists, filterKey, filterValue, page) {
+        const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+        if (!config) return playlists;
         
-        // Process playlists sequentially to resolve usernames and search
-        for (const playlist of playlists) {
-            try {
-                const userName = await resolveUsername(apiClient, playlist);
-                if (userName.toLowerCase().includes(searchTerm)) {
-                    matchingPlaylists.push(playlist);
+        return config.filterFn(playlists, filterValue, page);
+    }
+
+    // Generic event listener setup - eliminates repetitive filter change handlers
+    function setupFilterEventListeners(page, pageSignal) {
+        const filterKeys = ['sort', 'mediaType', 'visibility', 'user'];
+        
+        filterKeys.forEach(filterKey => {
+            const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+            if (!config) return;
+            
+            const element = page.querySelector(config.selector);
+            if (element) {
+                element.addEventListener('change', function() {
+                    savePlaylistFilterPreferences(page);
+                    applySearchFilter(page).catch(err => {
+                        console.error(`Error during ${filterKey} filter:`, err);
+                        showNotification(`Filter error: ${err.message}`);
+                    });
+                }, getEventListenerOptions(pageSignal));
+            }
+        });
+    }
+
+    // Helper function to generate rules HTML (DRY principle)
+    async function generateRulesHtml(playlist, apiClient) {
+        let rulesHtml = '';
+        if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+            for (let groupIndex = 0; groupIndex < playlist.ExpressionSets.length; groupIndex++) {
+                const expressionSet = playlist.ExpressionSets[groupIndex];
+                if (groupIndex > 0) {
+                    rulesHtml += '<strong style="color: #888;">OR</strong><br>';
                 }
-            } catch (err) {
-                console.error('Error resolving username for playlist search:', err);
-                // Continue with other playlists even if one fails
+                
+                if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                    rulesHtml += '<div style="padding: 0.6em; background: rgba(255,255,255,0.02); border-radius: 4px; margin: 0.3em 0;">';
+                    
+                    for (let ruleIndex = 0; ruleIndex < expressionSet.Expressions.length; ruleIndex++) {
+                        const rule = expressionSet.Expressions[ruleIndex];
+                        if (ruleIndex > 0) {
+                            rulesHtml += '<br><em style="color: #888; font-size: 0.9em;">AND</em><br>';
+                        }
+                        
+                        let fieldName = rule.MemberName;
+                        if (fieldName === 'ItemType') fieldName = 'Media Type';
+                        let operator = rule.Operator;
+                        switch(operator) {
+                            case 'Equal': operator = 'equals'; break;
+                            case 'NotEqual': operator = 'not equals'; break;
+                            case 'Contains': operator = 'contains'; break;
+                            case 'NotContains': operator = "not contains"; break;
+                            case 'IsIn': operator = 'is in'; break;
+                            case 'IsNotIn': operator = 'is not in'; break;
+                            case 'GreaterThan': operator = '>'; break;
+                            case 'LessThan': operator = '<'; break;
+                            case 'After': operator = 'after'; break;
+                            case 'Before': operator = 'before'; break;
+                            case 'GreaterThanOrEqual': operator = '>='; break;
+                            case 'LessThanOrEqual': operator = '<='; break;
+                            case 'MatchRegex': operator = 'matches regex'; break;
+                        }
+                        let value = rule.TargetValue;
+                        if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                        if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
+                        
+                        // Check if this rule has a specific user and resolve username
+                        let userInfo = '';
+                        if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {
+                            try {
+                                const userName = await resolveUserIdToName(apiClient, rule.UserId);
+                                userInfo = ' for ' + (userName || 'Unknown User');
+                            } catch (err) {
+                                console.error('Error resolving username for rule:', err);
+                                userInfo = ' for specific user';
+                            }
+                        }
+                        
+                        // Add NextUnwatched configuration info
+                        let nextUnwatchedInfo = '';
+                        if (rule.MemberName === 'NextUnwatched' && rule.IncludeUnwatchedSeries !== undefined) {
+                            nextUnwatchedInfo = rule.IncludeUnwatchedSeries ? ' (including unwatched series)' : ' (excluding unwatched series)';
+                        }
+                        
+                        // Add Collections configuration info
+                        let collectionsInfo = '';
+                        if (rule.MemberName === 'Collections' && rule.IncludeEpisodesWithinSeries === true) {
+                            collectionsInfo = ' (including episodes within series)';
+                        }
+                        
+                        rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
+                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + userInfo + nextUnwatchedInfo + collectionsInfo;
+                        rulesHtml += '</span>';
+                    }
+                    rulesHtml += '</div>';
+                }
+            }
+        } else {
+            rulesHtml = 'No rules defined';
+        }
+        return rulesHtml;
+    }
+
+    // Helper function to generate playlist HTML (DRY principle)
+    function generatePlaylistCardHtml(playlist, rulesHtml, resolvedUserName) {
+        const isPublic = playlist.Public ? 'Public' : 'Private';
+        const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
+        const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
+        const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
+        const autoRefreshMode = playlist.AutoRefresh || 'Never';
+        const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
+                                 autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
+                                 autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
+        const scheduleDisplay = formatScheduleDisplay(playlist);
+        
+        // Format last scheduled refresh display
+        const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Unknown');
+        const dateCreatedDisplay = formatRelativeTimeFromIso(playlist.DateCreated, 'Unknown');
+        const sortName = playlist.Order ? playlist.Order.Name : 'Default';
+        
+        // Use the resolved username passed as parameter
+        const userName = resolvedUserName || 'Unknown User';
+        const playlistId = playlist.Id || 'NO_ID';
+        const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
+            playlist.MediaTypes.join(', ') : 'All Types';
+        
+        const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
+        
+        // Escape all dynamic content to prevent XSS
+        const eName = escapeHtml(playlist.Name || '');
+        const eFileName = escapeHtml(playlist.FileName || '');
+        const eUserName = escapeHtml(userName || '');
+        const eMediaTypes = escapeHtml(mediaTypes);
+        const eSortName = escapeHtml(sortName);
+        const eMaxItems = escapeHtml(maxItemsDisplay);
+        const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
+        const eAutoRefreshDisplay = escapeHtml(autoRefreshDisplay);
+        const eScheduleDisplay = escapeHtml(scheduleDisplay);
+        const eLastRefreshDisplay = escapeHtml(lastRefreshDisplay);
+        const eDateCreatedDisplay = escapeHtml(dateCreatedDisplay);
+        const ePlaylistId = escapeHtml(playlistId);
+        
+        // Generate collapsible playlist card with improved styling
+        return '<div class="inputContainer playlist-card" data-playlist-id="' + ePlaylistId + '" style="border: 1px solid #444; border-radius: 2px; margin-bottom: 0.75em;">' +
+            // Compact header (always visible)
+            '<div class="playlist-header" style="padding: 0.75em; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">' +
+                '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1;">' +
+                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em;">' +
+                        '<input type="checkbox" is="emby-checkbox" data-embycheckbox="true" class="emby-checkbox playlist-checkbox" data-playlist-id="' + ePlaylistId + '">' +
+                        '<span class="checkboxLabel" style="display: none;"></span>' +
+                        '<span class="checkboxOutline">' +
+                            '<span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>' +
+                            '<span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>' +
+                        '</span>' +
+                    '</label>' +
+                    '<span class="playlist-expand-icon" style="margin-right: 0.5em; font-family: monospace; font-size: 1.2em; color: #999;">▶</span>' +
+                    '<h3 style="margin: 0; flex: 1;">' + eName + '</h3>' +
+                    '<span class="playlist-media-types" style="margin-left: 0.5em; padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc;">' + eMediaTypes + '</span>' +
+                '</div>' +
+                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em;">' +
+                    '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
+                '</div>' +
+            '</div>' +
+            
+            // Detailed content (initially hidden)
+            '<div class="playlist-details" style="display: none; padding: 0 0.75em 0.75em 0.75em; background: rgba(0,0,0,0.1);">' +
+                // Rules section at the top
+                '<div class="rules-section" style="margin-bottom: 1em;">' +
+                    '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Rules</h4>' +
+                        rulesHtml +
+                '</div>' +
+                
+                // Properties table
+                '<div class="properties-section">' +
+                    '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Properties</h4>' +
+                    '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">File</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eFileName + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">User</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eUserName + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Sort</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eSortName + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Items</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxItems + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Play Time</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxPlayTime + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Auto-refresh</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eAutoRefreshDisplay + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Scheduled refresh</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eScheduleDisplay + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Date created</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eDateCreatedDisplay + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last refreshed</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Visibility</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + isPublic + '</td>' +
+                        '</tr>' +
+                    '</table>' +
+                '</div>' +
+                
+                // Action buttons (only shown when expanded, bigger styling, no borders)
+                '<div class="playlist-actions" style="margin-top: 1em;">' +
+                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Clone</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
+                    (isEnabled ? 
+                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
+                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
+                    ) +
+                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Bulk operations functionality
+    function updateBulkActionsVisibility(page) {
+        const bulkContainer = page.querySelector('#bulkActionsContainer');
+        const checkboxes = page.querySelectorAll('.playlist-checkbox');
+        
+        // Show bulk actions if any playlists exist
+        if (checkboxes.length > 0) {
+            bulkContainer.style.display = 'block';
+        } else {
+            bulkContainer.style.display = 'none';
+        }
+        
+        // Update selected count and button states
+        updateSelectedCount(page);
+    }
+    
+    function updateSelectedCount(page) {
+        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
+        const selectedCount = selectedCheckboxes.length;
+        
+        // Update count display
+        const countDisplay = page.querySelector('#selectedCountDisplay');
+        if (countDisplay) {
+            countDisplay.textContent = selectedCount + ' selected';
+        }
+        
+        // Update button states
+        const bulkEnableBtn = page.querySelector('#bulkEnableBtn');
+        const bulkDisableBtn = page.querySelector('#bulkDisableBtn');
+        const bulkDeleteBtn = page.querySelector('#bulkDeleteBtn');
+        
+        const hasSelection = selectedCount > 0;
+        if (bulkEnableBtn) bulkEnableBtn.disabled = !hasSelection;
+        if (bulkDisableBtn) bulkDisableBtn.disabled = !hasSelection;
+        if (bulkDeleteBtn) bulkDeleteBtn.disabled = !hasSelection;
+        
+        // Update Select All checkbox state
+        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+        const totalCheckboxes = page.querySelectorAll('.playlist-checkbox').length;
+        if (selectAllCheckbox && totalCheckboxes > 0) {
+            selectAllCheckbox.checked = selectedCount === totalCheckboxes;
+            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCheckboxes;
+        }
+    }
+    
+    function toggleSelectAll(page) {
+        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+        const playlistCheckboxes = page.querySelectorAll('.playlist-checkbox');
+        
+        const shouldSelect = selectAllCheckbox.checked;
+        
+        playlistCheckboxes.forEach(checkbox => {
+            checkbox.checked = shouldSelect;
+        });
+        
+        updateSelectedCount(page);
+    }
+    
+    async function bulkEnablePlaylists(page) {
+        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
+        const playlistIds = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-playlist-id'));
+        
+        if (playlistIds.length === 0) {
+            showNotification('No playlists selected', 'error');
+            return;
+        }
+        
+        // Filter to only playlists that are currently disabled
+        const playlistsToEnable = [];
+        const alreadyEnabled = [];
+        
+        for (const checkbox of selectedCheckboxes) {
+            const playlistId = checkbox.getAttribute('data-playlist-id');
+            const playlistCard = checkbox.closest('.playlist-card');
+            const statusElement = playlistCard.querySelector('.playlist-status');
+            const isCurrentlyEnabled = statusElement && statusElement.textContent.includes('Enabled');
+            
+            if (isCurrentlyEnabled) {
+                alreadyEnabled.push(playlistId);
+            } else {
+                playlistsToEnable.push(playlistId);
             }
         }
         
-        return matchingPlaylists;
+        if (playlistsToEnable.length === 0) {
+            showNotification('All selected playlists are already enabled', 'info');
+            return;
+        }
+        
+        const apiClient = getApiClient();
+        let successCount = 0;
+        let errorCount = 0;
+        
+        Dashboard.showLoadingMsg();
+        
+        for (const playlistId of playlistsToEnable) {
+            try {
+                await apiClient.ajax({
+                    type: "POST",
+                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '/enable'),
+                    contentType: 'application/json'
+                });
+                successCount++;
+            } catch (err) {
+                console.error('Error enabling playlist:', playlistId, err);
+                errorCount++;
+            }
+        }
+        
+        Dashboard.hideLoadingMsg();
+        
+        if (errorCount === 0) {
+            showNotification(successCount + ' playlist(s) enabled successfully', 'success');
+        } else {
+            showNotification(successCount + ' enabled, ' + errorCount + ' failed', 'error');
+        }
+        
+        // Refresh the list and clear selections
+        loadPlaylistList(page);
+    }
+    
+    async function bulkDisablePlaylists(page) {
+        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
+        const playlistIds = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-playlist-id'));
+        
+        if (playlistIds.length === 0) {
+            showNotification('No playlists selected', 'error');
+            return;
+        }
+        
+        // Filter to only playlists that are currently enabled
+        const playlistsToDisable = [];
+        const alreadyDisabled = [];
+        
+        for (const checkbox of selectedCheckboxes) {
+            const playlistId = checkbox.getAttribute('data-playlist-id');
+            const playlistCard = checkbox.closest('.playlist-card');
+            const statusElement = playlistCard.querySelector('.playlist-status');
+            const isCurrentlyEnabled = statusElement && statusElement.textContent.includes('Enabled');
+            
+            if (isCurrentlyEnabled) {
+                playlistsToDisable.push(playlistId);
+            } else {
+                alreadyDisabled.push(playlistId);
+            }
+        }
+        
+        if (playlistsToDisable.length === 0) {
+            showNotification('All selected playlists are already disabled', 'info');
+            return;
+        }
+        
+        const apiClient = getApiClient();
+        let successCount = 0;
+        let errorCount = 0;
+        
+        Dashboard.showLoadingMsg();
+        
+        for (const playlistId of playlistsToDisable) {
+            try {
+                await apiClient.ajax({
+                    type: "POST",
+                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '/disable'),
+                    contentType: 'application/json'
+                });
+                successCount++;
+            } catch (err) {
+                console.error('Error disabling playlist:', playlistId, err);
+                errorCount++;
+            }
+        }
+        
+        Dashboard.hideLoadingMsg();
+        
+        if (errorCount === 0) {
+            showNotification(successCount + ' playlist(s) disabled successfully', 'success');
+        } else {
+            showNotification(successCount + ' disabled, ' + errorCount + ' failed', 'error');
+        }
+        
+        // Refresh the list and clear selections
+        loadPlaylistList(page);
+    }
+    
+    // Refresh confirmation modal function
+    function showRefreshConfirmModal(page, onConfirm) {
+        const modal = page.querySelector('#refresh-confirm-modal');
+        if (!modal) return;
+        
+        // Clean up any existing modal listeners
+        cleanupModalListeners(modal);
+
+        // Apply modal styles using centralized configuration
+        const modalContainer = modal.querySelector('.custom-modal-container');
+        applyStyles(modalContainer, STYLES.modal.container);
+        applyStyles(modal, STYLES.modal.backdrop);
+        
+        // Show the modal
+        modal.classList.remove('hide');
+        
+        // Create AbortController for modal event listeners
+        const modalAbortController = createAbortController();
+        const modalSignal = modalAbortController.signal;
+
+        // Clean up function to close modal and remove all listeners
+        const cleanupAndClose = () => {
+            modal.classList.add('hide');
+            cleanupModalListeners(modal);
+        };
+
+        // Handle confirm button
+        const confirmBtn = modal.querySelector('.modal-confirm-btn');
+        confirmBtn.addEventListener('click', function() {
+            cleanupAndClose();
+            onConfirm();
+        }, getEventListenerOptions(modalSignal));
+
+        // Handle cancel button
+        const cancelBtn = modal.querySelector('.modal-cancel-btn');
+        cancelBtn.addEventListener('click', function() {
+            cleanupAndClose();
+        }, getEventListenerOptions(modalSignal));
+
+        // Handle backdrop click
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                cleanupAndClose();
+            }
+        }, getEventListenerOptions(modalSignal));
+
+        // Store abort controller for cleanup
+        modal._modalAbortController = modalAbortController;
+    }
+
+    // Generic delete modal function to reduce duplication
+    function showDeleteModal(page, confirmText, onConfirm) {
+        const modal = page.querySelector('#delete-confirm-modal');
+        if (!modal) return;
+        
+        // Clean up any existing modal listeners
+        cleanupModalListeners(modal);
+
+        // Apply modal styles using centralized configuration
+        const modalContainer = modal.querySelector('.custom-modal-container');
+        applyStyles(modalContainer, STYLES.modal.container);
+        applyStyles(modal, STYLES.modal.backdrop);
+
+        // Set the confirmation text with proper line break handling
+        const confirmTextElement = modal.querySelector('#delete-confirm-text');
+        confirmTextElement.textContent = confirmText;
+        confirmTextElement.style.whiteSpace = 'pre-line';
+        
+        // Reset checkbox to checked by default
+        const checkbox = modal.querySelector('#delete-jellyfin-playlist-checkbox');
+        if (checkbox) {
+            checkbox.checked = true;
+        }
+        
+        // Show the modal
+        modal.classList.remove('hide');
+        
+        // Create AbortController for modal event listeners
+        const modalAbortController = createAbortController();
+        const modalSignal = modalAbortController.signal;
+
+        // Clean up function to close modal and remove all listeners
+        const cleanupAndClose = () => {
+            modal.classList.add('hide');
+            cleanupModalListeners(modal);
+        };
+
+        // Handle confirm button
+        const confirmBtn = modal.querySelector('#delete-confirm-btn');
+        confirmBtn.addEventListener('click', function() {
+            cleanupAndClose();
+            onConfirm();
+        }, getEventListenerOptions(modalSignal));
+
+        // Handle cancel button
+        const cancelBtn = modal.querySelector('#delete-cancel-btn');
+        cancelBtn.addEventListener('click', function() {
+            cleanupAndClose();
+        }, getEventListenerOptions(modalSignal));
+
+        // Handle backdrop click
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                cleanupAndClose();
+            }
+        }, getEventListenerOptions(modalSignal));
+
+        // Store abort controller for cleanup
+        modal._modalAbortController = modalAbortController;
+    }
+
+    function showBulkDeleteConfirm(page, playlistIds, playlistNames) {
+        const playlistList = playlistNames.length > 5 
+            ? playlistNames.slice(0, 5).join('\n') + `\n... and ${playlistNames.length - 5} more`
+            : playlistNames.join('\n');
+        
+        const confirmText = `Are you sure you want to delete the following playlist(s)?\n\n${playlistList}\n\nThis action cannot be undone.`;
+        
+        showDeleteModal(page, confirmText, () => {
+            performBulkDelete(page, playlistIds);
+        });
+    }
+
+    async function performBulkDelete(page, playlistIds) {
+        const apiClient = getApiClient();
+        const deleteJellyfinPlaylist = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+        let successCount = 0;
+        let errorCount = 0;
+        
+        Dashboard.showLoadingMsg();
+        
+        for (const playlistId of playlistIds) {
+            try {
+                await apiClient.ajax({
+                    type: "DELETE",
+                    url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId + '?deleteJellyfinPlaylist=' + deleteJellyfinPlaylist),
+                    contentType: 'application/json'
+                });
+                successCount++;
+            } catch (err) {
+                console.error('Error deleting playlist:', playlistId, err);
+                errorCount++;
+            }
+        }
+        
+        Dashboard.hideLoadingMsg();
+        
+        if (successCount > 0) {
+            const action = deleteJellyfinPlaylist ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
+            showNotification(`Successfully ${action} ${successCount} playlist(s).`, 'success');
+        }
+        if (errorCount > 0) {
+            showNotification(`Failed to delete ${errorCount} playlist(s).`, 'error');
+        }
+        
+        // Clear selections and reload
+        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
+        
+        loadPlaylistList(page);
+    }
+
+    async function bulkDeletePlaylists(page) {
+        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
+        const playlistIds = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-playlist-id'));
+        
+        if (playlistIds.length === 0) {
+            showNotification('No playlists selected', 'error');
+            return;
+        }
+        
+        const playlistNames = Array.from(selectedCheckboxes).map(cb => {
+            const playlistCard = cb.closest('.playlist-card');
+            const nameElement = playlistCard ? playlistCard.querySelector('.playlist-header-left h3') : null;
+            return nameElement ? nameElement.textContent : 'Unknown';
+        });
+        
+        // Show the custom modal instead of browser confirm
+        showBulkDeleteConfirm(page, playlistIds, playlistNames);
+    }
+
+    // Collapsible playlist functionality
+    function togglePlaylistCard(playlistCard) {
+        const details = playlistCard.querySelector('.playlist-details');
+        const actions = playlistCard.querySelector('.playlist-actions');
+        const icon = playlistCard.querySelector('.playlist-expand-icon');
+        
+        if (details.style.display === 'none' || details.style.display === '') {
+            // Expand
+            details.style.display = 'block';
+            actions.style.display = 'block';
+            icon.textContent = '▼';
+            playlistCard.setAttribute('data-expanded', 'true');
+        } else {
+            // Collapse
+            details.style.display = 'none';
+            actions.style.display = 'none';
+            icon.textContent = '▶';
+            playlistCard.setAttribute('data-expanded', 'false');
+        }
+        
+        // Save state to localStorage
+        savePlaylistExpandStates();
+    }
+
+    function toggleAllPlaylists(page) {
+        const expandAllBtn = page.querySelector('#expandAllBtn');
+        const playlistCards = page.querySelectorAll('.playlist-card');
+        
+        if (!playlistCards.length) return;
+        
+        // Base action on current button text, not on current state
+        const shouldExpand = expandAllBtn.textContent.trim() === 'Expand All';
+        
+        if (shouldExpand) {
+            // Expand all
+            playlistCards.forEach(card => {
+                const details = card.querySelector('.playlist-details');
+                const actions = card.querySelector('.playlist-actions');
+                const icon = card.querySelector('.playlist-expand-icon');
+                details.style.display = 'block';
+                actions.style.display = 'block';
+                icon.textContent = '▼';
+                card.setAttribute('data-expanded', 'true');
+            });
+            expandAllBtn.textContent = 'Collapse All';
+        } else {
+            // Collapse all
+            playlistCards.forEach(card => {
+                const details = card.querySelector('.playlist-details');
+                const actions = card.querySelector('.playlist-actions');
+                const icon = card.querySelector('.playlist-expand-icon');
+                details.style.display = 'none';
+                actions.style.display = 'none';
+                icon.textContent = '▶';
+                card.setAttribute('data-expanded', 'false');
+            });
+            expandAllBtn.textContent = 'Expand All';
+        }
+        
+        // Save state to localStorage
+        savePlaylistExpandStates();
+    }
+
+    function savePlaylistExpandStates() {
+        try {
+            const playlistCards = document.querySelectorAll('.playlist-card');
+            const states = {};
+            
+            playlistCards.forEach(card => {
+                const playlistId = card.getAttribute('data-playlist-id');
+                const isExpanded = card.getAttribute('data-expanded') === 'true';
+                if (playlistId) {
+                    states[playlistId] = isExpanded;
+                }
+            });
+            
+            localStorage.setItem('smartPlaylistExpandStates', JSON.stringify(states));
+        } catch (err) {
+            console.warn('Failed to save playlist expand states:', err);
+        }
+    }
+
+    function loadPlaylistExpandStates() {
+        try {
+            const saved = localStorage.getItem('smartPlaylistExpandStates');
+            if (!saved) return {};
+            
+            return JSON.parse(saved);
+        } catch (err) {
+            console.warn('Failed to load playlist expand states:', err);
+            return {};
+        }
+    }
+
+    function restorePlaylistExpandStates(page) {
+        const savedStates = loadPlaylistExpandStates();
+        const playlistCards = page.querySelectorAll('.playlist-card');
+        
+        playlistCards.forEach(card => {
+            const playlistId = card.getAttribute('data-playlist-id');
+            const shouldExpand = savedStates[playlistId] === true;
+            
+            if (shouldExpand) {
+                const details = card.querySelector('.playlist-details');
+                const actions = card.querySelector('.playlist-actions');
+                const icon = card.querySelector('.playlist-expand-icon');
+                details.style.display = 'block';
+                actions.style.display = 'block';
+                icon.textContent = '▼';
+                card.setAttribute('data-expanded', 'true');
+            } else {
+                // Ensure collapsed state (default)
+                card.setAttribute('data-expanded', 'false');
+            }
+        });
+    }
+
+    function updateExpandAllButtonText(page) {
+        const expandAllBtn = page.querySelector('#expandAllBtn');
+        const playlistCards = page.querySelectorAll('.playlist-card');
+        
+        if (!expandAllBtn || !playlistCards.length) return;
+        
+        // Count how many playlists are currently expanded
+        const expandedCount = Array.from(playlistCards).filter(card => 
+            card.getAttribute('data-expanded') === 'true'
+        ).length;
+        const totalCount = playlistCards.length;
+        
+        // Update button text based on current state
+        if (expandedCount === totalCount) {
+            expandAllBtn.textContent = 'Collapse All';
+        } else {
+            expandAllBtn.textContent = 'Expand All';
+        }
+    }
+
+    function sortPlaylists(playlists, sortBy) {
+        if (!sortBy || !playlists) return playlists || [];
+        
+        // Ensure playlists is an array
+        if (!Array.isArray(playlists)) {
+            console.error('sortPlaylists: playlists is not an array:', typeof playlists, playlists);
+            return [];
+        }
+        
+        if (playlists.length === 0) return playlists;
+        
+        const sortedPlaylists = [...playlists]; // Create a copy to avoid mutating original
+        
+        switch (sortBy) {
+            case 'name-asc':
+                return sortedPlaylists.sort((a, b) => {
+                    const nameA = (a.Name || '').toLowerCase();
+                    const nameB = (b.Name || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                
+            case 'name-desc':
+                return sortedPlaylists.sort((a, b) => {
+                    const nameA = (a.Name || '').toLowerCase();
+                    const nameB = (b.Name || '').toLowerCase();
+                    return nameB.localeCompare(nameA);
+                });
+                
+            case 'created-desc':
+                return sortedPlaylists.sort((a, b) => {
+                    const dateA = a.DateCreated ? new Date(a.DateCreated) : new Date(0);
+                    const dateB = b.DateCreated ? new Date(b.DateCreated) : new Date(0);
+                    return dateB - dateA;
+                });
+                
+            case 'created-asc':
+                return sortedPlaylists.sort((a, b) => {
+                    const dateA = a.DateCreated ? new Date(a.DateCreated) : new Date(0);
+                    const dateB = b.DateCreated ? new Date(b.DateCreated) : new Date(0);
+                    return dateA - dateB;
+                });
+                
+            case 'refreshed-desc':
+                return sortedPlaylists.sort((a, b) => {
+                    const dateA = a.LastRefreshed ? new Date(a.LastRefreshed) : new Date(0);
+                    const dateB = b.LastRefreshed ? new Date(b.LastRefreshed) : new Date(0);
+                    return dateB - dateA;
+                });
+                
+            case 'refreshed-asc':
+                return sortedPlaylists.sort((a, b) => {
+                    const dateA = a.LastRefreshed ? new Date(a.LastRefreshed) : new Date(0);
+                    const dateB = b.LastRefreshed ? new Date(b.LastRefreshed) : new Date(0);
+                    return dateA - dateB;
+                });
+                
+            case 'enabled-first':
+                return sortedPlaylists.sort((a, b) => {
+                    const enabledA = a.Enabled !== false ? 1 : 0;
+                    const enabledB = b.Enabled !== false ? 1 : 0;
+                    if (enabledA !== enabledB) return enabledB - enabledA;
+                    // Secondary sort by name
+                    return (a.Name || '').toLowerCase().localeCompare((b.Name || '').toLowerCase());
+                });
+                
+            case 'disabled-first':
+                return sortedPlaylists.sort((a, b) => {
+                    const enabledA = a.Enabled !== false ? 1 : 0;
+                    const enabledB = b.Enabled !== false ? 1 : 0;
+                    if (enabledA !== enabledB) return enabledA - enabledB;
+                    // Secondary sort by name
+                    return (a.Name || '').toLowerCase().localeCompare((b.Name || '').toLowerCase());
+                });
+                
+            default:
+                return sortedPlaylists;
+        }
+    }
+
+    function applyAllFiltersAndSort(page, playlists) {
+        if (!playlists) return [];
+        
+        // Ensure playlists is an array
+        if (!Array.isArray(playlists)) {
+            console.error('applyAllFiltersAndSort: playlists is not an array:', typeof playlists, playlists);
+            return [];
+        }
+        
+        let filteredPlaylists = [...playlists];
+        
+        // Apply all filters using the generic system - much cleaner!
+        const filterOrder = ['search', 'mediaType', 'visibility', 'user'];
+        
+        for (const filterKey of filterOrder) {
+            const filterValue = getFilterValue(page, filterKey);
+            filteredPlaylists = applyFilter(filteredPlaylists, filterKey, filterValue, page);
+        }
+        
+        // Apply sorting
+        const sortValue = getFilterValue(page, 'sort') || 'name-asc';
+        filteredPlaylists = sortPlaylists(filteredPlaylists, sortValue);
+        
+        return filteredPlaylists;
+    }
+
+
+    function clearAllFilters(page) {
+        // Clear search
+        const searchInput = page.querySelector('#playlistSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        
+        // Reset filters to default
+        const mediaTypeFilter = page.querySelector('#mediaTypeFilter');
+        if (mediaTypeFilter) {
+            mediaTypeFilter.value = 'all';
+        }
+        
+        const visibilityFilter = page.querySelector('#visibilityFilter');
+        if (visibilityFilter) {
+            visibilityFilter.value = 'all';
+        }
+        
+        const userFilter = page.querySelector('#userFilter');
+        if (userFilter) {
+            userFilter.value = 'all';
+        }
+        
+        // Reset sort to default
+        const sortSelect = page.querySelector('#playlistSortSelect');
+        if (sortSelect) {
+            sortSelect.value = 'name-asc';
+        }
+        
+        // Save preferences
+        savePlaylistFilterPreferences(page);
+        
+        // Apply filters
+        applySearchFilter(page).catch(err => {
+            console.error('Error during clear filters:', err);
+            showNotification('Filter error: ' + err.message);
+        });
+        
+        // Update clear button visibility
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
+        if (clearSearchBtn) {
+            clearSearchBtn.style.display = 'none';
+        }
+    }
+
+    // Generic preferences system - eliminates manual field-by-field handling
+    function savePlaylistFilterPreferences(page) {
+        try {
+            const preferences = {};
+            
+            // Get preferences for all filters except search (session-specific)
+            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
+            
+            for (const filterKey of persistentFilters) {
+                const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+                if (config) {
+                    const element = page.querySelector(config.selector);
+                    preferences[filterKey] = config.getValue(element);
+                }
+            }
+            
+            localStorage.setItem('smartPlaylistFilterPreferences', JSON.stringify(preferences));
+        } catch (err) {
+            console.warn('Failed to save playlist filter preferences:', err);
+        }
+    }
+
+    function loadPlaylistFilterPreferences(page) {
+        try {
+            const saved = localStorage.getItem('smartPlaylistFilterPreferences');
+            if (!saved) return;
+            
+            const preferences = JSON.parse(saved);
+            
+            // Apply saved preferences using the generic system
+            Object.entries(preferences).forEach(([filterKey, value]) => {
+                const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+                if (config && value !== undefined) {
+                    const element = page.querySelector(config.selector);
+                    if (element) {
+                        element.value = value;
+                    }
+                }
+            });
+            
+        } catch (err) {
+            console.warn('Failed to load playlist filter preferences:', err);
+        }
+    }
+
+    async function populateUserFilter(page, playlists) {
+        const userFilter = page.querySelector('#userFilter');
+        if (!userFilter || !playlists) return;
+        
+        try {
+            // Ensure playlists is an array
+            if (!Array.isArray(playlists)) {
+                console.warn('Playlists is not an array:', typeof playlists, playlists);
+                return;
+            }
+            
+            // Initialize username cache if it doesn't exist
+            if (!page._usernameCache) {
+                page._usernameCache = new Map();
+            }
+            
+            // Get unique user IDs from playlists
+            const userIds = [...new Set(playlists.map(p => p.UserId).filter(id => id))];
+            
+            // Clear existing options except "All Users"
+            const allUsersOption = userFilter.querySelector('option[value="all"]');
+            userFilter.innerHTML = '';
+            if (allUsersOption) {
+                userFilter.appendChild(allUsersOption);
+            } else {
+                const defaultOption = document.createElement('option');
+                defaultOption.value = 'all';
+                defaultOption.textContent = 'All Users';
+                userFilter.appendChild(defaultOption);
+            }
+            
+            // Fetch user names and populate dropdown
+            const apiClient = getApiClient();
+            for (const userId of userIds) {
+                try {
+                    // Try to resolve username
+                    const userName = await resolveUsername(apiClient, { UserId: userId });
+                    
+                    // Cache the resolved username for search functionality
+                    page._usernameCache.set(userId, userName || 'Unknown User');
+                    
+                    const option = document.createElement('option');
+                    option.value = userId;
+                    option.textContent = userName || 'Unknown User';
+                    userFilter.appendChild(option);
+                } catch (err) {
+                    console.warn('Failed to resolve username for user ID:', userId, err);
+                    // Still add the option with the user ID and cache it
+                    const fallbackName = 'User ' + userId.substring(0, 8) + '...';
+                    page._usernameCache.set(userId, fallbackName);
+                    
+                    const option = document.createElement('option');
+                    option.value = userId;
+                    option.textContent = fallbackName;
+                    userFilter.appendChild(option);
+                }
+            }
+        } catch (err) {
+            console.warn('Failed to populate user filter:', err);
+        }
     }
 
     async function applySearchFilter(page) {
@@ -2807,54 +3780,11 @@
             return;
         }
         
-        const searchTerm = searchInput.value.trim().toLowerCase();
+        // Apply all filters and sorting
+        const filteredPlaylists = applyAllFiltersAndSort(page, page._allPlaylists);
         
-        if (!searchTerm) {
-            // No search term, show all playlists
-            displayFilteredPlaylists(page, page._allPlaylists, '');
-            return;
-        }
-        
-        // Show loading state for user search
-        const container = page.querySelector('#playlist-list-container');
-        if (container) {
-            container.innerHTML = '<div class="inputContainer"><p>Searching playlists...</p></div>';
-        }
-        
-        try {
-            // Do basic filtering (synchronous) first
-            const basicFiltered = filterPlaylists(page._allPlaylists, searchTerm);
-            
-            // Also do user search (asynchronous) in parallel
-            const userFiltered = await filterPlaylistsByUser(page._allPlaylists, searchTerm);
-            
-            // Combine results, removing duplicates by playlist ID
-            const combinedResults = new Map();
-            
-            // Add basic filtered results
-            basicFiltered.forEach(playlist => {
-                combinedResults.set(playlist.Id, playlist);
-            });
-            
-            // Add user filtered results
-            userFiltered.forEach(playlist => {
-                combinedResults.set(playlist.Id, playlist);
-            });
-            
-            const filteredPlaylists = Array.from(combinedResults.values());
-            
-            if (filteredPlaylists.length === 0) {
-                container.innerHTML = '<div class="inputContainer"><p>No playlists match your search criteria.</p></div>';
-                return;
-            }
-            
-            // Re-use the existing display logic but with filtered data
-            displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
-            
-        } catch (err) {
-            console.error('Error during search:', err);
-            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + escapeHtml(err && err.message ? err.message : 'Unknown error') + '</p></div>';
-        }
+        // Display the filtered results
+        await displayFilteredPlaylists(page, filteredPlaylists, '');
     }
 
     async function displayFilteredPlaylists(page, filteredPlaylists, searchTerm) {
@@ -2867,79 +3797,44 @@
         const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
         const disabledPlaylists = filteredCount - enabledPlaylists;
         
-        let html = '<div class="inputContainer">';
-        html += '<div class="field-description" style="margin-bottom: 1em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 1px; border-left: 3px solid #666;">';
-        html += '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
-                ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
-        html += '</div></div>';
+        let html = '';
         
-        // Process filtered playlists sequentially to resolve usernames
+        // Add bulk actions container after summary
+        let summaryText;
+        if (!searchTerm && filteredCount === totalPlaylists) {
+            // No search term and showing all playlists - use simple format
+            summaryText = '<strong>Summary:</strong> ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                    ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
+        } else {
+            // Search term or filtered results - use filtered format
+            summaryText = '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
+                    (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
+                    ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
+        }
+        html += generateBulkActionsHTML(summaryText);
+        
+        // Process filtered playlists using the helper function
         for (const playlist of filteredPlaylists) {
-            const isPublic = playlist.Public ? 'Public' : 'Private';
-            const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
-            const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
-            const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
-            const autoRefreshMode = playlist.AutoRefresh || 'Never';
-            const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
-                                     autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
-                                     autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
-            const scheduleDisplay = formatScheduleDisplay(playlist);
+            // Resolve username first
+            const resolvedUserName = await resolveUsername(apiClient, playlist);
             
-            // Format last scheduled refresh display
-            const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Never');
-            const sortName = playlist.Order ? playlist.Order.Name : 'Default';
-            const userName = await resolveUsername(apiClient, playlist);
-            const playlistId = playlist.Id || 'NO_ID';
-            const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
-                playlist.MediaTypes.join(', ') : 'All Types';
+            // Generate detailed rules display using helper function
+            const rulesHtml = await generateRulesHtml(playlist, apiClient);
             
-            // Use helper functions to generate rules HTML and format display values
-            const rulesHtml = await generatePlaylistRulesHtml(playlist, apiClient);
-            const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
-            
-            // Escape all dynamic content to prevent XSS
-            const eName = escapeHtml(playlist.Name || '');
-            const eFileName = escapeHtml(playlist.FileName || '');
-            const eUserName = escapeHtml(userName || '');
-            const eMediaTypes = escapeHtml(mediaTypes);
-            const eSortName = escapeHtml(sortName);
-            const eMaxItems = escapeHtml(maxItemsDisplay);
-            const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
-            const eAutoRefresh = escapeHtml(autoRefreshDisplay);
-            const eSchedule = escapeHtml(scheduleDisplay);
-            const eLastRefresh = escapeHtml(lastRefreshDisplay);
-            const ePlaylistId = escapeHtml(playlistId);
-            
-            html += '<div class="inputContainer" style="border: 1px solid #444; padding: 1em; border-radius: 1px; margin-bottom: 1.5em;">' +
-                '<h4 style="margin-top: 0;">' + eName + '</h4>' +
-                '<div class="field-description">' +
-                '<strong>File:</strong> ' + eFileName + '<br>' +
-                '<strong>User:</strong> ' + eUserName + '<br>' +
-                '<strong>Media Types:</strong> ' + eMediaTypes + '<br>' +
-                '<strong>Rules:</strong><br>' + rulesHtml +
-                '<strong>Sort:</strong> ' + eSortName + '<br>' +
-                '<strong>Max Items:</strong> ' + eMaxItems + '<br>' +
-                '<strong>Max Play Time:</strong> ' + eMaxPlayTime + '<br>' +
-                '<strong>Auto-refresh:</strong> ' + eAutoRefresh + '<br>' +
-                '<strong>Scheduled refresh:</strong> ' + eSchedule + '<br>' +
-                '<strong>Last refreshed:</strong> ' + eLastRefresh + '<br>' +
-                '<strong>Visibility:</strong> ' + isPublic + '<br>' +
-                '<strong>Status:</strong> <span style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
-                '</div>' +
-                '<div style="margin-top: 1em;">' +
-                '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
-                (isEnabled ? 
-                    '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
-                    '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
-                ) +
-                '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
-                '</div>' +
-                '</div>';
+            // Use helper function to generate playlist HTML (DRY)
+            html += generatePlaylistCardHtml(playlist, rulesHtml, resolvedUserName);
         }
         
         container.innerHTML = html;
+        
+        // Restore expand states from localStorage after regenerating HTML
+        restorePlaylistExpandStates(page);
+        
+        // Update expand all button text based on current states
+        updateExpandAllButtonText(page);
+        
+        // Update bulk actions visibility and state
+        updateBulkActionsVisibility(page);
     }
 
     function refreshPlaylist(playlistId, playlistName) {
@@ -3033,67 +3928,11 @@
     }
 
     function showDeleteConfirm(page, playlistId, playlistName) {
-        const modal = page.querySelector('#delete-confirm-modal');
-        if (!modal) return;
+        const confirmText = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
         
-        const modalContainer = modal.querySelector('.custom-modal-container');
-        const confirmText = modal.querySelector('#delete-confirm-text');
-        const confirmBtn = modal.querySelector('#delete-confirm-btn');
-        const cancelBtn = modal.querySelector('#delete-cancel-btn');
-
-        // Clean up any existing modal listeners
-        cleanupModalListeners(modal);
-
-        // Apply modal styles using centralized configuration
-        applyStyles(modalContainer, STYLES.modal.container);
-        applyStyles(modal, STYLES.modal.backdrop);
-
-        confirmText.textContent = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
-        
-        // Reset checkbox to checked by default
-        const checkbox = modal.querySelector('#delete-jellyfin-playlist-checkbox');
-        if (checkbox) {
-            checkbox.checked = true;
-        }
-        
-        // Show the modal
-        modal.classList.remove('hide');
-        
-        // Create AbortController for modal event listeners
-        const modalAbortController = createAbortController();
-        const modalSignal = modalAbortController.signal;
-        
-        // Store the controller on the modal for cleanup
-        modal._modalAbortController = modalAbortController;
-        
-        // Clean up function to close modal and remove all listeners
-        const cleanupAndClose = () => {
-            modal.classList.add('hide');
-            cleanupModalListeners(modal);
-        };
-        
-        const handleConfirm = () => {
+        showDeleteModal(page, confirmText, () => {
             deletePlaylist(page, playlistId, playlistName);
-            cleanupAndClose();
-        };
-
-        const handleCancel = () => {
-            cleanupAndClose();
-        };
-        
-        const handleBackdropClick = (e) => {
-            if (e.target === modal) {
-                cleanupAndClose();
-            }
-        };
-
-        // Store the backdrop handler on the modal for cleanup
-        modal._modalBackdropHandler = handleBackdropClick;
-        
-        // Add event listeners with AbortController signal
-        confirmBtn.addEventListener('click', handleConfirm, getEventListenerOptions(modalSignal));
-        cancelBtn.addEventListener('click', handleCancel, getEventListenerOptions(modalSignal));
-        modal.addEventListener('click', handleBackdropClick, getEventListenerOptions(modalSignal));
+        });
     }
 
     function cleanupModalListeners(modal) {
@@ -3403,6 +4242,206 @@
         });
     }
 
+    async function clonePlaylist(page, playlistId, playlistName) {
+        const apiClient = getApiClient();
+        Dashboard.showLoadingMsg();
+        
+        // Always scroll to top when entering clone mode
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+        apiClient.ajax({
+            type: "GET",
+            url: apiClient.getUrl(ENDPOINTS.base + '/' + playlistId),
+            contentType: 'application/json'
+        }).then(response => {
+            if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
+            return response.json();
+        }).then(playlist => {
+            Dashboard.hideLoadingMsg();
+            
+            if (!playlist) {
+                showNotification('No playlist data received from server.');
+                return;
+            }
+            
+            try {
+                // Switch to Create tab
+                switchToTab(page, 'create');
+                
+                // Clear any existing edit state
+                setPageEditState(page, false, null);
+                
+                // Populate form with cloned playlist data (similar to edit, but for creating new)
+                setElementValue(page, '#playlistName', (playlist.Name || '') + ' (Copy)');
+                setElementChecked(page, '#playlistIsPublic', playlist.Public || false);
+                setElementChecked(page, '#playlistIsEnabled', playlist.Enabled !== false);
+                
+                // Handle AutoRefresh
+                const autoRefreshValue = playlist.AutoRefresh !== undefined ? playlist.AutoRefresh : 'Never';
+                const autoRefreshElement = page.querySelector('#autoRefreshMode');
+                if (autoRefreshElement) {
+                    autoRefreshElement.value = autoRefreshValue;
+                }
+                
+                // Handle schedule settings
+                const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+                if (scheduleTriggerElement) {
+                    const triggerValue = playlist.ScheduleTrigger === 'None' ? '' : (playlist.ScheduleTrigger || '');
+                    scheduleTriggerElement.value = triggerValue;
+                    updateScheduleContainers(page, triggerValue);
+                }
+                
+                const scheduleTimeElement = page.querySelector('#scheduleTime');
+                if (scheduleTimeElement && playlist.ScheduleTime) {
+                    const timeString = playlist.ScheduleTime.substring(0, 5);
+                    scheduleTimeElement.value = timeString;
+                }
+                
+                const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
+                if (scheduleDayElement && playlist.ScheduleDayOfWeek !== undefined) {
+                    scheduleDayElement.value = convertDayOfWeekToValue(playlist.ScheduleDayOfWeek);
+                }
+                
+                const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
+                if (scheduleDayOfMonthElement && playlist.ScheduleDayOfMonth !== undefined) {
+                    scheduleDayOfMonthElement.value = playlist.ScheduleDayOfMonth.toString();
+                }
+                
+                const scheduleIntervalElement = page.querySelector('#scheduleInterval');
+                if (scheduleIntervalElement && playlist.ScheduleInterval) {
+                    scheduleIntervalElement.value = playlist.ScheduleInterval;
+                }
+                
+                // Handle MaxItems
+                const maxItemsValue = (playlist.MaxItems !== undefined && playlist.MaxItems !== null) ? playlist.MaxItems : 0;
+                const maxItemsElement = page.querySelector('#playlistMaxItems');
+                if (maxItemsElement) {
+                    maxItemsElement.value = maxItemsValue;
+                }
+                
+                // Handle MaxPlayTimeMinutes
+                const maxPlayTimeMinutesValue = (playlist.MaxPlayTimeMinutes !== undefined && playlist.MaxPlayTimeMinutes !== null) ? playlist.MaxPlayTimeMinutes : 0;
+                const maxPlayTimeMinutesElement = page.querySelector('#playlistMaxPlayTimeMinutes');
+                if (maxPlayTimeMinutesElement) {
+                    maxPlayTimeMinutesElement.value = maxPlayTimeMinutesValue;
+                }
+                
+                // Set media types
+                const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
+                // First clear all checkboxes
+                mediaTypesSelect.forEach(checkbox => checkbox.checked = false);
+                // Then set the ones from the cloned playlist
+                if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
+                    playlist.MediaTypes.forEach(type => {
+                        const checkbox = mediaTypesSelect.find(checkbox => checkbox.value === type);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                }
+                
+                // Set sort order
+                const sortByElement = page.querySelector('#sortBy');
+                if (sortByElement && playlist.Order && playlist.Order.Name) {
+                    sortByElement.value = playlist.Order.Name;
+                    
+                    // Update sort order visibility and set value
+                    const sortOrderContainer = page.querySelector('#sortOrderContainer');
+                    toggleSortOrderVisibility(sortOrderContainer, playlist.Order.Name);
+                    
+                    const sortOrderElement = page.querySelector('#sortOrder');
+                    if (sortOrderElement && playlist.Order.Direction) {
+                        sortOrderElement.value = playlist.Order.Direction;
+                    }
+                }
+                
+                // Clear existing rules and populate with cloned rules
+                const rulesContainer = page.querySelector('#rules-container');
+                if (rulesContainer) {
+                    rulesContainer.innerHTML = '';
+                }
+                
+                // Populate rules from cloned playlist
+                if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
+                    playlist.ExpressionSets.forEach((expressionSet, setIndex) => {
+                        const logicGroup = setIndex === 0 ? createInitialLogicGroup(page) : addNewLogicGroup(page);
+                        
+                        if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
+                            expressionSet.Expressions.forEach((expression, expIndex) => {
+                                if (expIndex === 0) {
+                                    // Use the first rule row that's already in the group
+                                    const firstRuleRow = logicGroup.querySelector('.rule-row');
+                                    if (firstRuleRow) {
+                                        populateRuleRow(firstRuleRow, expression);
+                                    }
+                                } else {
+                                    // Add additional rule rows
+                                    addRuleToGroup(page, logicGroup);
+                                    const newRuleRow = logicGroup.querySelector('.rule-row:last-child');
+                                    if (newRuleRow) {
+                                        populateRuleRow(newRuleRow, expression);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                } else {
+                    // If no rules, create initial empty group
+                    createInitialLogicGroup(page);
+                }
+                
+                // Update button visibility
+                updateRuleButtonVisibility(page);
+                
+                // Show success message
+                showNotification(`Playlist "${playlistName}" cloned successfully! You can now modify and create the new playlist.`, 'success');
+                
+            } catch (formError) {
+                console.error('Error populating form for clone:', formError);
+                showNotification('Error loading playlist data for cloning: ' + formError.message);
+            }
+        }).catch(err => {
+            Dashboard.hideLoadingMsg();
+            console.error('Error loading playlist for clone:', err);
+            handleApiError(err, 'Failed to load playlist for cloning');
+        });
+    }
+
+    // Helper function to populate a rule row with expression data
+    function populateRuleRow(ruleRow, expression) {
+        try {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            const operatorSelect = ruleRow.querySelector('.rule-operator-select');
+            const valueContainer = ruleRow.querySelector('.rule-value-container');
+            
+            if (fieldSelect && expression.MemberName) {
+                fieldSelect.value = expression.MemberName;
+                updateOperatorOptions(expression.MemberName, operatorSelect);
+                updateUserSelectorVisibility(ruleRow, expression.MemberName);
+                updateNextUnwatchedOptionsVisibility(ruleRow, expression.MemberName);
+                updateCollectionsOptionsVisibility(ruleRow, expression.MemberName);
+            }
+            
+            if (operatorSelect && expression.Operator) {
+                operatorSelect.value = expression.Operator;
+            }
+            
+            if (valueContainer && expression.TargetValue !== undefined) {
+                setValueInput(expression.MemberName, valueContainer, expression.Operator, expression.TargetValue);
+            }
+            
+            // Handle user-specific rules
+            if (expression.UserId) {
+                const userSelect = ruleRow.querySelector('.rule-user-select');
+                if (userSelect) {
+                    userSelect.value = expression.UserId;
+                }
+            }
+        } catch (error) {
+            console.error('Error populating rule row:', error);
+        }
+    }
+
     function cancelEdit(page) {
         setPageEditState(page, false, null);
         
@@ -3526,6 +4565,8 @@
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
+                // Scroll to top of page after saving
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }).catch(err => {
                 Dashboard.hideLoadingMsg();
                 console.error('Error saving configuration:', err);
@@ -3556,7 +4597,13 @@
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);
-            handleApiError(err, 'Failed to refresh playlists');
+            
+            // Handle the case where a refresh is already in progress (409 Conflict)
+            if (err.status === 409) {
+                showNotification('A playlist refresh is already in progress. Please wait for it to complete.', 'warning');
+            } else {
+                handleApiError(err, 'Failed to refresh playlists');
+            }
         });
     }
     
@@ -3596,6 +4643,16 @@
                 color: #e0e0e0;
                 background: inherit;
                 padding-left: 1em;
+            }
+            
+            /* Hide native search input clear button to avoid double X with our custom clear button */
+            #playlistSearchInput::-webkit-search-cancel-button,
+            #playlistSearchInput::-webkit-search-decoration,
+            #playlistSearchInput::-webkit-search-results-button,
+            #playlistSearchInput::-webkit-search-results-decoration {
+                -webkit-appearance: none !important;
+                appearance: none !important;
+                display: none !important;
             }
         `;
         document.head.appendChild(style);
@@ -3728,6 +4785,8 @@
 
         // Load playlist list when switching to manage tab
         if (tabId === 'manage') {
+            // Load saved filter preferences first
+            loadPlaylistFilterPreferences(page);
             loadPlaylistList(page);
         }
 
@@ -3774,10 +4833,15 @@
                 var tabId = button.getAttribute('data-tab');
                 
                 // Hide any open modals when switching tabs
-                var modal = page.querySelector('#delete-confirm-modal');
-                if (modal && !modal.classList.contains('hide')) {
-                    modal.classList.add('hide');
-                    cleanupModalListeners(modal);
+                var deleteModal = page.querySelector('#delete-confirm-modal');
+                if (deleteModal && !deleteModal.classList.contains('hide')) {
+                    deleteModal.classList.add('hide');
+                    cleanupModalListeners(deleteModal);
+                }
+                var refreshModal = page.querySelector('#refresh-confirm-modal');
+                if (refreshModal && !refreshModal.classList.contains('hide')) {
+                    refreshModal.classList.add('hide');
+                    cleanupModalListeners(refreshModal);
                 }
                 
                 // Use shared tab switching helper (includes URL update)
@@ -3859,7 +4923,9 @@
             // Handle other buttons
             if (target.closest('#clearFormBtn')) { clearForm(page); }
             if (target.closest('#saveSettingsBtn')) { saveConfiguration(page); }
-            if (target.closest('#refreshPlaylistsBtn')) { refreshAllPlaylists(); }
+            if (target.closest('#refreshPlaylistsBtn')) { 
+                showRefreshConfirmModal(page, refreshAllPlaylists);
+            }
             if (target.closest('#refreshPlaylistListBtn')) { loadPlaylistList(page); }
             if (target.closest('#exportPlaylistsBtn')) { exportPlaylists(); }
             if (target.closest('#importPlaylistsBtn')) { importPlaylists(page); }
@@ -3870,6 +4936,10 @@
             if (target.closest('.edit-playlist-btn')) {
                 const button = target.closest('.edit-playlist-btn');
                 editPlaylist(page, button.getAttribute('data-playlist-id'));
+            }
+            if (target.closest('.clone-playlist-btn')) {
+                const button = target.closest('.clone-playlist-btn');
+                clonePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
             }
             if (target.closest('.refresh-playlist-btn')) {
                 const button = target.closest('.refresh-playlist-btn');
@@ -3885,6 +4955,41 @@
             }
             if (target.closest('#cancelEditBtn')) {
                 cancelEdit(page);
+            }
+            if (target.closest('#expandAllBtn')) {
+                toggleAllPlaylists(page);
+            }
+            if (target.closest('.playlist-header')) {
+                const playlistCard = target.closest('.playlist-card');
+                if (playlistCard) {
+                    togglePlaylistCard(playlistCard);
+                }
+            }
+            
+            // Bulk operations
+            if (target.closest('#selectAllCheckbox')) {
+                toggleSelectAll(page);
+            }
+            if (target.closest('#bulkEnableBtn')) {
+                bulkEnablePlaylists(page);
+            }
+            if (target.closest('#bulkDisableBtn')) {
+                bulkDisablePlaylists(page);
+            }
+            if (target.closest('#bulkDeleteBtn')) {
+                bulkDeletePlaylists(page);
+            }
+            if (target.classList.contains('playlist-checkbox')) {
+                e.stopPropagation(); // Prevent triggering playlist header click
+                updateSelectedCount(page);
+            }
+            if (target.closest('.emby-checkbox-label') && target.closest('.playlist-header')) {
+                const label = target.closest('.emby-checkbox-label');
+                const checkbox = label.querySelector('.playlist-checkbox');
+                if (checkbox && target !== checkbox) {
+                    e.stopPropagation(); // Prevent triggering playlist header click
+                    // Let the label's default behavior handle the checkbox toggle
+                }
             }
         }, getEventListenerOptions(pageSignal));
         
@@ -3953,6 +5058,16 @@
             updateClearButtonVisibility();
         }
         
+        // Generic event listener setup - eliminates DRY violations
+        setupFilterEventListeners(page, pageSignal);
+        
+        const clearFiltersBtn = page.querySelector('#clearFiltersBtn');
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', function() {
+                clearAllFilters(page);
+            }, getEventListenerOptions(pageSignal));
+        }
+        
         // Add import file input event listener
         const importFileInput = page.querySelector('#importPlaylistsFile');
         const importBtn = page.querySelector('#importPlaylistsBtn');
@@ -4003,9 +5118,13 @@
         allRules.forEach(rule => cleanupRuleEventListeners(rule));
         
         // Clean up modal listeners
-        const modal = page.querySelector('#delete-confirm-modal');
-        if (modal) {
-            cleanupModalListeners(modal);
+        const deleteModal = page.querySelector('#delete-confirm-modal');
+        if (deleteModal) {
+            cleanupModalListeners(deleteModal);
+        }
+        const refreshModal = page.querySelector('#refresh-confirm-modal');
+        if (refreshModal) {
+            cleanupModalListeners(refreshModal);
         }
         
         // Clean up page event listeners

@@ -347,6 +347,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     }
                 }
 
+                // Set DateCreated to current time for new playlists
+                playlist.DateCreated = DateTime.UtcNow;
+
                 var createdPlaylist = await playlistStore.SaveAsync(playlist);
                 logger.LogInformation("Created smart playlist: {PlaylistName}", playlist.Name);
                 
@@ -523,6 +526,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
 
                 playlist.Id = id;
+                
+                // Preserve original creation timestamp
+                if (existingPlaylist.DateCreated.HasValue)
+                {
+                    playlist.DateCreated = existingPlaylist.DateCreated;
+                }
                 
                 // Preserve the Jellyfin playlist ID from the existing playlist if it exists
                 if (!string.IsNullOrEmpty(existingPlaylist.JellyfinPlaylistId))

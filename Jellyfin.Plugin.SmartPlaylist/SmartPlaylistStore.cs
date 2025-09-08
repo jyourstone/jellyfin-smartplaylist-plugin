@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -23,22 +24,34 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task<SmartPlaylistDto> GetSmartPlaylistAsync(Guid smartPlaylistId)
         {
-            // First try to find by ID
+            // Try direct file lookup first (O(1) operation)
+            var filePath = fileSystem.GetSmartPlaylistFilePath(smartPlaylistId.ToString());
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                try
+                {
+                    var playlist = await LoadPlaylistAsync(filePath).ConfigureAwait(false);
+                    if (playlist != null)
+                    {
+                        return playlist;
+                    }
+                }
+                catch
+                {
+                    // File exists but couldn't be loaded, fall back to scanning all files
+                }
+            }
+            
+            // Fallback: scan all playlists if direct lookup failed
             var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-            var playlist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId.ToString());
+            var fallbackPlaylist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId.ToString());
             
-            if (playlist != null)
+            if (fallbackPlaylist != null)
             {
-                return playlist;
+                return fallbackPlaylist;
             }
             
-            // Fallback to file path lookup
-            var fileName = fileSystem.GetSmartPlaylistFilePath(smartPlaylistId.ToString());
-            if (fileName == null)
-            {
-                return null;
-            }
-            return await LoadPlaylistAsync(fileName).ConfigureAwait(false);
+            return null;
         }
 
         public async Task<SmartPlaylistDto[]> LoadPlaylistsAsync(Guid userId)
@@ -56,11 +69,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task<SmartPlaylistDto[]> GetAllSmartPlaylistsAsync()
         {
-            var deserializeTasks = fileSystem.GetAllSmartPlaylistFilePaths().Select(LoadPlaylistAsync).ToArray();
+            var filePaths = fileSystem.GetAllSmartPlaylistFilePaths();
+            var validPlaylists = new List<SmartPlaylistDto>();
 
-            await Task.WhenAll(deserializeTasks).ConfigureAwait(false);
+            foreach (var filePath in filePaths)
+            {
+                try
+                {
+                    var playlist = await LoadPlaylistAsync(filePath).ConfigureAwait(false);
+                    if (playlist != null)
+                    {
+                        validPlaylists.Add(playlist);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Skip invalid playlist files and continue loading others
+                    // Note: Could add proper logging here if ILogger was injected
+                }
+            }
 
-            return [.. deserializeTasks.Select(x => x.Result)];
+            return [.. validPlaylists];
         }
 
         public async Task<SmartPlaylistDto> SaveAsync(SmartPlaylistDto smartPlaylist)
@@ -69,26 +98,54 @@ namespace Jellyfin.Plugin.SmartPlaylist
             smartPlaylist.FileName = $"{fileName}.json";
 
             var filePath = fileSystem.GetSmartPlaylistPath(fileName);
-            await using var writer = File.Create(filePath);
-            await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
+            var tempPath = filePath + ".tmp";
+            
+            try
+            {
+                await using (var writer = File.Create(tempPath))
+                {
+                    await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
+                    await writer.FlushAsync().ConfigureAwait(false);
+                }
+                
+                if (File.Exists(filePath))
+                {
+                    // Replace is atomic on the same volume
+                    File.Replace(tempPath, filePath, null);
+                }
+                else
+                {
+                    File.Move(tempPath, filePath);
+                }
+            }
+            finally
+            {
+                // Clean up temp file if it still exists
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* ignore cleanup errors */ }
+            }
+            
             return smartPlaylist;
         }
 
         public async Task DeleteAsync(Guid userId, string smartPlaylistId)
         {
-            // First find the playlist by ID to get the filename
-            var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-            var playlist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId);
-            
-            if (playlist != null && !string.IsNullOrEmpty(playlist.FileName))
+            if (!Guid.TryParse(smartPlaylistId, out var playlistGuid))
+                return;
+
+            // Use direct lookup instead of loading all playlists
+            var playlist = await GetSmartPlaylistAsync(playlistGuid).ConfigureAwait(false);
+            if (playlist == null)
+                return;
+
+            // Use the actual filename to construct the path
+            var fileName = string.IsNullOrWhiteSpace(playlist.FileName)
+                ? playlist.Id
+                : Path.GetFileNameWithoutExtension(playlist.FileName);
+
+            var filePath = fileSystem.GetSmartPlaylistPath(fileName);
+            if (File.Exists(filePath))
             {
-                // Use the actual filename to construct the path
-                var fileName = Path.GetFileNameWithoutExtension(playlist.FileName);
-                var filePath = fileSystem.GetSmartPlaylistPath(fileName);
-                if (File.Exists(filePath)) 
-                {
-                    File.Delete(filePath);
-                }
+                File.Delete(filePath);
             }
         }
 

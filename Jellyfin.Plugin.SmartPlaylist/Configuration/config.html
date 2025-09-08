@@ -53,7 +53,7 @@
         body .SmartPlaylistConfigurationPage .custom-modal.hide {
             display: none !important;
         }
-        body .SmartPlaylistConfigurationPage #delete-confirm-modal .custom-modal-container {
+        body .SmartPlaylistConfigurationPage .custom-modal .custom-modal-container {
             background-color: #2a2a2a !important;
             color: #eee !important;
             border: 1px solid #555 !important;
@@ -77,7 +77,9 @@
             justify-content: flex-end;
             gap: 1em;
         }
-        .custom-modal-footer .button-submit {
+        .custom-modal-footer .button-submit,
+        .custom-modal-footer .button-delete,
+        .custom-modal-footer .modal-confirm-btn {
             background-color: #d9534f;
         }
         
@@ -173,8 +175,8 @@
         /* Tag input placeholder color */
         .tag-input-field::placeholder {
             color: #757575 !important;
-        }
-        
+        }        
+       
         /* Ensure form elements span full width */
         .SmartPlaylistConfigurationPage .inputContainer input,
         .SmartPlaylistConfigurationPage .inputContainer select,
@@ -384,19 +386,73 @@
                 <!-- Manage Tab -->
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <form style="margin-top:2em;">
-                        <div class="inputContainer" style="margin-bottom: 1em;">
+                        <div class="inputContainer" style="margin-bottom: 2em;">
                             <button type="button" is="emby-button" id="refreshPlaylistsBtn" class="emby-button raised block">Refresh All Playlists</button>
                         </div>
                         
-                        <div class="inputContainer" style="margin-bottom: 1em;">
-                            <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised block">Reload List</button>
-                        </div>
-                        
-                        <div class="inputContainer" style="margin-bottom: 1em;">
-                            <label class="inputLabel" for="playlistSearchInput">Search Playlists</label>
-                            <div class="search-inputContainer" style="position: relative; display: flex; align-items: center; width: 100%;">
-                                <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search all playlist fields..." style="padding-right: 2.5em; width: 100%; box-sizing: border-box;">
-                                <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
+                        <!-- Filters Section -->
+                        <div class="inputContainer" style="margin-bottom: 2em;">
+                            <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1em; align-items: end;">
+                                    <div>
+                                        <label class="inputLabel" for="playlistSortSelect">Sort By</label>
+                                        <select id="playlistSortSelect" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                            <option value="name-asc">Name (A-Z)</option>
+                                            <option value="name-desc">Name (Z-A)</option>
+                                            <option value="created-desc">Created Date (Newest)</option>
+                                            <option value="created-asc">Created Date (Oldest)</option>
+                                            <option value="refreshed-desc">Last Refreshed (Recent)</option>
+                                            <option value="refreshed-asc">Last Refreshed (Oldest)</option>
+                                            <option value="enabled-first">Enabled First</option>
+                                            <option value="disabled-first">Disabled First</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="inputLabel" for="mediaTypeFilter">Media Type</label>
+                                        <select id="mediaTypeFilter" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                            <option value="all">All Types</option>
+                                            <option value="Movie">Movie</option>
+                                            <option value="Episode">Episode</option>
+                                            <option value="Series">Series</option>
+                                            <option value="Audio">Audio (Music)</option>
+                                            <option value="MusicVideo">Music Video</option>
+                                            <option value="Video">Video (Home Video)</option>
+                                            <option value="Photo">Photo (Home Photo)</option>
+                                            <option value="Book">Book</option>
+                                            <option value="AudioBook">Audiobook</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="inputLabel" for="visibilityFilter">Visibility</label>
+                                        <select id="visibilityFilter" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                            <option value="all">All Playlists</option>
+                                            <option value="public">Public Only</option>
+                                            <option value="private">Private Only</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="inputLabel" for="userFilter">User</label>
+                                        <select id="userFilter" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                            <option value="all">All Users</option>
+                                            <!-- Options will be populated dynamically -->
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Search field below the select fields -->
+                                <div style="margin-top: 1em;">
+                                    <label class="inputLabel" for="playlistSearchInput">Search Playlists</label>
+                                    <div style="display: flex; gap: 1em; align-items: end;">
+                                        <div class="search-inputContainer" style="position: relative; display: flex; align-items: center; flex: 1;">
+                                            <input type="search" id="playlistSearchInput" class="emby-input" autocomplete="off" inputmode="search" placeholder="Search playlists..." style="padding: 0.75em 2.5em 0.75em 0.75em; width: 100%; box-sizing: border-box; background-color: #2A2A2A;">
+                                            <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search" aria-label="Clear search">×</button>
+                                        </div>
+                                        <button type="button" id="clearFiltersBtn" class="emby-button raised">Clear All Filters</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
@@ -586,6 +642,25 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Refresh All Playlists Confirmation Modal -->
+        <div id="refresh-confirm-modal" class="custom-modal hide">
+            <div class="custom-modal-container">
+                <div class="modal-content">
+                    <div class="custom-modal-header" style="margin-top: -1em;">
+                        <h2 class="custom-modal-title">Refresh All Playlists</h2>
+                    </div>
+                    <div class="custom-modal-body">
+                        <p>This will refresh all smart playlists, which may take a while depending on the number of playlists and their complexity. Are you sure you want to continue?</p>
+                    </div>
+                    <div class="custom-modal-footer">
+                        <button type="button" is="emby-button" class="emby-button raised modal-cancel-btn">Cancel</button>
+                        <button type="button" is="emby-button" class="emby-button raised modal-confirm-btn">Refresh All</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <script src="configurationpage?name=config.js"></script>
     </div>
 </body>
