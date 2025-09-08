@@ -100,20 +100,28 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var filePath = fileSystem.GetSmartPlaylistPath(fileName);
             var tempPath = filePath + ".tmp";
             
-            await using (var writer = File.Create(tempPath))
+            try
             {
-                await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
-                await writer.FlushAsync().ConfigureAwait(false);
+                await using (var writer = File.Create(tempPath))
+                {
+                    await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
+                    await writer.FlushAsync().ConfigureAwait(false);
+                }
+                
+                if (File.Exists(filePath))
+                {
+                    // Replace is atomic on the same volume
+                    File.Replace(tempPath, filePath, null);
+                }
+                else
+                {
+                    File.Move(tempPath, filePath);
+                }
             }
-            
-            if (File.Exists(filePath))
+            finally
             {
-                // Replace is atomic on the same volume
-                File.Replace(tempPath, filePath, null);
-            }
-            else
-            {
-                File.Move(tempPath, filePath);
+                // Clean up temp file if it still exists
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* ignore cleanup errors */ }
             }
             
             return smartPlaylist;

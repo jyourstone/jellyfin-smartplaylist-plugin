@@ -167,16 +167,13 @@
         html += summaryText;
         html += '</div>';
         
+        // Layout: Left side (Select All, bulk actions) | Right side (Expand All, Reload List)
         html += '<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1em;">';
         
-        // Left side: Expand All and Reload List buttons
-        html += '<div style="display: flex; align-items: center; gap: 1em; flex-wrap: wrap;">';
-        html += '<button type="button" id="expandAllBtn" class="emby-button raised">Expand All</button>';
-        html += '<button type="button" id="refreshPlaylistListBtn" class="emby-button raised">Reload List</button>';
-        html += '</div>';
+        // Left side: Select All checkbox and bulk action buttons
+        html += '<div style="display: flex; align-items: center; gap: 0.75em; flex-wrap: wrap;">';
         
-        // Right side: Select All checkbox, count and action buttons
-        html += '<div style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; justify-content: flex-end;">';
+        // 1. Select All checkbox
         html += '<label class="emby-checkbox-label" style="width: auto; min-width: auto;">';
         html += '<input type="checkbox" id="selectAllCheckbox" data-embycheckbox="true" class="emby-checkbox">';
         html += '<span class="checkboxLabel">Select All</span>';
@@ -185,14 +182,32 @@
         html += '<span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>';
         html += '</span>';
         html += '</label>';
-        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em;">0 selected</span>';
-        html += '<div style="display: flex; gap: 0.5em; flex-wrap: wrap;">';
+        
+        // Selected count display
+        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999;">0 selected</span>';
+        
+        // 2. Enable button
         html += '<button type="button" id="bulkEnableBtn" class="emby-button raised" disabled>Enable</button>';
+        
+        // 3. Disable button
         html += '<button type="button" id="bulkDisableBtn" class="emby-button raised" disabled>Disable</button>';
+        
+        // 4. Delete button
         html += '<button type="button" id="bulkDeleteBtn" class="emby-button raised button-delete" disabled>Delete</button>';
-        html += '</div>'; // End action buttons wrapper
+        
+        html += '</div>'; // End left side
+        
+        // Right side: View control buttons
+        html += '<div style="display: flex; align-items: center; gap: 0.75em; flex-wrap: wrap;">';
+        
+        // 5. Expand All button
+        html += '<button type="button" id="expandAllBtn" class="emby-button raised">Expand All</button>';
+        
+        // 6. Reload List button
+        html += '<button type="button" id="refreshPlaylistListBtn" class="emby-button raised">Reload List</button>';
+        
         html += '</div>'; // End right side
-        html += '</div>'; // End flex container for buttons
+        html += '</div>'; // End flex container
         html += '</div>'; // End paperList
         html += '</div>'; // End inputContainer
         
@@ -3290,7 +3305,7 @@
     function showBulkDeleteConfirm(page, playlistIds, playlistNames) {
         const playlistList = playlistNames.length > 5 
             ? playlistNames.slice(0, 5).join('\n') + `\n... and ${playlistNames.length - 5} more`
-            : playlistNames.join(', ');
+            : playlistNames.join('\n');
         
         const confirmText = `Are you sure you want to delete the following playlist(s)?\n\n${playlistList}\n\nThis action cannot be undone.`;
         
@@ -4582,7 +4597,13 @@
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
             console.error('Error refreshing playlists:', err);
-            handleApiError(err, 'Failed to refresh playlists');
+            
+            // Handle the case where a refresh is already in progress (409 Conflict)
+            if (err.status === 409) {
+                showNotification('A playlist refresh is already in progress. Please wait for it to complete.', 'warning');
+            } else {
+                handleApiError(err, 'Failed to refresh playlists');
+            }
         });
     }
     
