@@ -178,9 +178,12 @@
         // Right side: Select All checkbox, count and action buttons
         html += '<div style="display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; justify-content: flex-end;">';
         html += '<label class="emby-checkbox-label" style="width: auto; min-width: auto;">';
-        html += '<input type="checkbox" is="emby-checkbox" id="selectAllCheckbox" data-embycheckbox="true" class="emby-checkbox">';
+        html += '<input type="checkbox" id="selectAllCheckbox" data-embycheckbox="true" class="emby-checkbox">';
         html += '<span class="checkboxLabel">Select All</span>';
-        html += '<span class="checkboxOutline"></span>';
+        html += '<span class="checkboxOutline">';
+        html += '<span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>';
+        html += '<span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>';
+        html += '</span>';
         html += '</label>';
         html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em;">0 selected</span>';
         html += '<div style="display: flex; gap: 0.5em; flex-wrap: wrap;">';
@@ -2483,11 +2486,6 @@
         }
     }
 
-    // Helper function to generate rules HTML for playlist display
-    async function generatePlaylistRulesHtml(playlist, apiClient) {
-        return await generateRulesHtml(playlist, apiClient);
-    }
-
     // Helper function to format playlist display values
     function formatPlaylistDisplayValues(playlist) {
         const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
@@ -2599,7 +2597,7 @@
         });
     }
 
-    function filterPlaylists(playlists, searchTerm) {
+    function filterPlaylists(playlists, searchTerm, page) {
         if (!searchTerm) return playlists;
         
         return playlists.filter(playlist => {
@@ -2663,143 +2661,18 @@
                 return true;
             }
             
-            // Search in legacy username field (for backward compatibility)
-            if (playlist.User && playlist.User.toLowerCase().includes(searchTerm)) {
-                return true;
+            // Search in username (resolved from UserId)
+            if (page && page._usernameCache && playlist.UserId) {
+                const username = page._usernameCache.get(playlist.UserId);
+                if (username && username.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
             }
             
             return false;
         });
     }
 
-    function filterPlaylists(playlists, searchTerm) {
-        if (!searchTerm) return playlists;
-        
-        return playlists.filter(playlist => {
-            // Search in playlist name
-            if (playlist.Name && playlist.Name.toLowerCase().includes(searchTerm)) {
-                return true;
-            }
-            
-            // Search in filename
-            if (playlist.FileName && playlist.FileName.toLowerCase().includes(searchTerm)) {
-                return true;
-            }
-            
-            // Search in media types
-            if (playlist.MediaTypes && playlist.MediaTypes.some(type => type.toLowerCase().includes(searchTerm))) {
-                return true;
-            }
-            
-            // Search in rules (field names, operators, and values)
-            if (playlist.ExpressionSets) {
-                for (const expressionSet of playlist.ExpressionSets) {
-                    if (expressionSet.Expressions) {
-                        for (const expression of expressionSet.Expressions) {
-                            // Search in field name
-                            if (expression.MemberName && expression.MemberName.toLowerCase().includes(searchTerm)) {
-                                return true;
-                            }
-                            
-                            // Search in operator
-                            if (expression.Operator && expression.Operator.toLowerCase().includes(searchTerm)) {
-                                return true;
-                            }
-                            
-                            // Search in target value
-                            if (expression.TargetValue && expression.TargetValue.toLowerCase().includes(searchTerm)) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Search in sort order
-            if (playlist.Order && playlist.Order.Name && playlist.Order.Name.toLowerCase().includes(searchTerm)) {
-                return true;
-            }
-            
-            // Search in public/private status
-            if (searchTerm === 'public' && playlist.Public) {
-                return true;
-            }
-            if (searchTerm === 'private' && !playlist.Public) {
-                return true;
-            }
-            
-            // Search in enabled/disabled status
-            if (searchTerm === 'enabled' && playlist.Enabled !== false) {
-                return true;
-            }
-            if (searchTerm === 'disabled' && playlist.Enabled === false) {
-                return true;
-            }
-            
-            // Search in legacy username field (for backward compatibility)
-            if (playlist.User && playlist.User.toLowerCase().includes(searchTerm)) {
-                return true;
-            }
-            
-            // Search in LastRefreshed field
-            if (playlist.LastRefreshed) {
-                const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, '');
-                
-                if (lastRefreshDisplay.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-                
-                // Also search for "unknown" if LastRefreshed is null/undefined
-                if (searchTerm === 'unknown' && !playlist.LastRefreshed) {
-                    return true;
-                }
-            } else if (searchTerm === 'unknown' || searchTerm === 'never') {
-                return true;
-            }
-            
-            // Search in AutoRefresh field
-            if (playlist.AutoRefresh) {
-                const autoRefreshMode = playlist.AutoRefresh;
-                let autoRefreshDisplay = '';
-                if (autoRefreshMode === 'Never') {
-                    autoRefreshDisplay = 'manual/scheduled only';
-                } else if (autoRefreshMode === 'OnLibraryChanges') {
-                    autoRefreshDisplay = 'on library changes';
-                } else if (autoRefreshMode === 'OnAllChanges') {
-                    autoRefreshDisplay = 'on all changes';
-                } else {
-                    autoRefreshDisplay = autoRefreshMode.toLowerCase();
-                }
-                
-                if (autoRefreshDisplay.includes(searchTerm)) {
-                    return true;
-                }
-                
-                // Also search for the enum values directly
-                if (autoRefreshMode.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-            }
-            
-            // Search in ScheduleTrigger field
-            if (playlist.ScheduleTrigger) {
-                const scheduleDisplay = formatScheduleDisplay(playlist);
-                if (scheduleDisplay.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-                
-                // Also search for the enum values directly
-                if (playlist.ScheduleTrigger.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-            } else if (searchTerm === 'legacy' || searchTerm === 'jellyfin' || searchTerm === 'tasks') {
-                // Search for legacy tasks when ScheduleTrigger is null/undefined
-                return true;
-            }
-            
-            return false;
-        });
-    }
 
     // ========================================
     // PLAYLIST FILTERING & SORTING SYSTEM
@@ -2811,16 +2684,16 @@
             selector: '#playlistSearchInput',
             defaultValue: '',
             getValue: (element) => element ? element.value.trim().toLowerCase() : '',
-            filterFn: (playlists, searchTerm) => {
+            filterFn: (playlists, searchTerm, page) => {
         if (!searchTerm) return playlists;
-                return filterPlaylists(playlists, searchTerm); // Use existing comprehensive search
+                return filterPlaylists(playlists, searchTerm, page); // Use existing comprehensive search
             }
         },
         mediaType: {
             selector: '#mediaTypeFilter',
             defaultValue: 'all',
             getValue: (element) => element ? element.value : 'all',
-            filterFn: (playlists, mediaTypeFilter) => {
+            filterFn: (playlists, mediaTypeFilter, page) => {
                 if (!mediaTypeFilter || mediaTypeFilter === 'all') return playlists;
                 
                 return playlists.filter(playlist => {
@@ -2831,21 +2704,21 @@
                 });
             }
         },
-        status: {
-            selector: '#statusFilter',
+        visibility: {
+            selector: '#visibilityFilter',
             defaultValue: 'all',
             getValue: (element) => element ? element.value : 'all',
-            filterFn: (playlists, statusFilter) => {
-                if (!statusFilter || statusFilter === 'all') return playlists;
+            filterFn: (playlists, visibilityFilter, page) => {
+                if (!visibilityFilter || visibilityFilter === 'all') return playlists;
                 
                 return playlists.filter(playlist => {
-                    const isEnabled = playlist.Enabled !== false;
+                    const isPublic = playlist.Public === true;
                     
-                    switch (statusFilter) {
-                        case 'enabled':
-                            return isEnabled;
-                        case 'disabled':
-                            return !isEnabled;
+                    switch (visibilityFilter) {
+                        case 'public':
+                            return isPublic;
+                        case 'private':
+                            return !isPublic;
                         default:
                             return true;
                     }
@@ -2856,7 +2729,7 @@
             selector: '#userFilter',
             defaultValue: 'all',
             getValue: (element) => element ? element.value : 'all',
-            filterFn: (playlists, userFilter) => {
+            filterFn: (playlists, userFilter, page) => {
                 if (!userFilter || userFilter === 'all') return playlists;
                 
                 return playlists.filter(playlist => {
@@ -2882,16 +2755,16 @@
     }
 
     // Generic filter application function - replaces all individual filter functions
-    function applyFilter(playlists, filterKey, filterValue) {
+    function applyFilter(playlists, filterKey, filterValue, page) {
         const config = PLAYLIST_FILTER_CONFIGS[filterKey];
         if (!config) return playlists;
         
-        return config.filterFn(playlists, filterValue);
+        return config.filterFn(playlists, filterValue, page);
     }
 
     // Generic event listener setup - eliminates repetitive filter change handlers
     function setupFilterEventListeners(page, pageSignal) {
-        const filterKeys = ['sort', 'mediaType', 'status', 'user'];
+        const filterKeys = ['sort', 'mediaType', 'visibility', 'user'];
         
         filterKeys.forEach(filterKey => {
             const config = PLAYLIST_FILTER_CONFIGS[filterKey];
@@ -3123,7 +2996,6 @@
     function updateBulkActionsVisibility(page) {
         const bulkContainer = page.querySelector('#bulkActionsContainer');
         const checkboxes = page.querySelectorAll('.playlist-checkbox');
-        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
         
         // Show bulk actions if any playlists exist
         if (checkboxes.length > 0) {
@@ -3423,11 +3295,11 @@
         const confirmText = `Are you sure you want to delete the following playlist(s)?\n\n${playlistList}\n\nThis action cannot be undone.`;
         
         showDeleteModal(page, confirmText, () => {
-            performBulkDelete(page, playlistIds, playlistNames);
+            performBulkDelete(page, playlistIds);
         });
     }
 
-    async function performBulkDelete(page, playlistIds, playlistNames) {
+    async function performBulkDelete(page, playlistIds) {
         const apiClient = getApiClient();
         const deleteJellyfinPlaylist = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
         let successCount = 0;
@@ -3703,19 +3575,6 @@
         }
     }
 
-    // Legacy function wrappers for backward compatibility - now use the generic system
-    function filterPlaylistsByType(playlists, mediaTypeFilter) {
-        return applyFilter(playlists, 'mediaType', mediaTypeFilter);
-    }
-
-    function filterPlaylistsByStatus(playlists, statusFilter) {
-        return applyFilter(playlists, 'status', statusFilter);
-    }
-
-    function filterPlaylistsByUser(playlists, userFilter) {
-        return applyFilter(playlists, 'user', userFilter);
-    }
-
     function applyAllFiltersAndSort(page, playlists) {
         if (!playlists) return [];
         
@@ -3728,11 +3587,11 @@
         let filteredPlaylists = [...playlists];
         
         // Apply all filters using the generic system - much cleaner!
-        const filterOrder = ['search', 'mediaType', 'status', 'user'];
+        const filterOrder = ['search', 'mediaType', 'visibility', 'user'];
         
         for (const filterKey of filterOrder) {
             const filterValue = getFilterValue(page, filterKey);
-            filteredPlaylists = applyFilter(filteredPlaylists, filterKey, filterValue);
+            filteredPlaylists = applyFilter(filteredPlaylists, filterKey, filterValue, page);
         }
         
         // Apply sorting
@@ -3756,9 +3615,9 @@
             mediaTypeFilter.value = 'all';
         }
         
-        const statusFilter = page.querySelector('#statusFilter');
-        if (statusFilter) {
-            statusFilter.value = 'all';
+        const visibilityFilter = page.querySelector('#visibilityFilter');
+        if (visibilityFilter) {
+            visibilityFilter.value = 'all';
         }
         
         const userFilter = page.querySelector('#userFilter');
@@ -3794,7 +3653,7 @@
             const preferences = {};
             
             // Get preferences for all filters except search (session-specific)
-            const persistentFilters = ['sort', 'mediaType', 'status', 'user'];
+            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
             
             for (const filterKey of persistentFilters) {
                 const config = PLAYLIST_FILTER_CONFIGS[filterKey];
@@ -3844,6 +3703,11 @@
                 return;
             }
             
+            // Initialize username cache if it doesn't exist
+            if (!page._usernameCache) {
+                page._usernameCache = new Map();
+            }
+            
             // Get unique user IDs from playlists
             const userIds = [...new Set(playlists.map(p => p.UserId).filter(id => id))];
             
@@ -3866,44 +3730,28 @@
                     // Try to resolve username
                     const userName = await resolveUsername(apiClient, { UserId: userId });
                     
+                    // Cache the resolved username for search functionality
+                    page._usernameCache.set(userId, userName || 'Unknown User');
+                    
                     const option = document.createElement('option');
                     option.value = userId;
                     option.textContent = userName || 'Unknown User';
                     userFilter.appendChild(option);
                 } catch (err) {
                     console.warn('Failed to resolve username for user ID:', userId, err);
-                    // Still add the option with the user ID
+                    // Still add the option with the user ID and cache it
+                    const fallbackName = 'User ' + userId.substring(0, 8) + '...';
+                    page._usernameCache.set(userId, fallbackName);
+                    
                     const option = document.createElement('option');
                     option.value = userId;
-                    option.textContent = 'User ' + userId.substring(0, 8) + '...';
+                    option.textContent = fallbackName;
                     userFilter.appendChild(option);
                 }
             }
         } catch (err) {
             console.warn('Failed to populate user filter:', err);
         }
-    }
-
-    async function filterPlaylistsByUserSearch(playlists, searchTerm) {
-        if (!searchTerm) return playlists;
-        
-        const apiClient = getApiClient();
-        const matchingPlaylists = [];
-        
-        // Process playlists sequentially to resolve usernames and search
-        for (const playlist of playlists) {
-            try {
-                const userName = await resolveUsername(apiClient, playlist);
-                if (userName.toLowerCase().includes(searchTerm)) {
-                    matchingPlaylists.push(playlist);
-                }
-            } catch (err) {
-                console.error('Error resolving username for playlist search:', err);
-                // Continue with other playlists even if one fails
-            }
-        }
-        
-        return matchingPlaylists;
     }
 
     async function applySearchFilter(page) {
@@ -3922,68 +3770,6 @@
         
         // Display the filtered results
         await displayFilteredPlaylists(page, filteredPlaylists, '');
-    }
-
-    async function applySearchFilterLegacy(page) {
-        const searchInput = page.querySelector('#playlistSearchInput');
-        if (!searchInput || !page._allPlaylists) {
-            return;
-        }
-        
-        // Don't search while loading playlists
-        if (page._loadingPlaylists) {
-            return;
-        }
-        
-        const searchTerm = searchInput.value.trim().toLowerCase();
-        
-        if (!searchTerm) {
-            // No search term, show all playlists with current filters
-            const filteredPlaylists = applyAllFiltersAndSort(page, page._allPlaylists);
-            await displayFilteredPlaylists(page, filteredPlaylists, '');
-            return;
-        }
-        
-        // Show loading state for user search
-        const container = page.querySelector('#playlist-list-container');
-        if (container) {
-            container.innerHTML = '<div class="inputContainer"><p>Searching playlists...</p></div>';
-        }
-        
-        try {
-            // Do basic filtering (synchronous) first
-            const basicFiltered = filterPlaylists(page._allPlaylists, searchTerm);
-            
-            // Also do user search (asynchronous) in parallel
-            const userFiltered = await filterPlaylistsByUserSearch(page._allPlaylists, searchTerm);
-            
-            // Combine results, removing duplicates by playlist ID
-            const combinedResults = new Map();
-            
-            // Add basic filtered results
-            basicFiltered.forEach(playlist => {
-                combinedResults.set(playlist.Id, playlist);
-            });
-            
-            // Add user filtered results
-            userFiltered.forEach(playlist => {
-                combinedResults.set(playlist.Id, playlist);
-            });
-            
-            const filteredPlaylists = Array.from(combinedResults.values());
-            
-            if (filteredPlaylists.length === 0) {
-                container.innerHTML = '<div class="inputContainer"><p>No playlists match your search criteria.</p></div>';
-                return;
-            }
-            
-            // Re-use the existing display logic but with filtered data
-            await displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
-            
-        } catch (err) {
-            console.error('Error during search:', err);
-            container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">Search error: ' + escapeHtml(err && err.message ? err.message : 'Unknown error') + '</p></div>';
-        }
     }
 
     async function displayFilteredPlaylists(page, filteredPlaylists, searchTerm) {

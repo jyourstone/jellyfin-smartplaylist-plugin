@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
@@ -25,22 +24,34 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task<SmartPlaylistDto> GetSmartPlaylistAsync(Guid smartPlaylistId)
         {
-            // First try to find by ID
+            // Try direct file lookup first (O(1) operation)
+            var filePath = fileSystem.GetSmartPlaylistFilePath(smartPlaylistId.ToString());
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                try
+                {
+                    var playlist = await LoadPlaylistAsync(filePath).ConfigureAwait(false);
+                    if (playlist != null)
+                    {
+                        return playlist;
+                    }
+                }
+                catch
+                {
+                    // File exists but couldn't be loaded, fall back to scanning all files
+                }
+            }
+            
+            // Fallback: scan all playlists if direct lookup failed
             var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-            var playlist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId.ToString());
+            var fallbackPlaylist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId.ToString());
             
-            if (playlist != null)
+            if (fallbackPlaylist != null)
             {
-                return playlist;
+                return fallbackPlaylist;
             }
             
-            // Fallback to file path lookup
-            var fileName = fileSystem.GetSmartPlaylistFilePath(smartPlaylistId.ToString());
-            if (fileName == null)
-            {
-                return null;
-            }
-            return await LoadPlaylistAsync(fileName).ConfigureAwait(false);
+            return null;
         }
 
         public async Task<SmartPlaylistDto[]> LoadPlaylistsAsync(Guid userId)
@@ -71,10 +82,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         validPlaylists.Add(playlist);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    // Log the error but continue loading other playlists
-                    Console.WriteLine($"Failed to load playlist from {Path.GetFileName(filePath)}: {ex.Message}");
+                    // Skip invalid playlist files and continue loading others
+                    // Note: Could add proper logging here if ILogger was injected
                 }
             }
 

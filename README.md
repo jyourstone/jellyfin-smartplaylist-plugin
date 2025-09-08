@@ -71,7 +71,8 @@ The web interface is organized into three tabs:
     -   Set custom refresh schedule (Daily, Weekly, Monthly, Interval or No schedule).
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
     -   **Organized Interface**: Clean, modern layout with grouped actions and filters
-    -   **Advanced Filtering**: Filter by name, media type, status, user, and creation date with real-time search
+    -   **Advanced Filtering**: Filter by media type, visibility and user
+    -   **Real-time Search**:  Search all properties in real-time
     -   **Flexible Sorting**: Sort by name, creation date, last refreshed, or enabled status
     -   **Bulk Operations**: Select multiple playlists to enable, disable, or delete them simultaneously
     -   **Detailed View**: Expand playlists to see rules, settings, creation date, and other properties

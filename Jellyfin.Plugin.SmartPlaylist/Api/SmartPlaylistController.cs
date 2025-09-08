@@ -527,6 +527,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
 
                 playlist.Id = id;
                 
+                // Preserve original creation timestamp
+                if (existingPlaylist.DateCreated.HasValue)
+                {
+                    playlist.DateCreated = existingPlaylist.DateCreated;
+                }
+                
                 // Preserve the Jellyfin playlist ID from the existing playlist if it exists
                 if (!string.IsNullOrEmpty(existingPlaylist.JellyfinPlaylistId))
                 {

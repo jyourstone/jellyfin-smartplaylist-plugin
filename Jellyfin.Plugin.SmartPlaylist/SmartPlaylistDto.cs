@@ -80,7 +80,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? LastRefreshed { get; set; } // When was this playlist last refreshed (any trigger)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public DateTime? DateCreated { get; set; } // When was this playlist created (file creation date)
+        public DateTime? DateCreated { get; set; } // When was this playlist created (playlist creation, UTC)
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
