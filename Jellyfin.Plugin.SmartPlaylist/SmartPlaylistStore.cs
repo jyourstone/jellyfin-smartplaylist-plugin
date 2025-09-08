@@ -129,19 +129,23 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task DeleteAsync(Guid userId, string smartPlaylistId)
         {
-            // First find the playlist by ID to get the filename
-            var allPlaylists = await GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-            var playlist = allPlaylists.FirstOrDefault(p => p.Id == smartPlaylistId);
-            
-            if (playlist != null && !string.IsNullOrEmpty(playlist.FileName))
+            if (!Guid.TryParse(smartPlaylistId, out var playlistGuid))
+                return;
+
+            // Use direct lookup instead of loading all playlists
+            var playlist = await GetSmartPlaylistAsync(playlistGuid).ConfigureAwait(false);
+            if (playlist == null)
+                return;
+
+            // Use the actual filename to construct the path
+            var fileName = string.IsNullOrWhiteSpace(playlist.FileName)
+                ? playlist.Id
+                : Path.GetFileNameWithoutExtension(playlist.FileName);
+
+            var filePath = fileSystem.GetSmartPlaylistPath(fileName);
+            if (File.Exists(filePath))
             {
-                // Use the actual filename to construct the path
-                var fileName = Path.GetFileNameWithoutExtension(playlist.FileName);
-                var filePath = fileSystem.GetSmartPlaylistPath(fileName);
-                if (File.Exists(filePath)) 
-                {
-                    File.Delete(filePath);
-                }
+                File.Delete(filePath);
             }
         }
 
