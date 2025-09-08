@@ -73,7 +73,7 @@ The web interface is organized into three tabs:
     -   **Organized Interface**: Clean, modern layout with grouped actions and filters
     -   **Advanced Filtering**: Filter by media type, visibility and user
     -   **Real-time Search**:  Search all properties in real-time
-    -   **Flexible Sorting**: Sort by name, creation date, last refreshed, or enabled status
+    -   **Flexible Sorting**: Sort by name, playlist creation date, last refreshed, or enabled status
     -   **Bulk Operations**: Select multiple playlists to enable, disable, or delete them simultaneously
     -   **Detailed View**: Expand playlists to see rules, settings, creation date, and other properties
     -   **Quick Actions**: Edit, clone, refresh, or delete individual playlists with confirmation dialogs
