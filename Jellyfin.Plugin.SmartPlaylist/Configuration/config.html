@@ -392,6 +392,7 @@
                             <button type="button" is="emby-button" id="refreshPlaylistListBtn" class="emby-button raised block">Reload List</button>
                         </div>
                         
+                        <!-- Search, Sort, and Filter Controls -->
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel" for="playlistSearchInput">Search Playlists</label>
                             <div class="search-inputContainer" style="position: relative; display: flex; align-items: center; width: 100%;">
@@ -399,6 +400,66 @@
                                 <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
                             </div>
                         </div>
+                        
+                        <!-- Sort and Filter Row -->
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1em; align-items: end;">
+                                <div>
+                                    <label class="inputLabel" for="playlistSortSelect">Sort By</label>
+                                    <select id="playlistSortSelect" is="emby-select" class="emby-select-withcolor emby-select">
+                                        <option value="name-asc">Name (A-Z)</option>
+                                        <option value="name-desc">Name (Z-A)</option>
+                                        <option value="created-desc">Created Date (Newest)</option>
+                                        <option value="created-asc">Created Date (Oldest)</option>
+                                        <option value="refreshed-desc">Last Refreshed (Recent)</option>
+                                        <option value="refreshed-asc">Last Refreshed (Oldest)</option>
+                                        <option value="enabled-first">Enabled First</option>
+                                        <option value="disabled-first">Disabled First</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="inputLabel" for="mediaTypeFilter">Media Type</label>
+                                    <select id="mediaTypeFilter" is="emby-select" class="emby-select-withcolor emby-select">
+                                        <option value="all">All Types</option>
+                                        <option value="Movie">Movie</option>
+                                        <option value="Episode">Episode</option>
+                                        <option value="Series">Series</option>
+                                        <option value="Audio">Audio (Music)</option>
+                                        <option value="MusicVideo">Music Video</option>
+                                        <option value="Video">Video (Home Video)</option>
+                                        <option value="Photo">Photo (Home Photo)</option>
+                                        <option value="Book">Book</option>
+                                        <option value="AudioBook">Audiobook</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="inputLabel" for="statusFilter">Status</label>
+                                    <select id="statusFilter" is="emby-select" class="emby-select-withcolor emby-select">
+                                        <option value="all">All Playlists</option>
+                                        <option value="enabled">Enabled Only</option>
+                                        <option value="disabled">Disabled Only</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="inputLabel" for="userFilter">User</label>
+                                    <select id="userFilter" is="emby-select" class="emby-select-withcolor emby-select">
+                                        <option value="all">All Users</option>
+                                        <!-- Options will be populated dynamically -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Clear Filters and Expand All Buttons -->
+                        <div class="inputContainer" style="margin-bottom: 1em;">
+                            <button type="button" id="clearFiltersBtn" class="emby-button raised" style="margin-right: 0.5em;">Clear All Filters</button>
+                            <button type="button" id="expandAllBtn" class="emby-button raised" style="margin-right: 0.5em;">Expand All</button>
+                            <span id="activeFiltersDisplay" class="fieldDescription" style="color: #999; font-style: italic;"></span>
+                        </div>
+                        
                         
                         <div id="playlist-list-container">
                             <p>Loading playlists...</p>
