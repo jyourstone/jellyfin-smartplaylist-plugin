@@ -2223,9 +2223,9 @@
                         createTabButton.textContent = 'Create Playlist';
                     }
                     
-                    // Switch to Manage tab and scroll to top after successful update (instant to avoid delay)
+                    // Switch to Manage tab and scroll to top after successful update (auto for instant behavior)
                     switchToTab(page, 'manage');
-                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    window.scrollTo({ top: 0, behavior: 'auto' });
                 }
                 clearForm(page);
             }).catch(err => {
@@ -2263,6 +2263,9 @@
         apiClient.getPluginConfiguration(getPluginId()).then(config => {
             setElementValue(page, '#sortBy', config.DefaultSortBy || 'Name');
             setElementValue(page, '#sortOrder', config.DefaultSortOrder || 'Ascending');
+            
+            // Ensure Sort Order visibility is synced after setting defaults
+            toggleSortOrderVisibility(page.querySelector('#sortOrder-container'), config.DefaultSortBy || 'Name');
             setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
             setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
@@ -3975,19 +3978,29 @@
     function applySortOrderToForm(page, playlist) {
         const { sortBy, sortOrder } = parseSortOrder(playlist);
         
-        page.querySelector('#sortBy').value = sortBy;
-        page.querySelector('#sortOrder').value = sortOrder;
+        const sortByElem = page.querySelector('#sortBy');
+        if (sortByElem) {
+            sortByElem.value = sortBy;
+        }
+        
+        const sortOrderElem = page.querySelector('#sortOrder');
+        if (sortOrderElem) {
+            sortOrderElem.value = sortOrder;
+        }
         
         // Hide/show Sort Order based on loaded Sort By value
-        toggleSortOrderVisibility(page.querySelector('#sortOrder-container'), sortBy);
+        const sortOrderContainer = page.querySelector('#sortOrder-container');
+        if (sortOrderContainer) {
+            toggleSortOrderVisibility(sortOrderContainer, sortBy);
+        }
     }
 
     async function editPlaylist(page, playlistId) {
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
-        // Always scroll to top when entering edit mode (instant to avoid delay)
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        // Always scroll to top when entering edit mode (auto for instant behavior)
+        window.scrollTo({ top: 0, behavior: 'auto' });
                 
         apiClient.ajax({
             type: "GET",
@@ -4260,8 +4273,8 @@
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
-        // Always scroll to top when entering clone mode (instant to avoid delay)
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        // Always scroll to top when entering clone mode (auto for instant behavior)
+        window.scrollTo({ top: 0, behavior: 'auto' });
                 
         apiClient.ajax({
             type: "GET",
@@ -4463,7 +4476,7 @@
         
         // Switch to Manage tab after canceling edit
         switchToTab(page, 'manage');
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        window.scrollTo({ top: 0, behavior: 'auto' });
         
         showNotification('Edit mode cancelled.', 'success');
     }
