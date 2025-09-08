@@ -2017,8 +2017,13 @@
     }
     
     async function createPlaylist(page) {
-        // Scroll to top when creating/updating playlist for better UX
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Get edit state to determine if we're creating or updating
+        const editState = getPageEditState(page);
+        
+        // Only scroll to top when creating new playlist (not when updating existing)
+        if (!editState.editMode) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         
         try {
             const apiClient = getApiClient();
@@ -2218,12 +2223,9 @@
                         createTabButton.textContent = 'Create Playlist';
                     }
                     
-                    // Switch to Manage tab and scroll to top after successful update
+                    // Switch to Manage tab and scroll to top after successful update (auto for instant behavior)
                     switchToTab(page, 'manage');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    
-                    // Refresh the playlist list to show the updated playlist
-                    loadPlaylistList(page);
+                    window.scrollTo({ top: 0, behavior: 'auto' });
                 }
                 clearForm(page);
             }).catch(err => {
@@ -2261,6 +2263,9 @@
         apiClient.getPluginConfiguration(getPluginId()).then(config => {
             setElementValue(page, '#sortBy', config.DefaultSortBy || 'Name');
             setElementValue(page, '#sortOrder', config.DefaultSortOrder || 'Ascending');
+            
+            // Ensure Sort Order visibility is synced after setting defaults
+            toggleSortOrderVisibility(page.querySelector('#sortOrder-container'), config.DefaultSortBy || 'Name');
             setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
             setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
@@ -3950,12 +3955,52 @@
         }
     }
 
+    // Helper function to parse sort order from playlist data
+    function parseSortOrder(playlist) {
+        const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
+        
+        let sortBy, sortOrder;
+        if (orderName === 'Random' || orderName === 'NoOrder' || orderName === 'No Order') {
+            // Special handling for Random/NoOrder - no Asc/Desc
+            sortBy = (orderName === 'No Order') ? 'NoOrder' : orderName;
+            sortOrder = 'Ascending'; // Default sort order (though it won't be used)
+        } else {
+            // Normal parsing for other orders like "Name Ascending"
+            const parts = orderName.split(' ');
+            sortBy = parts.slice(0, -1).join(' ') || 'Name';
+            sortOrder = parts[parts.length - 1] || 'Ascending';
+        }
+        
+        return { sortBy, sortOrder };
+    }
+
+    // Helper function to apply sort order to form elements
+    function applySortOrderToForm(page, playlist) {
+        const { sortBy, sortOrder } = parseSortOrder(playlist);
+        
+        const sortByElem = page.querySelector('#sortBy');
+        if (sortByElem) {
+            sortByElem.value = sortBy;
+        }
+        
+        const sortOrderElem = page.querySelector('#sortOrder');
+        if (sortOrderElem) {
+            sortOrderElem.value = sortOrder;
+        }
+        
+        // Hide/show Sort Order based on loaded Sort By value
+        const sortOrderContainer = page.querySelector('#sortOrder-container');
+        if (sortOrderContainer) {
+            toggleSortOrderVisibility(sortOrderContainer, sortBy);
+        }
+    }
+
     async function editPlaylist(page, playlistId) {
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
-        // Always scroll to top when entering edit mode
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Always scroll to top when entering edit mode (auto for instant behavior)
+        window.scrollTo({ top: 0, behavior: 'auto' });
                 
         apiClient.ajax({
             type: "GET",
@@ -4063,26 +4108,8 @@
                     setCurrentUserAsDefault(page);
                 }
                 
-                // Set sort options
-                const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
-                
-                let sortBy, sortOrder;
-                if (orderName === 'Random' || orderName === 'NoOrder' || orderName === 'No Order') {
-                    // Special handling for Random/NoOrder - no Asc/Desc
-                    sortBy = (orderName === 'No Order') ? 'NoOrder' : orderName;
-                    sortOrder = 'Ascending'; // Default sort order (though it won't be used)
-                } else {
-                    // Normal parsing for other orders like "Name Ascending"
-                    const parts = orderName.split(' ');
-                    sortBy = parts.slice(0, -1).join(' ') || 'Name';
-                    sortOrder = parts[parts.length - 1] || 'Ascending';
-                }
-                
-                page.querySelector('#sortBy').value = sortBy;
-                page.querySelector('#sortOrder').value = sortOrder;
-                
-                // Hide/show Sort Order based on loaded Sort By value
-                toggleSortOrderVisibility(page.querySelector('#sortOrder-container'), sortBy);
+                // Set sort options using helper function
+                applySortOrderToForm(page, playlist);
                 
                 // Clear existing rules
                 const rulesContainer = page.querySelector('#rules-container');
@@ -4246,8 +4273,8 @@
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
-        // Always scroll to top when entering clone mode
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Always scroll to top when entering clone mode (auto for instant behavior)
+        window.scrollTo({ top: 0, behavior: 'auto' });
                 
         apiClient.ajax({
             type: "GET",
@@ -4340,20 +4367,8 @@
                     });
                 }
                 
-                // Set sort order
-                const sortByElement = page.querySelector('#sortBy');
-                if (sortByElement && playlist.Order && playlist.Order.Name) {
-                    sortByElement.value = playlist.Order.Name;
-                    
-                    // Update sort order visibility and set value
-                    const sortOrderContainer = page.querySelector('#sortOrderContainer');
-                    toggleSortOrderVisibility(sortOrderContainer, playlist.Order.Name);
-                    
-                    const sortOrderElement = page.querySelector('#sortOrder');
-                    if (sortOrderElement && playlist.Order.Direction) {
-                        sortOrderElement.value = playlist.Order.Direction;
-                    }
-                }
+                // Set sort order using helper function
+                applySortOrderToForm(page, playlist);
                 
                 // Clear existing rules and populate with cloned rules
                 const rulesContainer = page.querySelector('#rules-container');
@@ -4458,6 +4473,10 @@
         
         // Clear form
         clearForm(page);
+        
+        // Switch to Manage tab after canceling edit
+        switchToTab(page, 'manage');
+        window.scrollTo({ top: 0, behavior: 'auto' });
         
         showNotification('Edit mode cancelled.', 'success');
     }
