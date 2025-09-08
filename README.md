@@ -70,11 +70,13 @@ The web interface is organized into three tabs:
     -   Configure auto-refresh behavior (Never, On Library Changes, On All Changes).
     -   Set custom refresh schedule (Daily, Weekly, Monthly, Interval or No schedule).
 2.  **Manage Playlists**: View and edit all of your existing smart playlists.
-    -   See the rules, sorting, and other details for each playlist.
-    -   Edit existing playlists to modify rules, ownership, or settings.
-    -   Enable or disable playlists to show or hide them in Jellyfin.
-    -   Refresh individual playlists.
-    -   Delete playlists you no longer need with flexible deletion options.
+    -   **Organized Interface**: Clean, modern layout with grouped actions and filters
+    -   **Advanced Filtering**: Filter by name, media type, status, user, and creation date with real-time search
+    -   **Flexible Sorting**: Sort by name, creation date, last refreshed, or enabled status
+    -   **Bulk Operations**: Select multiple playlists to enable, disable, or delete them simultaneously
+    -   **Detailed View**: Expand playlists to see rules, settings, creation date, and other properties
+    -   **Quick Actions**: Edit, clone, refresh, or delete individual playlists with confirmation dialogs
+    -   **Smart Selection**: Select all, expand all, or clear selections with intuitive controls
 3.  **Settings**: Configure global settings for the plugin.
     -   Set the default sort order for new playlists.
     -   Set the default max items and max play time for new playlists.

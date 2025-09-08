@@ -79,6 +79,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? LastRefreshed { get; set; } // When was this playlist last refreshed (any trigger)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? DateCreated { get; set; } // When was this playlist created (file creation date)
         
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]

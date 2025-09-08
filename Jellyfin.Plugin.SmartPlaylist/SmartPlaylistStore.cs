@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
@@ -56,11 +58,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         public async Task<SmartPlaylistDto[]> GetAllSmartPlaylistsAsync()
         {
-            var deserializeTasks = fileSystem.GetAllSmartPlaylistFilePaths().Select(LoadPlaylistAsync).ToArray();
+            var filePaths = fileSystem.GetAllSmartPlaylistFilePaths();
+            var validPlaylists = new List<SmartPlaylistDto>();
 
-            await Task.WhenAll(deserializeTasks).ConfigureAwait(false);
+            foreach (var filePath in filePaths)
+            {
+                try
+                {
+                    var playlist = await LoadPlaylistAsync(filePath).ConfigureAwait(false);
+                    if (playlist != null)
+                    {
+                        validPlaylists.Add(playlist);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but continue loading other playlists
+                    Console.WriteLine($"Failed to load playlist from {Path.GetFileName(filePath)}: {ex.Message}");
+                }
+            }
 
-            return [.. deserializeTasks.Select(x => x.Result)];
+            return [.. validPlaylists];
         }
 
         public async Task<SmartPlaylistDto> SaveAsync(SmartPlaylistDto smartPlaylist)
@@ -69,6 +87,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             smartPlaylist.FileName = $"{fileName}.json";
 
             var filePath = fileSystem.GetSmartPlaylistPath(fileName);
+            
             await using var writer = File.Create(filePath);
             await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
             return smartPlaylist;
