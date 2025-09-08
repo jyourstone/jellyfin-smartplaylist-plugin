@@ -173,8 +173,8 @@
         /* Tag input placeholder color */
         .tag-input-field::placeholder {
             color: #757575 !important;
-        }
-        
+        }        
+       
         /* Ensure form elements span full width */
         .SmartPlaylistConfigurationPage .inputContainer input,
         .SmartPlaylistConfigurationPage .inputContainer select,
@@ -445,8 +445,8 @@
                                     <label class="inputLabel" for="playlistSearchInput">Search Playlists</label>
                                     <div style="display: flex; gap: 1em; align-items: end;">
                                         <div class="search-inputContainer" style="position: relative; display: flex; align-items: center; flex: 1;">
-                                            <input type="text" id="playlistSearchInput" class="emby-input" placeholder="Search playlists..." style="padding: 0.75em 2.5em 0.75em 0.75em; width: 100%; box-sizing: border-box; background-color: #2A2A2A;">
-                                            <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search">×</button>
+                                            <input type="search" id="playlistSearchInput" class="emby-input" autocomplete="off" inputmode="search" placeholder="Search playlists..." style="padding: 0.75em 2.5em 0.75em 0.75em; width: 100%; box-sizing: border-box; background-color: #2A2A2A;">
+                                            <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search" aria-label="Clear search">×</button>
                                         </div>
                                         <button type="button" id="clearFiltersBtn" class="emby-button raised">Clear All Filters</button>
                                     </div>

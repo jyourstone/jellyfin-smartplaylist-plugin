@@ -4550,6 +4550,8 @@
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
                 showNotification('Settings saved.', 'success');
+                // Scroll to top of page after saving
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }).catch(err => {
                 Dashboard.hideLoadingMsg();
                 console.error('Error saving configuration:', err);
@@ -4620,6 +4622,16 @@
                 color: #e0e0e0;
                 background: inherit;
                 padding-left: 1em;
+            }
+            
+            /* Hide native search input clear button to avoid double X with our custom clear button */
+            #playlistSearchInput::-webkit-search-cancel-button,
+            #playlistSearchInput::-webkit-search-decoration,
+            #playlistSearchInput::-webkit-search-results-button,
+            #playlistSearchInput::-webkit-search-results-decoration {
+                -webkit-appearance: none !important;
+                appearance: none !important;
+                display: none !important;
             }
         `;
         document.head.appendChild(style);
