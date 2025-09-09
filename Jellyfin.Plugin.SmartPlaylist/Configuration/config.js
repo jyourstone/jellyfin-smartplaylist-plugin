@@ -207,7 +207,7 @@
         html += '</label>';
         
         // Selected count display
-        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em;">(0 selected)</span>';
+        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em; font-style: italic;">(0 selected)</span>';
         
         // 2. Enable button
         html += '<button type="button" id="bulkEnableBtn" class="emby-button raised" disabled>Enable</button>';
@@ -4473,7 +4473,13 @@
             if (expression.UserId) {
                 const userSelect = ruleRow.querySelector('.rule-user-select');
                 if (userSelect) {
-                    userSelect.value = expression.UserId;
+                    // Ensure options are loaded before setting the value
+                    loadUsersForRule(userSelect, true).then(() => {
+                        userSelect.value = expression.UserId;
+                    }).catch(() => {
+                        // Fallback: set value anyway in case of error
+                        userSelect.value = expression.UserId;
+                    });
                 }
             }
         } catch (error) {
