@@ -156,6 +156,29 @@
         return options;
     }
     
+    // Helper function to generate summary text with consistent styling
+    function generateSummaryText(totalPlaylists, enabledPlaylists, disabledPlaylists, filteredCount = null, searchTerm = null) {
+        const bulletStyle = 'margin: 0 0.25em;';
+        const bullet = '<span style="' + bulletStyle + '">•</span>';
+        
+        let summaryText = '<strong>Summary:&nbsp;</strong> ';
+        
+        if (filteredCount !== null && filteredCount !== totalPlaylists) {
+            // Filtered results
+            summaryText += filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '');
+            if (searchTerm) {
+                summaryText += ' matching "' + escapeHtml(searchTerm) + '"';
+            }
+        } else {
+            // All playlists
+            summaryText += totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '');
+        }
+        
+        summaryText += ' ' + bullet + ' ' + enabledPlaylists + ' enabled ' + bullet + ' ' + disabledPlaylists + ' disabled';
+        
+        return summaryText;
+    }
+
     // Helper function to generate bulk actions HTML
     function generateBulkActionsHTML(summaryText) {
         let html = '';
@@ -168,10 +191,10 @@
         html += '</div>';
         
         // Layout: Left side (Select All, bulk actions) | Right side (Expand All, Reload List)
-        html += '<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1em;">';
+        html += '<div style="display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 0.5em;">';
         
         // Left side: Select All checkbox and bulk action buttons
-        html += '<div style="display: flex; align-items: center; gap: 0.75em; flex-wrap: wrap;">';
+        html += '<div style="display: flex; align-items: center; gap: 0.25em; flex-wrap: wrap;">';
         
         // 1. Select All checkbox
         html += '<label class="emby-checkbox-label" style="width: auto; min-width: auto;">';
@@ -184,7 +207,7 @@
         html += '</label>';
         
         // Selected count display
-        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999;">0 selected</span>';
+        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em; font-style: italic;">(0 selected)</span>';
         
         // 2. Enable button
         html += '<button type="button" id="bulkEnableBtn" class="emby-button raised" disabled>Enable</button>';
@@ -198,7 +221,7 @@
         html += '</div>'; // End left side
         
         // Right side: View control buttons
-        html += '<div style="display: flex; align-items: center; gap: 0.75em; flex-wrap: wrap;">';
+        html += '<div style="display: flex; align-items: center; gap: 0.25em; flex-wrap: wrap; margin-left: auto;">';
         
         // 5. Expand All button
         html += '<button type="button" id="expandAllBtn" class="emby-button raised">Expand All</button>';
@@ -2574,8 +2597,7 @@
                 let html = '';
                 
                 // Add bulk actions container after summary
-                const summaryText = '<strong>Summary:</strong> ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                        ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
+                const summaryText = generateSummaryText(totalPlaylists, enabledPlaylists, disabledPlaylists, filteredCount, null);
                 html += generateBulkActionsHTML(summaryText);
                 
                 // Process filtered playlists sequentially to resolve usernames
@@ -2901,8 +2923,9 @@
         // Use the resolved username passed as parameter
         const userName = resolvedUserName || 'Unknown User';
         const playlistId = playlist.Id || 'NO_ID';
-        const mediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
-            playlist.MediaTypes.join(', ') : 'All Types';
+        // Create individual media type labels
+        const mediaTypesArray = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
+            playlist.MediaTypes : ['All Types'];
         
         const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
         
@@ -2910,7 +2933,6 @@
         const eName = escapeHtml(playlist.Name || '');
         const eFileName = escapeHtml(playlist.FileName || '');
         const eUserName = escapeHtml(userName || '');
-        const eMediaTypes = escapeHtml(mediaTypes);
         const eSortName = escapeHtml(sortName);
         const eMaxItems = escapeHtml(maxItemsDisplay);
         const eMaxPlayTime = escapeHtml(maxPlayTimeDisplay);
@@ -2921,11 +2943,11 @@
         const ePlaylistId = escapeHtml(playlistId);
         
         // Generate collapsible playlist card with improved styling
-        return '<div class="inputContainer playlist-card" data-playlist-id="' + ePlaylistId + '" style="border: 1px solid #444; border-radius: 2px; margin-bottom: 0.75em;">' +
+        return '<div class="inputContainer playlist-card" data-playlist-id="' + ePlaylistId + '" style="border: none; border-radius: 2px; margin-bottom: 0.75em; background: #202020;">' +
             // Compact header (always visible)
             '<div class="playlist-header" style="padding: 0.75em; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">' +
-                '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1;">' +
-                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em;">' +
+                '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1; min-width: 0;">' +
+                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em; margin-left: 0.5em; flex-shrink: 0;">' +
                         '<input type="checkbox" is="emby-checkbox" data-embycheckbox="true" class="emby-checkbox playlist-checkbox" data-playlist-id="' + ePlaylistId + '">' +
                         '<span class="checkboxLabel" style="display: none;"></span>' +
                         '<span class="checkboxOutline">' +
@@ -2933,25 +2955,39 @@
                             '<span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>' +
                         '</span>' +
                     '</label>' +
-                    '<span class="playlist-expand-icon" style="margin-right: 0.5em; font-family: monospace; font-size: 1.2em; color: #999;">▶</span>' +
-                    '<h3 style="margin: 0; flex: 1;">' + eName + '</h3>' +
-                    '<span class="playlist-media-types" style="margin-left: 0.5em; padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc;">' + eMediaTypes + '</span>' +
+                    '<span class="playlist-expand-icon" style="margin-right: 0.5em; font-family: monospace; font-size: 1.2em; color: #999; flex-shrink: 0;">▶</span>' +
+                    '<h3 style="margin: 0; flex: 1.5; min-width: 0; word-wrap: break-word; padding-right: 0.5em;">' + eName + '</h3>' +
+                    '<div class="playlist-media-types-container" style="display: flex; flex-wrap: wrap; gap: 0.25em; flex-shrink: 0; max-width: 160px; justify-content: flex-end;">' +
+                        mediaTypesArray.map(type => '<span class="playlist-media-type-label" style="padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc; white-space: nowrap;">' + escapeHtml(type) + '</span>').join('') +
+                    '</div>' +
                 '</div>' +
-                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em;">' +
+                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 1em;">' +
                     '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
             '</div>' +
             
             // Detailed content (initially hidden)
-            '<div class="playlist-details" style="display: none; padding: 0 0.75em 0.75em 0.75em; background: rgba(0,0,0,0.1);">' +
-                // Rules section at the top
-                '<div class="rules-section" style="margin-bottom: 1em;">' +
+            '<div class="playlist-details" style="display: none; padding: 0 0.75em 0.75em 0.75em; background: #202020;">' +
+                // Action buttons (moved to top, right after playlist name)
+                '<div class="playlist-actions" style="margin-bottom: 0.5em; padding-bottom: 0.5em;">' +
+                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Clone</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
+                    (isEnabled ? 
+                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
+                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
+                    ) +
+                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
+                '</div>' +
+                
+                // Rules section
+                '<div class="rules-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
                     '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Rules</h4>' +
                         rulesHtml +
                 '</div>' +
                 
                 // Properties table
-                '<div class="properties-section">' +
+                '<div class="properties-section" style="margin-left: 0.5em;">' +
                     '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Properties</h4>' +
                     '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
@@ -2996,18 +3032,6 @@
                         '</tr>' +
                     '</table>' +
                 '</div>' +
-                
-                // Action buttons (only shown when expanded, bigger styling, no borders)
-                '<div class="playlist-actions" style="margin-top: 1em;">' +
-                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Clone</button>' +
-                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
-                    (isEnabled ? 
-                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
-                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
-                    ) +
-                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
-                '</div>' +
             '</div>' +
         '</div>';
     }
@@ -3035,7 +3059,7 @@
         // Update count display
         const countDisplay = page.querySelector('#selectedCountDisplay');
         if (countDisplay) {
-            countDisplay.textContent = selectedCount + ' selected';
+            countDisplay.textContent ='(' + selectedCount + ' selected)';
         }
         
         // Update button states
@@ -3312,7 +3336,8 @@
             ? playlistNames.slice(0, 5).join('\n') + `\n... and ${playlistNames.length - 5} more`
             : playlistNames.join('\n');
         
-        const confirmText = `Are you sure you want to delete the following playlist(s)?\n\n${playlistList}\n\nThis action cannot be undone.`;
+        const isPlural = playlistNames.length !== 1;
+        const confirmText = `Are you sure you want to delete the following ${isPlural ? 'playlists' : 'playlist'}?\n\n${playlistList}\n\nThis action cannot be undone.`;
         
         showDeleteModal(page, confirmText, () => {
             performBulkDelete(page, playlistIds);
@@ -3412,6 +3437,9 @@
         // Base action on current button text, not on current state
         const shouldExpand = expandAllBtn.textContent.trim() === 'Expand All';
         
+        // Preserve scroll position when expanding to prevent unwanted scrolling
+        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        
         if (shouldExpand) {
             // Expand all
             playlistCards.forEach(card => {
@@ -3424,6 +3452,11 @@
                 card.setAttribute('data-expanded', 'true');
             });
             expandAllBtn.textContent = 'Collapse All';
+            
+            // Restore scroll position after DOM changes to prevent unwanted scrolling
+            requestAnimationFrame(() => {
+                window.scrollTo(0, currentScrollTop);
+            });
         } else {
             // Collapse all
             playlistCards.forEach(card => {
@@ -3806,16 +3839,7 @@
         
         // Add bulk actions container after summary
         let summaryText;
-        if (!searchTerm && filteredCount === totalPlaylists) {
-            // No search term and showing all playlists - use simple format
-            summaryText = '<strong>Summary:</strong> ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                    ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
-        } else {
-            // Search term or filtered results - use filtered format
-            summaryText = '<strong>Summary:</strong> ' + filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '') + 
-                    (searchTerm ? ' matching "' + escapeHtml(searchTerm) + '"' : '') +
-                    ' • ' + enabledPlaylists + ' enabled • ' + disabledPlaylists + ' disabled';
-        }
+        summaryText = generateSummaryText(totalPlaylists, enabledPlaylists, disabledPlaylists, filteredCount, searchTerm);
         html += generateBulkActionsHTML(summaryText);
         
         // Process filtered playlists using the helper function
@@ -4449,7 +4473,13 @@
             if (expression.UserId) {
                 const userSelect = ruleRow.querySelector('.rule-user-select');
                 if (userSelect) {
-                    userSelect.value = expression.UserId;
+                    // Ensure options are loaded before setting the value
+                    loadUsersForRule(userSelect, true).then(() => {
+                        userSelect.value = expression.UserId;
+                    }).catch(() => {
+                        // Fallback: set value anyway in case of error
+                        userSelect.value = expression.UserId;
+                    });
                 }
             }
         } catch (error) {
