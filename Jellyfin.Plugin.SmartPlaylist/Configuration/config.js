@@ -321,15 +321,13 @@
         // Convert to string and handle common cases efficiently
         const str = String(text);
         
-        // Use a more comprehensive character map for security
+        // Use standard HTML character escaping
         return str
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#x27;')
-            .replace(/\//g, '&#x2F;')
-            .replace(/`/g, '&#x60;')
             .replace(/=/g, '&#x3D;');
     }
     
@@ -386,7 +384,7 @@
         }
     }
     
-    // Standardized API call wrapper
+    // Standardized API call wrapper with network error handling
     async function makeApiCall(apiClient, method, url, data = null, options = {}) {
         try {
             const config = {
@@ -404,7 +402,25 @@
             return await handleApiResponse(response);
         } catch (error) {
             console.error(`API call failed: ${method} ${url}`, error);
-            throw error;
+            
+            // Handle different types of network errors
+            if (error instanceof ApiError) {
+                // Already an API error, just re-throw
+                throw error;
+            } else if (error.name === 'NetworkError' || error.name === 'TypeError') {
+                // Network connectivity issues
+                throw new ApiError('Network connection failed. Please check your internet connection and try again.', 0);
+            } else if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+                // Request timeout
+                throw new ApiError('Request timed out. Please try again.', 408);
+            } else if (error.name === 'AbortError') {
+                // Request was cancelled
+                throw new ApiError('Request was cancelled.', 0);
+            } else {
+                // Generic network/connection error
+                const message = error.message || 'Network request failed';
+                throw new ApiError(`Connection error: ${message}`, 0);
+            }
         }
     }
     
