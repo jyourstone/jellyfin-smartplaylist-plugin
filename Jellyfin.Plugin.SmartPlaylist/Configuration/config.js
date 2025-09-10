@@ -3168,7 +3168,7 @@
             // Compact header (always visible)
             '<div class="playlist-header" style="padding: 0.75em; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">' +
                 '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1; min-width: 0;">' +
-                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em; margin-left: 0.5em; flex-shrink: 0;">' +
+                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em; margin-left: 0.3em; flex-shrink: 0;">' +
                         '<input type="checkbox" is="emby-checkbox" data-embycheckbox="true" class="emby-checkbox playlist-checkbox" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '">' +
                         '<span class="checkboxLabel" style="display: none;"></span>' +
                         '<span class="checkboxOutline">' +
@@ -3182,7 +3182,7 @@
                         mediaTypesArray.map(type => '<span class="playlist-media-type-label" style="padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc; white-space: nowrap;">' + escapeHtml(type) + '</span>').join('') +
                     '</div>' +
                 '</div>' +
-                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 1em;">' +
+                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
                     '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
             '</div>' +
