@@ -314,12 +314,146 @@
         return intervals;
     }
     
-    // HTML escaping function to prevent XSS vulnerabilities
+    // Enhanced HTML escaping function to prevent XSS vulnerabilities
     function escapeHtml(text) {
         if (text == null) return ''; // Only treat null/undefined as empty
-        const div = document.createElement('div');
-        div.textContent = String(text); // Convert to string to handle numbers like 0
-        return div.innerHTML;
+        
+        // Convert to string and handle common cases efficiently
+        const str = String(text);
+        
+        // Use standard HTML character escaping
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/=/g, '&#x3D;');
+    }
+    
+    // Standardized API error handling system
+    async function handleApiResponse(response) {
+        if (!response.ok) {
+            let errorMessage = 'Unknown error occurred';
+            
+            try {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    // Handle both direct error messages and wrapped error objects
+                    if (typeof errorData === 'string') {
+                        errorMessage = errorData;
+                    } else if (errorData.message) {
+                        errorMessage = errorData.message;
+                    } else if (errorData.error) {
+                        errorMessage = errorData.error;
+                    } else {
+                        errorMessage = JSON.stringify(errorData);
+                    }
+                } else {
+                    // Try to get text content for non-JSON responses
+                    const textContent = await response.text();
+                    if (textContent) {
+                        // Handle JSON-encoded strings from backend
+                        try {
+                            errorMessage = JSON.parse(textContent);
+                        } catch {
+                            errorMessage = textContent;
+                        }
+                    } else {
+                        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    }
+                }
+            } catch (parseError) {
+                console.error('Error parsing API error response:', parseError);
+                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            }
+            
+            throw new ApiError(errorMessage, response.status);
+        }
+        
+        return response;
+    }
+    
+    // Custom error class for API errors
+    class ApiError extends Error {
+        constructor(message, status) {
+            super(message);
+            this.name = 'ApiError';
+            this.status = status;
+        }
+    }
+    
+    // Standardized API call wrapper with network error handling
+    async function makeApiCall(apiClient, method, url, data = null, options = {}) {
+        try {
+            const config = {
+                type: method.toUpperCase(),
+                url: apiClient.getUrl(url),
+                contentType: 'application/json',
+                ...options
+            };
+            
+            if (data && (method.toUpperCase() === 'POST' || method.toUpperCase() === 'PUT')) {
+                config.data = JSON.stringify(data);
+            }
+            
+            const response = await apiClient.ajax(config);
+            return await handleApiResponse(response);
+        } catch (error) {
+            console.error(`API call failed: ${method} ${url}`, error);
+            
+            // Handle different types of network errors
+            if (error instanceof ApiError) {
+                // Already an API error, just re-throw
+                throw error;
+            } else if (error.name === 'NetworkError' || error.name === 'TypeError') {
+                // Network connectivity issues
+                throw new ApiError('Network connection failed. Please check your internet connection and try again.', 0);
+            } else if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+                // Request timeout
+                throw new ApiError('Request timed out. Please try again.', 408);
+            } else if (error.name === 'AbortError') {
+                // Request was cancelled
+                throw new ApiError('Request was cancelled.', 0);
+            } else {
+                // Generic network/connection error
+                const message = error.message || 'Network request failed';
+                throw new ApiError(`Connection error: ${message}`, 0);
+            }
+        }
+    }
+    
+    // Standardized error display function
+    function displayApiError(error, context = '') {
+        let message = 'An unexpected error occurred';
+        
+        if (error instanceof ApiError) {
+            message = error.message;
+        } else if (error && error.message) {
+            message = error.message;
+        } else if (typeof error === 'string') {
+            message = error;
+        }
+        
+        const contextPrefix = context ? context + ': ' : '';
+        const fullMessage = contextPrefix + message;
+        
+        console.error('API Error:', fullMessage, error);
+        showNotification(fullMessage, 'error');
+        
+        return fullMessage;
+    }
+    
+    // Safe HTML attribute escaping for use in HTML attributes
+    function escapeHtmlAttribute(text) {
+        if (text == null) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     // Safe DOM manipulation helper to prevent XSS vulnerabilities
@@ -648,19 +782,57 @@
         container.appendChild(mainContainer);
     };
 
-    // Helper function to manage search input state
+    // Helper function to manage search input state with better error handling
     const setSearchInputState = (page, disabled, placeholder = 'Search playlists...') => {
-        const searchInput = page.querySelector('#playlistSearchInput');
-        const clearSearchBtn = page.querySelector('#clearSearchBtn');
-        
-        if (searchInput) {
-            searchInput.disabled = disabled;
-            searchInput.placeholder = placeholder;
+        try {
+            const searchInput = page.querySelector('#playlistSearchInput');
+            const clearSearchBtn = page.querySelector('#clearSearchBtn');
+            
+            if (searchInput) {
+                searchInput.disabled = disabled;
+                searchInput.placeholder = placeholder;
+                
+                // Store original state to restore later if needed
+                if (!page._originalSearchState) {
+                    page._originalSearchState = {
+                        disabled: false,
+                        placeholder: 'Search playlists...'
+                    };
+                }
+            }
+            
+            // Use direct visibility control since we already have the element
+            if (clearSearchBtn) {
+                clearSearchBtn.style.display = disabled ? 'none' : 'flex';
+            }
+        } catch (err) {
+            console.warn('Failed to update search input state:', err);
+            // Ensure we don't leave search permanently disabled
+            try {
+                const searchInput = page.querySelector('#playlistSearchInput');
+                if (searchInput && disabled) {
+                    // Fallback: re-enable search after a short delay
+                    setTimeout(() => {
+                        searchInput.disabled = false;
+                        searchInput.placeholder = 'Search playlists...';
+                    }, 1000);
+                }
+            } catch (fallbackErr) {
+                console.error('Failed to apply search input fallback:', fallbackErr);
+            }
         }
-        
-        // Use direct visibility control since we already have the element
-        if (clearSearchBtn) {
-            clearSearchBtn.style.display = disabled ? 'none' : 'flex';
+    };
+    
+    // Helper function to restore search input to original state
+    const restoreSearchInputState = (page) => {
+        try {
+            const searchInput = page.querySelector('#playlistSearchInput');
+            if (searchInput && page._originalSearchState) {
+                searchInput.disabled = page._originalSearchState.disabled;
+                searchInput.placeholder = page._originalSearchState.placeholder;
+            }
+        } catch (err) {
+            console.warn('Failed to restore search input state:', err);
         }
     };
 
@@ -1673,7 +1845,44 @@
             const helpDiv = document.createElement('div');
             helpDiv.className = 'regex-help field-description';
             helpDiv.style.cssText = 'margin-top: 0.5em; margin-bottom: 0.5em; font-size: 0.85em; color: #aaa; background: rgba(255,255,255,0.05); padding: 0.5em; border-radius: 1px;';
-            helpDiv.innerHTML = '<strong>Regex Help:</strong> Use .NET syntax. Examples: <code>(?i)swe</code> (case-insensitive), <code>(?i)(eng|en)</code> (multiple options), <code>^Action</code> (starts with). Do not use JavaScript-style /pattern/flags.<br><strong>Test patterns:</strong> <a href="https://regex101.com/?flavor=dotnet" target="_blank" style="color: #00a4dc;">Regex101.com (.NET flavor)</a>';
+            // Use safe HTML creation instead of innerHTML for security
+            helpDiv.innerHTML = '';
+            
+            // Create help content safely
+            const strongRegexHelp = document.createElement('strong');
+            strongRegexHelp.textContent = 'Regex Help:';
+            helpDiv.appendChild(strongRegexHelp);
+            
+            helpDiv.appendChild(document.createTextNode(' Use .NET syntax. Examples: '));
+            
+            const code1 = document.createElement('code');
+            code1.textContent = '(?i)swe';
+            helpDiv.appendChild(code1);
+            helpDiv.appendChild(document.createTextNode(' (case-insensitive), '));
+            
+            const code2 = document.createElement('code');
+            code2.textContent = '(?i)(eng|en)';
+            helpDiv.appendChild(code2);
+            helpDiv.appendChild(document.createTextNode(' (multiple options), '));
+            
+            const code3 = document.createElement('code');
+            code3.textContent = '^Action';
+            helpDiv.appendChild(code3);
+            helpDiv.appendChild(document.createTextNode(' (starts with). Do not use JavaScript-style /pattern/flags.'));
+            
+            helpDiv.appendChild(document.createElement('br'));
+            
+            const strongTestPatterns = document.createElement('strong');
+            strongTestPatterns.textContent = 'Test patterns:';
+            helpDiv.appendChild(strongTestPatterns);
+            helpDiv.appendChild(document.createTextNode(' '));
+            
+            const regexLink = document.createElement('a');
+            regexLink.href = 'https://regex101.com/?flavor=dotnet';
+            regexLink.target = '_blank';
+            regexLink.style.color = '#00a4dc';
+            regexLink.textContent = 'Regex101.com (.NET flavor)';
+            helpDiv.appendChild(regexLink);
             ruleGroup.appendChild(helpDiv);
         }
     }
@@ -2544,6 +2753,8 @@
         if (page._loadingPlaylists) {
             return;
         }
+        
+        // Set loading state BEFORE any async operations
         page._loadingPlaylists = true;
         
         // Disable search input while loading
@@ -2551,45 +2762,49 @@
         
         container.innerHTML = '<p>Loading playlists...</p>';
         
-        
-        apiClient.ajax({
-            type: "GET",
-            url: apiClient.getUrl(ENDPOINTS.base),
-            contentType: 'application/json'
-        }).then(response => {
-            if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + response.statusText); }
-            return response.json();
-        }).then(async playlists => {
+        try {
+            const response = await apiClient.ajax({
+                type: "GET",
+                url: apiClient.getUrl(ENDPOINTS.base),
+                contentType: 'application/json'
+            });
+            
+            if (!response.ok) { 
+                throw new Error('HTTP ' + response.status + ': ' + response.statusText); 
+            }
+            
+            const playlists = await response.json();
+            let processedPlaylists = playlists;
             // Ensure playlists is an array
-            if (!Array.isArray(playlists)) {
+            if (!Array.isArray(processedPlaylists)) {
                 console.warn('API returned non-array playlists data, converting to empty array');
-                playlists = [];
+                processedPlaylists = [];
             }
             
             // Check if any playlists were skipped due to corruption
             // This is a simple heuristic - if there are JSON files but fewer playlists loaded
             // Note: This won't be 100% accurate but gives users a heads up
-            if (playlists.length > 0) {
-                console.log(`SmartPlaylist: Loaded ${playlists.length} playlist(s) successfully`);
+            if (processedPlaylists.length > 0) {
+                console.log(`SmartPlaylist: Loaded ${processedPlaylists.length} playlist(s) successfully`);
             }
             
             // Store playlists data for filtering
-            page._allPlaylists = playlists;
+            page._allPlaylists = processedPlaylists;
             
             try {
                 // Populate user filter dropdown
-                await populateUserFilter(page, playlists);
+                await populateUserFilter(page, processedPlaylists);
             } catch (err) {
                 console.error('Error populating user filter:', err);
                 // Continue even if user filter fails
             }
             
-            if (playlists && playlists.length > 0) {
+            if (processedPlaylists && processedPlaylists.length > 0) {
                 // Apply all filters and sorting and display results
-                const filteredPlaylists = applyAllFiltersAndSort(page, playlists);
+                const filteredPlaylists = applyAllFiltersAndSort(page, processedPlaylists);
                 
                 // Use the existing playlist display logic instead of the async function for now
-                const totalPlaylists = playlists.length;
+                const totalPlaylists = processedPlaylists.length;
                 const filteredCount = filteredPlaylists.length;
                 const enabledPlaylists = filteredPlaylists.filter(p => p.Enabled !== false).length;
                 const disabledPlaylists = filteredCount - enabledPlaylists;
@@ -2625,18 +2840,14 @@
                 container.innerHTML = '<div class="inputContainer"><p>No smart playlists found.</p></div>';
             }
             
-            // Re-enable search input after loading is complete
-            setSearchInputState(page, false);
-            page._loadingPlaylists = false;
-        }).catch(err => {
-            console.error('Error loading playlists:', err);
-            let errorMessage = (err && err.message) ? err.message : 'Unknown error occurred.';
+        } catch (err) {
+            const errorMessage = displayApiError(err, 'Failed to load playlists');
             container.innerHTML = '<div class="inputContainer"><p style="color: #ff6b6b;">' + escapeHtml(errorMessage) + '</p></div>';
-            
-            // Re-enable search input even on error
+        } finally {
+            // Always re-enable search input and clear loading flag
             setSearchInputState(page, false);
             page._loadingPlaylists = false;
-        });
+        }
     }
 
     function filterPlaylists(playlists, searchTerm, page) {
@@ -2804,8 +3015,18 @@
         return config.filterFn(playlists, filterValue, page);
     }
 
+    // Initialize page-level AbortController for better event listener management
+    function initializePageEventListeners(page) {
+        // Create page-level AbortController if it doesn't exist
+        if (!page._pageAbortController) {
+            page._pageAbortController = createAbortController();
+        }
+        return page._pageAbortController.signal;
+    }
+
     // Generic event listener setup - eliminates repetitive filter change handlers
-    function setupFilterEventListeners(page, pageSignal) {
+    function setupFilterEventListeners(page, pageSignal = null) {
+        const signal = pageSignal || initializePageEventListeners(page);
         const filterKeys = ['sort', 'mediaType', 'visibility', 'user'];
         
         filterKeys.forEach(filterKey => {
@@ -2820,7 +3041,7 @@
                         console.error(`Error during ${filterKey} filter:`, err);
                         showNotification(`Filter error: ${err.message}`);
                     });
-                }, getEventListenerOptions(pageSignal));
+                }, getEventListenerOptions(signal));
             }
         });
     }
@@ -2891,7 +3112,7 @@
                         }
                         
                         rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
-                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + userInfo + nextUnwatchedInfo + collectionsInfo;
+                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo);
                         rulesHtml += '</span>';
                     }
                     rulesHtml += '</div>';
@@ -2943,12 +3164,12 @@
         const ePlaylistId = escapeHtml(playlistId);
         
         // Generate collapsible playlist card with improved styling
-        return '<div class="inputContainer playlist-card" data-playlist-id="' + ePlaylistId + '" style="border: none; border-radius: 2px; margin-bottom: 0.75em; background: #202020;">' +
+        return '<div class="inputContainer playlist-card" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 0.75em; background: #202020;">' +
             // Compact header (always visible)
             '<div class="playlist-header" style="padding: 0.75em; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">' +
                 '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1; min-width: 0;">' +
-                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em; margin-left: 0.5em; flex-shrink: 0;">' +
-                        '<input type="checkbox" is="emby-checkbox" data-embycheckbox="true" class="emby-checkbox playlist-checkbox" data-playlist-id="' + ePlaylistId + '">' +
+                    '<label class="emby-checkbox-label" style="width: auto; min-width: auto; margin-right: 0.3em; margin-left: 0.3em; flex-shrink: 0;">' +
+                        '<input type="checkbox" is="emby-checkbox" data-embycheckbox="true" class="emby-checkbox playlist-checkbox" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '">' +
                         '<span class="checkboxLabel" style="display: none;"></span>' +
                         '<span class="checkboxOutline">' +
                             '<span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>' +
@@ -2961,7 +3182,7 @@
                         mediaTypesArray.map(type => '<span class="playlist-media-type-label" style="padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc; white-space: nowrap;">' + escapeHtml(type) + '</span>').join('') +
                     '</div>' +
                 '</div>' +
-                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 1em;">' +
+                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
                     '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
             '</div>' +
@@ -2970,14 +3191,14 @@
             '<div class="playlist-details" style="display: none; padding: 0 0.75em 0.75em 0.75em; background: #202020;">' +
                 // Action buttons (moved to top, right after playlist name)
                 '<div class="playlist-actions" style="margin-bottom: 0.5em; padding-bottom: 0.5em;">' +
-                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + ePlaylistId + '" style="margin-right: 0.5em;">Edit</button>' +
-                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Clone</button>' +
-                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Refresh</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="margin-right: 0.5em;">Edit</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Clone</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Refresh</button>' +
                     (isEnabled ? 
-                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Disable</button>' :
-                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '" style="margin-right: 0.5em;">Enable</button>'
+                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Disable</button>' :
+                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Enable</button>'
                     ) +
-                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + ePlaylistId + '" data-playlist-name="' + eName + '">Delete</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '">Delete</button>' +
                 '</div>' +
                 
                 // Rules section
@@ -3036,16 +3257,29 @@
         '</div>';
     }
 
+    // Cached DOM elements for bulk operations (performance optimization)
+    function getBulkActionElements(page, forceRefresh = false) {
+        if (!page._bulkActionElements || forceRefresh) {
+            page._bulkActionElements = {
+                bulkContainer: page.querySelector('#bulkActionsContainer'),
+                countDisplay: page.querySelector('#selectedCountDisplay'),
+                bulkEnableBtn: page.querySelector('#bulkEnableBtn'),
+                bulkDisableBtn: page.querySelector('#bulkDisableBtn'),
+                bulkDeleteBtn: page.querySelector('#bulkDeleteBtn'),
+                selectAllCheckbox: page.querySelector('#selectAllCheckbox')
+            };
+        }
+        return page._bulkActionElements;
+    }
+
     // Bulk operations functionality
     function updateBulkActionsVisibility(page) {
-        const bulkContainer = page.querySelector('#bulkActionsContainer');
+        const elements = getBulkActionElements(page, true); // Force refresh after HTML changes
         const checkboxes = page.querySelectorAll('.playlist-checkbox');
         
         // Show bulk actions if any playlists exist
-        if (checkboxes.length > 0) {
-            bulkContainer.style.display = 'block';
-        } else {
-            bulkContainer.style.display = 'none';
+        if (elements.bulkContainer) {
+            elements.bulkContainer.style.display = checkboxes.length > 0 ? 'block' : 'none';
         }
         
         // Update selected count and button states
@@ -3055,37 +3289,34 @@
     function updateSelectedCount(page) {
         const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
         const selectedCount = selectedCheckboxes.length;
+        const elements = getBulkActionElements(page);
         
         // Update count display
-        const countDisplay = page.querySelector('#selectedCountDisplay');
-        if (countDisplay) {
-            countDisplay.textContent ='(' + selectedCount + ' selected)';
+        if (elements.countDisplay) {
+            elements.countDisplay.textContent = '(' + selectedCount + ' selected)';
         }
         
         // Update button states
-        const bulkEnableBtn = page.querySelector('#bulkEnableBtn');
-        const bulkDisableBtn = page.querySelector('#bulkDisableBtn');
-        const bulkDeleteBtn = page.querySelector('#bulkDeleteBtn');
-        
         const hasSelection = selectedCount > 0;
-        if (bulkEnableBtn) bulkEnableBtn.disabled = !hasSelection;
-        if (bulkDisableBtn) bulkDisableBtn.disabled = !hasSelection;
-        if (bulkDeleteBtn) bulkDeleteBtn.disabled = !hasSelection;
+        if (elements.bulkEnableBtn) elements.bulkEnableBtn.disabled = !hasSelection;
+        if (elements.bulkDisableBtn) elements.bulkDisableBtn.disabled = !hasSelection;
+        if (elements.bulkDeleteBtn) elements.bulkDeleteBtn.disabled = !hasSelection;
         
         // Update Select All checkbox state
-        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
-        const totalCheckboxes = page.querySelectorAll('.playlist-checkbox').length;
-        if (selectAllCheckbox && totalCheckboxes > 0) {
-            selectAllCheckbox.checked = selectedCount === totalCheckboxes;
-            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCheckboxes;
+        if (elements.selectAllCheckbox) {
+            const totalCheckboxes = page.querySelectorAll('.playlist-checkbox').length;
+            if (totalCheckboxes > 0) {
+                elements.selectAllCheckbox.checked = selectedCount === totalCheckboxes;
+                elements.selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCheckboxes;
+            }
         }
     }
     
     function toggleSelectAll(page) {
-        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+        const elements = getBulkActionElements(page);
         const playlistCheckboxes = page.querySelectorAll('.playlist-checkbox');
         
-        const shouldSelect = selectAllCheckbox.checked;
+        const shouldSelect = elements.selectAllCheckbox ? elements.selectAllCheckbox.checked : false;
         
         playlistCheckboxes.forEach(checkbox => {
             checkbox.checked = shouldSelect;
@@ -3700,7 +3931,7 @@
         }
     }
 
-    // Generic preferences system - eliminates manual field-by-field handling
+    // Enhanced preferences system with validation and error recovery
     function savePlaylistFilterPreferences(page) {
         try {
             const preferences = {};
@@ -3712,11 +3943,18 @@
                 const config = PLAYLIST_FILTER_CONFIGS[filterKey];
                 if (config) {
                     const element = page.querySelector(config.selector);
-                    preferences[filterKey] = config.getValue(element);
+                    if (element) {
+                        const value = config.getValue(element);
+                        // Only save non-default values to reduce storage
+                        if (value !== config.defaultValue) {
+                            preferences[filterKey] = value;
+                        }
+                    }
                 }
             }
             
             localStorage.setItem('smartPlaylistFilterPreferences', JSON.stringify(preferences));
+            console.debug('Saved filter preferences:', preferences);
         } catch (err) {
             console.warn('Failed to save playlist filter preferences:', err);
         }
@@ -3725,23 +3963,77 @@
     function loadPlaylistFilterPreferences(page) {
         try {
             const saved = localStorage.getItem('smartPlaylistFilterPreferences');
-            if (!saved) return;
+            if (!saved) {
+                console.debug('No saved filter preferences found, using defaults');
+                return;
+            }
             
             const preferences = JSON.parse(saved);
+            console.debug('Loading filter preferences:', preferences);
             
-            // Apply saved preferences using the generic system
+            // Apply saved preferences using the generic system with validation
             Object.entries(preferences).forEach(([filterKey, value]) => {
                 const config = PLAYLIST_FILTER_CONFIGS[filterKey];
                 if (config && value !== undefined) {
                     const element = page.querySelector(config.selector);
                     if (element) {
-                        element.value = value;
+                        // Validate that the saved value is still valid for this element
+                        const options = Array.from(element.options || []);
+                        const isValidOption = options.length === 0 || options.some(opt => opt.value === value);
+                        
+                        if (isValidOption) {
+                            element.value = value;
+                            console.debug(`Restored ${filterKey} filter to:`, value);
+                        } else {
+                            console.warn(`Invalid saved value for ${filterKey}:`, value, 'Available options:', options.map(o => o.value));
+                            // Fall back to default value
+                            element.value = config.defaultValue;
+                        }
+                    } else {
+                        console.warn(`Filter element not found for ${filterKey}:`, config.selector);
+                    }
+                } else {
+                    console.warn(`Invalid filter configuration for ${filterKey}`);
+                }
+            });
+            
+            // Ensure all filters have valid values, even if not in saved preferences
+            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
+            persistentFilters.forEach(filterKey => {
+                if (!preferences.hasOwnProperty(filterKey)) {
+                    const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+                    if (config) {
+                        const element = page.querySelector(config.selector);
+                        if (element && !element.value) {
+                            element.value = config.defaultValue;
+                            console.debug(`Set default value for ${filterKey}:`, config.defaultValue);
+                        }
                     }
                 }
             });
             
         } catch (err) {
             console.warn('Failed to load playlist filter preferences:', err);
+            // Reset to defaults on error
+            resetFiltersToDefaults(page);
+        }
+    }
+    
+    function resetFiltersToDefaults(page) {
+        try {
+            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
+            persistentFilters.forEach(filterKey => {
+                const config = PLAYLIST_FILTER_CONFIGS[filterKey];
+                if (config) {
+                    const element = page.querySelector(config.selector);
+                    if (element) {
+                        element.value = config.defaultValue;
+                    }
+                }
+            });
+            console.debug('Reset all filters to defaults');
+        } catch (err) {
+            console.error('Failed to reset filters to defaults:', err);
         }
     }
 
@@ -3756,9 +4048,22 @@
                 return;
             }
             
-            // Initialize username cache if it doesn't exist
+            // Initialize username cache with size limit if it doesn't exist
             if (!page._usernameCache) {
                 page._usernameCache = new Map();
+                page._usernameCacheMaxSize = 100; // Limit cache size
+            }
+            
+            // Clear cache if it gets too large (simple LRU-like behavior)
+            if (page._usernameCache.size > page._usernameCacheMaxSize) {
+                console.log('Username cache size exceeded, clearing old entries');
+                const entries = Array.from(page._usernameCache.entries());
+                // Keep only the last 50% of entries (rough LRU approximation)
+                page._usernameCache.clear();
+                const keepCount = Math.floor(page._usernameCacheMaxSize / 2);
+                entries.slice(-keepCount).forEach(([key, value]) => {
+                    page._usernameCache.set(key, value);
+                });
             }
             
             // Get unique user IDs from playlists
@@ -3886,8 +4191,7 @@
             }
         }).catch((err) => {
             Dashboard.hideLoadingMsg();
-            console.error('Error refreshing playlist:', err);
-            handleApiError(err, 'Failed to refresh playlist');
+            displayApiError(err, 'Failed to refresh playlist');
         });
     }
 
@@ -3907,8 +4211,7 @@
             loadPlaylistList(page);
         }).catch(err => {
             Dashboard.hideLoadingMsg();
-            console.error('Error deleting playlist:', err);
-            handleApiError(err, 'Failed to delete playlist "' + playlistName + '".');
+            displayApiError(err, 'Failed to delete playlist "' + playlistName + '"');
         });
     }
 
@@ -3929,8 +4232,7 @@
             loadPlaylistList(page);
         }).catch(err => {
             Dashboard.hideLoadingMsg();
-            console.error('Error enabling playlist:', err);
-            handleApiError(err, 'Failed to enable playlist "' + playlistName + '".');
+            displayApiError(err, 'Failed to enable playlist "' + playlistName + '"');
         });
     }
 
@@ -3951,8 +4253,7 @@
             loadPlaylistList(page);
         }).catch(err => {
             Dashboard.hideLoadingMsg();
-            console.error('Error disabling playlist:', err);
-            handleApiError(err, 'Failed to disable playlist "' + playlistName + '".');
+            displayApiError(err, 'Failed to disable playlist "' + playlistName + '"');
         });
     }
 
@@ -3974,8 +4275,53 @@
         
         // Abort any AbortController-managed listeners
         if (modal._modalAbortController) {
-            modal._modalAbortController.abort();
-            modal._modalAbortController = null;
+            try {
+                modal._modalAbortController.abort();
+            } catch (err) {
+                console.warn('Error aborting modal listeners:', err);
+            } finally {
+                modal._modalAbortController = null;
+            }
+        }
+    }
+    
+    // Clean up all page-level event listeners and cached elements
+    function cleanupPageEventListeners(page) {
+        try {
+            // Clean up bulk action element cache
+            if (page._bulkActionElements) {
+                page._bulkActionElements = null;
+            }
+            
+            // Clean up username cache
+            if (page._usernameCache) {
+                page._usernameCache.clear();
+                page._usernameCache = null;
+            }
+            
+            // Clean up any page-level abort controllers
+            if (page._pageAbortController) {
+                page._pageAbortController.abort();
+                page._pageAbortController = null;
+            }
+            
+            // Clean up all rule abort controllers
+            const ruleRows = page.querySelectorAll('.rule-row');
+            ruleRows.forEach(ruleRow => {
+                if (ruleRow._abortController) {
+                    try {
+                        ruleRow._abortController.abort();
+                    } catch (err) {
+                        console.warn('Error aborting rule listeners:', err);
+                    } finally {
+                        ruleRow._abortController = null;
+                    }
+                }
+            });
+            
+            console.debug('Cleaned up page event listeners and cached elements');
+        } catch (err) {
+            console.error('Error during page cleanup:', err);
         }
     }
 
