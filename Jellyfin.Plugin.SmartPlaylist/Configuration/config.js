@@ -127,9 +127,9 @@
     
     function generateAutoRefreshOptions(defaultValue) {
         var options = [
-            { value: 'Never', label: 'Never - Manual/scheduled refresh only' },
             { value: 'OnLibraryChanges', label: 'On library changes - When items are added/removed' },
-            { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' }
+            { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' },
+            { value: 'Never', label: 'Never - Manual/scheduled refresh only' }
         ];
         // Mark the default option as selected
         for (var i = 0; i < options.length; i++) {
@@ -140,15 +140,15 @@
     
     function generateScheduleTriggerOptions(defaultValue, includeNoSchedule) {
         var options = [];
-        if (includeNoSchedule) {
-            options.push({ value: '', label: 'No schedule' });
-        }
         options.push(
             { value: 'Daily', label: 'Daily' },
             { value: 'Weekly', label: 'Weekly' },
             { value: 'Monthly', label: 'Monthly' },
             { value: 'Interval', label: 'Interval' }
         );
+        if (includeNoSchedule) {
+            options.push({ value: '', label: 'No schedule' });
+        }
         // Mark the default option as selected
         for (var i = 0; i < options.length; i++) {
             options[i].selected = options[i].value === defaultValue;

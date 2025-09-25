@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop" # Exit immediately if a command fails
 
 # Set the version for the build. For local testing, this can be a static string.
-$VERSION = "10.10.0.0"
+$VERSION = "10.11.0.0"
 $OUTPUT_DIR = "..\build_output"
 
 Write-Host "Building SmartPlaylist plugin version for local development..."
