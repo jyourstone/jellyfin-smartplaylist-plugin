@@ -74,9 +74,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         };
         
         /// <summary>
-        /// Gets all supported media types as an array (derived from centralized mapping)
+        /// Gets all supported media types as an array (excludes deprecated types like Series)
         /// </summary>
-        public static readonly string[] All = [.. BaseItemKindToMediaType.Values];
+        public static readonly string[] All = [.. BaseItemKindToMediaType
+            .Where(static kvp => kvp.Key != BaseItemKind.Series)
+            .Select(static kvp => kvp.Value)];
         
         /// <summary>
         /// Gets non-audio media types (everything except Audio and AudioBook)

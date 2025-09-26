@@ -4196,7 +4196,7 @@
         }).catch(async (err) => {
             Dashboard.hideLoadingMsg();
             
-            // Improved error handling for API responses
+            // Enhanced error handling for API responses
             let errorMessage = 'An unexpected error occurred, check the logs for more details.';
             
             try {
@@ -4204,7 +4204,6 @@
                 if (err && typeof err.json === 'function') {
                     try {
                         const errorData = await err.json();
-                        console.log('Parsed error data:', errorData);
                         if (errorData.message) {
                             errorMessage = errorData.message;
                         } else if (typeof errorData === 'string') {
@@ -4214,7 +4213,6 @@
                         // If JSON parsing fails, try to get text
                         try {
                             const textContent = await err.text();
-                            console.log('Error text content:', textContent);
                             if (textContent) {
                                 errorMessage = textContent;
                             }
@@ -4243,8 +4241,8 @@
                 console.error('Error processing API error response:', processingError);
             }
             
-            const fullMessage = 'Failed to refresh playlist: ' + errorMessage;
-            console.error('Final error message:', fullMessage);
+            const fullMessage = 'Failed to refresh playlist "' + playlistName + '": ' + errorMessage;
+            console.error('Playlist refresh error:', fullMessage, err);
             showNotification(fullMessage, 'error');
         });
     }
