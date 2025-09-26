@@ -426,7 +426,7 @@
     
     // Standardized error display function
     function displayApiError(error, context = '') {
-        let message = 'An unexpected error occurred';
+        let message = 'An unexpected error occurred, check the logs for more details.';
         
         if (error instanceof ApiError) {
             message = error.message;
@@ -715,7 +715,6 @@
     // let currentModalBackdropHandler = null;
     const mediaTypes = [ 
         { Value: "Movie", Label: "Movie" }, 
-        { Value: "Series", Label: "Series" }, 
         { Value: "Episode", Label: "Episode" }, 
         { Value: "Audio", Label: "Audio (Music)" },
         { Value: "MusicVideo", Label: "Music Video" },
@@ -3144,9 +3143,14 @@
         // Use the resolved username passed as parameter
         const userName = resolvedUserName || 'Unknown User';
         const playlistId = playlist.Id || 'NO_ID';
-        // Create individual media type labels
-        const mediaTypesArray = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? 
-            playlist.MediaTypes : ['All Types'];
+        // Create individual media type labels - filter out deprecated Series type
+        let mediaTypesArray = [];
+        if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
+            const validTypes = playlist.MediaTypes.filter(type => type !== 'Series');
+            mediaTypesArray = validTypes.length > 0 ? validTypes : ['Unknown'];
+        } else {
+            mediaTypesArray = ['Unknown'];
+        }
         
         const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
         
@@ -4189,9 +4193,57 @@
             if (page) {
                 loadPlaylistList(page);
             }
-        }).catch((err) => {
+        }).catch(async (err) => {
             Dashboard.hideLoadingMsg();
-            displayApiError(err, 'Failed to refresh playlist');
+            
+            // Enhanced error handling for API responses
+            let errorMessage = 'An unexpected error occurred, check the logs for more details.';
+            
+            try {
+                // Check if this is a Response object (from fetch API)
+                if (err && typeof err.json === 'function') {
+                    try {
+                        const errorData = await err.json();
+                        if (errorData.message) {
+                            errorMessage = errorData.message;
+                        } else if (typeof errorData === 'string') {
+                            errorMessage = errorData;
+                        }
+                    } catch (parseError) {
+                        // If JSON parsing fails, try to get text
+                        try {
+                            const textContent = await err.text();
+                            if (textContent) {
+                                errorMessage = textContent;
+                            }
+                        } catch (textError) {
+                            console.log('Could not extract error text:', textError);
+                        }
+                    }
+                }
+                // Check if the error has response text (legacy error format)
+                else if (err.responseText) {
+                    try {
+                        const errorData = JSON.parse(err.responseText);
+                        if (errorData.message) {
+                            errorMessage = errorData.message;
+                        } else if (typeof errorData === 'string') {
+                            errorMessage = errorData;
+                        }
+                    } catch (parseError) {
+                        // If JSON parsing fails, use the raw response text
+                        errorMessage = err.responseText;
+                    }
+                } else if (err.message) {
+                    errorMessage = err.message;
+                }
+            } catch (processingError) {
+                console.error('Error processing API error response:', processingError);
+            }
+            
+            const fullMessage = 'Failed to refresh playlist "' + playlistName + '": ' + errorMessage;
+            console.error('Playlist refresh error:', fullMessage, err);
+            showNotification(fullMessage, 'error');
         });
     }
 
