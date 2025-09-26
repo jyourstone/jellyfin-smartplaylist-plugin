@@ -240,7 +240,6 @@ The plugin features a modern web-based interface for easy playlist management - 
 SmartPlaylist works with all media types supported by Jellyfin:
 
 - **🎬 Movie** - Individual movie files
-- **📺 Series** - TV show series as a whole
 - **📺 Episode** - Individual TV show episodes
 - **🎵 Audio (Music)** - Music tracks and albums
 - **🎬 Music Video** - Music video files
@@ -248,6 +247,8 @@ SmartPlaylist works with all media types supported by Jellyfin:
 - **📸 Photo (Home Photo)** - Personal photos and images
 - **📚 Book** - eBooks, comics, and other readable content
 - **🎧 Audiobook** - Spoken word audio books
+
+> **⚠️ Note**: The "Series" media type has been removed due to Jellyfin playlist limitations, Series objects are not valid in playlists. Use "Episode" media type instead to create TV show playlists with individual episodes.
 
 ### Common Use Cases
 

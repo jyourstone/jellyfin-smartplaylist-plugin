@@ -265,6 +265,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     dto.Name, dto.UserId, dto.Public, dto.Enabled, dto.ExpressionSets?.Count ?? 0, 
                     dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None");
 
+                // Validate media types before processing
+                _logger.LogDebug("Validating media types for playlist '{PlaylistName}': {MediaTypes}", dto.Name, dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "null");
+                
+                if (dto.MediaTypes?.Contains(Constants.MediaTypes.Series) == true)
+                {
+                    _logger.LogError("Smart playlist '{PlaylistName}' uses deprecated 'Series' media type. Series playlists are not supported due to Jellyfin limitations. Please recreate this playlist using 'Episode' media type instead. Skipping playlist refresh.", dto.Name);
+                    return (false, "Series media type is no longer supported. Please recreate using Episode media type.", string.Empty);
+                }
+
+                if (dto.MediaTypes == null || dto.MediaTypes.Count == 0)
+                {
+                    _logger.LogError("Smart playlist '{PlaylistName}' has no media types specified. At least one media type must be selected. Skipping playlist refresh.", dto.Name);
+                    return (false, "No media types specified. At least one media type must be selected.", string.Empty);
+                }
+
                 // Get the user for this playlist
                 var user = GetPlaylistUser(dto);
                 if (user == null)
@@ -735,6 +750,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto dto)
         {
+            // Validate media types before processing
+            if (dto != null)
+            {
+                _logger?.LogDebug("GetAllUserMediaForPlaylist validation for '{PlaylistName}': MediaTypes={MediaTypes}", dto.Name, mediaTypes != null ? string.Join(",", mediaTypes) : "null");
+                
+                if (mediaTypes?.Contains(Constants.MediaTypes.Series) == true)
+                {
+                    _logger?.LogError("Smart playlist '{PlaylistName}' uses deprecated 'Series' media type. Series playlists are not supported due to Jellyfin limitations. Please recreate this playlist using 'Episode' media type instead.", dto.Name);
+                    throw new InvalidOperationException("Series media type is no longer supported. Please recreate using Episode media type.");
+                }
+
+                if (mediaTypes == null || mediaTypes.Count == 0)
+                {
+                    _logger?.LogError("Smart playlist '{PlaylistName}' has no media types specified. At least one media type must be selected.", dto.Name);
+                    throw new InvalidOperationException("No media types specified. At least one media type must be selected.");
+                }
+            }
+
             return GetAllUserMedia(user, mediaTypes, dto);
         }
 
@@ -754,10 +787,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// </summary>
         private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string> mediaTypes, SmartPlaylistDto dto = null)
         {
-            // If no media types specified, return all supported types (backward compatibility)
+            // This method should only be called after validation, so empty media types should not happen
             if (mediaTypes == null || mediaTypes.Count == 0)
             {
-                return [.. MediaTypes.MediaTypeToBaseItemKind.Values];
+                _logger?.LogError("GetBaseItemKindsFromMediaTypes called with empty media types - this should have been caught by validation");
+                throw new InvalidOperationException("No media types specified - this should have been caught by validation");
             }
 
             var baseItemKinds = new List<BaseItemKind>();
@@ -789,11 +823,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
             }
 
-            // Fallback to all types if no valid media types were found
+            // This should not happen if validation is working correctly
             if (baseItemKinds.Count == 0)
             {
-                _logger?.LogWarning("No valid media types found, falling back to all supported types");
-                return [.. MediaTypes.MediaTypeToBaseItemKind.Values];
+                _logger?.LogError("No valid media types found after processing - this should have been caught by validation");
+                throw new InvalidOperationException("No valid media types found - this should have been caught by validation");
             }
 
             return [.. baseItemKinds];

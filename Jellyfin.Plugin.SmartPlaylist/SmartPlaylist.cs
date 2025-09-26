@@ -42,7 +42,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             FileName = dto.FileName;
             UserId = dto.UserId;
             Order = OrderFactory.CreateOrder(dto.Order?.Name);
-            MediaTypes = dto.MediaTypes != null ? new List<string>(dto.MediaTypes) : []; // Create defensive copy to prevent corruption
+            MediaTypes = dto.MediaTypes != null ? new List<string>(dto.MediaTypes) : null; // Create defensive copy to prevent corruption
             MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
             MaxPlayTimeMinutes = dto.MaxPlayTimeMinutes ?? 0; // Default to 0 (unlimited) for backwards compatibility
 
@@ -846,19 +846,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 // Media-type driven Collections expansion logic
                 var isEpisodesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Episode) == true;
-                var isSeriesMediaType = MediaTypes?.Contains(Constants.MediaTypes.Series) == true;
                 
                 // Check if Collections rules have episode expansion enabled
                 var hasCollectionsEpisodeExpansion = ExpressionSets?.Any(set => 
                     set.Expressions?.Any(expr => 
                         expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
-
-                // Series media type: Never expand to episodes, just return series
-                if (isSeriesMediaType && !isEpisodesMediaType)
-                {
-                    logger?.LogDebug("Series media type selected - returning series without episode expansion for playlist '{PlaylistName}'", Name);
-                    return items;
-                }
 
                 // Episodes media type with Collections expansion enabled: Expand and deduplicate
                 if (isEpisodesMediaType && hasCollectionsEpisodeExpansion)
@@ -882,17 +874,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         else if (item is Series series)
                         {
-                            // If both Episodes and Series media types are selected, also include the series itself
-                            if (isSeriesMediaType && seriesIds.Add(series.Id))
-                            {
-                                resultItems.Add(series);
-                                logger?.LogDebug("Added series '{SeriesName}' to results (both Episodes and Series media types selected)", series.Name);
-                            }
-                            else if (isSeriesMediaType)
-                            {
-                                logger?.LogDebug("Skipped adding series '{SeriesName}' to results (already present)", series.Name);
-                            }
-                            
                             // Series from collection - expand to episodes and add unique ones
                             var seriesEpisodes = GetSeriesEpisodes(series, libraryManager, user, logger);
                             

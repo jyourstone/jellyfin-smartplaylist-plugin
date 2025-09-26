@@ -12,6 +12,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
     {
         // TV Types
         public const string Episode = nameof(Episode);
+        
+        // Deprecated: Series media type removed due to Jellyfin playlist limitations
+        // Series objects in playlists are automatically expanded to episodes by Jellyfin,
+        // causing playback issues where only the first series' episodes are playable
         public const string Series = nameof(Series);
         
         // Movie Types  
@@ -41,14 +45,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public static readonly Dictionary<BaseItemKind, string> BaseItemKindToMediaType = new()
         {
             { BaseItemKind.Episode, Episode },
-            { BaseItemKind.Series, Series },
             { BaseItemKind.Movie, Movie },
             { BaseItemKind.Audio, Audio },
             { BaseItemKind.MusicVideo, MusicVideo },
             { BaseItemKind.Video, Video },
             { BaseItemKind.Photo, Photo },
             { BaseItemKind.Book, Book },
-            { BaseItemKind.AudioBook, AudioBook }
+            { BaseItemKind.AudioBook, AudioBook },
+            // Deprecated: Series is kept here only for deserialization so we can validate and reject it properly
+            { BaseItemKind.Series, Series }
         };
         
         /// <summary>
@@ -57,25 +62,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public static readonly Dictionary<string, BaseItemKind> MediaTypeToBaseItemKind = new()
         {
             { Episode, BaseItemKind.Episode },
-            { Series, BaseItemKind.Series },
             { Movie, BaseItemKind.Movie },
             { Audio, BaseItemKind.Audio },
             { MusicVideo, BaseItemKind.MusicVideo },
             { Video, BaseItemKind.Video },
             { Photo, BaseItemKind.Photo },
             { Book, BaseItemKind.Book },
-            { AudioBook, BaseItemKind.AudioBook }
+            { AudioBook, BaseItemKind.AudioBook },
+            // Deprecated: Series is kept here only for deserialization so we can validate and reject it properly
+            { Series, BaseItemKind.Series }
         };
         
         /// <summary>
-        /// Gets all supported media types as an array (derived from centralized mapping)
+        /// Gets all supported media types as an array (excludes deprecated types like Series)
         /// </summary>
-        public static readonly string[] All = [.. BaseItemKindToMediaType.Values];
+        public static readonly string[] All = [.. BaseItemKindToMediaType
+            .Where(static kvp => kvp.Key != BaseItemKind.Series)
+            .Select(static kvp => kvp.Value)];
         
         /// <summary>
         /// Gets non-audio media types (everything except Audio and AudioBook)
         /// </summary>
-        public static readonly string[] NonAudioTypes = [Movie, Series, Episode, MusicVideo, Video, Photo, Book];
+        public static readonly string[] NonAudioTypes = [Movie, Episode, MusicVideo, Video, Photo, Book];
         
         /// <summary>
         /// Gets audio-only media types (Audio, AudioBook)
@@ -88,9 +96,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public static readonly string[] BookTypes = [Book, AudioBook];
         
         /// <summary>
-        /// Gets TV media types (Series, Episode)
+        /// Gets TV media types (Episode only - Series removed due to Jellyfin playlist limitations)
         /// </summary>
-        public static readonly string[] TV = [Series, Episode];
+        public static readonly string[] TV = [Episode];
         
         /// <summary>
         /// Gets music-related media types (Audio, AudioBook, MusicVideo)
@@ -100,7 +108,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// <summary>
         /// Gets media types that can have video streams (excludes Photo, Audio, Book, AudioBook)
         /// </summary>
-        public static readonly string[] VideoStreamCapable = [Movie, Series, Episode, MusicVideo, Video];
+        public static readonly string[] VideoStreamCapable = [Movie, Episode, MusicVideo, Video];
         
         // HashSet variants for O(1) membership checks (performance optimization)
         
