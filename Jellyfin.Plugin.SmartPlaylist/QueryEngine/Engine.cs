@@ -323,7 +323,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             // Parse value as number:unit
             var parts = (r.TargetValue ?? "").Split(':');
-            if (parts.Length != 2 || !int.TryParse(parts[0], out int num) || num <= 0)
+            if (parts.Length != 2 || !int.TryParse(parts[0], out int num) || num < 0)
             {
                 logger?.LogError("SmartPlaylist '{Operator}' requires value in format number:unit, got: '{Value}'", r.Operator, r.TargetValue);
                 throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
@@ -332,6 +332,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             string unit = parts[1].ToLowerInvariant();
             DateTimeOffset cutoffDate = unit switch
             {
+                "hours" => DateTimeOffset.UtcNow.AddHours(-num),
                 "days" => DateTimeOffset.UtcNow.AddDays(-num),
                 "weeks" => DateTimeOffset.UtcNow.AddDays(-num * 7),
                 "months" => DateTimeOffset.UtcNow.AddMonths(-num),
