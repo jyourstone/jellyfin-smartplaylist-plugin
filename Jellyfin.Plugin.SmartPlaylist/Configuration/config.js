@@ -800,9 +800,9 @@
                 }
             }
             
-            // Use direct visibility control since we already have the element
-            if (clearSearchBtn) {
-                clearSearchBtn.style.display = disabled ? 'none' : 'flex';
+            // Only hide clear button when disabling, let updateClearButtonVisibility handle showing it
+            if (clearSearchBtn && disabled) {
+                clearSearchBtn.style.display = 'none';
             }
         } catch (err) {
             console.warn('Failed to update search input state:', err);
