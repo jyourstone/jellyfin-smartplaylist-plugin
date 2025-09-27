@@ -1634,7 +1634,7 @@
         input.type = 'number';
         input.className = 'emby-input rule-value-input';
         input.placeholder = 'Number';
-        input.min = '1';
+        input.min = '0';
         input.style.flex = '0 0 43%';
         inputContainer.appendChild(input);
 
@@ -1652,6 +1652,7 @@
         unitSelect.appendChild(placeholderOption);
         
         [
+            { value: 'hours', label: 'Hour(s)' },
             { value: 'days', label: 'Day(s)' },
             { value: 'weeks', label: 'Week(s)' },
             { value: 'months', label: 'Month(s)' },
