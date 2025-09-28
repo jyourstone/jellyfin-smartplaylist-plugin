@@ -3128,8 +3128,9 @@
     function generatePlaylistCardHtml(playlist, rulesHtml, resolvedUserName) {
         const isPublic = playlist.Public ? 'Public' : 'Private';
         const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
-        const enabledStatus = isEnabled ? 'Enabled' : 'Disabled';
+        const enabledStatus = isEnabled ? '' : 'Disabled';
         const enabledStatusColor = isEnabled ? '#4CAF50' : '#f44336';
+        const statusDisplayText = isEnabled ? 'Enabled' : 'Disabled';
         const autoRefreshMode = playlist.AutoRefresh || 'Never';
         const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
                                  autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
@@ -3155,6 +3156,9 @@
         
         const { maxItemsDisplay, maxPlayTimeDisplay } = formatPlaylistDisplayValues(playlist);
         
+        // Format media types for display in Properties table
+        const mediaTypesDisplayText = mediaTypesArray.join(', ');
+        
         // Escape all dynamic content to prevent XSS
         const eName = escapeHtml(playlist.Name || '');
         const eFileName = escapeHtml(playlist.FileName || '');
@@ -3167,6 +3171,8 @@
         const eLastRefreshDisplay = escapeHtml(lastRefreshDisplay);
         const eDateCreatedDisplay = escapeHtml(dateCreatedDisplay);
         const ePlaylistId = escapeHtml(playlistId);
+        const eStatusDisplayText = escapeHtml(statusDisplayText);
+        const eMediaTypesDisplayText = escapeHtml(mediaTypesDisplayText);
         
         // Generate collapsible playlist card with improved styling
         return '<div class="inputContainer playlist-card" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 0.75em; background: #202020;">' +
@@ -3183,12 +3189,12 @@
                     '</label>' +
                     '<span class="playlist-expand-icon" style="margin-right: 0.5em; font-family: monospace; font-size: 1.2em; color: #999; flex-shrink: 0;">▶</span>' +
                     '<h3 style="margin: 0; flex: 1.5; min-width: 0; word-wrap: break-word; padding-right: 0.5em;">' + eName + '</h3>' +
+                    (enabledStatus ? '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold; margin-right: 0.5em; flex-shrink: 0;">' + enabledStatus + '</span>' : '') +
+                '</div>' +
+                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
                     '<div class="playlist-media-types-container" style="display: flex; flex-wrap: wrap; gap: 0.25em; flex-shrink: 0; max-width: 160px; justify-content: flex-end;">' +
                         mediaTypesArray.map(type => '<span class="playlist-media-type-label" style="padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc; white-space: nowrap;">' + escapeHtml(type) + '</span>').join('') +
                     '</div>' +
-                '</div>' +
-                '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
-                    '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold;">' + enabledStatus + '</span>' +
                 '</div>' +
             '</div>' +
             
@@ -3225,6 +3231,18 @@
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eUserName + '</td>' +
                         '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Status</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eStatusDisplayText + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Visibility</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + isPublic + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Media Type</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMediaTypesDisplayText + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Sort</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eSortName + '</td>' +
                         '</tr>' +
@@ -3248,13 +3266,9 @@
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Date created</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eDateCreatedDisplay + '</td>' +
                         '</tr>' +
-                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                        '<tr>' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last refreshed</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +
-                        '</tr>' +
-                        '<tr>' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Visibility</td>' +
-                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + isPublic + '</td>' +
                         '</tr>' +
                     '</table>' +
                 '</div>' +
@@ -3347,7 +3361,7 @@
             const playlistId = checkbox.getAttribute('data-playlist-id');
             const playlistCard = checkbox.closest('.playlist-card');
             const statusElement = playlistCard.querySelector('.playlist-status');
-            const isCurrentlyEnabled = statusElement && statusElement.textContent.includes('Enabled');
+            const isCurrentlyEnabled = !statusElement || !statusElement.textContent.includes('Disabled');
             
             if (isCurrentlyEnabled) {
                 alreadyEnabled.push(playlistId);
@@ -3410,7 +3424,7 @@
             const playlistId = checkbox.getAttribute('data-playlist-id');
             const playlistCard = checkbox.closest('.playlist-card');
             const statusElement = playlistCard.querySelector('.playlist-status');
-            const isCurrentlyEnabled = statusElement && statusElement.textContent.includes('Enabled');
+            const isCurrentlyEnabled = !statusElement || !statusElement.textContent.includes('Disabled');
             
             if (isCurrentlyEnabled) {
                 playlistsToDisable.push(playlistId);
