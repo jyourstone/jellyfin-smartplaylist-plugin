@@ -1799,10 +1799,10 @@
     function restoreRelativeDateValue(valueContainer, currentValue, newValueInput) {
         // Parse number:unit format for relative date operators
         const parts = currentValue.split(':');
-        const validUnits = ['days', 'weeks', 'months', 'years'];
+        const validUnits = ['hours', 'days', 'weeks', 'months', 'years'];
         const num = parts[0];
         const unit = parts[1];
-        const isValidNum = /^\d+$/.test(num) && parseInt(num, 10) > 0;
+        const isValidNum = /^\d+$/.test(num) && parseInt(num, 10) >= 0;
         const isValidUnit = validUnits.includes(unit);
         
         if (parts.length === 2 && isValidNum && isValidUnit) {
