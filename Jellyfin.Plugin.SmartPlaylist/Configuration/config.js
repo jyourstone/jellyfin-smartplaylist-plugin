@@ -3175,7 +3175,7 @@
         const eMediaTypesDisplayText = escapeHtml(mediaTypesDisplayText);
         
         // Generate collapsible playlist card with improved styling
-        return '<div class="inputContainer playlist-card" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 0.75em; background: #202020;">' +
+        return '<div class="inputContainer playlist-card" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 1em; background: #202020;">' +
             // Compact header (always visible)
             '<div class="playlist-header" style="padding: 0.75em; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">' +
                 '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1; min-width: 0;">' +
