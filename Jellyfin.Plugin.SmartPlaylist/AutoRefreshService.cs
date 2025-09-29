@@ -1077,6 +1077,41 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
         
+        /// <summary>
+        /// Helper method to check if the current time is within a 2-minute buffer of a target time.
+        /// </summary>
+        /// <param name="now">Current time</param>
+        /// <param name="targetTime">Target time to check against</param>
+        /// <param name="bufferSeconds">Buffer in seconds (default 120 = 2 minutes)</param>
+        /// <returns>True if within buffer, false otherwise</returns>
+        private static bool IsWithinTimeBuffer(DateTime now, DateTime targetTime, int bufferSeconds = 120)
+        {
+            var timeDifference = Math.Abs((now - targetTime).TotalSeconds);
+            return timeDifference <= bufferSeconds;
+        }
+        
+        /// <summary>
+        /// Helper method to check if the current time is within a buffer of any interval boundary.
+        /// </summary>
+        /// <param name="now">Current time</param>
+        /// <param name="intervalMinutes">Interval in minutes (e.g., 15 for 15-minute intervals)</param>
+        /// <param name="bufferSeconds">Buffer in seconds (default 120 = 2 minutes)</param>
+        /// <returns>True if within buffer of any interval boundary</returns>
+        private static bool IsWithinIntervalBuffer(DateTime now, int intervalMinutes, int bufferSeconds = 120)
+        {
+            var currentMinutesFromMidnight = now.Hour * 60 + now.Minute;
+            var currentSecondsFromMidnight = currentMinutesFromMidnight * 60 + now.Second;
+            
+            // Find the nearest interval boundary
+            var intervalBoundaryMinutes = (currentMinutesFromMidnight / intervalMinutes) * intervalMinutes;
+            var nextIntervalBoundaryMinutes = intervalBoundaryMinutes + intervalMinutes;
+            
+            var secondsFromLastBoundary = currentSecondsFromMidnight - (intervalBoundaryMinutes * 60);
+            var secondsToNextBoundary = (nextIntervalBoundaryMinutes * 60) - currentSecondsFromMidnight;
+            
+            return secondsFromLastBoundary <= bufferSeconds || secondsToNextBoundary <= bufferSeconds;
+        }
+        
         private bool IsPlaylistDueForRefresh(SmartPlaylistDto playlist, DateTime now)
         {
             if (playlist.ScheduleTrigger == null || playlist.ScheduleTrigger == ScheduleTrigger.None) return false;
@@ -1095,10 +1130,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3); // Default 3:00 AM
             
-            // Check if current time matches the scheduled time (hour and minute)
-            var isDue = now.Hour == scheduledTime.Hours && now.Minute == scheduledTime.Minutes;
+            // Check if current time is within 2 minutes of the scheduled time
+            var scheduledDateTime = new DateTime(now.Year, now.Month, now.Day, scheduledTime.Hours, scheduledTime.Minutes, 0);
+            var isDue = IsWithinTimeBuffer(now, scheduledDateTime);
             
-            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm}, Scheduled={Scheduled:hh\\:mm}, Due={Due}", 
+            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Scheduled={Scheduled:hh\\:mm}, Due={Due}", 
                 playlist.Name, now, scheduledTime, isDue);
             
             return isDue;
@@ -1109,12 +1145,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var scheduledDay = playlist.ScheduleDayOfWeek ?? DayOfWeek.Sunday;
             var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
             
-            // Check if current day and time matches the scheduled day and time
-            var isDue = now.DayOfWeek == scheduledDay && 
-                       now.Hour == scheduledTime.Hours && 
-                       now.Minute == scheduledTime.Minutes;
+            // Check if current day matches and time is within 2 minutes of scheduled time
+            if (now.DayOfWeek != scheduledDay)
+            {
+                return false;
+            }
             
-            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm}, Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
+            var scheduledDateTime = new DateTime(now.Year, now.Month, now.Day, scheduledTime.Hours, scheduledTime.Minutes, 0);
+            var isDue = IsWithinTimeBuffer(now, scheduledDateTime);
+            
+            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm:ss}, Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
                 playlist.Name, now, scheduledDay, scheduledTime, isDue);
             
             return isDue;
@@ -1129,12 +1169,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var daysInCurrentMonth = DateTime.DaysInMonth(now.Year, now.Month);
             var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
             
-            // Check if current day and time matches the scheduled day and time
-            var isDue = now.Day == effectiveDayOfMonth && 
-                       now.Hour == scheduledTime.Hours && 
-                       now.Minute == scheduledTime.Minutes;
+            // Check if current day matches and time is within 2 minutes of scheduled time
+            if (now.Day != effectiveDayOfMonth)
+            {
+                return false;
+            }
             
-            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm}, Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
+            var scheduledDateTime = new DateTime(now.Year, now.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0);
+            var isDue = IsWithinTimeBuffer(now, scheduledDateTime);
+            
+            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss}, Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
                 playlist.Name, now, effectiveDayOfMonth, scheduledTime, isDue);
             
             return isDue;
@@ -1149,42 +1193,49 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             if (interval == TimeSpan.FromMinutes(15))
             {
-                // Check if we're within 2 minutes of a 15-minute boundary (0, 15, 30, 45)
-                var minutesFromBoundary = now.Minute % 15;
-                var secondsFromBoundary = now.Second;
-                var totalSecondsFromBoundary = minutesFromBoundary * 60 + secondsFromBoundary;
-                isDue = totalSecondsFromBoundary <= 120; // 2 minutes buffer
+                isDue = IsWithinIntervalBuffer(now, 15);
             }
             else if (interval == TimeSpan.FromMinutes(30))
             {
-                // Check if we're within 2 minutes of a 30-minute boundary (0, 30)
-                var minutesFromBoundary = now.Minute % 30;
-                var secondsFromBoundary = now.Second;
-                var totalSecondsFromBoundary = minutesFromBoundary * 60 + secondsFromBoundary;
-                isDue = totalSecondsFromBoundary <= 120; // 2 minutes buffer
+                isDue = IsWithinIntervalBuffer(now, 30);
             }
             else if (interval == TimeSpan.FromHours(1))
-                isDue = now.Minute == 0;
+            {
+                isDue = IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(2))
-                isDue = now.Minute == 0 && now.Hour % 2 == 0;
+            {
+                isDue = now.Hour % 2 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(3))
-                isDue = now.Minute == 0 && now.Hour % 3 == 0;
+            {
+                isDue = now.Hour % 3 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(4))
-                isDue = now.Minute == 0 && now.Hour % 4 == 0;
+            {
+                isDue = now.Hour % 4 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(6))
-                isDue = now.Minute == 0 && now.Hour % 6 == 0;
+            {
+                isDue = now.Hour % 6 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(8))
-                isDue = now.Minute == 0 && now.Hour % 8 == 0;
+            {
+                isDue = now.Hour % 8 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(12))
-                isDue = now.Minute == 0 && now.Hour % 12 == 0;
+            {
+                isDue = now.Hour % 12 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else if (interval == TimeSpan.FromHours(24))
-                isDue = now.Minute == 0 && now.Hour == 0; // Midnight
+            {
+                isDue = now.Hour == 0 && IsWithinIntervalBuffer(now, 60);
+            }
             else
             {
-                // For non-standard intervals, fall back to simple modulo logic
+                // For non-standard intervals, use the generic interval buffer
                 var totalMinutes = (int)interval.TotalMinutes;
-                var currentMinutesFromMidnight = now.Hour * 60 + now.Minute;
-                isDue = currentMinutesFromMidnight % totalMinutes == 0;
+                isDue = IsWithinIntervalBuffer(now, totalMinutes);
             }
             
             _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm}, Interval={Interval}, Due={Due}", 
