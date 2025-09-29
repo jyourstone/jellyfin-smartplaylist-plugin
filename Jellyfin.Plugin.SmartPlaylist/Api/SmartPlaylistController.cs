@@ -402,7 +402,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                             var currentMediaType = mediaTypeProperty?.GetValue(jellyfinPlaylist)?.ToString() ?? "Unknown";
                             
                             // Log MediaType for debugging - note this is a known Jellyfin limitation
-                            logger.LogDebug("Created Jellyfin playlist '{PlaylistName}' has MediaType: {MediaType}. Note: Jellyfin defaults to 'Audio' for all playlists regardless of content.", 
+                            logger.LogDebug("Created Jellyfin playlist '{PlaylistName}' has MediaType: {MediaType}.", 
                                 smartPlaylistName, currentMediaType);
                         }
                     }
