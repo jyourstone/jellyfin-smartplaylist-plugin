@@ -1136,21 +1136,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3); // Default 3:00 AM
             
+            // Convert UTC now to local time for comparison with user-configured schedule times
+            var localNow = now.ToLocalTime();
+            
             // Try today's scheduled time first
-            var todayScheduled = new DateTime(now.Year, now.Month, now.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Utc);
-            if (IsWithinTimeBuffer(now, todayScheduled))
+            var todayScheduled = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            if (IsWithinTimeBuffer(localNow, todayScheduled))
             {
-                _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Scheduled={Scheduled:hh\\:mm} (today), Due=True", 
-                    playlist.Name, now, scheduledTime);
+                _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (today), Due=True", 
+                    playlist.Name, localNow, scheduledTime);
                 return true;
             }
             
             // For times near midnight, also check tomorrow's scheduled time
             var tomorrowScheduled = todayScheduled.AddDays(1);
-            var isDue = IsWithinTimeBuffer(now, tomorrowScheduled);
+            var isDue = IsWithinTimeBuffer(localNow, tomorrowScheduled);
             
-            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Scheduled={Scheduled:hh\\:mm} (checked today and tomorrow), Due={Due}", 
-                playlist.Name, now, scheduledTime, isDue);
+            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (checked today and tomorrow), Due={Due}", 
+                playlist.Name, localNow, scheduledTime, isDue);
             
             return isDue;
         }
@@ -1160,17 +1163,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var scheduledDay = playlist.ScheduleDayOfWeek ?? DayOfWeek.Sunday;
             var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
             
+            // Convert UTC now to local time for comparison with user-configured schedule times
+            var localNow = now.ToLocalTime();
+            
             // Check if current day matches and time is within 2 minutes of scheduled time
-            if (now.DayOfWeek != scheduledDay)
+            if (localNow.DayOfWeek != scheduledDay)
             {
                 return false;
             }
             
-            var scheduledDateTime = new DateTime(now.Year, now.Month, now.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Utc);
-            var isDue = IsWithinTimeBuffer(now, scheduledDateTime);
+            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
             
-            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm:ss}, Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
-                playlist.Name, now, scheduledDay, scheduledTime, isDue);
+            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm:ss} (local), Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
+                playlist.Name, localNow, scheduledDay, scheduledTime, isDue);
             
             return isDue;
         }
@@ -1180,21 +1186,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var scheduledDayOfMonth = playlist.ScheduleDayOfMonth ?? 1; // Default to 1st of month
             var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
             
+            // Convert UTC now to local time for comparison with user-configured schedule times
+            var localNow = now.ToLocalTime();
+            
             // Handle months with fewer days (e.g., Feb 30th becomes Feb 28th/29th)
-            var daysInCurrentMonth = DateTime.DaysInMonth(now.Year, now.Month);
+            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
             var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
             
             // Check if current day matches and time is within 2 minutes of scheduled time
-            if (now.Day != effectiveDayOfMonth)
+            if (localNow.Day != effectiveDayOfMonth)
             {
                 return false;
             }
             
-            var scheduledDateTime = new DateTime(now.Year, now.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Utc);
-            var isDue = IsWithinTimeBuffer(now, scheduledDateTime);
+            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
             
-            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss}, Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
-                playlist.Name, now, effectiveDayOfMonth, scheduledTime, isDue);
+            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
+                playlist.Name, localNow, effectiveDayOfMonth, scheduledTime, isDue);
             
             return isDue;
         }
@@ -1203,6 +1212,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
             
+            // For intervals, we use UTC time since intervals are about absolute time periods
             // Check if current time aligns with interval boundaries
             bool isDue = false;
             
