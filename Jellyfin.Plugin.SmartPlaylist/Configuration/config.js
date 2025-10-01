@@ -1217,6 +1217,7 @@
         
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
+            { Value: 'Name (Ignore Articles)', Label: 'Name (Ignore Article \'The\')' },
             { Value: 'ProductionYear', Label: 'Production Year' },
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
@@ -3170,7 +3171,6 @@
         const eScheduleDisplay = escapeHtml(scheduleDisplay);
         const eLastRefreshDisplay = escapeHtml(lastRefreshDisplay);
         const eDateCreatedDisplay = escapeHtml(dateCreatedDisplay);
-        const ePlaylistId = escapeHtml(playlistId);
         const eStatusDisplayText = escapeHtml(statusDisplayText);
         const eMediaTypesDisplayText = escapeHtml(mediaTypesDisplayText);
         
@@ -3200,18 +3200,6 @@
             
             // Detailed content (initially hidden)
             '<div class="playlist-details" style="display: none; padding: 0 0.75em 0.75em 0.75em; background: #202020;">' +
-                // Action buttons (moved to top, right after playlist name)
-                '<div class="playlist-actions" style="margin-bottom: 0.5em; padding-bottom: 0.5em;">' +
-                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="margin-right: 0.5em;">Edit</button>' +
-                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Clone</button>' +
-                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Refresh</button>' +
-                    (isEnabled ? 
-                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Disable</button>' :
-                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Enable</button>'
-                    ) +
-                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '">Delete</button>' +
-                '</div>' +
-                
                 // Rules section
                 '<div class="rules-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
                     '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Rules</h4>' +
@@ -3271,6 +3259,18 @@
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +
                         '</tr>' +
                     '</table>' +
+                '</div>' +
+                
+                // Action buttons (moved to bottom, after properties)
+                '<div class="playlist-actions" style="margin-top: 1em; margin-bottom: 0.5em; padding-top: 0.5em;">' +
+                    '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="margin-right: 0.5em;">Edit</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Clone</button>' +
+                    '<button type="button" is="emby-button" class="emby-button raised refresh-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Refresh</button>' +
+                    (isEnabled ? 
+                        '<button type="button" is="emby-button" class="emby-button raised disable-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Disable</button>' :
+                        '<button type="button" is="emby-button" class="emby-button raised enable-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Enable</button>'
+                    ) +
+                    '<button type="button" is="emby-button" class="emby-button raised button-delete delete-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '">Delete</button>' +
                 '</div>' +
             '</div>' +
         '</div>';
