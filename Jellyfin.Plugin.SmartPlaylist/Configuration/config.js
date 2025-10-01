@@ -331,50 +331,6 @@
             .replace(/=/g, '&#x3D;');
     }
     
-    // Standardized API error handling system
-    async function handleApiResponse(response) {
-        if (!response.ok) {
-            let errorMessage = 'Unknown error occurred';
-            
-            try {
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    const errorData = await response.json();
-                    // Handle both direct error messages and wrapped error objects
-                    if (typeof errorData === 'string') {
-                        errorMessage = errorData;
-                    } else if (errorData.message) {
-                        errorMessage = errorData.message;
-                    } else if (errorData.error) {
-                        errorMessage = errorData.error;
-                    } else {
-                        errorMessage = JSON.stringify(errorData);
-                    }
-                } else {
-                    // Try to get text content for non-JSON responses
-                    const textContent = await response.text();
-                    if (textContent) {
-                        // Handle JSON-encoded strings from backend
-                        try {
-                            errorMessage = JSON.parse(textContent);
-                        } catch {
-                            errorMessage = textContent;
-                        }
-                    } else {
-                        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                    }
-                }
-            } catch (parseError) {
-                console.error('Error parsing API error response:', parseError);
-                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-            }
-            
-            throw new ApiError(errorMessage, response.status);
-        }
-        
-        return response;
-    }
-    
     // Custom error class for API errors
     class ApiError extends Error {
         constructor(message, status) {
@@ -383,47 +339,7 @@
             this.status = status;
         }
     }
-    
-    // Standardized API call wrapper with network error handling
-    async function makeApiCall(apiClient, method, url, data = null, options = {}) {
-        try {
-            const config = {
-                type: method.toUpperCase(),
-                url: apiClient.getUrl(url),
-                contentType: 'application/json',
-                ...options
-            };
-            
-            if (data && (method.toUpperCase() === 'POST' || method.toUpperCase() === 'PUT')) {
-                config.data = JSON.stringify(data);
-            }
-            
-            const response = await apiClient.ajax(config);
-            return await handleApiResponse(response);
-        } catch (error) {
-            console.error(`API call failed: ${method} ${url}`, error);
-            
-            // Handle different types of network errors
-            if (error instanceof ApiError) {
-                // Already an API error, just re-throw
-                throw error;
-            } else if (error.name === 'NetworkError' || error.name === 'TypeError') {
-                // Network connectivity issues
-                throw new ApiError('Network connection failed. Please check your internet connection and try again.', 0);
-            } else if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
-                // Request timeout
-                throw new ApiError('Request timed out. Please try again.', 408);
-            } else if (error.name === 'AbortError') {
-                // Request was cancelled
-                throw new ApiError('Request was cancelled.', 0);
-            } else {
-                // Generic network/connection error
-                const message = error.message || 'Network request failed';
-                throw new ApiError(`Connection error: ${message}`, 0);
-            }
-        }
-    }
-    
+     
     // Standardized error display function
     function displayApiError(error, context = '') {
         let message = 'An unexpected error occurred, check the logs for more details.';
@@ -822,19 +738,6 @@
         }
     };
     
-    // Helper function to restore search input to original state
-    const restoreSearchInputState = (page) => {
-        try {
-            const searchInput = page.querySelector('#playlistSearchInput');
-            if (searchInput && page._originalSearchState) {
-                searchInput.disabled = page._originalSearchState.disabled;
-                searchInput.placeholder = page._originalSearchState.placeholder;
-            }
-        } catch (err) {
-            console.warn('Failed to restore search input state:', err);
-        }
-    };
-
     // Helper functions for page-specific state
     function getPageEditState(page) {
         return {
@@ -2947,7 +2850,7 @@
             selector: '#mediaTypeFilter',
             defaultValue: 'all',
             getValue: (element) => element ? element.value : 'all',
-            filterFn: (playlists, mediaTypeFilter, page) => {
+            filterFn: (playlists, mediaTypeFilter) => {
                 if (!mediaTypeFilter || mediaTypeFilter === 'all') return playlists;
                 
                 return playlists.filter(playlist => {
@@ -2962,7 +2865,7 @@
             selector: '#visibilityFilter',
             defaultValue: 'all',
             getValue: (element) => element ? element.value : 'all',
-            filterFn: (playlists, visibilityFilter, page) => {
+            filterFn: (playlists, visibilityFilter) => {
                 if (!visibilityFilter || visibilityFilter === 'all') return playlists;
                 
                 return playlists.filter(playlist => {
@@ -2983,7 +2886,7 @@
             selector: '#userFilter',
             defaultValue: 'all',
             getValue: (element) => element ? element.value : 'all',
-            filterFn: (playlists, userFilter, page) => {
+            filterFn: (playlists, userFilter) => {
                 if (!userFilter || userFilter === 'all') return playlists;
                 
                 return playlists.filter(playlist => {
@@ -4352,46 +4255,6 @@
         }
     }
     
-    // Clean up all page-level event listeners and cached elements
-    function cleanupPageEventListeners(page) {
-        try {
-            // Clean up bulk action element cache
-            if (page._bulkActionElements) {
-                page._bulkActionElements = null;
-            }
-            
-            // Clean up username cache
-            if (page._usernameCache) {
-                page._usernameCache.clear();
-                page._usernameCache = null;
-            }
-            
-            // Clean up any page-level abort controllers
-            if (page._pageAbortController) {
-                page._pageAbortController.abort();
-                page._pageAbortController = null;
-            }
-            
-            // Clean up all rule abort controllers
-            const ruleRows = page.querySelectorAll('.rule-row');
-            ruleRows.forEach(ruleRow => {
-                if (ruleRow._abortController) {
-                    try {
-                        ruleRow._abortController.abort();
-                    } catch (err) {
-                        console.warn('Error aborting rule listeners:', err);
-                    } finally {
-                        ruleRow._abortController = null;
-                    }
-                }
-            });
-            
-            console.debug('Cleaned up page event listeners and cached elements');
-        } catch (err) {
-            console.error('Error during page cleanup:', err);
-        }
-    }
-
     // Helper function to parse sort order from playlist data
     function parseSortOrder(playlist) {
         const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
