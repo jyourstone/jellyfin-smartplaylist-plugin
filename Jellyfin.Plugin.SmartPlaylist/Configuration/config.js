@@ -1217,7 +1217,7 @@
         
          const sortOptions = [
             { Value: 'Name', Label: 'Name' },
-            { Value: 'Name (Ignore Articles)', Label: 'Name (Ignore \'The\')' },
+            { Value: 'Name (Ignore Articles)', Label: 'Name (Ignore Article \'The\')' },
             { Value: 'ProductionYear', Label: 'Production Year' },
             { Value: 'CommunityRating', Label: 'Community Rating' },
             { Value: 'DateCreated', Label: 'Date Created' },
