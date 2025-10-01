@@ -501,6 +501,7 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 
 - **No Order** - Items appear in library order
 - **Name** - Sort by title
+- **Name (Ignore 'The')** - Sort by name while ignoring leading article 'The' - so "The Movie" sorts under M instead of T.
 - **Release Date** - Sort by release date
 - **Production Year** - Sort by production year
 - **Community Rating** - Sort by user ratings

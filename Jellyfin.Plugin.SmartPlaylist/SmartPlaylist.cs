@@ -1486,6 +1486,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             { "Name Ascending", () => new NameOrder() },
             { "Name Descending", () => new NameOrderDesc() },
+            { "Name (Ignore Articles) Ascending", () => new NameIgnoreArticlesOrder() },
+            { "Name (Ignore Articles) Descending", () => new NameIgnoreArticlesOrderDesc() },
             { "ProductionYear Ascending", () => new ProductionYearOrder() },
             { "ProductionYear Descending", () => new ProductionYearOrderDesc() },
             { "DateCreated Ascending", () => new DateCreatedOrder() },
@@ -1619,6 +1621,55 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public static bool IsEpisode(BaseItem item)
         {
             return item is Episode;
+        }
+
+        /// <summary>
+        /// Common articles in multiple languages to strip from names during sorting
+        /// </summary>
+        private static readonly string[] Articles = 
+        [
+            "the"//, "a", "an",           // English
+            //"le", "la", "les", "l'",    // French
+            //"el", "la", "los", "las",   // Spanish
+            //"der", "die", "das",        // German
+            //"il", "lo", "la", "i", "gli", "le", // Italian
+            //"de", "het",                // Dutch
+            //"o", "a", "os", "as",       // Portuguese
+            //"en", "ett",                // Swedish
+            //"en", "ei", "et"            // Norwegian
+        ];
+
+        /// <summary>
+        /// Strips leading articles from a name for sorting purposes.
+        /// Supports article 'The'.
+        /// </summary>
+        /// <param name="name">The name to process</param>
+        /// <returns>The name with leading article removed, or original name if no article found</returns>
+        public static string StripLeadingArticles(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return name ?? "";
+            }
+
+            var trimmedName = name.Trim();
+            
+            foreach (var article in Articles)
+            {
+                // Check if name starts with article followed by a space or apostrophe
+                if (trimmedName.StartsWith(article + " ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return trimmedName.Substring(article.Length + 1).TrimStart();
+                }
+                
+                // Special handling for l' (French)
+                // if (article.EndsWith("'") && trimmedName.StartsWith(article, StringComparison.OrdinalIgnoreCase))
+                // {
+                //     return trimmedName.Substring(article.Length).TrimStart();
+                // }
+            }
+            
+            return trimmedName;
         }
     }
 
@@ -1767,6 +1818,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name Descending";
         protected override bool IsDescending => true;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
+        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+    }
+
+    public class NameIgnoreArticlesOrder : PropertyOrder<string>
+    {
+        public override string Name => "Name (Ignore Articles) Ascending";
+        protected override bool IsDescending => false;
+        protected override string GetSortValue(BaseItem item) => OrderUtilities.StripLeadingArticles(item.Name ?? "");
+        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+    }
+
+    public class NameIgnoreArticlesOrderDesc : PropertyOrder<string>
+    {
+        public override string Name => "Name (Ignore Articles) Descending";
+        protected override bool IsDescending => true;
+        protected override string GetSortValue(BaseItem item) => OrderUtilities.StripLeadingArticles(item.Name ?? "");
         protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
     }
 
