@@ -284,6 +284,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         hashBuilder.Append(expr.Operator ?? "");
                         hashBuilder.Append(':');
                         hashBuilder.Append(expr.TargetValue ?? "");
+                        
+                        // Include option fields that affect rule compilation
+                        // These must be part of the hash to ensure cache invalidation when toggled
+                        hashBuilder.Append(':');
+                        hashBuilder.Append(expr.UserId ?? "");
+                        hashBuilder.Append(':');
+                        hashBuilder.Append(expr.IncludeParentSeriesTags?.ToString() ?? "null");
+                        hashBuilder.Append(':');
+                        hashBuilder.Append(expr.IncludeUnwatchedSeries?.ToString() ?? "null");
+                        hashBuilder.Append(':');
+                        hashBuilder.Append(expr.IncludeEpisodesWithinSeries?.ToString() ?? "null");
                     }
                 }
                 
@@ -584,7 +595,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 && expr.MemberName != "People"
                                 && expr.MemberName != "Collections"
                                 && expr.MemberName != "NextUnwatched"
-                                && expr.MemberName != "SeriesName");
+                                && expr.MemberName != "SeriesName"
+                                && !(expr.MemberName == "Tags" && expr.IncludeParentSeriesTags == true));
                     }
                 }
                 catch (Exception ex)

@@ -67,7 +67,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (r.MemberName == "Tags" && r.IncludeParentSeriesTags == true)
             {
                 logger?.LogDebug("SmartPlaylist building Tags expression with parent series tags inclusion");
-                return BuildTagsWithParentSeriesExpression<T>(r, param, logger);
+                return BuildTagsWithParentSeriesExpression(r, param, logger);
             }
 
             // Get the property/field expression for non-user-specific fields
@@ -115,12 +115,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         /// <summary>
         /// Builds expressions for Tags field that also checks ParentSeriesTags.
-        /// Creates an OR expression: (Tags matches) OR (ParentSeriesTags matches)
+        /// For positive operators (Contains, IsIn, MatchRegex): Uses OR logic - item passes if EITHER Tags OR ParentSeriesTags match
+        /// For negative operators (NotContains, IsNotIn): Uses AND logic - item passes only if BOTH Tags AND ParentSeriesTags don't match
         /// </summary>
-        private static System.Linq.Expressions.Expression BuildTagsWithParentSeriesExpression<T>(Expression r, ParameterExpression param, ILogger logger)
+        private static System.Linq.Expressions.Expression BuildTagsWithParentSeriesExpression(Expression r, ParameterExpression param, ILogger logger)
         {
-            logger?.LogDebug("SmartPlaylist building combined Tags expression: checking both Tags and ParentSeriesTags");
-            
             // Get the Tags property expression
             var tagsProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "Tags");
             var tagsExpression = BuildStringEnumerableExpression(r, tagsProperty, logger);
@@ -129,9 +128,25 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var parentSeriesTagsProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "ParentSeriesTags");
             var parentSeriesTagsExpression = BuildStringEnumerableExpression(r, parentSeriesTagsProperty, logger);
             
-            // Combine with OR: (Tags matches) OR (ParentSeriesTags matches)
-            // This means an item passes if EITHER its own tags match OR its parent series tags match
-            return System.Linq.Expressions.Expression.OrElse(tagsExpression, parentSeriesTagsExpression);
+            // Determine if this is a negative operator
+            bool isNegativeOperator = r.Operator == "NotContains" || r.Operator == "IsNotIn";
+            
+            if (isNegativeOperator)
+            {
+                // For negative operators: Use AND logic
+                // Item passes only if BOTH Tags don't match AND ParentSeriesTags don't match
+                // Example: "NotContains Horror" means neither episode tags nor series tags should contain Horror
+                logger?.LogDebug("SmartPlaylist building combined Tags expression with AND logic for negative operator {Operator}", r.Operator);
+                return System.Linq.Expressions.Expression.AndAlso(tagsExpression, parentSeriesTagsExpression);
+            }
+            else
+            {
+                // For positive operators: Use OR logic
+                // Item passes if EITHER Tags match OR ParentSeriesTags match
+                // Example: "Contains Sitcom" means either episode tags or series tags contain Sitcom
+                logger?.LogDebug("SmartPlaylist building combined Tags expression with OR logic for positive operator {Operator}", r.Operator);
+                return System.Linq.Expressions.Expression.OrElse(tagsExpression, parentSeriesTagsExpression);
+            }
         }
 
         /// <summary>

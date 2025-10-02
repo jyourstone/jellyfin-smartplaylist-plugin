@@ -4821,6 +4821,29 @@
                 }
             }
             
+            // Restore per-field option selects for clone/edit flows
+            if (expression.MemberName === 'NextUnwatched') {
+                const nextUnwatchedSelect = ruleRow.querySelector('.rule-nextunwatched-select');
+                if (nextUnwatchedSelect) {
+                    const includeValue = expression.IncludeUnwatchedSeries !== false ? 'true' : 'false';
+                    nextUnwatchedSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'Collections') {
+                const collectionsSelect = ruleRow.querySelector('.rule-collections-select');
+                if (collectionsSelect) {
+                    const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';
+                    collectionsSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'Tags') {
+                const tagsSelect = ruleRow.querySelector('.rule-tags-select');
+                if (tagsSelect) {
+                    const includeValue = expression.IncludeParentSeriesTags === true ? 'true' : 'false';
+                    tagsSelect.value = includeValue;
+                }
+            }
+            
             // Update regex help if needed
             updateRegexHelp(ruleRow);
         } catch (error) {
