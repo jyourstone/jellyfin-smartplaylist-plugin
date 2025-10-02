@@ -63,6 +63,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return BuildUserSpecificExpression<T>(userSpecificExpression, param, logger);
             }
 
+            // Special handling for Tags field with IncludeParentSeriesTags option
+            if (r.MemberName == "Tags" && r.IncludeParentSeriesTags == true)
+            {
+                logger?.LogDebug("SmartPlaylist building Tags expression with parent series tags inclusion");
+                return BuildTagsWithParentSeriesExpression<T>(r, param, logger);
+            }
+
             // Get the property/field expression for non-user-specific fields
             var left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
             var tProp = left.Type;
@@ -104,6 +111,27 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             // Handle standard .NET operators for other types
             return BuildStandardOperatorExpression(r, left, tProp, logger);
+        }
+
+        /// <summary>
+        /// Builds expressions for Tags field that also checks ParentSeriesTags.
+        /// Creates an OR expression: (Tags matches) OR (ParentSeriesTags matches)
+        /// </summary>
+        private static System.Linq.Expressions.Expression BuildTagsWithParentSeriesExpression<T>(Expression r, ParameterExpression param, ILogger logger)
+        {
+            logger?.LogDebug("SmartPlaylist building combined Tags expression: checking both Tags and ParentSeriesTags");
+            
+            // Get the Tags property expression
+            var tagsProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "Tags");
+            var tagsExpression = BuildStringEnumerableExpression(r, tagsProperty, logger);
+            
+            // Get the ParentSeriesTags property expression
+            var parentSeriesTagsProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "ParentSeriesTags");
+            var parentSeriesTagsExpression = BuildStringEnumerableExpression(r, parentSeriesTagsProperty, logger);
+            
+            // Combine with OR: (Tags matches) OR (ParentSeriesTags matches)
+            // This means an item passes if EITHER its own tags match OR its parent series tags match
+            return System.Linq.Expressions.Expression.OrElse(tagsExpression, parentSeriesTagsExpression);
         }
 
         /// <summary>

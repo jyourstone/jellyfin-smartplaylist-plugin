@@ -26,8 +26,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         IUserDataManager userDataManager,
         IProviderManager providerManager) : RefreshPlaylistsTaskBase(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
     {
-        public override string Name => "Refresh Audio SmartPlaylists";
-        public override string Description => "Refresh all audio/music SmartPlaylists";
+        public override string Name => "Refresh Audio SmartPlaylists (Legacy)";
+        public override string Description => "Refreshes all legacy audio/music SmartPlaylists that does not use the new individual playlist refresh functionality.";
         public override string Key => "RefreshAudioSmartPlaylists";
 
         protected override string GetHandledMediaTypes()
