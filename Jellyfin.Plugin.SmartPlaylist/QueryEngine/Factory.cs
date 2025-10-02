@@ -28,6 +28,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public bool ExtractCollections { get; set; } = false;
         public bool ExtractNextUnwatched { get; set; } = false;
         public bool ExtractSeriesName { get; set; } = false;
+        public bool ExtractParentSeriesTags { get; set; } = false;
         public bool IncludeUnwatchedSeries { get; set; } = true;
         public List<string> AdditionalUserIds { get; set; } = [];
     }
@@ -60,6 +61,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public BaseItem[] AllCollections { get; set; } = null;
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
             public Dictionary<Guid, string> SeriesNameById { get; } = [];
+            public Dictionary<Guid, List<string>> SeriesTagsById { get; } = [];
         }
 
         /// <summary>
@@ -627,6 +629,68 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Extracts the parent series tags for episodes with per-refresh caching.
+        /// This is an expensive operation as it requires a database lookup, so caching is critical for performance.
+        /// </summary>
+        private static void ExtractParentSeriesTags(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
+        {
+            operand.ParentSeriesTags = [];
+            try
+            {
+                // Only process episodes - other item types don't have parent series
+                if (baseItem is not Episode)
+                {
+                    logger?.LogDebug("Item '{ItemName}' is not an episode, parent series tags remain empty", baseItem.Name);
+                    return;
+                }
+                
+                // Use helper to extract SeriesId safely
+                if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid))
+                {
+                    // Check cache first to avoid repeated library lookups (expensive!)
+                    if (cache.SeriesTagsById.TryGetValue(seriesGuid, out var cachedTags))
+                    {
+                        operand.ParentSeriesTags = cachedTags;
+                        logger?.LogDebug("Using cached parent series tags for episode '{EpisodeName}' (series ID: {SeriesId}): [{Tags}]", 
+                            baseItem.Name, seriesGuid, string.Join(", ", cachedTags));
+                    }
+                    else
+                    {
+                        try
+                        {
+                            // Get the parent series from the library manager (expensive operation!)
+                            var parentSeries = libraryManager.GetItemById(seriesGuid);
+                            var seriesTags = parentSeries?.Tags?.ToList() ?? [];
+                            
+                            // Cache the result for future episodes from the same series
+                            cache.SeriesTagsById[seriesGuid] = seriesTags;
+                            operand.ParentSeriesTags = seriesTags;
+                            
+                            logger?.LogDebug("Extracted and cached parent series tags for episode '{EpisodeName}' (series: '{SeriesName}'): [{Tags}]", 
+                                baseItem.Name, parentSeries?.Name ?? "Unknown", string.Join(", ", seriesTags));
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Failed to get parent series tags for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                baseItem.Name, seriesGuid);
+                            
+                            // Cache empty list to avoid repeated failures
+                            cache.SeriesTagsById[seriesGuid] = [];
+                        }
+                    }
+                }
+                else
+                {
+                    logger?.LogDebug("Could not extract valid SeriesId from episode '{EpisodeName}'", baseItem.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract parent series tags for item '{ItemName}'", baseItem.Name);
+            }
+        }
+
+        /// <summary>
         /// Extracts people (actors, directors, producers, etc.) associated with the item.
         /// </summary>
         private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
@@ -772,6 +836,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var extractPeople = options.ExtractPeople;  
             var extractNextUnwatched = options.ExtractNextUnwatched;
             var extractSeriesName = options.ExtractSeriesName;
+            var extractParentSeriesTags = options.ExtractParentSeriesTags;
             var includeUnwatchedSeries = options.IncludeUnwatchedSeries;
             var additionalUserIds = options.AdditionalUserIds;
             
@@ -979,6 +1044,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 operand.People = [];
+            }
+            
+            // Extract parent series tags for episodes - only when needed for performance
+            // This is an expensive operation (database lookup), so we use caching
+            if (extractParentSeriesTags)
+            {
+                ExtractParentSeriesTags(operand, baseItem, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.ParentSeriesTags = [];
             }
             
             // Extract artists and album artists only for music-related items (cheap operations when applicable)

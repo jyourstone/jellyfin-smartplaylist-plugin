@@ -20,6 +20,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? IncludeEpisodesWithinSeries { get; set; } = null;
         
+        // Tags-specific option - only serialize when meaningful
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IncludeParentSeriesTags { get; set; } = null;
+        
         // Helper property to check if this is a user-specific expression
         // Only serialize when UserId is not null
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

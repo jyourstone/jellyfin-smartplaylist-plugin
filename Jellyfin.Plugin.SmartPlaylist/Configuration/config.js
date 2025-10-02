@@ -1868,6 +1868,15 @@
                     <option value="false">No - Only include the series themselves</option>
                     <option value="true">Yes - Include individual episodes from series in collections</option>
                 </select>
+            </div>
+            <div class="rule-tags-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Include parent series tags:
+                </label>
+                <select is="emby-select" class="emby-select rule-tags-select" style="width: 100%;">
+                    <option value="false">No - Only check episode tags</option>
+                    <option value="true">Yes - Also check tags from parent series</option>
+                </select>
             </div>`;
         
         ruleDiv.innerHTML = fieldsHtml;
@@ -1901,6 +1910,9 @@
         // Initialize Collections options visibility
         updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
         
+        // Initialize Tags options visibility
+        updateTagsOptionsVisibility(newRuleRow, fieldSelect.value);
+        
         // Add event listeners with AbortController signal (if supported)
         const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
@@ -1909,6 +1921,7 @@
             updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
             updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
             updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
+            updateTagsOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
@@ -2093,6 +2106,7 @@
                     updateUserSelectorVisibility(ruleRow, currentFieldValue);
                     updateNextUnwatchedOptionsVisibility(ruleRow, currentFieldValue);
                     updateCollectionsOptionsVisibility(ruleRow, currentFieldValue);
+                    updateTagsOptionsVisibility(ruleRow, currentFieldValue);
                 }
                 
                 // Re-add event listeners
@@ -2103,6 +2117,7 @@
                     updateUserSelectorVisibility(ruleRow, fieldSelect.value);
                     updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value);
                     updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value);
+                    updateTagsOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
                 }, listenerOptions);
                 
@@ -2216,6 +2231,17 @@
                             const includeEpisodesWithinSeries = collectionsSelect.value === 'true';
                             if (includeEpisodesWithinSeries) {
                                 expression.IncludeEpisodesWithinSeries = true;
+                            }
+                            // If false (default), don't include the parameter to save space
+                        }
+                        
+                        // Handle Tags-specific options
+                        const tagsSelect = rule.querySelector('.rule-tags-select');
+                        if (tagsSelect && memberName === 'Tags') {
+                            // Convert string to boolean and only include if it's explicitly true
+                            const includeParentSeriesTags = tagsSelect.value === 'true';
+                            if (includeParentSeriesTags) {
+                                expression.IncludeParentSeriesTags = true;
                             }
                             // If false (default), don't include the parameter to save space
                         }
@@ -2508,6 +2534,24 @@
                 const collectionsSelect = collectionsOptionsDiv.querySelector('.rule-collections-select');
                 if (collectionsSelect) {
                     collectionsSelect.value = 'false'; // Default to not including episodes within series
+                }
+            }
+        }
+    }
+    
+    function updateTagsOptionsVisibility(ruleRow, fieldValue) {
+        const isTagsField = fieldValue === 'Tags';
+        const tagsOptionsDiv = ruleRow.querySelector('.rule-tags-options');
+        
+        if (tagsOptionsDiv) {
+            if (isTagsField) {
+                tagsOptionsDiv.style.display = 'block';
+            } else {
+                tagsOptionsDiv.style.display = 'none';
+                // Reset to default when hiding
+                const tagsSelect = tagsOptionsDiv.querySelector('.rule-tags-select');
+                if (tagsSelect) {
+                    tagsSelect.value = 'false'; // Default to not including parent series tags
                 }
             }
         }
@@ -3015,8 +3059,14 @@
                             collectionsInfo = ' (including episodes within series)';
                         }
                         
+                        // Add Tags configuration info
+                        let tagsInfo = '';
+                        if (rule.MemberName === 'Tags' && rule.IncludeParentSeriesTags === true) {
+                            tagsInfo = ' (including parent series tags)';
+                        }
+                        
                         rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
-                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo);
+                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo) + escapeHtml(tagsInfo);
                         rulesHtml += '</span>';
                     }
                     rulesHtml += '</div>';
@@ -4459,6 +4509,7 @@
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
                                 updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName);
                                 updateCollectionsOptionsVisibility(currentRule, expression.MemberName);
+                                updateTagsOptionsVisibility(currentRule, expression.MemberName);
                                 
                                 // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
@@ -4520,6 +4571,16 @@
                                         // Default to false if not specified (backwards compatibility)
                                         const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';
                                         collectionsSelect.value = includeValue;
+                                    }
+                                }
+                                
+                                if (expression.MemberName === 'Tags') {
+                                    const tagsSelect = currentRule.querySelector('.rule-tags-select');
+                                    if (tagsSelect) {
+                                        // Set the value based on the IncludeParentSeriesTags parameter
+                                        // Default to false if not specified (backwards compatibility)
+                                        const includeValue = expression.IncludeParentSeriesTags === true ? 'true' : 'false';
+                                        tagsSelect.value = includeValue;
                                     }
                                 }
                                 
@@ -4735,6 +4796,7 @@
                 updateUserSelectorVisibility(ruleRow, expression.MemberName);
                 updateNextUnwatchedOptionsVisibility(ruleRow, expression.MemberName);
                 updateCollectionsOptionsVisibility(ruleRow, expression.MemberName);
+                updateTagsOptionsVisibility(ruleRow, expression.MemberName);
             }
             
             if (operatorSelect && expression.Operator) {
@@ -4758,6 +4820,32 @@
                     });
                 }
             }
+            
+            // Restore per-field option selects for clone/edit flows
+            if (expression.MemberName === 'NextUnwatched') {
+                const nextUnwatchedSelect = ruleRow.querySelector('.rule-nextunwatched-select');
+                if (nextUnwatchedSelect) {
+                    const includeValue = expression.IncludeUnwatchedSeries !== false ? 'true' : 'false';
+                    nextUnwatchedSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'Collections') {
+                const collectionsSelect = ruleRow.querySelector('.rule-collections-select');
+                if (collectionsSelect) {
+                    const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';
+                    collectionsSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'Tags') {
+                const tagsSelect = ruleRow.querySelector('.rule-tags-select');
+                if (tagsSelect) {
+                    const includeValue = expression.IncludeParentSeriesTags === true ? 'true' : 'false';
+                    tagsSelect.value = includeValue;
+                }
+            }
+            
+            // Update regex help if needed
+            updateRegexHelp(ruleRow);
         } catch (error) {
             console.error('Error populating rule row:', error);
         }

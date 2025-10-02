@@ -261,6 +261,7 @@ Here are some popular playlist types you can create:
 - **Recent Additions** - Date Created newer than "2 weeks"
 - **Holiday Classics** - Tags contain "Christmas" AND Production Year before "2000"
 - **Complete Franchise Collection** - Collections contains "Movie Franchise" (includes all movies in the franchise)
+- **Unplayed Sitcom Episodes** - Tags contains "Sitcom" (with parent series tags enabled) AND Is Played = False
 
 #### **Music**
 - **Workout Mix** - Genre contains "Electronic" OR "Rock" AND Max Play Time 45 minutes
@@ -276,8 +277,9 @@ Here are some popular playlist types you can create:
 
 #### **Advanced Examples**
 - **Weekend Binge Queue** - Next Unwatched = True (excluding unwatched series) for started shows only
-- **Kids' Shows Progress** - Next Unwatched = True AND Tags contain "Kids"
+- **Kids' Shows Progress** - Next Unwatched = True AND Tags contain "Kids" (with parent series tags enabled)
 - **Foreign Language Practice** - Audio Languages match "(?i)(ger|fra|spa)" AND Is Played = False
+- **Tagged Series Marathon** - Tags is in "Drama;Thriller" (with parent series tags enabled) AND Runtime < 50 minutes
 
 ### Enhanced Music Tagging
 
@@ -393,6 +395,7 @@ The web interface provides access to all available fields for creating playlist 
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
+  - **Include parent series tags**: Optional setting to also check tags from the parent series when filtering episodes
 - **Artists** - Track-level artists *for music*
 - **Album Artists** - Album-level primary artists *for music*
 

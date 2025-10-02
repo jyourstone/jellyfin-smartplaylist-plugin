@@ -25,8 +25,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         IUserDataManager userDataManager,
         IProviderManager providerManager) : RefreshPlaylistsTaskBase(userManager, libraryManager, logger, serverApplicationPaths, playlistManager, userDataManager, providerManager)
     {
-        public override string Name => "Refresh Media SmartPlaylists";
-        public override string Description => "Refreshes smart playlists for all media content except audio/music (movies, TV shows, books, music videos, home videos, and photos)";
+        public override string Name => "Refresh Media SmartPlaylists (Legacy)";
+        public override string Description => "Refreshes all legacy smart playlists for all media content except audio/music, that does not use the new individual playlist refresh functionality.";
         public override string Key => "RefreshMediaSmartPlaylists";
 
         protected override string GetHandledMediaTypes()
