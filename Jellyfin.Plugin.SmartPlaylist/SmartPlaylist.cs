@@ -1608,6 +1608,93 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public static class OrderUtilities
     {
         /// <summary>
+        /// Shared natural string comparer instance for case-insensitive sorting with numeric awareness.
+        /// </summary>
+        public static readonly NaturalStringComparer SharedNaturalComparer = new(ignoreCase: true);
+
+        /// <summary>
+        /// Natural string comparer that sorts strings with leading numbers numerically.
+        /// </summary>
+        public class NaturalStringComparer : IComparer<string>
+        {
+            private readonly bool _ignoreCase;
+
+            public NaturalStringComparer(bool ignoreCase = true)
+            {
+                _ignoreCase = ignoreCase;
+            }
+
+            public int Compare(string x, string y)
+            {
+                if (x == y) return 0;
+                if (x == null) return -1;
+                if (y == null) return 1;
+
+                // Extract leading numbers
+                var (xNum, xHasNum, xRest) = ExtractLeadingNumber(x);
+                var (yNum, yHasNum, yRest) = ExtractLeadingNumber(y);
+
+                // If both have leading numbers, compare them numerically first
+                if (xHasNum && yHasNum)
+                {
+                    var numComparison = xNum.CompareTo(yNum);
+                    if (numComparison != 0)
+                    {
+                        return numComparison;
+                    }
+                    // Numbers are equal, compare the rest of the string
+                    return CompareStrings(xRest, yRest);
+                }
+
+                // If only one has a leading number, put numbered items first
+                if (xHasNum) return -1;
+                if (yHasNum) return 1;
+
+                // Neither has a leading number, do normal string comparison
+                return CompareStrings(x, y);
+            }
+
+            private (int number, bool hasNumber, string rest) ExtractLeadingNumber(string str)
+            {
+                int i = 0;
+                
+                // Skip leading whitespace
+                while (i < str.Length && char.IsWhiteSpace(str[i]))
+                {
+                    i++;
+                }
+
+                if (i >= str.Length || !char.IsDigit(str[i]))
+                {
+                    return (0, false, str);
+                }
+
+                int startDigit = i;
+                
+                // Parse the number
+                while (i < str.Length && char.IsDigit(str[i]))
+                {
+                    i++;
+                }
+
+                var numberStr = str.Substring(startDigit, i - startDigit);
+                if (int.TryParse(numberStr, out int number))
+                {
+                    return (number, true, str.Substring(i));
+                }
+
+                return (0, false, str);
+            }
+
+            private int CompareStrings(string x, string y)
+            {
+                return _ignoreCase 
+                    ? string.Compare(x, y, StringComparison.OrdinalIgnoreCase)
+                    : string.Compare(x, y, StringComparison.Ordinal);
+            }
+        }
+
+        /// <summary>
         /// Gets the release date for a BaseItem by checking the PremiereDate property
         /// </summary>
         /// <param name="item">The BaseItem to get the release date for</param>
@@ -1843,7 +1930,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name Ascending";
         protected override bool IsDescending => false;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
-        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class NameOrderDesc : PropertyOrder<string>
@@ -1851,7 +1938,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name Descending";
         protected override bool IsDescending => true;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
-        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class NameIgnoreArticlesOrder : PropertyOrder<string>
@@ -1859,7 +1946,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name (Ignore Articles) Ascending";
         protected override bool IsDescending => false;
         protected override string GetSortValue(BaseItem item) => OrderUtilities.StripLeadingArticles(item.Name ?? "");
-        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class NameIgnoreArticlesOrderDesc : PropertyOrder<string>
@@ -1867,7 +1954,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public override string Name => "Name (Ignore Articles) Descending";
         protected override bool IsDescending => true;
         protected override string GetSortValue(BaseItem item) => OrderUtilities.StripLeadingArticles(item.Name ?? "");
-        protected override IComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class DateCreatedOrder : PropertyOrder<DateTime>
