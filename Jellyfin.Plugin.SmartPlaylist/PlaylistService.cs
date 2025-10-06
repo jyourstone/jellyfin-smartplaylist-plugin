@@ -132,6 +132,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
                     .ToArray();
 
+                // Calculate playlist statistics from the same filtered list used for the actual playlist
+                dto.ItemCount = newLinkedChildren.Length;
+                dto.TotalRuntimeMinutes = CalculateTotalRuntimeMinutes(
+                    newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId.Value).ToArray(),
+                    mediaLookup,
+                    logger);
+                logger.LogDebug("Calculated playlist stats: {ItemCount} items, {TotalRuntime} minutes total runtime", 
+                    dto.ItemCount, dto.TotalRuntimeMinutes);
+
                 // Try to find existing playlist by Jellyfin playlist ID first, then by current naming format, then by old format
                 Playlist existingPlaylist = null;
                 
@@ -912,6 +921,40 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Default to Audio for mixed/unknown content (Jellyfin standard)
             _logger.LogDebug("Playlist {PlaylistName} has mixed/unknown content, defaulting to Audio", dto.Name);
             return MediaTypes.Audio;
+        }
+
+        /// <summary>
+        /// Calculates the total runtime in minutes for all items in a playlist.
+        /// </summary>
+        /// <param name="itemIds">Array of item GUIDs</param>
+        /// <param name="mediaLookup">Dictionary mapping item GUIDs to BaseItem objects</param>
+        /// <param name="logger">Logger for diagnostics</param>
+        /// <returns>Total runtime in minutes, or null if no items have runtime information</returns>
+        private double? CalculateTotalRuntimeMinutes(Guid[] itemIds, Dictionary<Guid, BaseItem> mediaLookup, ILogger logger)
+        {
+            double totalMinutes = 0.0;
+            int itemsWithRuntime = 0;
+
+            foreach (var itemId in itemIds)
+            {
+                if (mediaLookup.TryGetValue(itemId, out var item))
+                {
+                    if (item.RunTimeTicks.HasValue)
+                    {
+                        var itemMinutes = TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalMinutes;
+                        totalMinutes += itemMinutes;
+                        itemsWithRuntime++;
+                    }
+                }
+            }
+
+            // Only return runtime if at least one item has runtime information
+            if (itemsWithRuntime > 0)
+            {
+                return totalMinutes;
+            }
+
+            return null;
         }
 
         /// <summary>
