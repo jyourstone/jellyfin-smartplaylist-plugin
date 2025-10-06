@@ -82,6 +82,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? DateCreated { get; set; } // When was this playlist created (playlist creation, UTC)
         
+        // Playlist statistics (calculated during refresh)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? ItemCount { get; set; } // Number of items currently in the playlist
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? TotalRuntimeMinutes { get; set; } // Total runtime of all items in minutes
+        
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

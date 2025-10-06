@@ -88,6 +88,55 @@
         return diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
     }
 
+    // Format runtime in minutes to human-readable format (e.g., "2d 6h", "3h 42m", "45m")
+    // For 1+ days: rounds to nearest hour for space efficiency
+    // For < 1 day: shows hours and minutes
+    function formatRuntime(totalMinutes) {
+        if (!totalMinutes || totalMinutes <= 0) return null;
+        
+        const days = Math.floor(totalMinutes / 1440); // 1440 minutes in a day
+        
+        if (days > 0) {
+            // For playlists with 1+ days, round to nearest hour for space efficiency
+            const totalHours = Math.round(totalMinutes / 60);
+            const roundedDays = Math.floor(totalHours / 24);
+            const roundedHours = totalHours % 24;
+            
+            const parts = [];
+            if (roundedDays > 0) parts.push(roundedDays + 'd');
+            if (roundedHours > 0) parts.push(roundedHours + 'h');
+            
+            return parts.length > 0 ? parts.join(' ') : '1d';
+        } else {
+            // For playlists < 1 day, show hours and minutes
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = Math.round(totalMinutes % 60);
+            
+            const parts = [];
+            if (hours > 0) parts.push(hours + 'h');
+            if (minutes > 0) parts.push(minutes + 'm');
+            
+            return parts.length > 0 ? parts.join(' ') : '0m';
+        }
+    }
+
+    // Format runtime in minutes to long text format (e.g., "2 days 3 hours 42 minutes", "3 hours 42 minutes", "45 minutes")
+    function formatRuntimeLong(totalMinutes) {
+        if (!totalMinutes || totalMinutes <= 0) return null;
+        
+        const days = Math.floor(totalMinutes / 1440); // 1440 minutes in a day
+        const remainingMinutesAfterDays = totalMinutes % 1440;
+        const hours = Math.floor(remainingMinutesAfterDays / 60);
+        const minutes = Math.round(remainingMinutesAfterDays % 60);
+        
+        const parts = [];
+        if (days > 0) parts.push(days + ' day' + (days === 1 ? '' : 's'));
+        if (hours > 0) parts.push(hours + ' hour' + (hours === 1 ? '' : 's'));
+        if (minutes > 0) parts.push(minutes + ' minute' + (minutes === 1 ? '' : 's'));
+        
+        return parts.length > 0 ? parts.join(' ') : '0 minutes';
+    }
+
     // Toggle schedule containers based on trigger value (DRY helper)
     function toggleScheduleContainers(page, prefix, triggerValue) {
         const timeContainer = page.querySelector(`#${prefix}scheduleTimeContainer`);
@@ -3113,6 +3162,21 @@
         // Format media types for display in Properties table
         const mediaTypesDisplayText = mediaTypesArray.join(', ');
         
+        // Format playlist statistics for header display
+        const itemCount = playlist.ItemCount !== undefined && playlist.ItemCount !== null ? playlist.ItemCount : null;
+        const totalRuntime = playlist.TotalRuntimeMinutes ? formatRuntime(playlist.TotalRuntimeMinutes) : null;
+        const totalRuntimeLong = playlist.TotalRuntimeMinutes ? formatRuntimeLong(playlist.TotalRuntimeMinutes) : null;
+        
+        // Build stats display string for header
+        const statsElements = [];
+        if (itemCount !== null) {
+            statsElements.push(itemCount + ' item' + (itemCount === 1 ? '' : 's'));
+        }
+        if (totalRuntime) {
+            statsElements.push(totalRuntime);
+        }
+        const statsDisplay = statsElements.length > 0 ? statsElements.join(' | ') : '';
+        
         // Escape all dynamic content to prevent XSS
         const eName = escapeHtml(playlist.Name || '');
         const eFileName = escapeHtml(playlist.FileName || '');
@@ -3126,6 +3190,8 @@
         const eDateCreatedDisplay = escapeHtml(dateCreatedDisplay);
         const eStatusDisplayText = escapeHtml(statusDisplayText);
         const eMediaTypesDisplayText = escapeHtml(mediaTypesDisplayText);
+        const eStatsDisplay = escapeHtml(statsDisplay);
+        const eTotalRuntimeLong = totalRuntimeLong ? escapeHtml(totalRuntimeLong) : null;
         
         // Generate collapsible playlist card with improved styling
         return '<div class="inputContainer playlist-card" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 1em; background: #202020;">' +
@@ -3142,6 +3208,7 @@
                     '</label>' +
                     '<span class="playlist-expand-icon" style="margin-right: 0.5em; font-family: monospace; font-size: 1.2em; color: #999; flex-shrink: 0;">▶</span>' +
                     '<h3 style="margin: 0; flex: 1.5; min-width: 0; word-wrap: break-word; padding-right: 0.5em;">' + eName + '</h3>' +
+                    (eStatsDisplay ? '<span class="playlist-stats" style="color: #888; font-size: 0.85em; margin-right: 0.75em; flex-shrink: 0; font-weight: normal;">' + eStatsDisplay + '</span>' : '') +
                     (enabledStatus ? '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold; margin-right: 0.5em; flex-shrink: 0;">' + enabledStatus + '</span>' : '') +
                 '</div>' +
                 '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
@@ -3160,7 +3227,7 @@
                 '</div>' +
                 
                 // Properties table
-                '<div class="properties-section" style="margin-left: 0.5em;">' +
+                '<div class="properties-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
                     '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Properties</h4>' +
                     '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
@@ -3203,18 +3270,33 @@
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Scheduled refresh</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eScheduleDisplay + '</td>' +
                         '</tr>' +
-                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                        '<tr>' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Date created</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eDateCreatedDisplay + '</td>' +
                         '</tr>' +
+                    '</table>' +
+                '</div>' +
+                
+                // Statistics section
+                '<div class="statistics-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
+                    '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Statistics</h4>' +
+                    '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Item Count</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + (itemCount !== null ? escapeHtml(String(itemCount)) : 'Not yet refreshed') + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Runtime</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + (eTotalRuntimeLong ? eTotalRuntimeLong : (itemCount !== null ? 'Not available' : 'Not yet refreshed')) + '</td>' +
+                        '</tr>' +
                         '<tr>' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last refreshed</td>' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last Refreshed</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +
                         '</tr>' +
                     '</table>' +
                 '</div>' +
                 
-                // Action buttons (moved to bottom, after properties)
+                // Action buttons (moved to bottom, after statistics)
                 '<div class="playlist-actions" style="margin-top: 1em; margin-bottom: 0.5em; padding-top: 0.5em;">' +
                     '<button type="button" is="emby-button" class="emby-button raised edit-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="margin-right: 0.5em;">Edit</button>' +
                     '<button type="button" is="emby-button" class="emby-button raised clone-playlist-btn" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" data-playlist-name="' + escapeHtmlAttribute(playlist.Name || '') + '" style="margin-right: 0.5em;">Clone</button>' +
