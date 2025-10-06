@@ -680,7 +680,7 @@
     // let currentModalBackdropHandler = null;
     const mediaTypes = [ 
         { Value: "Movie", Label: "Movie" }, 
-        { Value: "Episode", Label: "Episode" }, 
+        { Value: "Episode", Label: "Episode (TV Show)" }, 
         { Value: "Audio", Label: "Audio (Music)" },
         { Value: "MusicVideo", Label: "Music Video" },
         { Value: "Video", Label: "Video (Home Video)" },
@@ -3208,8 +3208,8 @@
                     '</label>' +
                     '<span class="playlist-expand-icon" style="margin-right: 0.5em; font-family: monospace; font-size: 1.2em; color: #999; flex-shrink: 0;">▶</span>' +
                     '<h3 style="margin: 0; flex: 1.5; min-width: 0; word-wrap: break-word; padding-right: 0.5em;">' + eName + '</h3>' +
-                    (eStatsDisplay ? '<span class="playlist-stats" style="color: #888; font-size: 0.85em; margin-right: 0.75em; flex-shrink: 0; font-weight: normal;">' + eStatsDisplay + '</span>' : '') +
-                    (enabledStatus ? '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold; margin-right: 0.5em; flex-shrink: 0;">' + enabledStatus + '</span>' : '') +
+                    (enabledStatus ? '<span class="playlist-status" style="color: ' + enabledStatusColor + '; font-weight: bold; margin-right: 0.75em; flex-shrink: 0; line-height: 1.5; align-self: center;">' + enabledStatus + '</span>' : '') +
+                    (eStatsDisplay ? '<span class="playlist-stats" style="color: #888; font-size: 0.85em; margin-right: 0.5em; flex-shrink: 0; font-weight: normal; line-height: 1.5; align-self: center;">' + eStatsDisplay + '</span>' : '') +
                 '</div>' +
                 '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
                     '<div class="playlist-media-types-container" style="display: flex; flex-wrap: wrap; gap: 0.25em; flex-shrink: 0; max-width: 160px; justify-content: flex-end;">' +

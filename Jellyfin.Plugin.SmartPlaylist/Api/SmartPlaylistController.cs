@@ -657,12 +657,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "Album", Label = "Album" },
                     new { Value = "AudioLanguages", Label = "Audio Languages" },
                     new { Value = "Name", Label = "Name" },
+                    new { Value = "SeriesName", Label = "Series Name" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
                     new { Value = "Overview", Label = "Overview" },
                     new { Value = "ProductionYear", Label = "Production Year" },
                     new { Value = "ReleaseDate", Label = "Release Date" },
                     new { Value = "Resolution", Label = "Resolution" },
-                    new { Value = "SeriesName", Label = "Series Name" },
                     new { Value = "Framerate", Label = "Framerate" }
                     // Note: ItemType (Media Type) is intentionally excluded from UI fields
                     // because users select media type (Audio/Video) before creating rules
