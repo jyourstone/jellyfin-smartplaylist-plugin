@@ -132,9 +132,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
                     .ToArray();
 
-                // Calculate playlist statistics
+                // Calculate playlist statistics from the same filtered list used for the actual playlist
                 dto.ItemCount = newLinkedChildren.Length;
-                dto.TotalRuntimeMinutes = CalculateTotalRuntimeMinutes(newItems, mediaLookup, logger);
+                dto.TotalRuntimeMinutes = CalculateTotalRuntimeMinutes(
+                    newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId.Value).ToArray(),
+                    mediaLookup,
+                    logger);
                 logger.LogDebug("Calculated playlist stats: {ItemCount} items, {TotalRuntime} minutes total runtime", 
                     dto.ItemCount, dto.TotalRuntimeMinutes);
 
@@ -948,7 +951,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Only return runtime if at least one item has runtime information
             if (itemsWithRuntime > 0)
             {
-                return Math.Round(totalMinutes, 2);
+                return totalMinutes;
             }
 
             return null;
