@@ -1608,6 +1608,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public static class OrderUtilities
     {
         /// <summary>
+        /// Shared natural string comparer instance for case-insensitive sorting with numeric awareness.
+        /// </summary>
+        public static readonly NaturalStringComparer SharedNaturalComparer = new(ignoreCase: true);
+
+        /// <summary>
         /// Natural string comparer that sorts strings with leading numbers numerically.
         /// </summary>
         public class NaturalStringComparer : IComparer<string>
@@ -1922,42 +1927,34 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
     public class NameOrder : PropertyOrder<string>
     {
-        private static readonly OrderUtilities.NaturalStringComparer NaturalComparer = new(ignoreCase: true);
-        
         public override string Name => "Name Ascending";
         protected override bool IsDescending => false;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
-        protected override IComparer<string> Comparer => NaturalComparer;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class NameOrderDesc : PropertyOrder<string>
     {
-        private static readonly OrderUtilities.NaturalStringComparer NaturalComparer = new(ignoreCase: true);
-        
         public override string Name => "Name Descending";
         protected override bool IsDescending => true;
         protected override string GetSortValue(BaseItem item) => item.Name ?? "";
-        protected override IComparer<string> Comparer => NaturalComparer;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class NameIgnoreArticlesOrder : PropertyOrder<string>
     {
-        private static readonly OrderUtilities.NaturalStringComparer NaturalComparer = new(ignoreCase: true);
-        
         public override string Name => "Name (Ignore Articles) Ascending";
         protected override bool IsDescending => false;
         protected override string GetSortValue(BaseItem item) => OrderUtilities.StripLeadingArticles(item.Name ?? "");
-        protected override IComparer<string> Comparer => NaturalComparer;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class NameIgnoreArticlesOrderDesc : PropertyOrder<string>
     {
-        private static readonly OrderUtilities.NaturalStringComparer NaturalComparer = new(ignoreCase: true);
-        
         public override string Name => "Name (Ignore Articles) Descending";
         protected override bool IsDescending => true;
         protected override string GetSortValue(BaseItem item) => OrderUtilities.StripLeadingArticles(item.Name ?? "");
-        protected override IComparer<string> Comparer => NaturalComparer;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
 
     public class DateCreatedOrder : PropertyOrder<DateTime>
