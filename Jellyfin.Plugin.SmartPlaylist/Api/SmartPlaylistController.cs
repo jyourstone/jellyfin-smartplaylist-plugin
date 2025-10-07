@@ -888,6 +888,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     var playlistService = GetPlaylistService();
                     await playlistService.DisablePlaylistAsync(playlist);
                     
+                    // Clear the Jellyfin playlist ID since the playlist no longer exists
+                    playlist.JellyfinPlaylistId = null;
+                    
                     // Only save the configuration if the Jellyfin operation succeeds
                     await playlistStore.SaveAsync(playlist);
                     
