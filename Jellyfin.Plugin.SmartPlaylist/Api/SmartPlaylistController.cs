@@ -830,7 +830,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 {
                     // Create/update the Jellyfin playlist FIRST
                     var playlistService = GetPlaylistService();
-                    await playlistService.EnablePlaylistAsync(playlist);
+                    var (success, message, jellyfinPlaylistId) = await playlistService.RefreshSinglePlaylistWithTimeoutAsync(playlist);
+                    
+                    if (!success)
+                    {
+                        logger.LogWarning("Failed to enable playlist {PlaylistName}: {Message}", playlist.Name, message);
+                        throw new InvalidOperationException(message);
+                    }
+                    
+                    // If refresh was successful, save the Jellyfin playlist ID
+                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                    {
+                        playlist.JellyfinPlaylistId = jellyfinPlaylistId;
+                        logger.LogDebug("Captured Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}", 
+                            jellyfinPlaylistId, playlist.Name);
+                    }
                     
                     // Only save the configuration if the Jellyfin operation succeeds
                     await playlistStore.SaveAsync(playlist);
@@ -887,6 +901,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     // Remove the Jellyfin playlist FIRST
                     var playlistService = GetPlaylistService();
                     await playlistService.DisablePlaylistAsync(playlist);
+                    
+                    // Clear the Jellyfin playlist ID since the playlist no longer exists
+                    playlist.JellyfinPlaylistId = null;
                     
                     // Only save the configuration if the Jellyfin operation succeeds
                     await playlistStore.SaveAsync(playlist);

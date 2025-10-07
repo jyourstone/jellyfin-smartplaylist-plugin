@@ -3193,6 +3193,19 @@
         const eStatsDisplay = escapeHtml(statsDisplay);
         const eTotalRuntimeLong = totalRuntimeLong ? escapeHtml(totalRuntimeLong) : null;
         
+        // Build Jellyfin playlist URL if ID exists and playlist is enabled
+        let jellyfinPlaylistUrl = null;
+        if (playlist.JellyfinPlaylistId && isEnabled) {
+            try {
+                const apiClient = getApiClient();
+                const serverId = apiClient.serverId();
+                const baseUrl = apiClient.serverAddress();
+                jellyfinPlaylistUrl = baseUrl + '/web/#/details?id=' + encodeURIComponent(playlist.JellyfinPlaylistId) + '&serverId=' + encodeURIComponent(serverId);
+            } catch (err) {
+                console.error('Error building Jellyfin playlist URL:', err);
+            }
+        }
+        
         // Generate collapsible playlist card with improved styling
         return '<div class="inputContainer playlist-card" data-playlist-id="' + escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 1em; background: #202020;">' +
             // Compact header (always visible)
@@ -3230,6 +3243,17 @@
                 '<div class="properties-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
                     '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Properties</h4>' +
                     '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
+                        (playlist.JellyfinPlaylistId && isEnabled && jellyfinPlaylistUrl ?
+                            '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Jellyfin Playlist</td>' +
+                                '<td style="padding: 0.5em 0.75em;">' +
+                                    '<a href="' + escapeHtmlAttribute(jellyfinPlaylistUrl) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">' +
+                                        'View in Jellyfin' +
+                                    '</a>' +
+                                '</td>' +
+                            '</tr>' :
+                            ''
+                        ) +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">File</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eFileName + '</td>' +

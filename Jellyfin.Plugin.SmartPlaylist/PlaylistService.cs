@@ -28,7 +28,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(SmartPlaylistDto dto, User user, BaseItem[] allUserMedia, Func<SmartPlaylistDto, Task> saveCallback = null, CancellationToken cancellationToken = default);
         Task DeletePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task RemoveSmartSuffixAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
-        Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task DisablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default);
         Task<(bool Success, string Message)> TryRefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
         IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes);
@@ -571,32 +570,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error removing smart suffix from playlist {PlaylistName}", dto.Name);
-                throw;
-            }
-        }
-
-        public async Task EnablePlaylistAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                _logger.LogDebug("Enabling smart playlist: {PlaylistName}", dto.Name);
-                
-                // Use timeout approach for enable operations since they involve creating/editing playlists
-                var (success, message, _) = await RefreshSinglePlaylistWithTimeoutAsync(dto, cancellationToken);
-                
-                if (success)
-                {
-                    _logger.LogInformation("Successfully enabled smart playlist: {PlaylistName}", dto.Name);
-                }
-                else
-                {
-                    _logger.LogWarning("Failed to enable smart playlist {PlaylistName}: {Message}", dto.Name, message);
-                    throw new InvalidOperationException(message);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error enabling smart playlist {PlaylistName}", dto.Name);
                 throw;
             }
         }
