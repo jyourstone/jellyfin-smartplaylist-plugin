@@ -348,7 +348,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     _logger.LogDebug("Timeout waiting for refresh lock for single playlist: {PlaylistName}", dto.Name);
-                    return (false, "Playlist refresh is already in progress. Your changes are saved, trying again in 5 seconds...", string.Empty);
+                    return (false, "Playlist refresh is already in progress, please try again in a moment.", string.Empty);
                 }
             }
             catch (OperationCanceledException)
