@@ -3,8 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -24,6 +24,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public int MaxItems { get; set; }
         public int MaxPlayTimeMinutes { get; set; }
+        
+        // UserManager for resolving user-specific queries (Jellyfin 10.11+)
+        public IUserManager UserManager { get; set; }
 
         // OPTIMIZATION: Static cache for compiled rules to avoid recompilation
         private static readonly ConcurrentDictionary<string, List<List<Func<Operand, bool>>>> _ruleCache = new();
@@ -547,7 +550,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         if (Guid.TryParse(userId, out var userGuid))
                         {
-                            var targetUser = OperandFactory.GetUserById(userDataManager, userGuid);
+                            var targetUser = OperandFactory.GetUserById(UserManager, userGuid);
                             if (targetUser == null)
                             {
                                 logger?.LogWarning("User with ID '{UserId}' not found for playlist '{PlaylistName}'. This playlist rule references a user that no longer exists. Skipping playlist processing.", userId, Name);
@@ -785,7 +788,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug("Series '{SeriesName}' checking Collections rules for expansion eligibility", series.Name);
                 
                 // Extract Collections data for this series to check if it matches Collections rules
-                var collectionsOperand = OperandFactory.GetMediaType(libraryManager, series, user, userDataManager, logger, new MediaTypeExtractionOptions
+                var collectionsOperand = OperandFactory.GetMediaType(libraryManager, series, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                 {
                     ExtractAudioLanguages = false,
                     ExtractPeople = false,
@@ -999,7 +1002,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, episode, user, userDataManager, logger, new MediaTypeExtractionOptions
+                        var operand = OperandFactory.GetMediaType(libraryManager, episode, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                         {
                             ExtractAudioLanguages = needsAudioLanguages,
                             ExtractPeople = needsPeople,
@@ -1079,7 +1082,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         else
                         {
                             // Fallback: try to get runtime from Operand extraction
-                            var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                            var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                 {
                     ExtractAudioLanguages = false,
                     ExtractPeople = false,
@@ -1215,7 +1218,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             
                             try
                             {
-                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                                 {
                                     ExtractAudioLanguages = needsAudioLanguages,
                                     ExtractPeople = needsPeople,
@@ -1287,7 +1290,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 }
                                 
                                 // Phase 1: Extract non-expensive properties and check non-expensive rules
-                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                                 {
                                     ExtractAudioLanguages = false,
                                     ExtractPeople = false,
@@ -1334,7 +1337,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     continue;
                                 
                                 // Phase 2: Extract expensive data and check complete rules
-                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                                 {
                                     ExtractAudioLanguages = needsAudioLanguages,
                                     ExtractPeople = needsPeople,
@@ -1439,7 +1442,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     try
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, logger, new MediaTypeExtractionOptions
+                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                         {
                             ExtractAudioLanguages = needsAudioLanguages,
                             ExtractPeople = needsPeople,

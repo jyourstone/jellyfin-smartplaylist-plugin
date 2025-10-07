@@ -6,7 +6,7 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # Set the version for the build. For local testing, this can be a static string.
-VERSION="10.10.0.0"
+VERSION="10.11.0.0"
 OUTPUT_DIR="../build_output"
 
 echo "Building SmartPlaylist plugin version for local development..."

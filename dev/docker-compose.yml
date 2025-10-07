@@ -1,6 +1,6 @@
 services:
   jellyfin:
-    image: jellyfin/jellyfin
+    image: jellyfin/jellyfin:preview
     container_name: jellyfin
     user: 1000:1000
     environment:
@@ -11,8 +11,8 @@ services:
       - "7359:7359/udp" # Client discovery (optional)
       - "1900:1900/udp" # DLNA (optional)
     volumes:
-      - ./jellyfin-data/config:/config
-      - ./jellyfin-data/cache:/cache
+      - ./jellyfin-data-10.11/config:/config
+      - ./jellyfin-data-10.11/cache:/cache
       - ./media/movies:/movies # You can place some movie files here for testing.
       - ./media/shows:/shows # You can place some tv/episode files here for testing.
       - ./media/musicvideos:/musicvideos # You can place some music video files here for testing.

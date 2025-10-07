@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
-using Jellyfin.Data.Entities;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartPlaylist.Constants;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -113,7 +113,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return (true, "Playlist is disabled", string.Empty);
                 }
 
-                var smartPlaylist = new SmartPlaylist(dto);
+                var smartPlaylist = new SmartPlaylist(dto)
+                {
+                    UserManager = _userManager // Set UserManager for Jellyfin 10.11+ user resolution
+                };
                 
                 // Log the playlist rules
                 logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets", dto.Name, dto.ExpressionSets?.Count ?? 0);

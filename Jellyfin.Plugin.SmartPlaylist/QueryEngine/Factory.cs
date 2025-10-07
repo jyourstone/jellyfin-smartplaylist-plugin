@@ -12,7 +12,7 @@ using Book = MediaBrowser.Controller.Entities.Book;
 
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
-using Jellyfin.Data.Entities;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartPlaylist.Constants;
 
@@ -822,7 +822,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         // Clean API using options object - no more boolean flag proliferation!
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user, 
-            IUserDataManager userDataManager, ILogger logger, MediaTypeExtractionOptions options,
+            IUserDataManager userDataManager, IUserManager userManager, ILogger logger, MediaTypeExtractionOptions options,
             RefreshCache cache)
         {
             // Validate options parameter to avoid NullReferenceException
@@ -840,8 +840,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var includeUnwatchedSeries = options.IncludeUnwatchedSeries;
             var additionalUserIds = options.AdditionalUserIds;
             
+            // Get user data first for Jellyfin 10.11 compatibility
+            var userData = userDataManager?.GetUserData(user, baseItem);
+            
             // Cache the IsPlayed result to avoid multiple expensive calls
-            var isPlayed = baseItem.IsPlayed(user);
+            var isPlayed = userData != null ? baseItem.IsPlayed(user, userData) : false;
 
             var operand = new Operand(baseItem.Name)
             {
@@ -871,19 +874,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Try to access user data properly
             try
             {
-                if (userDataManager != null)
+                if (userDataManager != null && userData != null)
                 {
-                    var userData = userDataManager.GetUserData(user, baseItem);
-                    if (userData != null)
-                    {
-                        // Populate user-specific data for playlist owner
-                        PopulateUserData(operand, user.Id.ToString(), isPlayed, userData);
-                    }
-                    else
-                    {
-                        // Fallback when userData is null - treat as never played for playlist owner
-                        SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
-                    }
+                    // Populate user-specific data for playlist owner
+                    PopulateUserData(operand, user.Id.ToString(), isPlayed, userData);
+                }
+                else if (userDataManager != null)
+                {
+                    // Fallback when userData is null - treat as never played for playlist owner
+                    SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
                 }
                 else
                 {
@@ -891,11 +890,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     var userDataProperty = baseItem.GetType().GetProperty("UserData");
                     if (userDataProperty != null)
                     {
-                        var userData = userDataProperty.GetValue(baseItem);
-                        if (userData != null)
+                        var reflectedUserData = userDataProperty.GetValue(baseItem);
+                        if (reflectedUserData != null)
                         {
                             // Use our helper method to populate user data consistently
-                            PopulateUserData(operand, user.Id.ToString(), isPlayed, userData);
+                            PopulateUserData(operand, user.Id.ToString(), isPlayed, reflectedUserData);
                         }
                         else
                         {
@@ -928,13 +927,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             // Try to get user by ID
                             try
                             {
-                                var targetUser = GetUserById(userDataManager, userGuid);
+                                var targetUser = GetUserById(userManager, userGuid);
                                 if (targetUser != null)
                                 {
-                                    var userIsPlayed = baseItem.IsPlayed(targetUser);
+                                    // Get user data first for Jellyfin 10.11 compatibility
+                                    var targetUserData = userDataManager.GetUserData(targetUser, baseItem);
+                                    var userIsPlayed = targetUserData != null ? baseItem.IsPlayed(targetUser, targetUserData) : false;
                                     operand.IsPlayedByUser[userId] = userIsPlayed;
                                     
-                                    var targetUserData = userDataManager.GetUserData(targetUser, baseItem);
                                     if (targetUserData != null)
                                     {
                                         PopulateUserData(operand, userId, userIsPlayed, targetUserData);
@@ -1097,7 +1097,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 var allEpisodes = GetCachedSeriesEpisodes(seriesGuid, user, libraryManager, cache, logger);
                                 
                                 // First, calculate NextUnwatched for the main user (playlist owner)
-                                var mainUserNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
+                                var mainUserNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, userDataManager, logger);
                                 operand.NextUnwatchedByUser[user.Id.ToString()] = mainUserNextUnwatched;
                                 
                                 // Then check for additional users
@@ -1107,11 +1107,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                     {
                                         if (Guid.TryParse(userId, out var userGuid))
                                         {
-                                            var targetUser = GetUserById(userDataManager, userGuid);
+                                            var targetUser = GetUserById(userManager, userGuid);
                                             if (targetUser != null)
                                             {
                                                 var episodesForUser = GetCachedSeriesEpisodes(seriesGuid, targetUser, libraryManager, cache, logger);
-                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(episodesForUser, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, logger);
+                                                var isNextUnwatched = IsNextUnwatchedEpisodeCached(episodesForUser, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, userDataManager, logger);
                                                 operand.NextUnwatchedByUser[userId] = isNextUnwatched;
                                             }
                                         }
@@ -1231,10 +1231,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <param name="includeUnwatchedSeries">Whether to include completely unwatched series</param>
         /// <param name="seriesId">The series ID for cache key generation</param>
         /// <param name="cache">Per-refresh cache to store calculation results</param>
+        /// <param name="userDataManager">User data manager for retrieving user data</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>True if this episode is the next unwatched episode for the user</returns>
         private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user, 
-            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, ILogger logger)
+            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, IUserDataManager userDataManager, ILogger logger)
         {
             // Use per-refresh cache to avoid O(E²) recomputation for large series
             // Cache is scoped to single refresh, so no staleness issues across refreshes
@@ -1242,7 +1243,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (!cache.NextUnwatched.TryGetValue(cacheKey, out var result))
             {
                 logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId}", seriesId, user.Id);
-                result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, logger);
+                result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, userDataManager, logger);
                 cache.NextUnwatched[cacheKey] = result;
             }
             
@@ -1257,7 +1258,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// Calculates the next unwatched episode info for a series and user (returns episode details).
         /// </summary>
         private static (Guid? NextEpisodeId, int Season, int Episode) CalculateNextUnwatchedEpisodeInfo(BaseItem[] allEpisodes, User user, 
-            bool includeUnwatchedSeries, ILogger logger)
+            bool includeUnwatchedSeries, IUserDataManager userDataManager, ILogger logger)
         {
             try
             {
@@ -1285,7 +1286,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
                         {
                             // Call IsPlayed() fresh each time to ensure real-time accuracy
-                            var isWatched = episode.IsPlayed(user);
+                            // Get user data for Jellyfin 10.11 compatibility
+                            var episodeUserData = userDataManager?.GetUserData(user, episode);
+                            var isWatched = episodeUserData != null ? episode.IsPlayed(user, episodeUserData) : false;
                             episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
                         }
                     }
@@ -1488,61 +1491,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
-        /// Gets a user by ID using reflection to access the user manager from the user data manager.
-        /// This is a workaround since IUserDataManager doesn't directly expose user lookup.
+        /// Gets a user by ID using the user manager.
         /// </summary>
-        /// <param name="userDataManager">The user data manager instance.</param>
+        /// <param name="userManager">The user manager instance.</param>
         /// <param name="userId">The user ID to look up.</param>
         /// <returns>The user object if found, null otherwise.</returns>
-        public static User GetUserById(IUserDataManager userDataManager, Guid userId)
+        public static User GetUserById(IUserManager userManager, Guid userId)
         {
-            if (userDataManager == null)
+            if (userManager == null)
             {
-                throw new InvalidOperationException("UserDataManager is null - cannot retrieve user information.");
+                throw new InvalidOperationException("UserManager is null - cannot retrieve user information.");
             }
             
-            try
-            {
-                // We need to use reflection to access the user manager from the user data manager
-                // This is a workaround since IUserDataManager doesn't directly expose user lookup
-                var userManagerField = userDataManager.GetType().GetField("_userManager", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
-                if (userManagerField == null)
-                {
-                    // Try alternative field names in case the internal implementation changed
-                    var alternativeFields = new[] { "_userManager", "userManager", "_users", "users" };
-                    foreach (var fieldName in alternativeFields)
-                    {
-                        userManagerField = userDataManager.GetType().GetField(fieldName, 
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        if (userManagerField != null)
-                        {
-                            break;
-                        }
-                    }
-                }
-                
-                if (userManagerField != null)
-                {
-                    if (userManagerField.GetValue(userDataManager) is IUserManager userManager)
-                    {
-                        return userManager.GetUserById(userId);
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"Failed to cast user manager field '{userManagerField.Name}' to IUserManager. The internal structure may have changed.");
-                    }
-                }
-                else
-                {
-                    throw new InvalidOperationException("Failed to find user manager field in UserDataManager via reflection. The internal structure may have changed - this plugin may need to be updated for this version of Jellyfin.");
-                }
-            }
-            catch (Exception ex) when (ex is not InvalidOperationException)
-            {
-                throw new InvalidOperationException($"Reflection failed while trying to access user manager: {ex.Message}", ex);
-            }
+            return userManager.GetUserById(userId);
         }
 
         /// <summary>

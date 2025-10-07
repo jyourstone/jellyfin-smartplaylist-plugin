@@ -6,9 +6,9 @@ on:
       - 'v*'
 
 env:
-  DOTNET_VERSION: 8.0.x
+  DOTNET_VERSION: 9.0.x
   PRERELEASE_STR: false
-  TARGET_ABI: 10.10.0
+  TARGET_ABI: 10.11.0
 
 jobs:
   build:
