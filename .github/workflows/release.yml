@@ -93,6 +93,7 @@ jobs:
         if: steps.check_preview.outputs.is_preview != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
+          CHANGELOG_BODY: ${{ steps.read_release.outputs.body }}
         run: |
           # Strip preview/rc suffixes for .NET versioning
           VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
@@ -102,9 +103,8 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
           TARGET_ABI="${{ env.TARGET_ABI }}"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
-          CHANGELOG="${{ steps.read_release.outputs.body }}"
           # Sanitize changelog: remove trailing "by @user in <link>" fragments GitHub adds
-          CLEAN_CHANGELOG=$(echo "$CHANGELOG" | sed -E 's/[[:space:]]*by @[[:alnum:]-]+ in https?:\/\/[^[:space:]]+//g')
+          CLEAN_CHANGELOG=$(echo "$CHANGELOG_BODY" | sed -E 's/[[:space:]]*by @[[:alnum:]-]+ in https?:\/\/[^[:space:]]+//g')
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
           PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
 
@@ -152,6 +152,7 @@ jobs:
         if: steps.check_preview.outputs.is_preview == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
+          CHANGELOG_BODY: ${{ steps.read_release.outputs.body }}
         run: |
           # Strip preview/rc suffixes for .NET versioning
           VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
@@ -161,9 +162,8 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
           TARGET_ABI="${{ env.TARGET_ABI }}"
           TIMESTAMP=$(date -u +'%Y-%m-%d')
-          CHANGELOG="${{ steps.read_release.outputs.body }}"
           # Sanitize changelog: remove trailing "by @user in <link>" fragments GitHub adds
-          CLEAN_CHANGELOG=$(echo "$CHANGELOG" | sed -E 's/[[:space:]]*by @[[:alnum:]-]+ in https?:\/\/[^[:space:]]+//g')
+          CLEAN_CHANGELOG=$(echo "$CHANGELOG_BODY" | sed -E 's/[[:space:]]*by @[[:alnum:]-]+ in https?:\/\/[^[:space:]]+//g')
           MANIFEST_REPO="jyourstone/jellyfin-plugin-manifest"
           PLUGIN_GUID="A0A2A7B2-747A-4113-8B39-757A9D267C79"
 
