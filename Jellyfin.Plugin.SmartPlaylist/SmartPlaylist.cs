@@ -642,6 +642,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             System.Threading.Thread.Sleep(1);
                         }
                     }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                    {
+                        logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Stopping playlist processing.", Name);
+                        return [];
+                    }
                     catch (Exception ex)
                     {
                         logger?.LogError(ex, "Error processing chunk {ChunkStart}-{ChunkEnd} for playlist '{PlaylistName}'. Skipping this chunk.", 
@@ -1142,7 +1147,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
-                    var expensiveCompiledRules = new List<List<Func<Operand, bool>>>();
 
                     logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded}, SeriesName: {SeriesNameNeeded}, ParentSeriesTags: {ParentSeriesTagsNeeded})",
                         needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags);
@@ -1156,7 +1160,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             if (set?.Expressions == null) continue;
                             
                             var cheapRules = new List<Func<Operand, bool>>();
-                            var expensiveRules = new List<Func<Operand, bool>>();
+                            int expensiveCount = 0;
                             
                             for (int exprIndex = 0; exprIndex < set.Expressions.Count && exprIndex < compiledRules[setIndex].Count; exprIndex++)
                             {
@@ -1177,7 +1181,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     
                                     if (isExpensive)
                                     {
-                                        expensiveRules.Add(compiledRule);
+                                        expensiveCount++;
                                         logger?.LogDebug("Rule set {SetIndex}: Added expensive rule: {Field} {Operator} {Value}", 
                                             setIndex, expr.MemberName, expr.Operator, expr.TargetValue);
                                     }
@@ -1195,10 +1199,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             }
                             
                             cheapCompiledRules.Add(cheapRules);
-                            expensiveCompiledRules.Add(expensiveRules);
                             
                             logger?.LogDebug("Rule set {SetIndex}: {NonExpensiveCount} non-expensive rules, {ExpensiveCount} expensive rules", 
-                                setIndex, cheapRules.Count, expensiveRules.Count);
+                                setIndex, cheapRules.Count, expensiveCount);
                         }
                     }
                     catch (Exception ex)
@@ -1212,14 +1215,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // No non-expensive rules - extract expensive data for all items that have expensive rules
                         logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
                         
+                        // Materialize items to prevent multiple enumerations
+                        var itemList = items as IList<BaseItem> ?? items.ToList();
+                        
                         // Preload People cache in parallel if needed for performance
                         if (needsPeople)
                         {
-                            logger?.LogDebug("Preloading People cache for all {Count} items (expensive-only path)", items.Count());
-                            OperandFactory.PreloadPeopleCache(libraryManager, items, refreshCache, logger);
+                            logger?.LogDebug("Preloading People cache for all {Count} items (expensive-only path)", itemList.Count);
+                            OperandFactory.PreloadPeopleCache(libraryManager, itemList, refreshCache, logger);
                         }
                         
-                        foreach (var item in items)
+                        foreach (var item in itemList)
                         {
                             if (item == null) continue;
                             
@@ -1274,11 +1280,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     {
                         // Two-phase filtering: non-expensive rules first, then expensive data extraction
                         logger?.LogDebug("Using two-phase filtering for expensive field optimization");
+                        
+                        // Materialize items to prevent multiple enumerations
+                        var itemList = items as IList<BaseItem> ?? items.ToList();
                     
                         // First pass: Filter items using cheap rules only
                         var phase1Survivors = new List<BaseItem>();
                         
-                        foreach (var item in items)
+                        foreach (var item in itemList)
                         {
                             if (item == null) continue;
                             
@@ -1355,7 +1364,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering", 
-                            phase1Survivors.Count, items.Count());
+                            phase1Survivors.Count, itemList.Count);
                         
                         // Preload People cache for Phase 1 survivors if needed
                         if (needsPeople && phase1Survivors.Count > 0)
@@ -1467,16 +1476,19 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Create per-refresh cache for performance optimization within this simple processing
             var refreshCache = new OperandFactory.RefreshCache();
             
+            // Materialize items to prevent multiple enumerations
+            var itemList = items as IList<BaseItem> ?? items.ToList();
+            
             // Preload People cache if needed for performance
             if (needsPeople)
             {
-                logger?.LogDebug("Preloading People cache for simple processing");
-                OperandFactory.PreloadPeopleCache(libraryManager, items, refreshCache, logger);
+                logger?.LogDebug("Preloading People cache for simple processing ({Count} items)", itemList.Count);
+                OperandFactory.PreloadPeopleCache(libraryManager, itemList, refreshCache, logger);
             }
             
             try
             {
-                foreach (var item in items)
+                foreach (var item in itemList)
                 {
                     if (item == null) continue;
                     
