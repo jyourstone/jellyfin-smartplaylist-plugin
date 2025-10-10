@@ -118,8 +118,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
         protected readonly IUserDataManager userDataManager = userDataManager;
         protected readonly IProviderManager providerManager = providerManager;
 
-        // Simple semaphore to prevent concurrent migration saves (rare but can cause file corruption)
-        private static readonly SemaphoreSlim _migrationSemaphore = new(1, 1);
 
         private PlaylistService GetPlaylistService()
         {
@@ -292,9 +290,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var processedCount = 0;
                 var totalPlaylists = resolvedPlaylists.Count;
                 
-                // OPTIMIZATION: Process playlists in parallel batches for better performance
-                var maxConcurrency = Environment.ProcessorCount; // Use available CPU cores
-                logger.LogDebug("Using parallel processing with max concurrency of {MaxConcurrency} (CPU cores)", maxConcurrency);
+                // Process playlists sequentially, with parallelism used for expensive operations within each playlist
+                logger.LogDebug("Processing playlists sequentially (parallelism will be used for expensive operations within each playlist)");
                 
                 foreach (var (userId, userPlaylistPairs) in playlistsByUser)
                 {
@@ -302,7 +299,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
                     
                     var relevantUserMedia = userMediaCache[userId]; // Guaranteed to exist
-                    logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}' using cached {MediaTypes} media ({MediaCount} items)", 
+                    logger.LogDebug("Processing {PlaylistCount} playlists sequentially for user '{Username}' using cached {MediaTypes} media ({MediaCount} items)", 
                         userPlaylists.Count, user.Username, GetHandledMediaTypes(), relevantUserMedia.Length);
                     
                     // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
@@ -312,106 +309,82 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // OPTIMIZATION: Create PlaylistService once per user, not once per playlist
                     var playlistService = GetPlaylistService();
                     
-                    // Process playlists in parallel batches
-                    var batchSize = Math.Max(1, maxConcurrency);
-                    for (int i = 0; i < userPlaylists.Count; i += batchSize)
+                    // Process playlists sequentially
+                    foreach (var dto in userPlaylists)
                     {
-                        var batch = userPlaylists.Skip(i).Take(batchSize).ToList();
-                        logger.LogDebug("Processing batch {BatchNumber} with {BatchSize} playlists for user '{Username}'", 
-                            (i / batchSize) + 1, batch.Count, user.Username);
-                        
-                        var tasks = batch.Select(async dto =>
+                        var playlistStopwatch = Stopwatch.StartNew();
+                        try
                         {
-                            var playlistStopwatch = Stopwatch.StartNew();
-                            try
+                            cancellationToken.ThrowIfCancellationRequested();
+                            
+                            // User is already resolved - use the cached user instead of re-resolving
+                            var playlistUser = user;
+                            
+                            // Validate that the playlist user is valid
+                            if (playlistUser.Id == Guid.Empty)
                             {
-                                cancellationToken.ThrowIfCancellationRequested();
-                                
-                                // User is already resolved - use the cached user instead of re-resolving
-                                var playlistUser = user;
-                                
-                                // Validate that the playlist user is valid
-                                if (playlistUser.Id == Guid.Empty)
-                                {
-                                    logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
-                                    return false; // Return failure status
-                                }
-                                
-                                logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached {MediaTypes} media ({MediaCount} items)", 
-                                    dto.Name, dto.ExpressionSets?.Count ?? 0, GetHandledMediaTypes(), relevantUserMedia.Length);
-                                
-                                // OPTIMIZATION: Get media specifically for this playlist's media types using cache
-                                // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
-                                var mediaTypesForClosure = dto.MediaTypes?.ToList() ?? []; // Create defensive copy to prevent accidental modifications
-                                var mediaTypesKey = MediaTypesKey.Create(mediaTypesForClosure, dto);
-                                // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
-                                // where failures typically indicate serious issues that should fail fast
-                                // rather than retry repeatedly during the same scheduled task execution.
-                                var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
-                                    new Lazy<BaseItem[]>(() =>
-                                    {
-                                        var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, mediaTypesForClosure, dto).ToArray();
-                                        logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
-                                            media.Length, mediaTypesKey, user.Username);
-                                        return media;
-                                    }, LazyThreadSafetyMode.ExecutionAndPublication)
-                                ).Value;
-                                
-                                logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
-                                    dto.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
-                                
-                                var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
-                                    dto, 
-                                    playlistUser, 
-                                    playlistSpecificMedia, // Use playlist-specific media instead of generic cached media
-                                    async (updatedDto) => await plStore.SaveAsync(updatedDto), // Save callback for when JellyfinPlaylistId is updated
-                                    cancellationToken);
-                                
-                                playlistStopwatch.Stop();
-                                if (success)
-                                {
-                                    // Save the playlist to persist LastRefreshed timestamp
-                                    await plStore.SaveAsync(dto);
-                                    
-                                    logger.LogDebug("Playlist {PlaylistName} processed successfully in {ElapsedTime}ms: {Message}", 
-                                        dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
-                                }
-                                else
-                                {
-                                    logger.LogWarning("Playlist {PlaylistName} processing failed after {ElapsedTime}ms: {Message}", 
-                                        dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
-                                }
-                                
-                                return success;
+                                logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
+                                processedCount++;
+                                progress?.Report((double)processedCount / totalPlaylists * 100);
+                                continue;
                             }
-                            catch (Exception ex)
+                            
+                            logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached {MediaTypes} media ({MediaCount} items)", 
+                                dto.Name, dto.ExpressionSets?.Count ?? 0, GetHandledMediaTypes(), relevantUserMedia.Length);
+                            
+                            // OPTIMIZATION: Get media specifically for this playlist's media types using cache
+                            // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
+                            var mediaTypesForClosure = dto.MediaTypes?.ToList() ?? []; // Create defensive copy to prevent accidental modifications
+                            var mediaTypesKey = MediaTypesKey.Create(mediaTypesForClosure, dto);
+                            // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
+                            // where failures typically indicate serious issues that should fail fast
+                            // rather than retry repeatedly during the same scheduled task execution.
+                            var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
+                                new Lazy<BaseItem[]>(() =>
+                                {
+                                    var media = playlistService.GetAllUserMediaForPlaylist(playlistUser, mediaTypesForClosure, dto).ToArray();
+                                    logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'", 
+                                        media.Length, mediaTypesKey, user.Username);
+                                    return media;
+                                }, LazyThreadSafetyMode.ExecutionAndPublication)
+                            ).Value;
+                            
+                            logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items", 
+                                dto.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
+                            
+                            var (success, message, jellyfinPlaylistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
+                                dto, 
+                                playlistUser, 
+                                playlistSpecificMedia, // Use playlist-specific media instead of generic cached media
+                                async (updatedDto) => await plStore.SaveAsync(updatedDto), // Save callback for when JellyfinPlaylistId is updated
+                                cancellationToken);
+                            
+                            playlistStopwatch.Stop();
+                            if (success)
                             {
-                                playlistStopwatch.Stop();
-                                logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
-                                return false; // Return failure status, but don't propagate exception
+                                // Save the playlist to persist LastRefreshed timestamp
+                                await plStore.SaveAsync(dto);
+                                
+                                logger.LogDebug("Playlist {PlaylistName} processed successfully in {ElapsedTime}ms: {Message}", 
+                                    dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
                             }
-                        });
-                        
-                        // Wait for all tasks in this batch to complete and collect results
-                        var results = await Task.WhenAll(tasks);
-                        
-                        // Log batch completion summary
-                        var successCount = results.Count(r => r);
-                        var failureCount = results.Count(r => !r);
-                        if (failureCount > 0)
-                        {
-                            logger.LogWarning("Batch {BatchNumber} completed with {SuccessCount} successes and {FailureCount} failures", 
-                                (i / batchSize) + 1, successCount, failureCount);
+                            else
+                            {
+                                logger.LogWarning("Playlist {PlaylistName} processing failed after {ElapsedTime}ms: {Message}", 
+                                    dto.Name, playlistStopwatch.ElapsedMilliseconds, message);
+                            }
+                            
+                            // Update progress after each playlist
+                            processedCount++;
+                            progress?.Report((double)processedCount / totalPlaylists * 100);
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            logger.LogDebug("Batch {BatchNumber} completed successfully with {SuccessCount} playlists", 
-                                (i / batchSize) + 1, successCount);
+                            playlistStopwatch.Stop();
+                            logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
+                            processedCount++;
+                            progress?.Report((double)processedCount / totalPlaylists * 100);
                         }
-                        
-                        // Update progress after each batch
-                        processedCount += batch.Count;
-                        progress?.Report((double)processedCount / totalPlaylists * 100);
                     }
                 }
 
@@ -421,7 +394,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var totalPlaylistsProcessed = userCacheStats.Values.Sum(s => s.PlaylistCount);
                 var estimatedSavings = totalPlaylistsProcessed - totalMediaFetches;
                 
-                logger.LogDebug("BATCH PROCESSING SUMMARY ({TaskType}): Fetched {MediaTypes} media {FetchCount} times for {UserCount} users, processed {PlaylistCount} playlists. Estimated {Savings} fewer media fetches than sequential processing.", 
+                logger.LogDebug("PROCESSING SUMMARY ({TaskType}): Fetched {MediaTypes} media {FetchCount} times for {UserCount} users, processed {PlaylistCount} playlists sequentially. Estimated {Savings} fewer media fetches than without caching.", 
                     GetType().Name, GetHandledMediaTypes(), totalMediaFetches, userCacheStats.Count, totalPlaylistsProcessed, estimatedSavings);
 
                 progress?.Report(100);
@@ -465,61 +438,17 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         /// <summary>
-        /// Gets the user for a playlist, handling migration from old User field to new UserId field.
+        /// Gets the user for a playlist.
         /// </summary>
         /// <param name="playlist">The playlist.</param>
         /// <returns>The user, or null if not found.</returns>
         private async Task<User> GetPlaylistUserAsync(SmartPlaylistDto playlist)
         {
-            // If new UserId field is set and not empty, use it
+            // If UserId field is set and not empty, use it
             if (playlist.UserId != Guid.Empty)
             {
                 return userManager.GetUserById(playlist.UserId);
             }
-
-            // Legacy migration: if old User field is set, try to find the user and migrate
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (!string.IsNullOrEmpty(playlist.User))
-            {
-                var user = userManager.GetUserByName(playlist.User);
-                if (user != null)
-                {
-                    logger.LogDebug("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'", 
-                        playlist.Name, playlist.User, user.Id);
-                    
-                    // Update the playlist with the User ID and save it
-                    playlist.UserId = user.Id;
-                    playlist.User = null; // Clear the old field
-                    
-                    try
-                    {
-                        // Use semaphore to prevent concurrent migration saves (rare but can cause file corruption)
-                        await _migrationSemaphore.WaitAsync();
-                        try
-                        {
-                            var fileSystem = new SmartPlaylistFileSystem(serverApplicationPaths);
-                            var playlistStore = new SmartPlaylistStore(fileSystem, userManager);
-                            await playlistStore.SaveAsync(playlist);
-                            logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
-                        }
-                        finally
-                        {
-                            _migrationSemaphore.Release();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Failed to save migrated playlist '{PlaylistName}', but will continue with operation", playlist.Name);
-                    }
-                    
-                    return user;
-                }
-                else
-                {
-                    logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
-                }
-            }
-#pragma warning restore CS0618 // Type or member is obsolete
 
             return null;
         }

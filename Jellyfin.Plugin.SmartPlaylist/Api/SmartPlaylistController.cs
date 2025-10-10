@@ -136,51 +136,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         }
 
         /// <summary>
-        /// Gets the user ID for a playlist, handling migration from old User field to new UserId field.
+        /// Gets the user ID for a playlist.
         /// </summary>
         /// <param name="playlist">The playlist.</param>
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
         private async Task<Guid> GetPlaylistUserIdAsync(SmartPlaylistDto playlist)
         {
-            // If new UserId field is set and not empty, use it
+            // If UserId field is set and not empty, use it
             if (playlist.UserId != Guid.Empty)
             {
                 return playlist.UserId;
             }
-
-            // Legacy migration: if old User field is set, try to find the user and migrate
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (!string.IsNullOrEmpty(playlist.User))
-            {
-                var user = _userManager.GetUserByName(playlist.User);
-                if (user != null)
-                {
-                                        logger.LogInformation("Migrating playlist '{PlaylistName}' from username '{UserName}' to User ID '{UserId}'",
-                        playlist.Name, playlist.User, user.Id);
-                    
-                    // Update the playlist with the User ID and save it
-                    playlist.UserId = user.Id;
-                    playlist.User = null; // Clear the old field
-                    
-                    try
-                    {
-                        var playlistStore = GetPlaylistStore();
-                        await playlistStore.SaveAsync(playlist);
-                        logger.LogDebug("Successfully migrated playlist '{PlaylistName}' to use User ID", playlist.Name);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Failed to save migrated playlist '{PlaylistName}', but will continue with operation", playlist.Name);
-                    }
-                    
-                    return user.Id;
-                }
-                else
-                {
-                    logger.LogWarning("Legacy playlist '{PlaylistName}' references non-existent user '{UserName}'", playlist.Name, playlist.User);
-                }
-            }
-#pragma warning restore CS0618 // Type or member is obsolete
 
             return Guid.Empty;
         }

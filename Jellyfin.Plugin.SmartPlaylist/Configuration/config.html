@@ -557,6 +557,16 @@
                             <div class="fieldDescription">Default interval for Interval schedules.</div>
                         </div>
 
+                        <h2 class="sectionTitle" style="margin-top: 2em;">Performance</h2>
+
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="parallelConcurrencyLimit">Parallel Concurrency Limit</label>
+                            <input type="number" id="parallelConcurrencyLimit" class="emby-input" min="-1" step="1">
+                            <div class="fieldDescription">
+                                Maximum number of parallel threads that are allowed to run during playlist refreshes under certain conditions. Leaving this empty or setting to 0 will choose a limit based on your system's core count.
+                            </div>
+                        </div>
+
                         <h2 class="sectionTitle" style="margin-top: 2em;">Playlist Naming</h2>
                         
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">

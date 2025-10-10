@@ -1212,6 +1212,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // No non-expensive rules - extract expensive data for all items that have expensive rules
                         logger?.LogDebug("No non-expensive rules found, extracting expensive data for all items");
                         
+                        // Preload People cache in parallel if needed for performance
+                        if (needsPeople)
+                        {
+                            logger?.LogDebug("Preloading People cache for all {Count} items (expensive-only path)", items.Count());
+                            OperandFactory.PreloadPeopleCache(libraryManager, items, refreshCache, logger);
+                        }
+                        
                         foreach (var item in items)
                         {
                             if (item == null) continue;
@@ -1268,6 +1275,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // Two-phase filtering: non-expensive rules first, then expensive data extraction
                         logger?.LogDebug("Using two-phase filtering for expensive field optimization");
                     
+                        // First pass: Filter items using cheap rules only
+                        var phase1Survivors = new List<BaseItem>();
+                        
                         foreach (var item in items)
                         {
                             if (item == null) continue;
@@ -1330,12 +1340,35 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     }
                                 }
                                 
-                                // Skip expensive data extraction only if:
-                                // 1. No rule set passed the non-expensive evaluation AND
-                                // 2. There are no expensive-only rule sets that still need to be checked
-                                if (!passesNonExpensiveRules && !hasExpensiveOnlyRuleSets)
-                                    continue;
-                                
+                                // Only proceed to Phase 2 if:
+                                // 1. Passed non-expensive evaluation OR
+                                // 2. There are expensive-only rule sets that still need to be checked
+                                if (passesNonExpensiveRules || hasExpensiveOnlyRuleSets)
+                                {
+                                    phase1Survivors.Add(item);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Error in Phase 1 filtering for item '{ItemName}'. Skipping item.", item.Name);
+                            }
+                        }
+                        
+                        logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering", 
+                            phase1Survivors.Count, items.Count());
+                        
+                        // Preload People cache for Phase 1 survivors if needed
+                        if (needsPeople && phase1Survivors.Count > 0)
+                        {
+                            logger?.LogDebug("Preloading People cache for {Count} Phase 1 survivors", phase1Survivors.Count);
+                            OperandFactory.PreloadPeopleCache(libraryManager, phase1Survivors, refreshCache, logger);
+                        }
+                        
+                        // Second pass: Process Phase 1 survivors with expensive data
+                        foreach (var item in phase1Survivors)
+                        {
+                            try
+                            {
                                 // Phase 2: Extract expensive data and check complete rules
                                 var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                                 {
@@ -1378,7 +1411,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 if (!hasAnyRules) {
                                     matches = true;
                                 } else {
-                                                                matches = EvaluateLogicGroups(compiledRules, fullOperand);
+                                    matches = EvaluateLogicGroups(compiledRules, fullOperand);
                         }
                         
                         if (matches)
@@ -1433,6 +1466,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             // Create per-refresh cache for performance optimization within this simple processing
             var refreshCache = new OperandFactory.RefreshCache();
+            
+            // Preload People cache if needed for performance
+            if (needsPeople)
+            {
+                logger?.LogDebug("Preloading People cache for simple processing");
+                OperandFactory.PreloadPeopleCache(libraryManager, items, refreshCache, logger);
+            }
             
             try
             {

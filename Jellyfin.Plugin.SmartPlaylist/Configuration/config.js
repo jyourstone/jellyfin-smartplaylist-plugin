@@ -4556,12 +4556,6 @@
                 // Set the playlist owner
                 if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
                     setElementValue(page, '#playlistUser', playlist.UserId);
-                } else if (playlist.User) {
-                    // Legacy support: try to find user by username (simplified)
-                    // Since this is legacy, just warn the user and use current user as fallback
-                    console.warn('Legacy playlist detected with username:', playlist.User);
-                    showNotification('Legacy playlist detected. Please verify the owner is correct.', 'warning');
-                    setCurrentUserAsDefault(page);
                 }
                 
                 // Set sort options using helper function
@@ -5031,6 +5025,12 @@
                 defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
             }
             
+            // Load parallel concurrency setting
+            const parallelConcurrencyEl = page.querySelector('#parallelConcurrencyLimit');
+            if (parallelConcurrencyEl) {
+                parallelConcurrencyEl.value = config.ParallelConcurrencyLimit !== undefined && config.ParallelConcurrencyLimit !== null ? config.ParallelConcurrencyLimit : 0;
+            }
+            
             // Update playlist name preview
             updatePlaylistNamePreview(page);
             
@@ -5080,6 +5080,15 @@
             // Save playlist naming configuration
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
             config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value;
+            
+            // Save parallel concurrency setting
+            const parallelConcurrencyInput = page.querySelector('#parallelConcurrencyLimit').value;
+            if (parallelConcurrencyInput === '') {
+                config.ParallelConcurrencyLimit = 0;
+            } else {
+                const parsedValue = parseInt(parallelConcurrencyInput);
+                config.ParallelConcurrencyLimit = isNaN(parsedValue) ? 0 : parsedValue;
+            }
             
             apiClient.updatePluginConfiguration(getPluginId(), config).then(() => {
                 Dashboard.hideLoadingMsg();
