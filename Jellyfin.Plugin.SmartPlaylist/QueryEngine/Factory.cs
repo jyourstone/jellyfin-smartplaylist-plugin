@@ -62,6 +62,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
             public Dictionary<Guid, string> SeriesNameById { get; } = [];
             public Dictionary<Guid, List<string>> SeriesTagsById { get; } = [];
+            public Dictionary<Guid, List<string>> ItemPeople { get; } = [];
+            public bool PeopleCacheInitialized { get; set; } = false;
         }
 
         /// <summary>
@@ -693,9 +695,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <summary>
         /// Extracts people (actors, directors, producers, etc.) associated with the item.
         /// </summary>
-        private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, ILogger logger)
+        private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
         {
             operand.People = [];
+            
+            // Check cache first if available
+            if (cache != null && cache.ItemPeople.TryGetValue(baseItem.Id, out var cachedPeople))
+            {
+                operand.People = new List<string>(cachedPeople);
+                return;
+            }
+            
+            // Cache miss or no cache - perform query
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
             try
             {
                 // Cache the GetPeople method lookup for better performance
@@ -740,12 +753,146 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             }
                         }
                     }
+                    
+                    stopwatch.Stop();
+                    logger?.LogDebug("People query for item {ItemId} completed in {Ms}ms ({PeopleCount} people)", 
+                        baseItem.Id, stopwatch.ElapsedMilliseconds, operand.People.Count);
+                    
+                    // Store in cache for future use
+                    if (cache != null)
+                    {
+                        cache.ItemPeople[baseItem.Id] = new List<string>(operand.People);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, "Failed to extract people for item {Name}", baseItem.Name);
+                stopwatch.Stop();
+                logger?.LogWarning(ex, "Failed to extract people for item {Name} after {Ms}ms", baseItem.Name, stopwatch.ElapsedMilliseconds);
             }
+        }
+
+        /// <summary>
+        /// Preloads people data for all items in parallel to improve performance.
+        /// </summary>
+        public static void PreloadPeopleCache(ILibraryManager libraryManager, IEnumerable<BaseItem> items, RefreshCache cache, ILogger logger)
+        {
+            if (cache == null || items == null)
+            {
+                return;
+            }
+            
+            // Skip if already initialized
+            if (cache.PeopleCacheInitialized)
+            {
+                logger?.LogDebug("People cache already initialized, skipping preload");
+                return;
+            }
+            
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var itemList = items.ToList();
+            logger?.LogDebug("Starting parallel people cache initialization for {Count} items", itemList.Count);
+            
+            // Use plugin configuration for parallelism
+            var config = Plugin.Instance?.Configuration;
+            var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
+            
+            // Thread-safe dictionary for collecting results
+            var tempCache = new ConcurrentDictionary<Guid, List<string>>();
+            var processedCount = 0;
+            var totalMs = 0L;
+            var lockObj = new object();
+            
+            // Process items in parallel
+            System.Threading.Tasks.Parallel.ForEach(
+                itemList,
+                new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
+                item =>
+                {
+                    var itemStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    
+                    try
+                    {
+                        // Cache the GetPeople method lookup
+                        var getPeopleMethod = _getPeopleMethodCache;
+                        if (getPeopleMethod == null)
+                        {
+                            lock (_getPeopleMethodLock)
+                            {
+                                if (_getPeopleMethodCache == null)
+                                {
+                                    _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
+                                }
+                                getPeopleMethod = _getPeopleMethodCache;
+                            }
+                        }
+                        
+                        if (getPeopleMethod != null)
+                        {
+                            var peopleQuery = new InternalPeopleQuery
+                            {
+                                ItemId = item.Id
+                            };
+                            
+                            var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
+                            var peopleList = new List<string>();
+                            
+                            if (result is IEnumerable<object> peopleEnum)
+                            {
+                                foreach (var person in peopleEnum)
+                                {
+                                    if (person != null)
+                                    {
+                                        var nameProperty = person.GetType().GetProperty("Name");
+                                        if (nameProperty != null)
+                                        {
+                                            var name = nameProperty.GetValue(person) as string;
+                                            if (!string.IsNullOrEmpty(name) && !peopleList.Contains(name))
+                                            {
+                                                peopleList.Add(name);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            tempCache[item.Id] = peopleList;
+                            
+                            itemStopwatch.Stop();
+                            lock (lockObj)
+                            {
+                                processedCount++;
+                                totalMs += itemStopwatch.ElapsedMilliseconds;
+                                
+                                // Log progress every 100 items
+                                if (processedCount % 100 == 0)
+                                {
+                                    var avgMs = totalMs / processedCount;
+                                    logger?.LogDebug("People cache progress: {Processed}/{Total} items ({Avg}ms avg per item)", 
+                                        processedCount, itemList.Count, avgMs);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        itemStopwatch.Stop();
+                        logger?.LogWarning(ex, "Failed to preload people for item {ItemId} after {Ms}ms", item.Id, itemStopwatch.ElapsedMilliseconds);
+                    }
+                });
+            
+            // Transfer from concurrent dictionary to cache
+            foreach (var kvp in tempCache)
+            {
+                cache.ItemPeople[kvp.Key] = kvp.Value;
+            }
+            
+            cache.PeopleCacheInitialized = true;
+            stopwatch.Stop();
+            
+            var avgTimeMs = processedCount > 0 ? totalMs / processedCount : 0;
+            logger?.LogDebug("People cache initialization completed in {TotalMs}ms for {Count} items (avg {AvgMs}ms per item, {Concurrency} parallel threads)", 
+                stopwatch.ElapsedMilliseconds, itemList.Count, avgTimeMs, maxConcurrency);
         }
 
         /// <summary>
@@ -1019,6 +1166,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.AudioLanguages = [];
             }
 
+            // Extract people - only when needed for performance
+            if (extractPeople)
+            {
+                ExtractPeople(operand, baseItem, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.People = [];
+                logger?.LogDebug("People extraction skipped for item {Name} - not needed by rules", baseItem.Name);
+            }
+
             // Extract resolution/framerate only for items that can have video streams
             if (MediaTypes.VideoStreamCapableSet.Contains(operand.ItemType))
             {
@@ -1034,16 +1192,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 operand.Collections = [];
-            }
-            
-            // Extract all people (actors, directors, producers, etc.) - only when needed for performance
-            if (extractPeople)
-            {
-                ExtractPeople(operand, baseItem, libraryManager, logger);
-            }
-            else
-            {
-                operand.People = [];
             }
             
             // Extract parent series tags for episodes - only when needed for performance

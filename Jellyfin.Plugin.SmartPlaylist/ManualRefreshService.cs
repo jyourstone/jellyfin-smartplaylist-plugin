@@ -193,7 +193,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var user = userPlaylistPairs.First().user;
                     var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
                     
-                    _logger.LogDebug("Processing {PlaylistCount} playlists for user '{Username}'", 
+                    _logger.LogDebug("Processing {PlaylistCount} playlists sequentially for user '{Username}' (parallelism will be used for expensive operations within each playlist)", 
                         userPlaylists.Count, user.Username);
 
                     // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
