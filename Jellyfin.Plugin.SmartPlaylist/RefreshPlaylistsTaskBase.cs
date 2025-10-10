@@ -251,7 +251,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 foreach (var dto in enabledPlaylists)
                 {
-                    var user = await GetPlaylistUserAsync(dto);
+                    var user = GetPlaylistUser(dto);
                     if (user != null)
                     {
                         resolvedPlaylists.Add((dto, user));
@@ -442,7 +442,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// </summary>
         /// <param name="playlist">The playlist.</param>
         /// <returns>The user, or null if not found.</returns>
-        private async Task<User> GetPlaylistUserAsync(SmartPlaylistDto playlist)
+        private User GetPlaylistUser(SmartPlaylistDto playlist)
         {
             // If UserId field is set and not empty, use it
             if (playlist.UserId != Guid.Empty)

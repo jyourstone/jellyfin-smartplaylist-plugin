@@ -140,7 +140,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
         /// </summary>
         /// <param name="playlist">The playlist.</param>
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
-        private async Task<Guid> GetPlaylistUserIdAsync(SmartPlaylistDto playlist)
+        private Guid GetPlaylistUserId(SmartPlaylistDto playlist)
         {
             // If UserId field is set and not empty, use it
             if (playlist.UserId != Guid.Empty)
@@ -458,7 +458,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 }
 
                 // Check if ownership is changing
-                var originalUserId = await GetPlaylistUserIdAsync(existingPlaylist);
+                var originalUserId = GetPlaylistUserId(existingPlaylist);
                 var newUserId = playlist.UserId;
                 
                 bool ownershipChanging = originalUserId != Guid.Empty && newUserId != originalUserId;
