@@ -510,6 +510,7 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 - **Community Rating** - Sort by user ratings
 - **Date Created** - Sort by when added to library
 - **Play Count (owner)** - Sort by how many times the playlist owner has played each item
+- **Track Number** - Sort by album name, disc number, then track number (designed for music)
 - **Random** - Randomize the order of items
 - **Ascending** - Oldest first
 - **Descending** - Newest first
