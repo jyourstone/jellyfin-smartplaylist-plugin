@@ -1175,6 +1175,7 @@
             { Value: 'DateCreated', Label: 'Date Created' },
             { Value: 'ReleaseDate', Label: 'Release Date' },
             { Value: 'PlayCount (owner)', Label: 'Play Count (owner)' },
+            { Value: 'TrackNumber', Label: 'Track Number' },
             { Value: 'Resolution', Label: 'Resolution' },
             { Value: 'Random', Label: 'Random' },
             { Value: 'NoOrder', Label: 'No Order' }
