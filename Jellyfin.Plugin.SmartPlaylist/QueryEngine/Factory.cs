@@ -1779,7 +1779,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogDebug("Reference item: '{Name}'", item.Name);
             }
             
-            // Extract and aggregate metadata from reference items
+            // Extract and aggregate metadata from reference items (only Genres and Tags for accurate similarity)
             foreach (var item in referenceItems)
             {
                 // Extract genres
@@ -1805,47 +1805,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                     }
                 }
-                
-                // Extract studios
-                if (item.Studios != null)
-                {
-                    foreach (var studio in item.Studios)
-                    {
-                        if (!string.IsNullOrWhiteSpace(studio))
-                        {
-                            referenceMetadata.Studios.Add(studio);
-                        }
-                    }
-                }
-                
-                // Extract people (expensive - use cache if available)
-                List<string> people;
-                if (refreshCache.ItemPeople.TryGetValue(item.Id, out var cachedPeople))
-                {
-                    people = cachedPeople;
-                }
-                else
-                {
-                    // Extract people using the same method as regular extraction
-                    var tempOperand = new Operand(item.Name);
-                    ExtractPeople(tempOperand, item, libraryManager, refreshCache, logger);
-                    people = tempOperand.People;
-                }
-                
-                if (people != null)
-                {
-                    foreach (var person in people)
-                    {
-                        if (!string.IsNullOrWhiteSpace(person))
-                        {
-                            referenceMetadata.People.Add(person);
-                        }
-                    }
-                }
             }
             
-            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}, People: {PeopleCount}, Studios: {StudioCount}",
-                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count, referenceMetadata.People.Count, referenceMetadata.Studios.Count);
+            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}",
+                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count);
             
             return referenceMetadata;
         }
@@ -1872,36 +1835,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             int sharedCount = 0;
             float score = 0;
             
-            // Count shared genres (5 points each)
+            // Count shared genres (1 point each)
             if (operand.Genres != null && referenceMetadata.Genres.Count > 0)
             {
                 var sharedGenres = operand.Genres.Intersect(referenceMetadata.Genres, StringComparer.OrdinalIgnoreCase).ToList();
                 sharedCount += sharedGenres.Count;
-                score += sharedGenres.Count * 5;
+                score += sharedGenres.Count;
             }
             
-            // Count shared tags (4 points each)
+            // Count shared tags (1 point each)
             if (operand.Tags != null && referenceMetadata.Tags.Count > 0)
             {
                 var sharedTags = operand.Tags.Intersect(referenceMetadata.Tags, StringComparer.OrdinalIgnoreCase).ToList();
                 sharedCount += sharedTags.Count;
-                score += sharedTags.Count * 4;
-            }
-            
-            // Count shared people (3 points each)
-            if (operand.People != null && referenceMetadata.People.Count > 0)
-            {
-                var sharedPeople = operand.People.Intersect(referenceMetadata.People, StringComparer.OrdinalIgnoreCase).ToList();
-                sharedCount += sharedPeople.Count;
-                score += sharedPeople.Count * 3;
-            }
-            
-            // Count shared studios (2 points each)
-            if (operand.Studios != null && referenceMetadata.Studios.Count > 0)
-            {
-                var sharedStudios = operand.Studios.Intersect(referenceMetadata.Studios, StringComparer.OrdinalIgnoreCase).ToList();
-                sharedCount += sharedStudios.Count;
-                score += sharedStudios.Count * 2;
+                score += sharedTags.Count;
             }
             
             // Store score in operand for potential sorting
@@ -1912,7 +1859,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             if (passes)
             {
-                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedCount} shared items, score: {Score}",
+                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedCount} shared genres/tags, score: {Score}",
                     operand.Name, sharedCount, score);
             }
             

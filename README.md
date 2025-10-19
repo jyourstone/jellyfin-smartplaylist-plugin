@@ -364,23 +364,24 @@ The web interface provides access to all available fields for creating playlist 
 >
 > **How it works:**
 > 1. You specify one or more reference items by name (e.g., "Similar To contains 'My Movie'")
-> 2. The system finds all items matching that query and aggregates their metadata (genres, tags, people, studios)
-> 3. Other items are scored based on shared metadata:
->    - **Genres**: 5 points each
->    - **Tags**: 4 points each
->    - **People** (actors/directors): 3 points each
->    - **Studios**: 2 points each
-> 4. Items must share at least 3 metadata values to be included (the reference items themselves will also be included if they meet this threshold)
+> 2. The system finds all items matching that query and aggregates their genres and tags
+> 3. Other items are scored based on shared metadata (1 point per match):
+>    - **Genres** (Sci-Fi, Action, Drama, etc.)
+>    - **Tags** (Space, Time Travel, Feel-Good, etc.)
+> 4. Items must share at least 3 genres/tags to be included (the reference items themselves will also be included if they meet this threshold)
+>
+> **Why only Genres and Tags?** These fields accurately describe *what* a movie/show is about. Including actors/directors/studios would match unrelated content. Genres and tags are fast to process and provide the most accurate similarity matching.
 >
 > **Example Uses:**
 > - `Similar To contains "Movie A"` → Find movies similar to Movie A (partially matched)
 > - `Similar To is in "Movie A;Movie B"` → Find movies similar to either Movie A or Movie B
-> - `Similar To equals "Movie A"` → Find movies similar to Moie A (exact match)
+> - `Similar To equals "Movie A"` → Find movies similar to Movie A (exact match)
 >
 > **Best Practices:**
 > - Combine with other filters (e.g., "Similar To 'Movie A' AND Production Year > 2010")
 > - Use **Similarity Descending** sort order to show most similar items first
 > - Set Max Items to limit results to top matches (e.g., top 20 most similar)
+> - Tag your movies well for best results - tags like "Space Opera", "Dystopian", "Mind-Bending" help find truly similar content
 
 #### **Ratings & Playback**
 - **Community Rating** - User ratings (0-10)
