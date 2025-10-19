@@ -49,6 +49,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public Dictionary<string, bool> NextUnwatchedByUser { get; set; } = [];
         public Dictionary<string, double> LastPlayedDateByUser { get; set; } = [];
         
+        // Similarity score - calculated when SimilarTo rules are present
+        public float? SimilarityScore { get; set; } = null;
+        
         // Helper methods to check user-specific data
         public bool GetIsPlayedByUser(string userId)
         {

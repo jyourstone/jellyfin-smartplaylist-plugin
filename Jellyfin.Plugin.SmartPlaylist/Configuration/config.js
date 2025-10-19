@@ -21,6 +21,7 @@
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
         RESOLUTION_FIELDS: ['Resolution'],
+        STRING_FIELDS: ['SimilarTo', 'Name', 'Album', 'SeriesName', 'OfficialRating', 'Overview', 'FileName', 'FolderPath', 'AudioLanguages'],
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
@@ -1175,6 +1176,7 @@
             { Value: 'DateCreated', Label: 'Date Created' },
             { Value: 'ReleaseDate', Label: 'Release Date' },
             { Value: 'PlayCount (owner)', Label: 'Play Count (owner)' },
+            { Value: 'Similarity', Label: 'Similarity (requires Similar To rule)' },
             { Value: 'TrackNumber', Label: 'Track Number' },
             { Value: 'Resolution', Label: 'Resolution' },
             { Value: 'Random', Label: 'Random' },
@@ -4422,7 +4424,7 @@
             sortBy = (orderName === 'No Order') ? 'NoOrder' : orderName;
             sortOrder = 'Ascending'; // Default sort order (though it won't be used)
         } else {
-            // Normal parsing for other orders like "Name Ascending"
+            // Normal parsing for other orders like "Name Ascending" or "Similarity Descending"
             const parts = orderName.split(' ');
             sortBy = parts.slice(0, -1).join(' ') || 'Name';
             sortOrder = parts[parts.length - 1] || 'Ascending';

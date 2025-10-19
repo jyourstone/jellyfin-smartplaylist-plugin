@@ -27,6 +27,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         // UserManager for resolving user-specific queries (Jellyfin 10.11+)
         public IUserManager UserManager { get; set; }
+        
+        // Similarity scores for sorting (populated during filtering when SimilarTo rules are active)
+        private readonly ConcurrentDictionary<Guid, float> _similarityScores = new();
 
         // OPTIMIZATION: Static cache for compiled rules to avoid recompilation
         private static readonly ConcurrentDictionary<string, List<List<Func<Operand, bool>>>> _ruleCache = new();
@@ -102,6 +105,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 if (expr == null)
                                 {
                                     logger?.LogDebug("Skipping null expression at set {SetIndex}, index {ExprIndex} for playlist '{PlaylistName}'", setIndex, exprIndex, Name);
+                                    continue;
+                                }
+                                
+                                // Skip SimilarTo expressions - they're handled separately during filtering
+                                if (expr.MemberName == "SimilarTo")
+                                {
+                                    logger?.LogDebug("Skipping SimilarTo expression at set {SetIndex}, index {ExprIndex} for playlist '{PlaylistName}' - handled separately", setIndex, exprIndex, Name);
                                     continue;
                                 }
                                 
@@ -497,7 +507,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var needsNextUnwatched = false;
                 var needsSeriesName = false;
                 var needsParentSeriesTags = false;
+                var needsSimilarTo = false;
                 var includeUnwatchedSeries = true; // Default to true for backwards compatibility
+                var similarToExpressions = new List<Expression>();
                 var additionalUserIds = new List<string>();
                 
                 try
@@ -512,6 +524,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
                         needsSeriesName = fieldReqs.NeedsSeriesName;
                         needsParentSeriesTags = fieldReqs.NeedsParentSeriesTags;
+                        needsSimilarTo = fieldReqs.NeedsSimilarTo;
+                        similarToExpressions = fieldReqs.SimilarToExpressions;
                         
                         // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
                         // If any rule explicitly sets it to false, use false; otherwise default to true
@@ -632,7 +646,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, similarToExpressions, compiledRules, hasAnyRules, hasNonExpensiveRules, items);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -667,6 +681,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Apply ordering and limits with error handling
                 try
                 {
+                    // If using Similarity order, set the scores before sorting
+                    if (Order is SimilarityOrder similarityOrder)
+                    {
+                        similarityOrder.Scores = _similarityScores;
+                    }
+                    else if (Order is SimilarityOrderAsc similarityOrderAsc)
+                    {
+                        similarityOrderAsc.Scores = _similarityScores;
+                    }
+                    
                     var orderedResults = Order?.OrderBy(expandedResults, user, userDataManager, logger) ?? expandedResults;
                     
                     // Apply limits (items and/or time)
@@ -1127,8 +1151,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsSimilarTo, bool includeUnwatchedSeries,
+            List<string> additionalUserIds, List<Expression> similarToExpressions, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules, IEnumerable<BaseItem> allItems)
         {
             var results = new List<BaseItem>();
             
@@ -1140,16 +1164,24 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople || needsCollections || needsNextUnwatched || needsSeriesName || needsParentSeriesTags)
+                if (needsAudioLanguages || needsPeople || needsCollections || needsNextUnwatched || needsSeriesName || needsParentSeriesTags || needsSimilarTo)
                 {
                     // Create per-refresh cache for performance optimization within this chunk
                     var refreshCache = new OperandFactory.RefreshCache();
                     
+                    // Build reference metadata for SimilarTo queries if needed
+                    OperandFactory.ReferenceMetadata referenceMetadata = null;
+                    if (needsSimilarTo && allItems != null)
+                    {
+                        logger?.LogDebug("Building reference metadata for SimilarTo queries");
+                        referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, allItems, libraryManager, refreshCache, logger);
+                    }
+                    
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
 
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded}, SeriesName: {SeriesNameNeeded}, ParentSeriesTags: {ParentSeriesTagsNeeded})",
-                        needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags);
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded}, SeriesName: {SeriesNameNeeded}, ParentSeriesTags: {ParentSeriesTagsNeeded}, SimilarTo: {SimilarToNeeded})",
+                        needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo);
                     
                     
                     try
@@ -1177,6 +1209,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                                       expr.MemberName == "Collections" || 
                                                       expr.MemberName == "NextUnwatched" || 
                                                       expr.MemberName == "SeriesName" ||
+                                                      expr.MemberName == "SimilarTo" ||
                                                       (expr.MemberName == "Tags" && expr.IncludeParentSeriesTags == true);
                                     
                                     if (isExpensive)
@@ -1249,6 +1282,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
                                 }
                                 
+                                // Calculate similarity score if SimilarTo is active
+                                bool passesSimilarity = true;
+                                if (needsSimilarTo && referenceMetadata != null)
+                                {
+                                    const int minSharedItems = 3; // Minimum 3 shared metadata items
+                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, minSharedItems, logger);
+                                    
+                                    // Store similarity score for potential sorting
+                                    if (operand.SimilarityScore.HasValue)
+                                    {
+                                        _similarityScores[item.Id] = operand.SimilarityScore.Value;
+                                    }
+                                }
+                                
                                 bool matches = false;
                                 if (!hasAnyRules) {
                                     matches = true;
@@ -1256,6 +1303,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 else {
                                     matches = EvaluateLogicGroups(compiledRules, operand);
                                 }
+                                
+                                // Apply similarity filter
+                                matches = matches && passesSimilarity;
                         
                         if (matches)
                         {
@@ -1416,12 +1466,29 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     }
                                 }
                                 
+                                // Calculate similarity score if SimilarTo is active
+                                bool passesSimilarity = true;
+                                if (needsSimilarTo && referenceMetadata != null)
+                                {
+                                    const int minSharedItems = 3; // Minimum 3 shared metadata items
+                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, minSharedItems, logger);
+                                    
+                                    // Store similarity score for potential sorting
+                                    if (fullOperand.SimilarityScore.HasValue)
+                                    {
+                                        _similarityScores[item.Id] = fullOperand.SimilarityScore.Value;
+                                    }
+                                }
+                                
                                 bool matches = false;
                                 if (!hasAnyRules) {
                                     matches = true;
                                 } else {
                                     matches = EvaluateLogicGroups(compiledRules, fullOperand);
-                        }
+                                }
+                                
+                                // Apply similarity filter
+                                matches = matches && passesSimilarity;
                         
                         if (matches)
                         {
@@ -1573,6 +1640,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "ProductionYear Ascending", () => new ProductionYearOrder() },
             { "ProductionYear Descending", () => new ProductionYearOrderDesc() },
             { "DateCreated Ascending", () => new DateCreatedOrder() },
+            { "Similarity Ascending", () => new SimilarityOrderAsc() },
+            { "Similarity Descending", () => new SimilarityOrder() },
             { "DateCreated Descending", () => new DateCreatedOrderDesc() },
             { "ReleaseDate Ascending", () => new ReleaseDateOrder() },
             { "ReleaseDate Descending", () => new ReleaseDateOrderDesc() },
@@ -1605,8 +1674,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public bool NeedsNextUnwatched { get; set; }
         public bool NeedsSeriesName { get; set; }
         public bool NeedsParentSeriesTags { get; set; }
+        public bool NeedsSimilarTo { get; set; }
         public bool IncludeUnwatchedSeries { get; set; } = true;
         public List<string> AdditionalUserIds { get; set; } = [];
+        public List<Expression> SimilarToExpressions { get; set; } = [];
         
         /// <summary>
         /// Analyzes expression sets to determine field requirements.
@@ -1641,6 +1712,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             requirements.NeedsParentSeriesTags = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
                 .Any(expr => expr?.MemberName == "Tags" && expr.IncludeParentSeriesTags == true);
+            
+            // Check if any rules use SimilarTo field
+            requirements.NeedsSimilarTo = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName == "SimilarTo");
+            
+            // Extract SimilarTo expressions for reference item lookup
+            requirements.SimilarToExpressions = [.. expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Where(expr => expr?.MemberName == "SimilarTo")];
             
             // Extract IncludeUnwatchedSeries parameter from NextUnwatched rules
             requirements.IncludeUnwatchedSeries = expressionSets
@@ -2131,6 +2212,52 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug(ex, "Error extracting PlayCount from userData for item {ItemName}", item.Name);
                 return 0;
             }
+        }
+    }
+
+    public class SimilarityOrder : Order
+    {
+        public override string Name => "Similarity Descending";
+        
+        // Scores dictionary will be set by SmartPlaylist before sorting
+        public ConcurrentDictionary<Guid, float> Scores { get; set; }
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+            if (Scores == null || Scores.Count == 0)
+            {
+                // No scores available, return items unsorted
+                return items;
+            }
+
+            // Sort by similarity score (highest first), then by name for deterministic ordering when scores are equal
+            return items
+                .OrderByDescending(item => Scores.TryGetValue(item.Id, out var score) ? score : 0)
+                .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    public class SimilarityOrderAsc : Order
+    {
+        public override string Name => "Similarity Ascending";
+        
+        // Scores dictionary will be set by SmartPlaylist before sorting
+        public ConcurrentDictionary<Guid, float> Scores { get; set; }
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+            if (Scores == null || Scores.Count == 0)
+            {
+                // No scores available, return items unsorted
+                return items;
+            }
+
+            // Sort by similarity score (lowest first), then by name for deterministic ordering when scores are equal
+            return items
+                .OrderBy(item => Scores.TryGetValue(item.Id, out var score) ? score : 0)
+                .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
         }
     }
 

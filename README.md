@@ -352,12 +352,35 @@ The web interface provides access to all available fields for creating playlist 
 - **Audio Languages** - The audio language of the movie/TV show
 - **Name** - Title of the media item
 - **Series Name** - Name of the parent series (for episodes only)
+- **Similar To** - Find items similar to a reference item based on metadata (see detailed explanation below)
 - **Parental Rating** - Age rating (G, PG, PG-13, R, etc.)
 - **Overview** - Description/summary of the content
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
 - **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K)
 - **Framerate** - Video framerate in frames per second (e.g., 23.976, 29.97, 59.94)
+
+> **Similar To Field Details**: The **Similar To** field enables content discovery by finding items that share metadata with reference items. This is perfect for creating "If you liked X, you'll love Y" style playlists.
+>
+> **How it works:**
+> 1. You specify one or more reference items by name (e.g., "Similar To contains 'My Movie'")
+> 2. The system finds all items matching that query and aggregates their metadata (genres, tags, people, studios)
+> 3. Other items are scored based on shared metadata:
+>    - **Genres**: 5 points each
+>    - **Tags**: 4 points each
+>    - **People** (actors/directors): 3 points each
+>    - **Studios**: 2 points each
+> 4. Items must share at least 3 metadata values to be included (the reference items themselves will also be included if they meet this threshold)
+>
+> **Example Uses:**
+> - `Similar To contains "Movie A"` → Find movies similar to Movie A (partially matched)
+> - `Similar To is in "Movie A;Movie B"` → Find movies similar to either Movie A or Movie B
+> - `Similar To equals "Movie A"` → Find movies similar to Moie A (exact match)
+>
+> **Best Practices:**
+> - Combine with other filters (e.g., "Similar To 'Movie A' AND Production Year > 2010")
+> - Use **Similarity Descending** sort order to show most similar items first
+> - Set Max Items to limit results to top matches (e.g., top 20 most similar)
 
 #### **Ratings & Playback**
 - **Community Rating** - User ratings (0-10)
@@ -510,10 +533,13 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 - **Community Rating** - Sort by user ratings
 - **Date Created** - Sort by when added to library
 - **Play Count (owner)** - Sort by how many times the playlist owner has played each item
+- **Similarity** - Sort by similarity score (highest first) - **only available when using the "Similar To" field**
 - **Track Number** - Sort by album name, disc number, then track number (designed for music)
 - **Random** - Randomize the order of items
 - **Ascending** - Oldest first
 - **Descending** - Newest first
+
+> **Note**: The **Similarity Descending** sort order is specifically designed to work with the **Similar To** field. It ranks items by their similarity score (based on shared metadata) with the most similar items appearing first. This sort order has no effect if no "Similar To" rules are used.
 
 ### Max Items
 
