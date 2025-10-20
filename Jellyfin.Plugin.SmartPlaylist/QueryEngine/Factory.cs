@@ -1694,13 +1694,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         /// <summary>
         /// Reference metadata extracted from similar-to queries for comparison.
+        /// Uses Lists instead of HashSets to preserve duplicates - duplicates represent stronger signals
+        /// when multiple reference items share the same metadata.
         /// </summary>
         public class ReferenceMetadata
         {
-            public HashSet<string> Genres { get; set; } = [];
-            public HashSet<string> Tags { get; set; } = [];
-            public HashSet<string> People { get; set; } = [];
-            public HashSet<string> Studios { get; set; } = [];
+            public List<string> Genres { get; set; } = [];
+            public List<string> Tags { get; set; } = [];
         }
 
         /// <summary>
@@ -1832,35 +1832,57 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return false;
             }
             
-            int sharedCount = 0;
+            int sharedUniqueCount = 0; // Count of unique genres/tags that match
+            int sharedGenresCount = 0;
             float score = 0;
             
-            // Count shared genres (1 point each)
+            // Count shared genres - weighted by frequency in reference metadata
+            // If multiple reference items share a genre, that genre is more important
             if (operand.Genres != null && referenceMetadata.Genres.Count > 0)
             {
-                var sharedGenres = operand.Genres.Intersect(referenceMetadata.Genres, StringComparer.OrdinalIgnoreCase).ToList();
-                sharedCount += sharedGenres.Count;
-                score += sharedGenres.Count;
+                foreach (var genre in operand.Genres.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    // Count how many times this genre appears in the reference metadata
+                    int frequency = referenceMetadata.Genres.Count(g => g.Equals(genre, StringComparison.OrdinalIgnoreCase));
+                    if (frequency > 0)
+                    {
+                        sharedGenresCount++; // Count unique genres
+                        sharedUniqueCount++; // Count total unique items
+                        score += frequency; // Add frequency to score for weighting
+                    }
+                }
             }
             
-            // Count shared tags (1 point each)
+            // Count shared tags - weighted by frequency in reference metadata
             if (operand.Tags != null && referenceMetadata.Tags.Count > 0)
             {
-                var sharedTags = operand.Tags.Intersect(referenceMetadata.Tags, StringComparer.OrdinalIgnoreCase).ToList();
-                sharedCount += sharedTags.Count;
-                score += sharedTags.Count;
+                foreach (var tag in operand.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    // Count how many times this tag appears in the reference metadata
+                    int frequency = referenceMetadata.Tags.Count(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
+                    if (frequency > 0)
+                    {
+                        sharedUniqueCount++; // Count total unique items
+                        score += frequency; // Add frequency to score for weighting
+                    }
+                }
             }
             
             // Store score in operand for potential sorting
             operand.SimilarityScore = score;
             
-            // Check if meets minimum threshold
-            bool passes = sharedCount >= minSharedItems;
+            // Check if meets minimum threshold: at least 2 unique genres/tags AND at least 1 genre
+            bool passes = sharedUniqueCount >= minSharedItems && sharedGenresCount >= 1;
             
             if (passes)
             {
-                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedCount} shared genres/tags, score: {Score}",
-                    operand.Name, sharedCount, score);
+                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedGenres} unique genres, {SharedTotal} unique items, score: {Score}",
+                    operand.Name, sharedGenresCount, sharedUniqueCount, score);
+            }
+            else if (sharedUniqueCount >= minSharedItems)
+            {
+                logger?.LogDebug("Item '{Name}' fails similarity: has {SharedTotal} unique items but no shared genres",
+                    operand.Name, sharedUniqueCount);
             }
             
             return passes;

@@ -1323,7 +1323,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 bool passesSimilarity = true;
                                 if (needsSimilarTo && referenceMetadata != null)
                                 {
-                                    const int minSharedItems = 3; // Minimum 3 shared metadata items
+                                    const int minSharedItems = 2; // Minimum 2 shared genres/tags
                                     passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, minSharedItems, logger);
                                     
                                     // Store similarity score for potential sorting
@@ -1507,7 +1507,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 bool passesSimilarity = true;
                                 if (needsSimilarTo && referenceMetadata != null)
                                 {
-                                    const int minSharedItems = 3; // Minimum 3 shared metadata items
+                                    const int minSharedItems = 2; // Minimum 2 shared genres/tags
                                     passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, minSharedItems, logger);
                                     
                                     // Store similarity score for potential sorting

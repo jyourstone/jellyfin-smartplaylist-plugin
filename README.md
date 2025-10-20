@@ -364,11 +364,12 @@ The web interface provides access to all available fields for creating playlist 
 >
 > **How it works:**
 > 1. You specify one or more reference items by name (e.g., "Similar To contains 'My Movie'")
-> 2. The system finds all items matching that query and aggregates their genres and tags
-> 3. Other items are scored based on shared metadata (1 point per match):
->    - **Genres** (Sci-Fi, Action, Drama, etc.)
->    - **Tags** (Space, Time Travel, Feel-Good, etc.)
-> 4. Items must share at least 3 genres/tags to be included (the reference items themselves will also be included if they meet this threshold)
+> 2. The system finds all items matching that query and aggregates their genres and tags (keeping duplicates)
+> 3. Other items are scored based on shared metadata with **frequency weighting**:
+>    - Each shared **Genre** or **Tag** adds points equal to how many reference items have it
+>    - Example: If both Movie A and Movie B have "Sci-Fi", matching "Sci-Fi" gives 2 points (not 1)
+>    - This means genres/tags that appear in multiple reference items are weighted MORE heavily
+> 4. Items must share at least **1 genre** AND at least **2 total unique genres/tags** to be included (the reference items themselves will also be included if they meet this threshold)
 >
 > **Why only Genres and Tags?** These fields accurately describe *what* a movie/show is about. Including actors/directors/studios would match unrelated content. Genres and tags are fast to process and provide the most accurate similarity matching.
 >
