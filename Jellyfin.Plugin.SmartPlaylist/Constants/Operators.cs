@@ -37,8 +37,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
 
         /// <summary>
         /// Operators for multi-valued fields (collections, lists, etc.).
+        /// Equal/NotEqual check if the entire list matches exactly.
         /// </summary>
-        public static readonly string[] MultiValuedFieldOperators = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"];
+        public static readonly string[] MultiValuedFieldOperators = ["Equal", "NotEqual", "Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"];
 
         /// <summary>
         /// Operators for string fields (text-based fields like Name, Album, etc).
