@@ -1691,5 +1691,234 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return 0;
             }
         }
+
+        /// <summary>
+        /// Reference metadata extracted from similar-to queries for comparison.
+        /// Uses Lists instead of HashSets to preserve duplicates - duplicates represent stronger signals
+        /// when multiple reference items share the same metadata.
+        /// </summary>
+        public class ReferenceMetadata
+        {
+            public List<string> Genres { get; set; } = [];
+            public List<string> Tags { get; set; } = [];
+        }
+
+        /// <summary>
+        /// Builds reference metadata from SimilarTo expressions by finding and aggregating metadata from matching items.
+        /// </summary>
+        /// <param name="similarToExpressions">List of SimilarTo expressions to process</param>
+        /// <param name="allItems">All items to search through for matches</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>Aggregated reference metadata</returns>
+        public static ReferenceMetadata BuildReferenceMetadata(
+            List<Expression> similarToExpressions,
+            IEnumerable<BaseItem> allItems,
+            ILogger logger)
+        {
+            var referenceMetadata = new ReferenceMetadata();
+            
+            if (similarToExpressions == null || similarToExpressions.Count == 0)
+            {
+                logger?.LogDebug("No SimilarTo expressions to process");
+                return referenceMetadata;
+            }
+            
+            var referenceItems = new List<BaseItem>();
+            
+            // Find all items matching the SimilarTo expressions
+            foreach (var expr in similarToExpressions)
+            {
+                if (string.IsNullOrWhiteSpace(expr?.TargetValue))
+                {
+                    logger?.LogWarning("SimilarTo expression has null or empty target value");
+                    continue;
+                }
+                
+                logger?.LogDebug("Processing SimilarTo expression: {Operator} '{Value}'", expr.Operator, expr.TargetValue);
+                
+                // Reject negative operators for SimilarTo (they would match most of the library)
+                if (expr.Operator == "NotContains" || expr.Operator == "IsNotIn" || expr.Operator == "NotEqual")
+                {
+                    logger?.LogWarning("Negative operator '{Operator}' is not supported for SimilarTo field (would match too many items). Skipping this expression.", expr.Operator);
+                    continue;
+                }
+                
+                // Apply the operator to find matching items
+                var matchingItems = allItems.Where(item =>
+                {
+                    if (item?.Name == null) return false;
+                    
+                    return expr.Operator switch
+                    {
+                        "Equal" => item.Name.Equals(expr.TargetValue, StringComparison.OrdinalIgnoreCase),
+                        "Contains" => item.Name.Contains(expr.TargetValue, StringComparison.OrdinalIgnoreCase),
+                        "IsIn" => IsNameInList(item.Name, expr.TargetValue),
+                        "MatchRegex" => MatchesRegex(item.Name, expr.TargetValue, logger),
+                        _ => false
+                    };
+                }).ToList();
+                
+                logger?.LogDebug("Found {Count} items matching SimilarTo query '{Value}'", matchingItems.Count, expr.TargetValue);
+                
+                referenceItems.AddRange(matchingItems);
+            }
+            
+            // Deduplicate reference items by ID
+            referenceItems = referenceItems.DistinctBy(item => item.Id).ToList();
+            
+            logger?.LogDebug("Total reference items after deduplication: {Count}", referenceItems.Count);
+            
+            if (referenceItems.Count == 0)
+            {
+                logger?.LogWarning("No reference items found for SimilarTo queries");
+                return referenceMetadata;
+            }
+            
+            // Log reference item names for debugging
+            foreach (var item in referenceItems.Take(10))
+            {
+                logger?.LogDebug("Reference item: '{Name}'", item.Name);
+            }
+            
+            // Extract and aggregate metadata from reference items (only Genres and Tags for accurate similarity)
+            foreach (var item in referenceItems)
+            {
+                // Extract genres
+                if (item.Genres != null)
+                {
+                    foreach (var genre in item.Genres)
+                    {
+                        if (!string.IsNullOrWhiteSpace(genre))
+                        {
+                            referenceMetadata.Genres.Add(genre);
+                        }
+                    }
+                }
+                
+                // Extract tags
+                if (item.Tags != null)
+                {
+                    foreach (var tag in item.Tags)
+                    {
+                        if (!string.IsNullOrWhiteSpace(tag))
+                        {
+                            referenceMetadata.Tags.Add(tag);
+                        }
+                    }
+                }
+            }
+            
+            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}",
+                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count);
+            
+            return referenceMetadata;
+        }
+
+        /// <summary>
+        /// Calculates similarity score for an operand against reference metadata.
+        /// </summary>
+        /// <param name="operand">The operand to calculate similarity for</param>
+        /// <param name="referenceMetadata">Reference metadata to compare against</param>
+        /// <param name="minSharedItems">Minimum number of shared metadata items required</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>True if item passes similarity threshold, false otherwise</returns>
+        public static bool CalculateSimilarityScore(
+            Operand operand,
+            ReferenceMetadata referenceMetadata,
+            int minSharedItems,
+            ILogger logger)
+        {
+            if (operand == null || referenceMetadata == null)
+            {
+                return false;
+            }
+            
+            int sharedUniqueCount = 0; // Count of unique genres/tags that match
+            int sharedGenresCount = 0;
+            float score = 0;
+            
+            // Count shared genres - weighted by frequency in reference metadata
+            // If multiple reference items share a genre, that genre is more important
+            if (operand.Genres != null && referenceMetadata.Genres.Count > 0)
+            {
+                foreach (var genre in operand.Genres.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    // Count how many times this genre appears in the reference metadata
+                    int frequency = referenceMetadata.Genres.Count(g => g.Equals(genre, StringComparison.OrdinalIgnoreCase));
+                    if (frequency > 0)
+                    {
+                        sharedGenresCount++; // Count unique genres
+                        sharedUniqueCount++; // Count total unique items
+                        score += frequency; // Add frequency to score for weighting
+                    }
+                }
+            }
+            
+            // Count shared tags - weighted by frequency in reference metadata
+            if (operand.Tags != null && referenceMetadata.Tags.Count > 0)
+            {
+                foreach (var tag in operand.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    // Count how many times this tag appears in the reference metadata
+                    int frequency = referenceMetadata.Tags.Count(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
+                    if (frequency > 0)
+                    {
+                        sharedUniqueCount++; // Count total unique items
+                        score += frequency; // Add frequency to score for weighting
+                    }
+                }
+            }
+            
+            // Store score in operand for potential sorting
+            operand.SimilarityScore = score;
+            
+            // Check if meets minimum threshold: at least 2 unique genres/tags AND at least 1 genre
+            bool passes = sharedUniqueCount >= minSharedItems && sharedGenresCount >= 1;
+            
+            if (passes)
+            {
+                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedGenres} unique genres, {SharedTotal} unique items, score: {Score}",
+                    operand.Name, sharedGenresCount, sharedUniqueCount, score);
+            }
+            else if (sharedUniqueCount >= minSharedItems)
+            {
+                logger?.LogDebug("Item '{Name}' fails similarity: has {SharedTotal} unique items but no shared genres",
+                    operand.Name, sharedUniqueCount);
+            }
+            
+            return passes;
+        }
+
+        /// <summary>
+        /// Helper method to check if a name is in a semicolon-separated list (partial matching).
+        /// </summary>
+        private static bool IsNameInList(string name, string targetList)
+        {
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(targetList))
+                return false;
+            
+            var listItems = targetList.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => item.Trim())
+                .Where(item => !string.IsNullOrWhiteSpace(item));
+            
+            return listItems.Any(item => name.Contains(item, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Helper method to check if a name matches a regex pattern.
+        /// </summary>
+        private static bool MatchesRegex(string name, string pattern, ILogger logger)
+        {
+            try
+            {
+                var regex = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.Compiled);
+                return regex.IsMatch(name);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Invalid regex pattern '{Pattern}' in SimilarTo expression", pattern);
+                return false;
+            }
+        }
     }
 }

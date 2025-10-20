@@ -624,6 +624,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "AudioLanguages", Label = "Audio Languages" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "SeriesName", Label = "Series Name" },
+                    new { Value = "SimilarTo", Label = "Similar To" },
                     new { Value = "OfficialRating", Label = "Parental Rating" },
                     new { Value = "Overview", Label = "Overview" },
                     new { Value = "ProductionYear", Label = "Production Year" },
@@ -683,6 +684,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "ReleaseDate Descending", Label = "Release Date Descending" },
                     new { Value = "CommunityRating Ascending", Label = "Community Rating Ascending" },
                     new { Value = "CommunityRating Descending", Label = "Community Rating Descending" },
+                    new { Value = "Similarity Ascending", Label = "Similarity Ascending" },
+                    new { Value = "Similarity Descending", Label = "Similarity Descending" },
                     new { Value = "PlayCount (owner) Ascending", Label = "Play Count (owner) Ascending" },
                     new { Value = "PlayCount (owner) Descending", Label = "Play Count (owner) Descending" }
                 }

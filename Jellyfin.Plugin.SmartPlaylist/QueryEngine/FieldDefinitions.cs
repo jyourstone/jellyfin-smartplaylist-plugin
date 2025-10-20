@@ -66,6 +66,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         ];
 
         /// <summary>
+        /// Similarity fields that require special handling for metadata comparison.
+        /// These are expensive operations as they require finding reference items and calculating similarity.
+        /// </summary>
+        public static readonly HashSet<string> SimilarityFields =
+        [
+            "SimilarTo"
+        ];
+
+        /// <summary>
         /// Resolution fields that support numeric comparisons based on height.
         /// </summary>
         public static readonly HashSet<string> ResolutionFields =
@@ -174,6 +183,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Checks if a field is a similarity field that requires metadata comparison.
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a similarity field, false otherwise</returns>
+        public static bool IsSimilarityField(string fieldName)
+        {
+            return SimilarityFields.Contains(fieldName);
+        }
+
+        /// <summary>
         /// Gets all available field names for API responses.
         /// </summary>
         /// <returns>Array of all field names</returns>
@@ -198,6 +217,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("FolderPath");
             allFields.Add("MediaType");
             allFields.Add("SeriesName");
+            allFields.Add("SimilarTo");
             
             return [.. allFields];
         }

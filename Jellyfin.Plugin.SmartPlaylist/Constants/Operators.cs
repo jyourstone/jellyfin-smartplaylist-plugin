@@ -41,6 +41,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         public static readonly string[] MultiValuedFieldOperators = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"];
 
         /// <summary>
+        /// Operators for string fields (text-based fields like Name, Album, etc).
+        /// </summary>
+        public static readonly string[] StringFieldOperators = ["Equal", "NotEqual", "Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"];
+
+        /// <summary>
+        /// Operators for SimilarTo field (excludes negative operators to prevent matching entire library).
+        /// </summary>
+        public static readonly string[] SimilarToFieldOperators = ["Equal", "Contains", "IsIn", "MatchRegex"];
+
+        /// <summary>
         /// Operators for multi-valued fields with special handling (Collections has limited operators).
         /// </summary>
         public static readonly string[] LimitedMultiValuedFieldOperators = ["Contains", "IsIn", "MatchRegex"];
@@ -107,6 +117,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 "Resolution" 
                     => ResolutionFieldOperators,
                 
+                // SimilarTo field (excludes negative operators)
+                "SimilarTo"
+                    => SimilarToFieldOperators,
+                
+                // String fields (text-based fields)
+                "Name" or "Album" or "SeriesName" or "OfficialRating" or "Overview" or "FileName" or "FolderPath"
+                    => StringFieldOperators,
+                
                 // Default: allow all operators for unknown fields
                 _ => [.. AllOperators.Select(op => op.Value)]
             };
@@ -156,7 +174,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["LastPlayedDate"] = DateFieldOperators,
                 
                 // Resolution fields - resolution-based fields
-                ["Resolution"] = ResolutionFieldOperators
+                ["Resolution"] = ResolutionFieldOperators,
+                
+                // SimilarTo field - excludes negative operators
+                ["SimilarTo"] = SimilarToFieldOperators,
+                
+                // String fields - text-based fields
+                ["Name"] = StringFieldOperators,
+                ["Album"] = StringFieldOperators,
+                ["SeriesName"] = StringFieldOperators,
+                ["OfficialRating"] = StringFieldOperators,
+                ["Overview"] = StringFieldOperators,
+                ["FileName"] = StringFieldOperators,
+                ["FolderPath"] = StringFieldOperators
             };
         }
 
