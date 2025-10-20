@@ -1708,15 +1708,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="similarToExpressions">List of SimilarTo expressions to process</param>
         /// <param name="allItems">All items to search through for matches</param>
-        /// <param name="libraryManager">Library manager for item queries</param>
-        /// <param name="refreshCache">Per-refresh cache for performance</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>Aggregated reference metadata</returns>
         public static ReferenceMetadata BuildReferenceMetadata(
             List<Expression> similarToExpressions,
             IEnumerable<BaseItem> allItems,
-            ILibraryManager libraryManager,
-            RefreshCache refreshCache,
             ILogger logger)
         {
             var referenceMetadata = new ReferenceMetadata();
@@ -1740,6 +1736,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 
                 logger?.LogDebug("Processing SimilarTo expression: {Operator} '{Value}'", expr.Operator, expr.TargetValue);
                 
+                // Reject negative operators for SimilarTo (they would match most of the library)
+                if (expr.Operator == "NotContains" || expr.Operator == "IsNotIn" || expr.Operator == "NotEqual")
+                {
+                    logger?.LogWarning("Negative operator '{Operator}' is not supported for SimilarTo field (would match too many items). Skipping this expression.", expr.Operator);
+                    continue;
+                }
+                
                 // Apply the operator to find matching items
                 var matchingItems = allItems.Where(item =>
                 {
@@ -1749,9 +1752,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     {
                         "Equal" => item.Name.Equals(expr.TargetValue, StringComparison.OrdinalIgnoreCase),
                         "Contains" => item.Name.Contains(expr.TargetValue, StringComparison.OrdinalIgnoreCase),
-                        "NotContains" => !item.Name.Contains(expr.TargetValue, StringComparison.OrdinalIgnoreCase),
                         "IsIn" => IsNameInList(item.Name, expr.TargetValue),
-                        "IsNotIn" => !IsNameInList(item.Name, expr.TargetValue),
                         "MatchRegex" => MatchesRegex(item.Name, expr.TargetValue, logger),
                         _ => false
                     };

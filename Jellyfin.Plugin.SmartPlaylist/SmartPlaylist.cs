@@ -646,8 +646,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 if (needsSimilarTo)
                 {
                     logger?.LogDebug("Building reference metadata for SimilarTo queries (once per filter run)");
-                    var refCache = new OperandFactory.RefreshCache();
-                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, items, libraryManager, refCache, logger);
+                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, items, logger);
                 }
                 
                 // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
