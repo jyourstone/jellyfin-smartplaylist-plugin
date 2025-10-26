@@ -1021,7 +1021,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Check for either new Schedules array or legacy ScheduleTrigger
                 var scheduledPlaylists = allPlaylists.Where(p => 
                     p.Enabled && (
-                        (p.Schedules != null && p.Schedules.Count > 0) || 
+                        (p.Schedules != null && p.Schedules.Any(s => s != null)) ||  // Null-safe check
                         (p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None)
                     )).ToList();
                 
@@ -1034,9 +1034,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Found {Count} playlists with schedules: {PlaylistNames}", 
                     scheduledPlaylists.Count, 
                     string.Join(", ", scheduledPlaylists.Select(p => {
-                        if (p.Schedules != null && p.Schedules.Count > 0)
+                        if (p.Schedules != null && p.Schedules.Any(s => s != null))  // Null-safe check
                         {
-                            var triggers = string.Join(", ", p.Schedules.Select(s => s.Trigger.ToString()));
+                            var triggers = string.Join(", ", p.Schedules.Where(s => s != null).Select(s => s.Trigger.ToString()));
                             return $"'{p.Name}' ({triggers})";
                         }
                         return $"'{p.Name}' ({p.ScheduleTrigger})";
@@ -1162,6 +1162,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private bool IsScheduleDue(Schedule schedule, DateTime now, string playlistName)
         {
+            // Defensive null check
+            if (schedule?.Trigger == null)
+            {
+                _logger.LogWarning("Schedule for playlist '{PlaylistName}' has null Trigger, skipping", playlistName);
+                return false;
+            }
+            
             return schedule.Trigger switch
             {
                 ScheduleTrigger.Daily => IsDailyDue(schedule, now, playlistName),
@@ -1312,8 +1319,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private bool IsYearlyDue(SmartPlaylistDto playlist, DateTime now)
         {
-            var scheduledMonth = playlist.ScheduleMonth ?? 1; // Default to January
-            var scheduledDayOfMonth = playlist.ScheduleDayOfMonth ?? 1; // Default to 1st
+            var scheduledMonth = Math.Clamp(playlist.ScheduleMonth ?? 1, 1, 12); // Clamp to valid month range
+            var scheduledDayOfMonth = Math.Max(1, playlist.ScheduleDayOfMonth ?? 1); // At least day 1
             var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
             
             // Convert UTC now to local time for comparison with user-configured schedule times
@@ -1326,8 +1333,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             
             // Handle months with fewer days (e.g., Feb 30th becomes Feb 28th/29th)
-            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
-            var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
+            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, scheduledMonth);
+            var effectiveDayOfMonth = Math.Clamp(scheduledDayOfMonth, 1, daysInCurrentMonth);
             
             // Check if current day matches
             if (localNow.Day != effectiveDayOfMonth)
@@ -1335,7 +1342,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 return false;
             }
             
-            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var scheduledDateTime = new DateTime(localNow.Year, scheduledMonth, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
             var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
             
             _logger.LogDebug("Yearly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
@@ -1413,8 +1420,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private bool IsYearlyDue(Schedule schedule, DateTime now, string playlistName)
         {
-            var scheduledMonth = schedule.Month ?? 1;
-            var scheduledDayOfMonth = schedule.DayOfMonth ?? 1;
+            var scheduledMonth = Math.Clamp(schedule.Month ?? 1, 1, 12); // Clamp to valid month range
+            var scheduledDayOfMonth = Math.Max(1, schedule.DayOfMonth ?? 1); // At least day 1
             var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
             var localNow = now.ToLocalTime();
             
@@ -1423,15 +1430,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 return false;
             }
             
-            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
-            var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
+            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, scheduledMonth);
+            var effectiveDayOfMonth = Math.Clamp(scheduledDayOfMonth, 1, daysInCurrentMonth);
             
             if (localNow.Day != effectiveDayOfMonth)
             {
                 return false;
             }
             
-            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var scheduledDateTime = new DateTime(localNow.Year, scheduledMonth, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
             var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
             
             _logger.LogDebug("Yearly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 

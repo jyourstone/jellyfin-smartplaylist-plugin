@@ -75,7 +75,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Configuration
         /// <summary>
         /// Gets or sets the default interval for Interval triggers.
         /// </summary>
-        public TimeSpan DefaultScheduleInterval { get; set; } = TimeSpan.FromHours(24); // 24 hours default
+        public TimeSpan DefaultScheduleInterval { get; set; } = TimeSpan.FromMinutes(15); // 15 minutes default
         
         /// <summary>
         /// Gets or sets the parallel concurrency limit for playlist refreshes and database queries.

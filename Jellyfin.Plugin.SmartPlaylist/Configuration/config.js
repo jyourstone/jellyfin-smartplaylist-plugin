@@ -143,9 +143,10 @@
         const timeContainer = page.querySelector(`#${prefix}scheduleTimeContainer`);
         const dayContainer = page.querySelector(`#${prefix}scheduleDayContainer`);
         const dayOfMonthContainer = page.querySelector(`#${prefix}scheduleDayOfMonthContainer`);
+        const monthContainer = page.querySelector(`#${prefix}scheduleMonthContainer`);
         const intervalContainer = page.querySelector(`#${prefix}scheduleIntervalContainer`);
 
-        [timeContainer, dayContainer, dayOfMonthContainer, intervalContainer].forEach(el => { if (el) el.classList.add('hide'); });
+        [timeContainer, dayContainer, dayOfMonthContainer, monthContainer, intervalContainer].forEach(el => { if (el) el.classList.add('hide'); });
 
         if (triggerValue === 'Daily') {
             if (timeContainer) timeContainer.classList.remove('hide');
@@ -154,6 +155,10 @@
             if (dayContainer) dayContainer.classList.remove('hide');
         } else if (triggerValue === 'Monthly') {
             if (timeContainer) timeContainer.classList.remove('hide');
+            if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
+        } else if (triggerValue === 'Yearly') {
+            if (timeContainer) timeContainer.classList.remove('hide');
+            if (monthContainer) monthContainer.classList.remove('hide');
             if (dayOfMonthContainer) dayOfMonthContainer.classList.remove('hide');
         } else if (triggerValue === 'Interval') {
             if (intervalContainer) intervalContainer.classList.remove('hide');
@@ -1141,7 +1146,7 @@
         
         // Interval field (for Interval)
         const intervalField = createScheduleField('Every', 'schedule-interval-' + scheduleId, 'select');
-        populateSelectElement(intervalField.input, generateIntervalOptions(scheduleData && scheduleData.Interval ? scheduleData.Interval : '24:00:00'));
+        populateSelectElement(intervalField.input, generateIntervalOptions(scheduleData && scheduleData.Interval ? scheduleData.Interval : '1.00:00:00'));
         intervalField.container.style.display = 'none';
         fieldsContainer.appendChild(intervalField.container);
         
@@ -1244,8 +1249,6 @@
         } else {
             schedulesContainer.appendChild(newBox);
         }
-        
-        updateScheduleRemoveButtons(page);
     }
     
     function removeScheduleBox(page, box) {
@@ -1260,13 +1263,6 @@
         if (boxes.length === 0 && addBtn) {
             addBtn.textContent = '+ Add Schedule';
         }
-        
-        updateScheduleRemoveButtons(page);
-    }
-    
-    function updateScheduleRemoveButtons(page) {
-        // No special logic needed - all X buttons are always visible
-        // (unlike Rules where we hide AND/OR buttons for non-last rules)
     }
     
     function collectSchedulesFromForm(page) {
@@ -1561,6 +1557,12 @@
             populateSelectElement(defaultScheduleDayOfMonthElement, generateDayOfMonthOptions('1')); // Default 1st
         }
         
+        // Default Schedule Month (for Yearly)
+        const defaultScheduleMonthElement = page.querySelector('#defaultScheduleMonth');
+        if (defaultScheduleMonthElement) {
+            populateSelectElement(defaultScheduleMonthElement, generateMonthOptions('1')); // Default January
+        }
+        
         const scheduleIntervalElement = page.querySelector('#scheduleInterval');
         if (scheduleIntervalElement) {
             populateSelectElement(scheduleIntervalElement, generateIntervalOptions('1.00:00:00')); // Default 24 hours
@@ -1568,7 +1570,7 @@
         
         const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
         if (defaultScheduleIntervalElement) {
-            populateSelectElement(defaultScheduleIntervalElement, generateIntervalOptions('1.00:00:00')); // Default 24 hours
+            populateSelectElement(defaultScheduleIntervalElement, generateIntervalOptions('00:15:00')); // Default 15 minutes
         }
         
          const sortOptions = [
@@ -4807,6 +4809,58 @@
         }
     }
 
+    // Helper function to load schedule data into the UI (DRY principle)
+    function loadSchedulesIntoUI(page, playlist) {
+        const schedulesContainer = page.querySelector('#schedules-container');
+        if (!schedulesContainer) return;
+        
+        schedulesContainer.innerHTML = '';
+        
+        var schedulesToLoad = [];
+        
+        // Check for new Schedules array first
+        if (playlist.Schedules && playlist.Schedules.length > 0) {
+            schedulesToLoad = playlist.Schedules;
+        }
+        // Legacy: convert old single schedule fields to schedule objects
+        else if (playlist.ScheduleTrigger && playlist.ScheduleTrigger !== 'None') {
+            var legacySchedule = { Trigger: playlist.ScheduleTrigger };
+            if (playlist.ScheduleTime) {
+                legacySchedule.Time = playlist.ScheduleTime;
+            }
+            if (playlist.ScheduleDayOfWeek !== undefined) {
+                legacySchedule.DayOfWeek = playlist.ScheduleDayOfWeek;
+            }
+            if (playlist.ScheduleDayOfMonth !== undefined) {
+                legacySchedule.DayOfMonth = playlist.ScheduleDayOfMonth;
+            }
+            if (playlist.ScheduleMonth !== undefined) {
+                legacySchedule.Month = playlist.ScheduleMonth;
+            }
+            if (playlist.ScheduleInterval) {
+                legacySchedule.Interval = playlist.ScheduleInterval;
+            }
+            schedulesToLoad = [legacySchedule];
+        }
+        
+        // Add schedule boxes for each schedule (if any exist)
+        if (schedulesToLoad.length > 0) {
+            schedulesToLoad.forEach(function(schedule) {
+                addScheduleBox(page, schedule);
+            });
+        }
+        
+        // Re-add the "Add Schedule" button
+        var addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'emby-button raised add-schedule-btn';
+        addBtn.textContent = schedulesToLoad.length > 0 ? '+ Add Another Schedule' : '+ Add Schedule';
+        addBtn.addEventListener('click', function() {
+            addScheduleBox(page, null);
+        });
+        schedulesContainer.appendChild(addBtn);
+    }
+
     async function editPlaylist(page, playlistId) {
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
@@ -4843,55 +4897,7 @@
                 }
                 
                 // Handle schedule settings with backward compatibility
-                // Clear existing schedule boxes
-                const schedulesContainer = page.querySelector('#schedules-container');
-                if (schedulesContainer) {
-                    schedulesContainer.innerHTML = '';
-                    
-                    var schedulesToLoad = [];
-                    
-                    // Check for new Schedules array first
-                    if (playlist.Schedules && playlist.Schedules.length > 0) {
-                        schedulesToLoad = playlist.Schedules;
-                    }
-                    // Legacy: convert old single schedule fields to schedule objects
-                    else if (playlist.ScheduleTrigger && playlist.ScheduleTrigger !== 'None') {
-                        var legacySchedule = { Trigger: playlist.ScheduleTrigger };
-                        if (playlist.ScheduleTime) {
-                            legacySchedule.Time = playlist.ScheduleTime;
-                        }
-                        if (playlist.ScheduleDayOfWeek !== undefined) {
-                            legacySchedule.DayOfWeek = playlist.ScheduleDayOfWeek;
-                        }
-                        if (playlist.ScheduleDayOfMonth !== undefined) {
-                            legacySchedule.DayOfMonth = playlist.ScheduleDayOfMonth;
-                        }
-                        if (playlist.ScheduleMonth !== undefined) {
-                            legacySchedule.Month = playlist.ScheduleMonth;
-                        }
-                        if (playlist.ScheduleInterval) {
-                            legacySchedule.Interval = playlist.ScheduleInterval;
-                        }
-                        schedulesToLoad = [legacySchedule];
-                    }
-                    
-                    // Add schedule boxes for each schedule (if any exist)
-                    if (schedulesToLoad.length > 0) {
-                        schedulesToLoad.forEach(function(schedule) {
-                            addScheduleBox(page, schedule);
-                        });
-                    }
-                    
-                    // Re-add the "Add Schedule" button
-                    var addBtn = document.createElement('button');
-                    addBtn.type = 'button';
-                    addBtn.className = 'emby-button raised add-schedule-btn';
-                    addBtn.textContent = schedulesToLoad.length > 0 ? '+ Add Another Schedule' : '+ Add Schedule';
-                    addBtn.addEventListener('click', function() {
-                        addScheduleBox(page, null);
-                    });
-                    schedulesContainer.appendChild(addBtn);
-                }
+                loadSchedulesIntoUI(page, playlist);
                 
                 // Handle MaxItems with backward compatibility for existing playlists
                 // Default to 0 (unlimited) for old playlists that didn't have this setting
@@ -5143,54 +5149,7 @@
                 }
                 
                 // Handle schedule settings with backward compatibility (same as editPlaylist)
-                const schedulesContainer = page.querySelector('#schedules-container');
-                if (schedulesContainer) {
-                    schedulesContainer.innerHTML = '';
-                    
-                    var schedulesToLoad = [];
-                    
-                    // Check for new Schedules array first
-                    if (playlist.Schedules && playlist.Schedules.length > 0) {
-                        schedulesToLoad = playlist.Schedules;
-                    }
-                    // Legacy: convert old single schedule fields to schedule objects
-                    else if (playlist.ScheduleTrigger && playlist.ScheduleTrigger !== 'None') {
-                        var legacySchedule = { Trigger: playlist.ScheduleTrigger };
-                        if (playlist.ScheduleTime) {
-                            legacySchedule.Time = playlist.ScheduleTime;
-                        }
-                        if (playlist.ScheduleDayOfWeek !== undefined) {
-                            legacySchedule.DayOfWeek = playlist.ScheduleDayOfWeek;
-                        }
-                        if (playlist.ScheduleDayOfMonth !== undefined) {
-                            legacySchedule.DayOfMonth = playlist.ScheduleDayOfMonth;
-                        }
-                        if (playlist.ScheduleMonth !== undefined) {
-                            legacySchedule.Month = playlist.ScheduleMonth;
-                        }
-                        if (playlist.ScheduleInterval) {
-                            legacySchedule.Interval = playlist.ScheduleInterval;
-                        }
-                        schedulesToLoad = [legacySchedule];
-                    }
-                    
-                    // Add schedule boxes for each schedule (if any exist)
-                    if (schedulesToLoad.length > 0) {
-                        schedulesToLoad.forEach(function(schedule) {
-                            addScheduleBox(page, schedule);
-                        });
-                    }
-                    
-                    // Re-add the "Add Schedule" button
-                    var addBtn = document.createElement('button');
-                    addBtn.type = 'button';
-                    addBtn.className = 'emby-button raised add-schedule-btn';
-                    addBtn.textContent = schedulesToLoad.length > 0 ? '+ Add Another Schedule' : '+ Add Schedule';
-                    addBtn.addEventListener('click', function() {
-                        addScheduleBox(page, null);
-                    });
-                    schedulesContainer.appendChild(addBtn);
-                }
+                loadSchedulesIntoUI(page, playlist);
                 
                 // Handle MaxItems
                 const maxItemsValue = (playlist.MaxItems !== undefined && playlist.MaxItems !== null) ? playlist.MaxItems : 0;
@@ -5412,6 +5371,11 @@
                 defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
             }
             
+            const defaultScheduleMonthElement = page.querySelector('#defaultScheduleMonth');
+            if (defaultScheduleMonthElement) {
+                defaultScheduleMonthElement.value = config.DefaultScheduleMonth !== undefined ? config.DefaultScheduleMonth.toString() : '1';
+            }
+            
             const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
             if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
                 defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
@@ -5467,7 +5431,8 @@
             
             config.DefaultScheduleDayOfWeek = parseInt(page.querySelector('#defaultScheduleDayOfWeek').value) || 0;
             config.DefaultScheduleDayOfMonth = parseInt(page.querySelector('#defaultScheduleDayOfMonth').value) || 1;
-            config.DefaultScheduleInterval = page.querySelector('#defaultScheduleInterval').value || '1.00:00:00';
+            config.DefaultScheduleMonth = parseInt(page.querySelector('#defaultScheduleMonth').value) || 1;
+            config.DefaultScheduleInterval = page.querySelector('#defaultScheduleInterval').value || '00:15:00';
             
             // Save playlist naming configuration
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value;
