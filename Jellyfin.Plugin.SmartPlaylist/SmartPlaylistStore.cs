@@ -97,6 +97,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var fileName = smartPlaylist.Id;
             smartPlaylist.FileName = $"{fileName}.json";
 
+            // Automatically migrate legacy schedule format to new format during save
+            smartPlaylist.MigrateToNewScheduleFormat();
+
             var filePath = fileSystem.GetSmartPlaylistPath(fileName);
             var tempPath = filePath + ".tmp";
             

@@ -332,48 +332,10 @@
                             <div class="fieldDescription">Controls when this playlist automatically refreshes based on library changes. Note: Frequent updates may impact performance.</div>
                         </div>
 
-                        <div class="selectContainer" style="margin-bottom: 1em;">
-                            <label class="selectLabel" for="scheduleTrigger">Scheduled refresh:</label>
-                            <select id="scheduleTrigger" is="emby-select" class="emby-select-withcolor emby-select">
-                                <!-- Schedule trigger options populated dynamically by JavaScript -->
-                            </select>
-                            <div class="fieldDescription">Configure custom refresh schedule for this playlist. Select "No schedule" to disable all scheduled refreshes.</div>
-                        </div>
-
-                        <!-- Day of Week Selector (for Weekly) -->
-                        <div id="scheduleDayContainer" class="selectContainer hide" style="margin-bottom: 1em;">
-                            <label class="selectLabel" for="scheduleDayOfWeek">Day of week:</label>
-                            <select id="scheduleDayOfWeek" is="emby-select" class="emby-select-withcolor emby-select">
-                                <!-- Day of week options populated dynamically by JavaScript -->
-                            </select>
-                            <div class="fieldDescription">Day of the week for the scheduled refresh.</div>
-                        </div>
-
-                        <!-- Day of Month Selector (for Monthly) -->
-                        <div id="scheduleDayOfMonthContainer" class="selectContainer hide" style="margin-bottom: 1em;">
-                            <label class="selectLabel" for="scheduleDayOfMonth">Day of month:</label>
-                            <select id="scheduleDayOfMonth" is="emby-select" class="emby-select-withcolor emby-select">
-                                <!-- Day of month options populated dynamically by JavaScript -->
-                            </select>
-                            <div class="fieldDescription">Day of the month for the scheduled refresh.</div>
-                        </div>
-
-                        <!-- Schedule Time Selector (for Daily/Weekly/Monthly) -->
-                        <div id="scheduleTimeContainer" class="selectContainer hide" style="margin-bottom: 1em;">
-                            <label class="selectLabel" for="scheduleTime">Time:</label>
-                            <select id="scheduleTime" is="emby-select" class="emby-select-withcolor emby-select">
-                                <!-- Time options populated dynamically by JavaScript -->
-                            </select>
-                            <div class="fieldDescription">Time of day for the scheduled refresh.</div>
-                        </div>
-
-                        <!-- Interval Selector (for Interval) -->
-                        <div id="scheduleIntervalContainer" class="selectContainer hide" style="margin-bottom: 1em;">
-                            <label class="selectLabel" for="scheduleInterval">Every:</label>
-                            <select id="scheduleInterval" is="emby-select" class="emby-select-withcolor emby-select">
-                                <!-- Interval options populated dynamically by JavaScript -->
-                            </select>
-                            <div class="fieldDescription">Interval between scheduled refreshes.</div>
+                        <div class="inputContainer">
+                            <label class="inputLabel">Scheduled Refresh</label>
+                            <div id="schedules-container"></div>
+                            <div class="fieldDescription">Configure custom refresh schedule(s) for this playlist. You can add multiple schedules (e.g., run on Sundays AND on the 1st of each month).</div>
                         </div>
 
                         <div style="margin-top: 2em;">

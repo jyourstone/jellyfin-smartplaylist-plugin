@@ -197,11 +197,26 @@
             { value: 'Daily', label: 'Daily' },
             { value: 'Weekly', label: 'Weekly' },
             { value: 'Monthly', label: 'Monthly' },
+            { value: 'Yearly', label: 'Yearly' },
             { value: 'Interval', label: 'Interval' }
         );
         // Mark the default option as selected
         for (var i = 0; i < options.length; i++) {
             options[i].selected = options[i].value === defaultValue;
+        }
+        return options;
+    }
+    
+    function generateMonthOptions(defaultValue) {
+        var months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+        var options = [];
+        for (var i = 0; i < months.length; i++) {
+            options.push({
+                value: (i + 1).toString(),
+                label: months[i],
+                selected: defaultValue === (i + 1).toString()
+            });
         }
         return options;
     }
@@ -607,6 +622,56 @@
                 paddingRight: '25px'
             }
             // Notification styles removed - now using floating notifications
+        },
+        
+        // Schedule box styles (similar to logic groups)
+        scheduleBox: {
+            border: '1px solid #666',
+            borderRadius: '2px',
+            padding: '1em 1.5em',
+            marginBottom: '1em',
+            background: 'rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            position: 'relative'
+        },
+        
+        scheduleFields: {
+            display: 'flex',
+            gap: '0.75em',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap',
+            marginBottom: '0.5em',
+            position: 'relative'
+        },
+        
+        scheduleField: {
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '150px',
+            flex: '0 1 auto'
+        },
+        
+        scheduleFieldLabel: {
+            marginBottom: '0.3em',
+            fontSize: '0.85em',
+            color: '#ccc',
+            fontWeight: '500'
+        },
+        
+        scheduleRemoveBtn: {
+            padding: '0.3em 0.6em',
+            fontSize: '1.3em',
+            border: '1px solid #666',
+            background: 'rgba(255, 255, 255, 0.07)',
+            color: '#aaa',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: '500',
+            lineHeight: '1',
+            width: 'auto',
+            minWidth: 'auto',
+            alignSelf: 'center',
+            marginLeft: 'auto'
         }
     };
     
@@ -1008,73 +1073,412 @@
     const initializePageElements = (page) => {
         // Generate media type checkboxes from the mediaTypes array
         generateMediaTypeCheckboxes(page);
+        
+        // Initialize schedule system
+        initializeScheduleSystem(page);
     };
 
-    // Helper function to show/hide schedule containers based on selected trigger
+    // ===== SCHEDULE BOX MANAGEMENT SYSTEM =====
+    
+    function initializeScheduleSystem(page) {
+        const schedulesContainer = page.querySelector('#schedules-container');
+        if (!schedulesContainer) return;
+        
+        // Clear any existing content
+        schedulesContainer.innerHTML = '';
+        
+        // Don't add any schedule boxes by default - start empty
+        // Just add the "Add Schedule" button
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'emby-button raised add-schedule-btn';
+        addBtn.textContent = '+ Add Schedule';
+        addBtn.addEventListener('click', function() {
+            addScheduleBox(page, null);
+        });
+        schedulesContainer.appendChild(addBtn);
+    }
+    
+    function createScheduleBox(page, scheduleData) {
+        const scheduleId = 'schedule-' + Date.now() + '-' + Math.random();
+        
+        // Create box container with inline styles
+        const box = createStyledElement('div', 'schedule-box', STYLES.scheduleBox);
+        box.setAttribute('data-schedule-id', scheduleId);
+        
+        // Create fields container with inline styles
+        const fieldsContainer = createStyledElement('div', 'schedule-fields', STYLES.scheduleFields);
+        
+        // Trigger field
+        const triggerField = createScheduleField('Trigger', 'schedule-trigger-' + scheduleId, 'select');
+        populateSelectElement(triggerField.input, generateScheduleTriggerOptions(scheduleData ? scheduleData.Trigger : '', false));
+        fieldsContainer.appendChild(triggerField.container);
+        
+        // Month field (for Yearly)
+        const monthField = createScheduleField('Month', 'schedule-month-' + scheduleId, 'select');
+        populateSelectElement(monthField.input, generateMonthOptions(scheduleData && scheduleData.Month ? scheduleData.Month.toString() : '1'));
+        monthField.container.style.display = 'none';
+        fieldsContainer.appendChild(monthField.container);
+        
+        // Day of Month field (for Monthly/Yearly)
+        const dayOfMonthField = createScheduleField('Day of Month', 'schedule-dayofmonth-' + scheduleId, 'select');
+        populateSelectElement(dayOfMonthField.input, generateDayOfMonthOptions(scheduleData && scheduleData.DayOfMonth ? scheduleData.DayOfMonth.toString() : '1'));
+        dayOfMonthField.container.style.display = 'none';
+        fieldsContainer.appendChild(dayOfMonthField.container);
+        
+        // Day of Week field (for Weekly)
+        const dayOfWeekField = createScheduleField('Day of Week', 'schedule-dayofweek-' + scheduleId, 'select');
+        populateSelectElement(dayOfWeekField.input, generateDayOfWeekOptions(scheduleData && scheduleData.DayOfWeek !== undefined ? scheduleData.DayOfWeek.toString() : '0'));
+        dayOfWeekField.container.style.display = 'none';
+        fieldsContainer.appendChild(dayOfWeekField.container);
+        
+        // Time field (for Daily/Weekly/Monthly/Yearly)
+        const timeField = createScheduleField('Time', 'schedule-time-' + scheduleId, 'select');
+        const defaultTime = scheduleData && scheduleData.Time ? scheduleData.Time.substring(0, 5) : '00:00';
+        populateSelectElement(timeField.input, generateTimeOptions(defaultTime));
+        timeField.container.style.display = 'none';
+        fieldsContainer.appendChild(timeField.container);
+        
+        // Interval field (for Interval)
+        const intervalField = createScheduleField('Every', 'schedule-interval-' + scheduleId, 'select');
+        populateSelectElement(intervalField.input, generateIntervalOptions(scheduleData && scheduleData.Interval ? scheduleData.Interval : '24:00:00'));
+        intervalField.container.style.display = 'none';
+        fieldsContainer.appendChild(intervalField.container);
+        
+        // Create remove button (X icon at end of fields row)
+        const removeBtn = createStyledElement('button', 'schedule-remove-btn', STYLES.scheduleRemoveBtn);
+        removeBtn.type = 'button';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove schedule';
+        removeBtn.addEventListener('click', function() {
+            removeScheduleBox(page, box);
+        });
+        fieldsContainer.appendChild(removeBtn);
+        
+        box.appendChild(fieldsContainer);
+        
+        // Add change listener to trigger to update field visibility
+        triggerField.input.addEventListener('change', function() {
+            updateScheduleFieldsVisibility(box, this.value);
+        });
+        
+        // Set initial visibility based on actual selected value in dropdown
+        // (the browser auto-selects the first option if no value is specified)
+        var initialTrigger = triggerField.input.value;
+        if (initialTrigger) {
+            updateScheduleFieldsVisibility(box, initialTrigger);
+        }
+        
+        return box;
+    }
+    
+    function createScheduleField(label, id, type) {
+        const container = createStyledElement('div', 'schedule-field', STYLES.scheduleField);
+        
+        const labelElement = createStyledElement('label', '', STYLES.scheduleFieldLabel);
+        labelElement.textContent = label;
+        labelElement.htmlFor = id;
+        container.appendChild(labelElement);
+        
+        const input = document.createElement(type === 'select' ? 'select' : 'input');
+        input.id = id;
+        if (type === 'select') {
+            input.setAttribute('is', 'emby-select');
+            input.className = 'emby-select-withcolor emby-select';
+        } else {
+            input.type = type;
+            input.className = 'emby-input';
+        }
+        container.appendChild(input);
+        
+        return { container: container, input: input };
+    }
+    
+    function updateScheduleFieldsVisibility(box, triggerValue) {
+        // Get all field containers
+        const fields = box.querySelectorAll('.schedule-field');
+        const monthField = Array.from(fields).find(f => f.querySelector('[id^="schedule-month-"]'));
+        const dayOfMonthField = Array.from(fields).find(f => f.querySelector('[id^="schedule-dayofmonth-"]'));
+        const dayOfWeekField = Array.from(fields).find(f => f.querySelector('[id^="schedule-dayofweek-"]'));
+        const timeField = Array.from(fields).find(f => f.querySelector('[id^="schedule-time-"]'));
+        const intervalField = Array.from(fields).find(f => f.querySelector('[id^="schedule-interval-"]'));
+        
+        // Hide all optional fields
+        if (monthField) monthField.style.display = 'none';
+        if (dayOfMonthField) dayOfMonthField.style.display = 'none';
+        if (dayOfWeekField) dayOfWeekField.style.display = 'none';
+        if (timeField) timeField.style.display = 'none';
+        if (intervalField) intervalField.style.display = 'none';
+        
+        // Show relevant fields based on trigger
+        if (triggerValue === 'Daily') {
+            if (timeField) timeField.style.display = '';
+        } else if (triggerValue === 'Weekly') {
+            if (dayOfWeekField) dayOfWeekField.style.display = '';
+            if (timeField) timeField.style.display = '';
+        } else if (triggerValue === 'Monthly') {
+            if (dayOfMonthField) dayOfMonthField.style.display = '';
+            if (timeField) timeField.style.display = '';
+        } else if (triggerValue === 'Yearly') {
+            if (monthField) monthField.style.display = '';
+            if (dayOfMonthField) dayOfMonthField.style.display = '';
+            if (timeField) timeField.style.display = '';
+        } else if (triggerValue === 'Interval') {
+            if (intervalField) intervalField.style.display = '';
+        }
+    }
+    
+    function addScheduleBox(page, scheduleData) {
+        const schedulesContainer = page.querySelector('#schedules-container');
+        if (!schedulesContainer) return;
+        
+        // Find the add button (it's always the last child)
+        const addBtn = schedulesContainer.querySelector('.add-schedule-btn');
+        
+        // Create and insert the new box before the add button
+        const newBox = createScheduleBox(page, scheduleData);
+        if (addBtn) {
+            schedulesContainer.insertBefore(newBox, addBtn);
+            // Change button text after first schedule is added
+            addBtn.textContent = '+ Add Another Schedule';
+        } else {
+            schedulesContainer.appendChild(newBox);
+        }
+        
+        updateScheduleRemoveButtons(page);
+    }
+    
+    function removeScheduleBox(page, box) {
+        const schedulesContainer = page.querySelector('#schedules-container');
+        if (!schedulesContainer) return;
+        
+        box.remove();
+        
+        // Update button text if no schedules left
+        const boxes = schedulesContainer.querySelectorAll('.schedule-box');
+        const addBtn = schedulesContainer.querySelector('.add-schedule-btn');
+        if (boxes.length === 0 && addBtn) {
+            addBtn.textContent = '+ Add Schedule';
+        }
+        
+        updateScheduleRemoveButtons(page);
+    }
+    
+    function updateScheduleRemoveButtons(page) {
+        // No special logic needed - all X buttons are always visible
+        // (unlike Rules where we hide AND/OR buttons for non-last rules)
+    }
+    
+    function collectSchedulesFromForm(page) {
+        const schedulesContainer = page.querySelector('#schedules-container');
+        if (!schedulesContainer) return [];
+        
+        const boxes = schedulesContainer.querySelectorAll('.schedule-box');
+        const schedules = [];
+        
+        boxes.forEach(function(box) {
+            const triggerSelect = box.querySelector('[id^="schedule-trigger-"]');
+            if (!triggerSelect) return;
+            
+            const trigger = triggerSelect.value;
+            if (!trigger) return; // Skip empty triggers
+            
+            const schedule = { Trigger: trigger };
+            
+            // Collect fields based on trigger type
+            if (trigger === 'Daily') {
+                const timeSelect = box.querySelector('[id^="schedule-time-"]');
+                if (timeSelect && timeSelect.value) {
+                    schedule.Time = timeSelect.value + ':00';
+                }
+            } else if (trigger === 'Weekly') {
+                const dayOfWeekSelect = box.querySelector('[id^="schedule-dayofweek-"]');
+                const timeSelect = box.querySelector('[id^="schedule-time-"]');
+                if (dayOfWeekSelect && dayOfWeekSelect.value !== '') {
+                    schedule.DayOfWeek = parseInt(dayOfWeekSelect.value, 10);
+                }
+                if (timeSelect && timeSelect.value) {
+                    schedule.Time = timeSelect.value + ':00';
+                }
+            } else if (trigger === 'Monthly') {
+                const dayOfMonthSelect = box.querySelector('[id^="schedule-dayofmonth-"]');
+                const timeSelect = box.querySelector('[id^="schedule-time-"]');
+                if (dayOfMonthSelect && dayOfMonthSelect.value) {
+                    schedule.DayOfMonth = parseInt(dayOfMonthSelect.value, 10);
+                }
+                if (timeSelect && timeSelect.value) {
+                    schedule.Time = timeSelect.value + ':00';
+                }
+            } else if (trigger === 'Yearly') {
+                const monthSelect = box.querySelector('[id^="schedule-month-"]');
+                const dayOfMonthSelect = box.querySelector('[id^="schedule-dayofmonth-"]');
+                const timeSelect = box.querySelector('[id^="schedule-time-"]');
+                if (monthSelect && monthSelect.value) {
+                    schedule.Month = parseInt(monthSelect.value, 10);
+                }
+                if (dayOfMonthSelect && dayOfMonthSelect.value) {
+                    schedule.DayOfMonth = parseInt(dayOfMonthSelect.value, 10);
+                }
+                if (timeSelect && timeSelect.value) {
+                    schedule.Time = timeSelect.value + ':00';
+                }
+            } else if (trigger === 'Interval') {
+                const intervalSelect = box.querySelector('[id^="schedule-interval-"]');
+                if (intervalSelect && intervalSelect.value) {
+                    schedule.Interval = intervalSelect.value;
+                }
+            }
+            
+            schedules.push(schedule);
+        });
+        
+        return schedules;
+    }
+    
+    // ===== END SCHEDULE BOX MANAGEMENT SYSTEM =====
+
+    // Helper function to show/hide schedule containers based on selected trigger (LEGACY - kept for backward compat)
     function updateScheduleContainers(page, triggerValue) {
         toggleScheduleContainers(page, '', triggerValue);
     }
     
     // Helper function to format schedule display text
     function formatScheduleDisplay(playlist) {
-        if (!playlist.ScheduleTrigger) {
-            // undefined = legacy tasks (property doesn't exist), null = legacy tasks  
-            return 'Legacy Jellyfin tasks';
+        // Check for new Schedules array first (if it exists and has items)
+        if (playlist.Schedules && playlist.Schedules.length > 0) {
+            var scheduleTexts = playlist.Schedules.map(function(schedule) {
+                return formatSingleSchedule(schedule);
+            });
+            return scheduleTexts.join(' • ');
         }
         
-        if (playlist.ScheduleTrigger === 'None') {
+        // If Schedules property exists (even if null or empty array), this is a new-format playlist with no schedule
+        if (playlist.hasOwnProperty('Schedules')) {
             return 'No schedule';
         }
         
+        // Legacy single schedule handling
+        // If ScheduleTrigger property doesn't exist at all = truly legacy (uses Jellyfin tasks)
+        if (!playlist.hasOwnProperty('ScheduleTrigger')) {
+            return 'Legacy Jellyfin task';
+        }
+        
+        // ScheduleTrigger exists but is null or 'None' = no schedule
+        if (!playlist.ScheduleTrigger || playlist.ScheduleTrigger === 'None') {
+            return 'No schedule';
+        }
+        
+        // Convert legacy format to single schedule object for formatting
+        return formatLegacySchedule(playlist);
+    }
+    
+    function formatSingleSchedule(schedule) {
+        if (schedule.Trigger === 'Daily') {
+            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            return 'Daily at ' + formatTimeForUser(h, m);
+        } else if (schedule.Trigger === 'Weekly') {
+            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            // Handle DayOfWeek carefully - 0 is a valid value (Sunday)
+            var dayIndex = (schedule.DayOfWeek !== undefined && schedule.DayOfWeek !== null) ? schedule.DayOfWeek : 0;
+            var dayName = days[dayIndex] || 'Sunday';
+            return 'Weekly on ' + dayName + ' at ' + formatTimeForUser(h, m);
+        } else if (schedule.Trigger === 'Monthly') {
+            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var dayOfMonth = schedule.DayOfMonth || 1;
+            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+                        (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
+                        (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + formatTimeForUser(h, m);
+        } else if (schedule.Trigger === 'Yearly') {
+            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+            var month = schedule.Month || 1;
+            var dayOfMonth = schedule.DayOfMonth || 1;
+            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+                        (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
+                        (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            return 'Yearly on ' + monthNames[month - 1] + ' ' + dayOfMonth + suffix + ' at ' + formatTimeForUser(h, m);
+        } else if (schedule.Trigger === 'Interval') {
+            var interval = schedule.Interval || '24:00:00';
+            if (interval === '00:15:00') return 'Every 15 minutes';
+            if (interval === '00:30:00') return 'Every 30 minutes';
+            if (interval === '01:00:00') return 'Every hour';
+            if (interval === '02:00:00') return 'Every 2 hours';
+            if (interval === '03:00:00') return 'Every 3 hours';
+            if (interval === '04:00:00') return 'Every 4 hours';
+            if (interval === '06:00:00') return 'Every 6 hours';
+            if (interval === '08:00:00') return 'Every 8 hours';
+            if (interval === '12:00:00') return 'Every 12 hours';
+            if (interval === '24:00:00' || interval === '1.00:00:00') return 'Every 24 hours';
+            return 'Every ' + interval;
+        }
+        return schedule.Trigger || 'Unknown';
+    }
+    
+    function formatLegacySchedule(playlist) {
         if (playlist.ScheduleTrigger === 'Daily') {
-            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const parts = raw.split(':'); 
-            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3; // Don't use || operator with 0
-            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
             return 'Daily at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Weekly') {
-            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const parts = raw.split(':'); 
-            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3; // Don't use || operator with 0
-            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            
-            // Handle different DayOfWeek value types (numeric, string name, or undefined)
-            let dayIndex = 0; // Default to Sunday
+            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            var dayIndex = 0;
             if (playlist.ScheduleDayOfWeek !== undefined && playlist.ScheduleDayOfWeek !== null) {
                 if (typeof playlist.ScheduleDayOfWeek === 'number') {
-                    // Numeric value (0-6)
                     dayIndex = Math.max(0, Math.min(6, playlist.ScheduleDayOfWeek));
                 } else if (typeof playlist.ScheduleDayOfWeek === 'string') {
-                    // String value - could be numeric string or day name
-                    const numericValue = parseInt(playlist.ScheduleDayOfWeek, 10);
+                    var numericValue = parseInt(playlist.ScheduleDayOfWeek, 10);
                     if (!isNaN(numericValue) && numericValue >= 0 && numericValue <= 6) {
                         dayIndex = numericValue;
-                    } else {
-                        // Try to match day name (case-insensitive)
-                        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                        const foundIndex = dayNames.findIndex(day => day.toLowerCase() === playlist.ScheduleDayOfWeek.toLowerCase());
-                        if (foundIndex !== -1) {
-                            dayIndex = foundIndex;
-                        }
                     }
                 }
             }
-            
-            const day = days[dayIndex];
-            return 'Weekly on ' + day + ' at ' + formatTimeForUser(h, m);
+            return 'Weekly on ' + days[dayIndex] + ' at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Monthly') {
-            const raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            const parts = raw.split(':'); 
-            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3; // Don't use || operator with 0
-            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            const dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
-            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
+            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
                           (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
                           (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
             return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + formatTimeForUser(h, m);
+        } else if (playlist.ScheduleTrigger === 'Yearly') {
+            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
+            var parts = raw.split(':');
+            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
+            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            var monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+            var month = playlist.ScheduleMonth || 1;
+            var dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
+            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+                        (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
+                        (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            return 'Yearly on ' + monthNames[month - 1] + ' ' + dayOfMonth + suffix + ' at ' + formatTimeForUser(h, m);
         } else if (playlist.ScheduleTrigger === 'Interval') {
-            const interval = playlist.ScheduleInterval || '1.00:00:00';
+            var interval = playlist.ScheduleInterval || '1.00:00:00';
             if (interval === '00:15:00') return 'Every 15 minutes';
             if (interval === '00:30:00') return 'Every 30 minutes';
             if (interval === '01:00:00') return 'Every hour';
@@ -1087,7 +1491,6 @@
             if (interval === '1.00:00:00') return 'Every 24 hours';
             return 'Every ' + interval;
         }
-        
         return playlist.ScheduleTrigger;
     }
     
@@ -2329,28 +2732,9 @@
             const isPublic = getElementChecked(page, '#playlistIsPublic', false);
             const isEnabled = getElementChecked(page, '#playlistIsEnabled', true); // Default to true
             const autoRefreshMode = getElementValue(page, '#autoRefreshMode', 'Never');
-            // Capture schedule settings with helper functions
-            const scheduleTriggerValue = getElementValue(page, '#scheduleTrigger');
-            const scheduleTrigger = scheduleTriggerValue === '' ? 'None' : (scheduleTriggerValue || null);
-            const scheduleTimeValue = getElementValue(page, '#scheduleTime');
-            // Only set scheduleTime for Daily/Weekly/Monthly, not for Interval
-            const scheduleTime = (scheduleTrigger === 'Daily' || scheduleTrigger === 'Weekly' || scheduleTrigger === 'Monthly') && scheduleTimeValue 
-                ? scheduleTimeValue + ':00' : null;
             
-            // Only set scheduleDayOfWeek for Weekly
-            const scheduleDayOfWeekValue = getElementValue(page, '#scheduleDayOfWeek');
-            const scheduleDayOfWeek = scheduleTrigger === 'Weekly' && scheduleDayOfWeekValue 
-                ? parseInt(scheduleDayOfWeekValue) : null;
-                
-            // Only set scheduleDayOfMonth for Monthly
-            const scheduleDayOfMonthValue = getElementValue(page, '#scheduleDayOfMonth');
-            const scheduleDayOfMonth = scheduleTrigger === 'Monthly' && scheduleDayOfMonthValue 
-                ? parseInt(scheduleDayOfMonthValue) : null;
-                
-            // Only set scheduleInterval for Interval
-            const scheduleIntervalValue = getElementValue(page, '#scheduleInterval');
-            const scheduleInterval = scheduleTrigger === 'Interval' && scheduleIntervalValue 
-                ? scheduleIntervalValue : null;
+            // Collect schedules from the new schedule boxes
+            const schedules = collectSchedulesFromForm(page);
             // Handle maxItems with validation using helper function
             const maxItemsInput = getElementValue(page, '#playlistMaxItems');
             let maxItems;
@@ -2390,11 +2774,7 @@
                 MaxItems: maxItems,
                 MaxPlayTimeMinutes: maxPlayTimeMinutes,
                 AutoRefresh: autoRefreshMode,
-                ScheduleTrigger: scheduleTrigger,
-                ScheduleTime: scheduleTime,
-                ScheduleDayOfWeek: scheduleDayOfWeek,
-                ScheduleDayOfMonth: scheduleDayOfMonth,
-                ScheduleInterval: scheduleInterval
+                Schedules: schedules.length > 0 ? schedules : []
             };
 
             // Add ID if in edit mode
@@ -2487,33 +2867,9 @@
             const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
             setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
-            // Set default schedule values from config
-            const defaultScheduleTriggerForForm = page.querySelector('#scheduleTrigger');
-            if (defaultScheduleTriggerForForm) {
-                defaultScheduleTriggerForForm.value = config.DefaultScheduleTrigger === 'None' ? '' : (config.DefaultScheduleTrigger || '');
-                updateScheduleContainers(page, defaultScheduleTriggerForForm.value);
-            }
             
-            const defaultScheduleTimeForForm = page.querySelector('#scheduleTime');
-            if (defaultScheduleTimeForForm && config.DefaultScheduleTime) {
-                const timeString = config.DefaultScheduleTime.substring(0, 5);
-                defaultScheduleTimeForForm.value = timeString;
-            }
-            
-            const defaultScheduleDayForForm = page.querySelector('#scheduleDayOfWeek');
-            if (defaultScheduleDayForForm) {
-                defaultScheduleDayForForm.value = convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
-            }
-            
-            const defaultScheduleDayOfMonthForForm = page.querySelector('#scheduleDayOfMonth');
-            if (defaultScheduleDayOfMonthForForm) {
-                defaultScheduleDayOfMonthForForm.value = config.DefaultScheduleDayOfMonth !== undefined ? config.DefaultScheduleDayOfMonth.toString() : '1';
-            }
-            
-            const defaultScheduleIntervalForForm = page.querySelector('#scheduleInterval');
-            if (defaultScheduleIntervalForForm && config.DefaultScheduleInterval) {
-                defaultScheduleIntervalForForm.value = config.DefaultScheduleInterval;
-            }
+            // Reinitialize schedule system with defaults
+            initializeScheduleSystem(page);
         }).catch(() => {
             setElementValue(page, '#sortBy', 'Name');
             setElementValue(page, '#sortOrder', 'Ascending');
@@ -2522,12 +2878,9 @@
             setElementValue(page, '#playlistMaxItems', 500);
             setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
             setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
-            // Set fallback schedule defaults
-            const fallbackScheduleTrigger = page.querySelector('#scheduleTrigger');
-            if (fallbackScheduleTrigger) {
-                fallbackScheduleTrigger.value = ''; // No schedule by default
-                updateScheduleContainers(page, '');
-            }
+            
+            // Reinitialize schedule system with fallback defaults
+            initializeScheduleSystem(page);
         });
         
         // Create initial logic group with one rule
@@ -4490,39 +4843,54 @@
                 }
                 
                 // Handle schedule settings with backward compatibility
-                const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
-                if (scheduleTriggerElement) {
-                    // Convert "None" back to empty string for form display
-                    const triggerValue = playlist.ScheduleTrigger === 'None' ? '' : (playlist.ScheduleTrigger || '');
-                    scheduleTriggerElement.value = triggerValue;
-                    if (!scheduleTriggerElement._spListenerAdded) {
-                        scheduleTriggerElement.addEventListener('change', function() {
-                            updateScheduleContainers(page, this.value);
-                        });
-                        scheduleTriggerElement._spListenerAdded = true;
+                // Clear existing schedule boxes
+                const schedulesContainer = page.querySelector('#schedules-container');
+                if (schedulesContainer) {
+                    schedulesContainer.innerHTML = '';
+                    
+                    var schedulesToLoad = [];
+                    
+                    // Check for new Schedules array first
+                    if (playlist.Schedules && playlist.Schedules.length > 0) {
+                        schedulesToLoad = playlist.Schedules;
                     }
-                    updateScheduleContainers(page, triggerValue);
-                }
-                
-                const scheduleTimeElement = page.querySelector('#scheduleTime');
-                if (scheduleTimeElement && playlist.ScheduleTime) {
-                    const timeString = playlist.ScheduleTime.substring(0, 5);
-                    scheduleTimeElement.value = timeString;
-                }
-                
-                const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
-                if (scheduleDayElement && playlist.ScheduleDayOfWeek !== undefined) {
-                    scheduleDayElement.value = convertDayOfWeekToValue(playlist.ScheduleDayOfWeek);
-                }
-                
-                const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
-                if (scheduleDayOfMonthElement && playlist.ScheduleDayOfMonth !== undefined) {
-                    scheduleDayOfMonthElement.value = playlist.ScheduleDayOfMonth.toString();
-                }
-                
-                const scheduleIntervalElement = page.querySelector('#scheduleInterval');
-                if (scheduleIntervalElement && playlist.ScheduleInterval) {
-                    scheduleIntervalElement.value = playlist.ScheduleInterval;
+                    // Legacy: convert old single schedule fields to schedule objects
+                    else if (playlist.ScheduleTrigger && playlist.ScheduleTrigger !== 'None') {
+                        var legacySchedule = { Trigger: playlist.ScheduleTrigger };
+                        if (playlist.ScheduleTime) {
+                            legacySchedule.Time = playlist.ScheduleTime;
+                        }
+                        if (playlist.ScheduleDayOfWeek !== undefined) {
+                            legacySchedule.DayOfWeek = playlist.ScheduleDayOfWeek;
+                        }
+                        if (playlist.ScheduleDayOfMonth !== undefined) {
+                            legacySchedule.DayOfMonth = playlist.ScheduleDayOfMonth;
+                        }
+                        if (playlist.ScheduleMonth !== undefined) {
+                            legacySchedule.Month = playlist.ScheduleMonth;
+                        }
+                        if (playlist.ScheduleInterval) {
+                            legacySchedule.Interval = playlist.ScheduleInterval;
+                        }
+                        schedulesToLoad = [legacySchedule];
+                    }
+                    
+                    // Add schedule boxes for each schedule (if any exist)
+                    if (schedulesToLoad.length > 0) {
+                        schedulesToLoad.forEach(function(schedule) {
+                            addScheduleBox(page, schedule);
+                        });
+                    }
+                    
+                    // Re-add the "Add Schedule" button
+                    var addBtn = document.createElement('button');
+                    addBtn.type = 'button';
+                    addBtn.className = 'emby-button raised add-schedule-btn';
+                    addBtn.textContent = schedulesToLoad.length > 0 ? '+ Add Another Schedule' : '+ Add Schedule';
+                    addBtn.addEventListener('click', function() {
+                        addScheduleBox(page, null);
+                    });
+                    schedulesContainer.appendChild(addBtn);
                 }
                 
                 // Handle MaxItems with backward compatibility for existing playlists
@@ -4774,33 +5142,54 @@
                     autoRefreshElement.value = autoRefreshValue;
                 }
                 
-                // Handle schedule settings
-                const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
-                if (scheduleTriggerElement) {
-                    const triggerValue = playlist.ScheduleTrigger === 'None' ? '' : (playlist.ScheduleTrigger || '');
-                    scheduleTriggerElement.value = triggerValue;
-                    updateScheduleContainers(page, triggerValue);
-                }
-                
-                const scheduleTimeElement = page.querySelector('#scheduleTime');
-                if (scheduleTimeElement && playlist.ScheduleTime) {
-                    const timeString = playlist.ScheduleTime.substring(0, 5);
-                    scheduleTimeElement.value = timeString;
-                }
-                
-                const scheduleDayElement = page.querySelector('#scheduleDayOfWeek');
-                if (scheduleDayElement && playlist.ScheduleDayOfWeek !== undefined) {
-                    scheduleDayElement.value = convertDayOfWeekToValue(playlist.ScheduleDayOfWeek);
-                }
-                
-                const scheduleDayOfMonthElement = page.querySelector('#scheduleDayOfMonth');
-                if (scheduleDayOfMonthElement && playlist.ScheduleDayOfMonth !== undefined) {
-                    scheduleDayOfMonthElement.value = playlist.ScheduleDayOfMonth.toString();
-                }
-                
-                const scheduleIntervalElement = page.querySelector('#scheduleInterval');
-                if (scheduleIntervalElement && playlist.ScheduleInterval) {
-                    scheduleIntervalElement.value = playlist.ScheduleInterval;
+                // Handle schedule settings with backward compatibility (same as editPlaylist)
+                const schedulesContainer = page.querySelector('#schedules-container');
+                if (schedulesContainer) {
+                    schedulesContainer.innerHTML = '';
+                    
+                    var schedulesToLoad = [];
+                    
+                    // Check for new Schedules array first
+                    if (playlist.Schedules && playlist.Schedules.length > 0) {
+                        schedulesToLoad = playlist.Schedules;
+                    }
+                    // Legacy: convert old single schedule fields to schedule objects
+                    else if (playlist.ScheduleTrigger && playlist.ScheduleTrigger !== 'None') {
+                        var legacySchedule = { Trigger: playlist.ScheduleTrigger };
+                        if (playlist.ScheduleTime) {
+                            legacySchedule.Time = playlist.ScheduleTime;
+                        }
+                        if (playlist.ScheduleDayOfWeek !== undefined) {
+                            legacySchedule.DayOfWeek = playlist.ScheduleDayOfWeek;
+                        }
+                        if (playlist.ScheduleDayOfMonth !== undefined) {
+                            legacySchedule.DayOfMonth = playlist.ScheduleDayOfMonth;
+                        }
+                        if (playlist.ScheduleMonth !== undefined) {
+                            legacySchedule.Month = playlist.ScheduleMonth;
+                        }
+                        if (playlist.ScheduleInterval) {
+                            legacySchedule.Interval = playlist.ScheduleInterval;
+                        }
+                        schedulesToLoad = [legacySchedule];
+                    }
+                    
+                    // Add schedule boxes for each schedule (if any exist)
+                    if (schedulesToLoad.length > 0) {
+                        schedulesToLoad.forEach(function(schedule) {
+                            addScheduleBox(page, schedule);
+                        });
+                    }
+                    
+                    // Re-add the "Add Schedule" button
+                    var addBtn = document.createElement('button');
+                    addBtn.type = 'button';
+                    addBtn.className = 'emby-button raised add-schedule-btn';
+                    addBtn.textContent = schedulesToLoad.length > 0 ? '+ Add Another Schedule' : '+ Add Schedule';
+                    addBtn.addEventListener('click', function() {
+                        addScheduleBox(page, null);
+                    });
+                    schedulesContainer.appendChild(addBtn);
                 }
                 
                 // Handle MaxItems
