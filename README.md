@@ -281,6 +281,10 @@ Here are some popular playlist types you can create:
 - **Kids' Shows Progress** - Next Unwatched = True AND Tags contain "Kids" (with parent series tags enabled)
 - **Foreign Language Practice** - Audio Languages match "(?i)(ger|fra|spa)" AND Is Played = False
 - **Tagged Series Marathon** - Tags is in "Drama;Thriller" (with parent series tags enabled) AND Runtime < 50 minutes
+- **High-Quality FLAC Music** - Audio Codec = "FLAC" AND Audio Bit Depth >= 24 AND Audio Sample Rate >= 96000
+- **Lossless Audio Collection** - Audio Codec is in "FLAC;ALAC" (all lossless formats)
+- **High Bitrate Music** - Audio Bitrate >= 320 (high-quality MP3 or lossless)
+- **Surround Sound Movies** - Audio Channels >= 6 (5.1 or higher)
 
 ### Enhanced Music Tagging
 
@@ -351,6 +355,11 @@ The web interface provides access to all available fields for creating playlist 
 #### **Content**
 - **Album** - Album name (for music)
 - **Audio Languages** - The audio language of the movie/TV show
+- **Audio Bitrate** - Audio bitrate in kbps (e.g., 128, 256, 320, 1411)
+- **Audio Sample Rate** - Audio sample rate in Hz (e.g., 44100, 48000, 96000, 192000)
+- **Audio Bit Depth** - Audio bit depth in bits (e.g., 16, 24)
+- **Audio Codec** - Audio codec format (e.g., FLAC, MP3, AAC, ALAC)
+- **Audio Channels** - Number of audio channels (e.g., 2 for stereo, 6 for 5.1)
 - **Name** - Title of the media item
 - **Series Name** - Name of the parent series (for episodes only)
 - **Similar To** - Find items similar to a reference item based on metadata (see detailed explanation below)

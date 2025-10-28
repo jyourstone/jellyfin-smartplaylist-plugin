@@ -45,7 +45,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Expensive fields that require database queries or complex extraction
         private static readonly HashSet<string> ExpensiveFields = new(StringComparer.OrdinalIgnoreCase)
         {
-            "AudioLanguages", "People", "Actors", "Directors", "Writers", "Producers", "GuestStars",
+            "AudioLanguages", "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels",
+            "People", "Actors", "Directors", "Writers", "Producers", "GuestStars",
             "Collections", "NextUnwatched", "SeriesName"
         };
 
@@ -535,6 +536,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
                 // Check if any rules use expensive fields to avoid unnecessary extraction
                 var needsAudioLanguages = false;
+                var needsAudioQuality = false;
                 var needsPeople = false;
                 var needsCollections = false;
                 var needsNextUnwatched = false;
@@ -553,6 +555,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
                         
                         needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
+                        needsAudioQuality = fieldReqs.NeedsAudioQuality;
                         needsPeople = fieldReqs.NeedsPeople;
                         needsCollections = fieldReqs.NeedsCollections;
                         needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
@@ -707,7 +710,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsAudioQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -1076,6 +1079,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Check field requirements for performance optimization
                 var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
                 var needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
+                var needsAudioQuality = fieldReqs.NeedsAudioQuality;
                 var needsPeople = fieldReqs.NeedsPeople;
                 var needsCollections = fieldReqs.NeedsCollections;
                 var needsNextUnwatched = fieldReqs.NeedsNextUnwatched;
@@ -1095,6 +1099,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var operand = OperandFactory.GetMediaType(libraryManager, episode, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                         {
                             ExtractAudioLanguages = needsAudioLanguages,
+                            ExtractAudioQuality = needsAudioQuality,
                             ExtractPeople = needsPeople,
                             ExtractCollections = needsCollections,
                             ExtractNextUnwatched = needsNextUnwatched,
@@ -1212,7 +1217,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         }
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsSimilarTo, bool includeUnwatchedSeries,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsAudioQuality, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsSimilarTo, bool includeUnwatchedSeries,
             List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
@@ -1225,7 +1230,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return results;
                 }
                 
-                if (needsAudioLanguages || needsPeople || needsCollections || needsNextUnwatched || needsSeriesName || needsParentSeriesTags || needsSimilarTo)
+                if (needsAudioLanguages || needsAudioQuality || needsPeople || needsCollections || needsNextUnwatched || needsSeriesName || needsParentSeriesTags || needsSimilarTo)
                 {
                     // Create per-refresh cache for performance optimization within this chunk
                     var refreshCache = new OperandFactory.RefreshCache();
@@ -1235,8 +1240,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
 
-                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded}, SeriesName: {SeriesNameNeeded}, ParentSeriesTags: {ParentSeriesTagsNeeded}, SimilarTo: {SimilarToNeeded})",
-                        needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo);
+                    logger?.LogDebug("Separating rules into cheap and expensive categories (AudioLanguages: {AudioNeeded}, AudioQuality: {AudioQualityNeeded}, People: {PeopleNeeded}, Collections: {CollectionsNeeded}, NextUnwatched: {NextUnwatchedNeeded}, SeriesName: {SeriesNameNeeded}, ParentSeriesTags: {ParentSeriesTagsNeeded}, SimilarTo: {SimilarToNeeded})",
+                        needsAudioLanguages, needsAudioQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo);
                     
                     
                     try
@@ -1306,7 +1311,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsAudioQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -1333,6 +1338,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                                 {
                                     ExtractAudioLanguages = needsAudioLanguages,
+                                    ExtractAudioQuality = needsAudioQuality,
                                     ExtractPeople = needsPeople,
                                     ExtractCollections = needsCollections,
                                     ExtractNextUnwatched = needsNextUnwatched,
@@ -1491,6 +1497,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                                 {
                                     ExtractAudioLanguages = needsAudioLanguages,
+                                    ExtractAudioQuality = needsAudioQuality,
                                     ExtractPeople = needsPeople,
                                     ExtractCollections = needsCollections,
                                     ExtractNextUnwatched = needsNextUnwatched,
@@ -1571,7 +1578,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsAudioQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
                 }
                 
                 return results;
@@ -1593,7 +1600,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// Simple item processing fallback method with error handling.
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool includeUnwatchedSeries,
+            User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsAudioQuality, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool includeUnwatchedSeries,
             List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<string> similarityComparisonFields, bool needsSimilarTo,
             List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
@@ -1623,6 +1630,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                         {
                             ExtractAudioLanguages = needsAudioLanguages,
+                            ExtractAudioQuality = needsAudioQuality,
                             ExtractPeople = needsPeople,
                             ExtractCollections = needsCollections,
                             ExtractNextUnwatched = needsNextUnwatched,
@@ -1742,6 +1750,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
     public class FieldRequirements
     {
         public bool NeedsAudioLanguages { get; set; }
+        public bool NeedsAudioQuality { get; set; }
         public bool NeedsPeople { get; set; }
         public bool NeedsCollections { get; set; }
         public bool NeedsNextUnwatched { get; set; }
@@ -1764,6 +1773,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
             requirements.NeedsAudioLanguages = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
                 .Any(expr => expr?.MemberName == "AudioLanguages");
+            
+            // Check if any rules use audio quality fields (expensive operations)
+            var audioQualityFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+            { 
+                "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels" 
+            };
+            requirements.NeedsAudioQuality = expressionSets
+                .SelectMany(set => set?.Expressions ?? [])
+                .Any(expr => expr?.MemberName != null && audioQualityFields.Contains(expr.MemberName));
                 
             requirements.NeedsPeople = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])

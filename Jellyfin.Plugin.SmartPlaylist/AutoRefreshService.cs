@@ -805,6 +805,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     fields.AddRange(["FolderPath", "Genres", "Studios", "Tags", "ProductionYear"]);
                     // People fields (role-specific filters for cast/crew)
                     fields.AddRange(Jellyfin.Plugin.SmartPlaylist.QueryEngine.FieldDefinitions.PeopleRoleFields);
+                    // Music-specific fields
+                    fields.AddRange(["Artists", "AlbumArtists", "Album", "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels"]);
                     break;
                     
                 case LibraryChangeType.Updated:
@@ -817,6 +819,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     ]);
                     // People fields (role-specific filters for cast/crew)
                     fields.AddRange(Jellyfin.Plugin.SmartPlaylist.QueryEngine.FieldDefinitions.PeopleRoleFields);
+                    // Music-specific fields
+                    fields.AddRange(["Artists", "AlbumArtists", "Album", "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels"]);
                     break;
             }
             

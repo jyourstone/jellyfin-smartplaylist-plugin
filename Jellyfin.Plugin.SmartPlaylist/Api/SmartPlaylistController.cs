@@ -622,6 +622,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 {
                     new { Value = "Album", Label = "Album" },
                     new { Value = "AudioLanguages", Label = "Audio Languages" },
+                    new { Value = "AudioBitrate", Label = "Audio Bitrate (kbps)" },
+                    new { Value = "AudioSampleRate", Label = "Audio Sample Rate (Hz)" },
+                    new { Value = "AudioBitDepth", Label = "Audio Bit Depth" },
+                    new { Value = "AudioCodec", Label = "Audio Codec" },
+                    new { Value = "AudioChannels", Label = "Audio Channels" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "SeriesName", Label = "Series Name" },
                     new { Value = "SimilarTo", Label = "Similar To" },
