@@ -40,6 +40,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public List<string> Artists { get; set; } = [];
         public List<string> AlbumArtists { get; set; } = [];
         
+        // Audio quality fields (from media streams)
+        public int AudioBitrate { get; set; } = 0;  // In kbps
+        public int AudioSampleRate { get; set; } = 0;  // In Hz (e.g., 44100, 48000, 96000, 192000)
+        public int AudioBitDepth { get; set; } = 0;  // In bits (e.g., 16, 24)
+        public string AudioCodec { get; set; } = "";  // e.g., FLAC, MP3, AAC, ALAC
+        public int AudioChannels { get; set; } = 0;  // e.g., 2 for stereo, 6 for 5.1
+        
         // Collections field - indicates which collections this item belongs to  
         public List<string> Collections { get; set; } = [];
         

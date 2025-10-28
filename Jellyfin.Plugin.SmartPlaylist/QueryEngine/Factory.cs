@@ -24,6 +24,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     public class MediaTypeExtractionOptions
     {
         public bool ExtractAudioLanguages { get; set; } = false;
+        public bool ExtractAudioQuality { get; set; } = false;
         public bool ExtractPeople { get; set; } = false;
         public bool ExtractCollections { get; set; } = false;
         public bool ExtractNextUnwatched { get; set; } = false;
@@ -645,6 +646,177 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Extracts audio quality information from media streams (bitrate, sample rate, bit depth, codec, channels).
+        /// </summary>
+        private static void ExtractAudioQuality(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.AudioBitrate = 0;
+            operand.AudioSampleRate = 0;
+            operand.AudioBitDepth = 0;
+            operand.AudioCodec = "";
+            operand.AudioChannels = 0;
+            
+            try
+            {
+                // Try multiple approaches to access media stream information
+                List<object> mediaStreams = [];
+                
+                // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                var baseItemType = baseItem.GetType();
+                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
+                
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                        }
+                        else
+                        {
+                            logger?.LogWarning(
+                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name,
+                                result?.GetType().FullName ?? "null"
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Approach 2: Look for MediaSources property (with caching)
+                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
+                    {
+                        foreach (var source in sourceEnum)
+                        {
+                            try
+                            {
+                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                if (streamsProperty != null)
+                                {
+                                    var streams = streamsProperty.GetValue(source);
+                                    if (streams is IEnumerable<object> streamList)
+                                    {
+                                        mediaStreams.AddRange(streamList);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
+                            }
+                        }
+                    }
+                }
+                
+                // Process found streams to find the first audio stream with quality information
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        
+                        if (typeProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            
+                            // Check if it's an audio stream
+                            if (streamType != null && streamType.ToString() == "Audio")
+                            {
+                                // Extract bitrate (in bps, convert to kbps)
+                                var bitrateProperty = stream.GetType().GetProperty("BitRate");
+                                if (bitrateProperty != null)
+                                {
+                                    var bitrate = bitrateProperty.GetValue(stream);
+                                    if (bitrate != null && int.TryParse(bitrate.ToString(), out int bitrateValue) && bitrateValue > 0)
+                                    {
+                                        operand.AudioBitrate = bitrateValue / 1000; // Convert to kbps
+                                    }
+                                }
+                                
+                                // Extract sample rate (in Hz)
+                                var sampleRateProperty = stream.GetType().GetProperty("SampleRate");
+                                if (sampleRateProperty != null)
+                                {
+                                    var sampleRate = sampleRateProperty.GetValue(stream);
+                                    if (sampleRate != null && int.TryParse(sampleRate.ToString(), out int sampleRateValue) && sampleRateValue > 0)
+                                    {
+                                        operand.AudioSampleRate = sampleRateValue;
+                                    }
+                                }
+                                
+                                // Extract bit depth (in bits)
+                                var bitDepthProperty = stream.GetType().GetProperty("BitDepth");
+                                if (bitDepthProperty != null)
+                                {
+                                    var bitDepth = bitDepthProperty.GetValue(stream);
+                                    if (bitDepth != null && int.TryParse(bitDepth.ToString(), out int bitDepthValue) && bitDepthValue > 0)
+                                    {
+                                        operand.AudioBitDepth = bitDepthValue;
+                                    }
+                                }
+                                
+                                // Extract codec
+                                var codecProperty = stream.GetType().GetProperty("Codec");
+                                if (codecProperty != null)
+                                {
+                                    var codec = codecProperty.GetValue(stream) as string;
+                                    if (!string.IsNullOrEmpty(codec))
+                                    {
+                                        operand.AudioCodec = codec.ToUpperInvariant(); // Normalize to uppercase
+                                    }
+                                }
+                                
+                                // Extract channels
+                                var channelsProperty = stream.GetType().GetProperty("Channels");
+                                if (channelsProperty != null)
+                                {
+                                    var channels = channelsProperty.GetValue(stream);
+                                    if (channels != null && int.TryParse(channels.ToString(), out int channelsValue) && channelsValue > 0)
+                                    {
+                                        operand.AudioChannels = channelsValue;
+                                    }
+                                }
+                                
+                                // If we found at least one audio property, we're done
+                                // (use the first audio stream found)
+                                if (operand.AudioBitrate > 0 || operand.AudioSampleRate > 0 || 
+                                    operand.AudioBitDepth > 0 || !string.IsNullOrEmpty(operand.AudioCodec) || 
+                                    operand.AudioChannels > 0)
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                logger?.LogDebug(
+                    "Extracted audio quality for item {Name}: Bitrate={Bitrate}kbps, SampleRate={SampleRate}Hz, BitDepth={BitDepth}bit, Codec={Codec}, Channels={Channels}",
+                    baseItem.Name, operand.AudioBitrate, operand.AudioSampleRate, operand.AudioBitDepth, operand.AudioCodec, operand.AudioChannels
+                );
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract audio quality for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
         /// Helper method to safely extract SeriesId as Guid from episode items.
         /// Handles Guid, Guid?, and string representations.
         /// </summary>
@@ -1079,6 +1251,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             
             // Extract options for easier access
             var extractAudioLanguages = options.ExtractAudioLanguages;
+            var extractAudioQuality = options.ExtractAudioQuality;
             var extractPeople = options.ExtractPeople;  
             var extractNextUnwatched = options.ExtractNextUnwatched;
             var extractSeriesName = options.ExtractSeriesName;
@@ -1263,6 +1436,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 operand.AudioLanguages = [];
+            }
+
+            // Extract audio quality from media streams - only when needed for performance
+            if (extractAudioQuality)
+            {
+                ExtractAudioQuality(operand, baseItem, logger);
+            }
+            else
+            {
+                operand.AudioBitrate = 0;
+                operand.AudioSampleRate = 0;
+                operand.AudioBitDepth = 0;
+                operand.AudioCodec = "";
+                operand.AudioChannels = 0;
             }
 
             // Extract people - only when needed for performance

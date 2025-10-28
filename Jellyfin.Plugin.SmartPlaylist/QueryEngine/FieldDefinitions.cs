@@ -63,7 +63,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "CriticRating", 
             "RuntimeMinutes",
             "PlayCount",
-            "Framerate"
+            "Framerate",
+            "AudioBitrate",
+            "AudioSampleRate",
+            "AudioBitDepth",
+            "AudioChannels"
         ];
 
         /// <summary>
@@ -240,6 +244,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("Name");
             allFields.Add("Album");
             allFields.Add("AudioLanguages");
+            allFields.Add("AudioCodec");
             allFields.Add("OfficialRating");
             allFields.Add("Overview");
             allFields.Add("FileName");
