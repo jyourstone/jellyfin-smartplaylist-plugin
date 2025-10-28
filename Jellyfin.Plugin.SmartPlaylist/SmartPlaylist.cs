@@ -24,6 +24,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public int MaxItems { get; set; }
         public int MaxPlayTimeMinutes { get; set; }
+        public List<string> SimilarityComparisonFields { get; set; }
         
         // UserManager for resolving user-specific queries (Jellyfin 10.11+)
         public IUserManager UserManager { get; set; }
@@ -58,6 +59,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             MediaTypes = dto.MediaTypes != null ? new List<string>(dto.MediaTypes) : null; // Create defensive copy to prevent corruption
             MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
             MaxPlayTimeMinutes = dto.MaxPlayTimeMinutes ?? 0; // Default to 0 (unlimited) for backwards compatibility
+            SimilarityComparisonFields = dto.SimilarityComparisonFields != null ? new List<string>(dto.SimilarityComparisonFields) : null; // Create defensive copy
 
             if (dto.ExpressionSets != null && dto.ExpressionSets.Count > 0)
             {
@@ -539,6 +541,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var includeUnwatchedSeries = true; // Default to true for backwards compatibility
                 var similarToExpressions = new List<Expression>();
                 var additionalUserIds = new List<string>();
+                var similarityComparisonFields = SimilarityComparisonFields ?? ["Genre", "Tags"]; // Default to Genre and Tags for backwards compatibility
                 
                 try
                 {
@@ -648,8 +651,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 OperandFactory.ReferenceMetadata referenceMetadata = null;
                 if (needsSimilarTo)
                 {
-                    logger?.LogDebug("Building reference metadata for SimilarTo queries (once per filter run)");
-                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, items, logger);
+                    logger?.LogDebug("Building reference metadata for SimilarTo queries (once per filter run) using fields: {Fields}", 
+                        string.Join(", ", similarityComparisonFields));
+                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, items, similarityComparisonFields, libraryManager, logger);
                 }
                 
                 // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
@@ -676,7 +680,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -1182,7 +1186,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsSimilarTo, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
+            List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
             
@@ -1321,8 +1325,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 bool passesSimilarity = true;
                                 if (needsSimilarTo && referenceMetadata != null)
                                 {
-                                    const int minSharedItems = 2; // Minimum 2 shared genres/tags
-                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, minSharedItems, logger);
+                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
                                     
                                     // Store similarity score for potential sorting
                                     if (operand.SimilarityScore.HasValue)
@@ -1505,8 +1508,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 bool passesSimilarity = true;
                                 if (needsSimilarTo && referenceMetadata != null)
                                 {
-                                    const int minSharedItems = 2; // Minimum 2 shared genres/tags
-                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, minSharedItems, logger);
+                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, similarityComparisonFields, logger);
                                     
                                     // Store similarity score for potential sorting
                                     if (fullOperand.SimilarityScore.HasValue)

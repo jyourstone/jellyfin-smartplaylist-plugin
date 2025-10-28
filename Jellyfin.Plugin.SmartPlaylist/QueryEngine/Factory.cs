@@ -1805,6 +1805,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             public List<string> Genres { get; set; } = [];
             public List<string> Tags { get; set; } = [];
+            public List<string> Actors { get; set; } = [];
+            public List<string> Writers { get; set; } = [];
+            public List<string> Producers { get; set; } = [];
+            public List<string> Directors { get; set; } = [];
+            public List<string> Studios { get; set; } = [];
+            public List<string> AudioLanguages { get; set; } = [];
+            public List<string> Names { get; set; } = [];
+            public List<int> ProductionYears { get; set; } = [];
+            public List<string> ParentalRatings { get; set; } = [];
         }
 
         /// <summary>
@@ -1812,11 +1821,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="similarToExpressions">List of SimilarTo expressions to process</param>
         /// <param name="allItems">All items to search through for matches</param>
+        /// <param name="comparisonFields">List of fields to extract for comparison (e.g., ["Genre", "Tags"])</param>
+        /// <param name="libraryManager">Library manager for accessing expensive fields like People</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>Aggregated reference metadata</returns>
         public static ReferenceMetadata BuildReferenceMetadata(
             List<Expression> similarToExpressions,
             IEnumerable<BaseItem> allItems,
+            List<string> comparisonFields,
+            ILibraryManager libraryManager,
             ILogger logger)
         {
             var referenceMetadata = new ReferenceMetadata();
@@ -1884,10 +1897,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogDebug("Reference item: '{Name}'", item.Name);
             }
             
-            // Extract and aggregate metadata from reference items (only Genres and Tags for accurate similarity)
+            // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
+            if (comparisonFields == null || comparisonFields.Count == 0)
+            {
+                comparisonFields = ["Genre", "Tags"];
+            }
+            
+            logger?.LogDebug("Extracting comparison fields: {Fields}", string.Join(", ", comparisonFields));
+            
+            // Extract and aggregate metadata from reference items based on selected comparison fields
             foreach (var item in referenceItems)
             {
-                // Extract genres
+                foreach (var field in comparisonFields)
+                {
+                    switch (field)
+                    {
+                        case "Genre":
                 if (item.Genres != null)
                 {
                     foreach (var genre in item.Genres)
@@ -1898,8 +1923,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                     }
                 }
+                            break;
                 
-                // Extract tags
+                        case "Tags":
                 if (item.Tags != null)
                 {
                     foreach (var tag in item.Tags)
@@ -1910,10 +1936,121 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                     }
                 }
+                            break;
+                            
+                        case "Actors":
+                        case "Writers":
+                        case "Producers":
+                        case "Directors":
+                            // Extract people with specific roles
+                            var peopleQuery = new InternalPeopleQuery 
+                            { 
+                                ItemId = item.Id
+                            };
+                            
+                            var getPeopleMethod = libraryManager?.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                            if (getPeopleMethod != null)
+                            {
+                                var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
+                                if (result != null && result is System.Collections.IEnumerable enumerable)
+                                {
+                                    foreach (var person in enumerable)
+                                    {
+                                        var nameProperty = person.GetType().GetProperty("Name");
+                                        var typeProperty = person.GetType().GetProperty("Type");
+                                        
+                                        if (nameProperty != null && typeProperty != null)
+                                        {
+                                            var name = nameProperty.GetValue(person)?.ToString();
+                                            var typeValue = typeProperty.GetValue(person);
+                                            var typeString = typeValue?.ToString();
+                                            
+                                            if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(typeString))
+                                            {
+                                                // Filter by the role we're looking for
+                                                bool matchesRole = field switch
+                                                {
+                                                    "Actors" => typeString == "Actor",
+                                                    "Directors" => typeString == "Director",
+                                                    "Writers" => typeString == "Writer",
+                                                    "Producers" => typeString == "Producer",
+                                                    _ => false
+                                                };
+                                                
+                                                if (matchesRole)
+                                                {
+                                                    var targetList = field switch
+                                                    {
+                                                        "Actors" => referenceMetadata.Actors,
+                                                        "Directors" => referenceMetadata.Directors,
+                                                        "Writers" => referenceMetadata.Writers,
+                                                        "Producers" => referenceMetadata.Producers,
+                                                        _ => null
+                                                    };
+                                                    targetList?.Add(name);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                            
+                        case "Studios":
+                            if (item.Studios != null)
+                            {
+                                foreach (var studio in item.Studios)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(studio))
+                                    {
+                                        referenceMetadata.Studios.Add(studio);
+                                    }
+                                }
+                            }
+                            break;
+                            
+                        case "Audio Languages":
+                            // Extract audio languages from media streams
+                            var mediaStreams = item.GetMediaStreams();
+                            if (mediaStreams != null)
+                            {
+                                var audioStreams = mediaStreams.Where(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Audio);
+                                foreach (var stream in audioStreams)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(stream.Language))
+                                    {
+                                        referenceMetadata.AudioLanguages.Add(stream.Language);
+                                    }
+                                }
+                            }
+                            break;
+                            
+                        case "Name":
+                            if (!string.IsNullOrWhiteSpace(item.Name))
+                            {
+                                referenceMetadata.Names.Add(item.Name);
+                            }
+                            break;
+                            
+                        case "Production Year":
+                            if (item.ProductionYear.HasValue && item.ProductionYear.Value > 0)
+                            {
+                                referenceMetadata.ProductionYears.Add(item.ProductionYear.Value);
+                            }
+                            break;
+                            
+                        case "Parental Rating":
+                            if (!string.IsNullOrWhiteSpace(item.OfficialRating))
+                            {
+                                referenceMetadata.ParentalRatings.Add(item.OfficialRating);
+                            }
+                            break;
+                    }
+                }
             }
             
-            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}",
-                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count);
+            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}, Actors: {ActorCount}, Writers: {WriterCount}, Producers: {ProducerCount}, Directors: {DirectorCount}, Studios: {StudioCount}, AudioLanguages: {AudioCount}, Names: {NameCount}, ProductionYears: {YearCount}, ParentalRatings: {RatingCount}",
+                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count, referenceMetadata.Actors.Count, referenceMetadata.Writers.Count, referenceMetadata.Producers.Count, referenceMetadata.Directors.Count, referenceMetadata.Studios.Count, referenceMetadata.AudioLanguages.Count, referenceMetadata.Names.Count, referenceMetadata.ProductionYears.Count, referenceMetadata.ParentalRatings.Count);
             
             return referenceMetadata;
         }
@@ -1923,13 +2060,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="operand">The operand to calculate similarity for</param>
         /// <param name="referenceMetadata">Reference metadata to compare against</param>
-        /// <param name="minSharedItems">Minimum number of shared metadata items required</param>
+        /// <param name="comparisonFields">List of fields being compared</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>True if item passes similarity threshold, false otherwise</returns>
         public static bool CalculateSimilarityScore(
             Operand operand,
             ReferenceMetadata referenceMetadata,
-            int minSharedItems,
+            List<string> comparisonFields,
             ILogger logger)
         {
             if (operand == null || referenceMetadata == null)
@@ -1937,57 +2074,253 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return false;
             }
             
-            int sharedUniqueCount = 0; // Count of unique genres/tags that match
-            int sharedGenresCount = 0;
-            float score = 0;
+            // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
+            if (comparisonFields == null || comparisonFields.Count == 0)
+            {
+                comparisonFields = ["Genre", "Tags"];
+            }
             
-            // Count shared genres - weighted by frequency in reference metadata
-            // If multiple reference items share a genre, that genre is more important
+            float score = 0;
+            var fieldMatches = new Dictionary<string, int>(); // Track matches per field
+            
+            // Process each comparison field
+            foreach (var field in comparisonFields)
+            {
+                int fieldMatchCount = 0;
+                
+                switch (field)
+                {
+                    case "Genre":
+                        // Frequency-based matching for genres
             if (operand.Genres != null && referenceMetadata.Genres.Count > 0)
             {
                 foreach (var genre in operand.Genres.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    // Count how many times this genre appears in the reference metadata
                     int frequency = referenceMetadata.Genres.Count(g => g.Equals(genre, StringComparison.OrdinalIgnoreCase));
                     if (frequency > 0)
                     {
-                        sharedGenresCount++; // Count unique genres
-                        sharedUniqueCount++; // Count total unique items
-                        score += frequency; // Add frequency to score for weighting
+                                    fieldMatchCount++;
+                                    score += frequency;
                     }
                 }
             }
+                        break;
             
-            // Count shared tags - weighted by frequency in reference metadata
+                    case "Tags":
+                        // Frequency-based matching for tags
             if (operand.Tags != null && referenceMetadata.Tags.Count > 0)
             {
                 foreach (var tag in operand.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    // Count how many times this tag appears in the reference metadata
                     int frequency = referenceMetadata.Tags.Count(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
                     if (frequency > 0)
                     {
-                        sharedUniqueCount++; // Count total unique items
-                        score += frequency; // Add frequency to score for weighting
-                    }
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Actors":
+                        // Frequency-based matching for actors
+                        if (operand.Actors != null && referenceMetadata.Actors.Count > 0)
+                        {
+                            foreach (var actor in operand.Actors.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                int frequency = referenceMetadata.Actors.Count(a => a.Equals(actor, StringComparison.OrdinalIgnoreCase));
+                                if (frequency > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Writers":
+                        // Frequency-based matching for writers
+                        if (operand.Writers != null && referenceMetadata.Writers.Count > 0)
+                        {
+                            foreach (var writer in operand.Writers.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                int frequency = referenceMetadata.Writers.Count(w => w.Equals(writer, StringComparison.OrdinalIgnoreCase));
+                                if (frequency > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Producers":
+                        // Frequency-based matching for producers
+                        if (operand.Producers != null && referenceMetadata.Producers.Count > 0)
+                        {
+                            foreach (var producer in operand.Producers.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                int frequency = referenceMetadata.Producers.Count(p => p.Equals(producer, StringComparison.OrdinalIgnoreCase));
+                                if (frequency > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Directors":
+                        // Frequency-based matching for directors
+                        if (operand.Directors != null && referenceMetadata.Directors.Count > 0)
+                        {
+                            foreach (var director in operand.Directors.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                int frequency = referenceMetadata.Directors.Count(d => d.Equals(director, StringComparison.OrdinalIgnoreCase));
+                                if (frequency > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Studios":
+                        // Frequency-based matching for studios
+                        if (operand.Studios != null && referenceMetadata.Studios.Count > 0)
+                        {
+                            foreach (var studio in operand.Studios.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                int frequency = referenceMetadata.Studios.Count(s => s.Equals(studio, StringComparison.OrdinalIgnoreCase));
+                                if (frequency > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Audio Languages":
+                        // Frequency-based matching for audio languages
+                        if (operand.AudioLanguages != null && referenceMetadata.AudioLanguages.Count > 0)
+                        {
+                            foreach (var lang in operand.AudioLanguages.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                int frequency = referenceMetadata.AudioLanguages.Count(l => l.Equals(lang, StringComparison.OrdinalIgnoreCase));
+                                if (frequency > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Name":
+                        // Partial similarity for names (frequency-based)
+                        if (!string.IsNullOrWhiteSpace(operand.Name) && referenceMetadata.Names.Count > 0)
+                        {
+                            // Check for exact match
+                            int exactFrequency = referenceMetadata.Names.Count(n => n.Equals(operand.Name, StringComparison.OrdinalIgnoreCase));
+                            if (exactFrequency > 0)
+                            {
+                                fieldMatchCount++;
+                                score += exactFrequency * 2; // Double weight for exact match
+                            }
+                            else
+                            {
+                                // Check for partial match (any reference name contains operand name or vice versa)
+                                var partialMatches = referenceMetadata.Names
+                                    .Where(n => n.Contains(operand.Name, StringComparison.OrdinalIgnoreCase) || 
+                                               operand.Name.Contains(n, StringComparison.OrdinalIgnoreCase))
+                                    .Count();
+                                if (partialMatches > 0)
+                                {
+                                    fieldMatchCount++;
+                                    score += partialMatches; // Single weight for partial match
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "Production Year":
+                        // Within ±2 years range
+                        if (operand.ProductionYear > 0 && referenceMetadata.ProductionYears.Count > 0)
+                        {
+                            var matchingYears = referenceMetadata.ProductionYears
+                                .Where(y => Math.Abs(y - operand.ProductionYear) <= 2)
+                                .Count();
+                            if (matchingYears > 0)
+                            {
+                                fieldMatchCount++;
+                                score += matchingYears;
+                            }
+                        }
+                        break;
+                        
+                    case "Parental Rating":
+                        // Exact match for parental rating
+                        if (!string.IsNullOrWhiteSpace(operand.OfficialRating) && referenceMetadata.ParentalRatings.Count > 0)
+                        {
+                            int frequency = referenceMetadata.ParentalRatings.Count(r => r.Equals(operand.OfficialRating, StringComparison.OrdinalIgnoreCase));
+                            if (frequency > 0)
+                            {
+                                fieldMatchCount++;
+                                score += frequency;
+                            }
+                        }
+                        break;
+                }
+                
+                // Record matches for this field
+                if (fieldMatchCount > 0)
+                {
+                    fieldMatches[field] = fieldMatchCount;
                 }
             }
             
             // Store score in operand for potential sorting
             operand.SimilarityScore = score;
             
-            // Check if meets minimum threshold: at least 2 unique genres/tags AND at least 1 genre
-            bool passes = sharedUniqueCount >= minSharedItems && sharedGenresCount >= 1;
+            // Check if meets minimum threshold
+            // - If only 1 field selected: require at least 1 match
+            // - If 2+ fields selected: require at least 2 total matches
+            // This scales appropriately with the number of comparison fields
+            int totalUniqueMatches = fieldMatches.Values.Sum();
+            int minRequiredMatches = comparisonFields.Count == 1 ? 1 : 2;
+            bool passes = totalUniqueMatches >= minRequiredMatches;
+            
+            // Special handling for Genre field - if Genre is selected, require at least 1 genre match
+            // This ensures thematic similarity
+            bool hasGenreRequirement = comparisonFields.Contains("Genre");
+            bool hasGenreMatch = fieldMatches.ContainsKey("Genre") && fieldMatches["Genre"] > 0;
+            
+            if (hasGenreRequirement && !hasGenreMatch)
+            {
+                passes = false; // Fail if Genre is selected but no genre matches
+            }
             
             if (passes)
             {
-                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedGenres} unique genres, {SharedTotal} unique items, score: {Score}",
-                    operand.Name, sharedGenresCount, sharedUniqueCount, score);
+                var matchDetails = string.Join(", ", fieldMatches.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+                logger?.LogDebug("Item '{Name}' passes similarity threshold with score {Score}. Matches: {Matches} (total: {Total})",
+                    operand.Name, score, matchDetails, totalUniqueMatches);
             }
-            else if (sharedUniqueCount >= minSharedItems)
+            else
             {
-                logger?.LogDebug("Item '{Name}' fails similarity: has {SharedTotal} unique items but no shared genres",
-                    operand.Name, sharedUniqueCount);
+                var missingFields = comparisonFields.Except(fieldMatches.Keys).ToList();
+                if (hasGenreRequirement && !hasGenreMatch)
+                {
+                    logger?.LogDebug("Item '{Name}' fails similarity: no genre match (genre required). Total matches: {Total}",
+                        operand.Name, totalUniqueMatches);
+                }
+                else
+                {
+                    logger?.LogDebug("Item '{Name}' fails similarity: only {Total} unique matches (need at least {Required}). Missing fields: {MissingFields}",
+                        operand.Name, totalUniqueMatches, minRequiredMatches, string.Join(", ", missingFields));
+                }
             }
             
             return passes;
