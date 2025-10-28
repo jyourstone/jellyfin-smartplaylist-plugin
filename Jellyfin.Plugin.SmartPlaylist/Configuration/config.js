@@ -183,7 +183,7 @@
     function generateAutoRefreshOptions(defaultValue) {
         var options = [
             { value: 'Never', label: 'Never - Manual/scheduled refresh only' },
-            { value: 'OnLibraryChanges', label: 'On library changes - When items are added/removed' },
+            { value: 'OnLibraryChanges', label: 'On library changes - When items are added' },
             { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' }
         ];
         // Mark the default option as selected
