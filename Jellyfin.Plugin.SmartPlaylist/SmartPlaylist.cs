@@ -585,6 +585,30 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     logger?.LogWarning(ex, "Error analyzing expression sets for expensive fields in playlist '{PlaylistName}'. Assuming no expensive fields needed.", Name);
                 }
+                
+                // CRITICAL: Enable expensive extraction when SimilarTo requires it (people/audio languages)
+                // Without this, similarity matching on people/audio language fields will fail
+                try
+                {
+                    if (needsSimilarTo && similarityComparisonFields is { Count: > 0 })
+                    {
+                        var simFields = new HashSet<string>(similarityComparisonFields, StringComparer.OrdinalIgnoreCase);
+                        if (simFields.Overlaps(new[] { "Actors", "Writers", "Producers", "Directors" }))
+                        {
+                            needsPeople = true;
+                            logger?.LogDebug("Enabled People extraction for SimilarTo comparison fields");
+                        }
+                        if (simFields.Contains("Audio Languages"))
+                        {
+                            needsAudioLanguages = true;
+                            logger?.LogDebug("Enabled Audio Languages extraction for SimilarTo comparison fields");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogDebug(ex, "Error merging SimilarTo comparison fields into expensive-field requirements");
+                }
 
                 // Early validation of additional users to prevent exceptions during item processing
                 if (additionalUserIds.Count > 0 && userDataManager != null)

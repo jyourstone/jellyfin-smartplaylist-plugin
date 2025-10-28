@@ -1909,6 +1909,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 comparisonFields = DefaultSimilarityComparisonFields;
             }
             
+            // Normalize comparison field names (trim, deduplicate, case-insensitive) for consistency
+            comparisonFields = comparisonFields
+                .Select(f => f?.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            
             logger?.LogDebug("Extracting comparison fields: {Fields}", string.Join(", ", comparisonFields));
             
             // Extract and aggregate metadata from reference items based on selected comparison fields
@@ -2140,12 +2147,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 int fieldMatchCount = 0;
                 
-                // Normalize field name for case-insensitive switch
-                var normalizedField = field?.Trim() ?? string.Empty;
+                // Normalize field name to lowercase for truly case-insensitive switch
+                var fieldKey = (field ?? string.Empty).Trim().ToLowerInvariant();
                 
-                switch (normalizedField)
+                switch (fieldKey)
                 {
-                    case "Genre":
+                    case "genre":
                         // Frequency-based matching for genres (O(1) dictionary lookup)
             if (operand.Genres != null && genreFrequencies.Count > 0)
             {
@@ -2160,7 +2167,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
                         break;
             
-                    case "Tags":
+                    case "tags":
                         // Frequency-based matching for tags (O(1) dictionary lookup)
             if (operand.Tags != null && tagFrequencies.Count > 0)
             {
@@ -2175,7 +2182,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Actors":
+                    case "actors":
                         // Frequency-based matching for actors (O(1) dictionary lookup)
                         if (operand.Actors != null && actorFrequencies.Count > 0)
                         {
@@ -2190,7 +2197,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Writers":
+                    case "writers":
                         // Frequency-based matching for writers (O(1) dictionary lookup)
                         if (operand.Writers != null && writerFrequencies.Count > 0)
                         {
@@ -2205,7 +2212,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Producers":
+                    case "producers":
                         // Frequency-based matching for producers (O(1) dictionary lookup)
                         if (operand.Producers != null && producerFrequencies.Count > 0)
                         {
@@ -2220,7 +2227,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Directors":
+                    case "directors":
                         // Frequency-based matching for directors (O(1) dictionary lookup)
                         if (operand.Directors != null && directorFrequencies.Count > 0)
                         {
@@ -2235,7 +2242,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Studios":
+                    case "studios":
                         // Frequency-based matching for studios (O(1) dictionary lookup)
                         if (operand.Studios != null && studioFrequencies.Count > 0)
                         {
@@ -2250,7 +2257,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Audio Languages":
+                    case "audio languages":
                         // Frequency-based matching for audio languages (O(1) dictionary lookup)
                         if (operand.AudioLanguages != null && audioLangFrequencies.Count > 0)
                         {
@@ -2265,7 +2272,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Name":
+                    case "name":
                         // Partial similarity for names (frequency-based)
                         if (!string.IsNullOrWhiteSpace(operand.Name) && referenceMetadata.Names.Count > 0)
                         {
@@ -2292,7 +2299,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Production Year":
+                    case "production year":
                         // Within ±2 years range
                         if (operand.ProductionYear > 0 && referenceMetadata.ProductionYears.Count > 0)
                         {
@@ -2307,7 +2314,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                         break;
                         
-                    case "Parental Rating":
+                    case "parental rating":
                         // Exact match for parental rating
                         if (!string.IsNullOrWhiteSpace(operand.OfficialRating) && referenceMetadata.ParentalRatings.Count > 0)
                         {
@@ -2321,10 +2328,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                 }
                 
-                // Record matches for this field (use normalized field name for consistency)
+                // Record matches for this field (use lowercase key for consistency)
                 if (fieldMatchCount > 0)
                 {
-                    fieldMatches[normalizedField] = fieldMatchCount;
+                    fieldMatches[fieldKey] = fieldMatchCount;
                 }
             }
             
@@ -2340,9 +2347,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             bool passes = totalUniqueMatches >= minRequiredMatches;
             
             // Special handling for Genre field - if Genre is selected, require at least 1 genre match
-            // This ensures thematic similarity (case-insensitive check)
+            // This ensures thematic similarity (use lowercase key)
             bool hasGenreRequirement = comparisonFields.Any(f => f.Equals("Genre", StringComparison.OrdinalIgnoreCase));
-            bool hasGenreMatch = fieldMatches.ContainsKey("Genre") && fieldMatches["Genre"] > 0;
+            bool hasGenreMatch = fieldMatches.ContainsKey("genre") && fieldMatches["genre"] > 0;
             
             if (hasGenreRequirement && !hasGenreMatch)
             {
@@ -2357,7 +2364,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             }
             else
             {
-                var missingFields = comparisonFields.Except(fieldMatches.Keys).ToList();
+                var missingFields = comparisonFields.Except(fieldMatches.Keys, StringComparer.OrdinalIgnoreCase).ToList();
                 if (hasGenreRequirement && !hasGenreMatch)
                 {
                     logger?.LogDebug("Item '{Name}' fails similarity: no genre match (genre required). Total matches: {Total}",
