@@ -1094,8 +1094,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
             var operand = new Operand(baseItem.Name)
             {
-                Genres = [.. baseItem.Genres],
-                Studios = [.. baseItem.Studios],
+                Genres = baseItem.Genres is not null ? [.. baseItem.Genres] : [],
+                Studios = baseItem.Studios is not null ? [.. baseItem.Studios] : [],
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
                 MediaType = baseItem.MediaType.ToString(),
@@ -1798,9 +1798,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
         /// <summary>
         /// Default comparison fields for Similar To matching - Genre and Tags provide the best balance
-        /// of accuracy and performance.
+        /// of accuracy and performance. Exposed as IReadOnlyList to prevent accidental mutation.
         /// </summary>
-        public static readonly List<string> DefaultSimilarityComparisonFields = ["Genre", "Tags"];
+        public static IReadOnlyList<string> DefaultSimilarityComparisonFields { get; } = new[] { "Genre", "Tags" };
 
         /// <summary>
         /// Reference metadata extracted from similar-to queries for comparison.
@@ -1906,7 +1906,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
             if (comparisonFields == null || comparisonFields.Count == 0)
             {
-                comparisonFields = DefaultSimilarityComparisonFields;
+                comparisonFields = DefaultSimilarityComparisonFields.ToList();
             }
             
             // Normalize comparison field names (trim, deduplicate, case-insensitive) for consistency
@@ -1934,7 +1934,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     try
                     {
                         var peopleQuery = new InternalPeopleQuery { ItemId = item.Id };
-                        var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                        
+                        // Reuse cached GetPeople method lookup for better performance
+                        var getPeopleMethod = _getPeopleMethodCache;
+                        if (getPeopleMethod == null)
+                        {
+                            lock (_getPeopleMethodLock)
+                            {
+                                if (_getPeopleMethodCache == null)
+                                {
+                                    _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                                }
+                                getPeopleMethod = _getPeopleMethodCache;
+                            }
+                        }
+                        
                         if (getPeopleMethod != null)
                         {
                             var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
@@ -1952,9 +1966,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 
                 foreach (var field in comparisonFields)
                 {
-                    switch (field)
+                    // Normalize field name to lowercase for truly case-insensitive switch
+                    var fieldKey = (field ?? string.Empty).Trim().ToLowerInvariant();
+                    
+                    switch (fieldKey)
                     {
-                        case "Genre":
+                        case "genre":
                 if (item.Genres != null)
                 {
                     foreach (var genre in item.Genres)
@@ -1967,7 +1984,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
                             break;
                 
-                        case "Tags":
+                        case "tags":
                 if (item.Tags != null)
                 {
                     foreach (var tag in item.Tags)
@@ -1980,28 +1997,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
                             break;
                             
-                        case "Actors":
-                        case "Writers":
-                        case "Producers":
-                        case "Directors":
+                        case "actors":
+                        case "writers":
+                        case "producers":
+                        case "directors":
                             // Use pre-fetched categorized people data (queried once per item for all roles)
                             if (categorizedPeople != null)
                             {
-                                var sourceList = field switch
+                                var sourceList = fieldKey switch
                                 {
-                                    "Actors" => categorizedPeople.Actors,
-                                    "Directors" => categorizedPeople.Directors,
-                                    "Writers" => categorizedPeople.Writers,
-                                    "Producers" => categorizedPeople.Producers,
+                                    "actors" => categorizedPeople.Actors,
+                                    "directors" => categorizedPeople.Directors,
+                                    "writers" => categorizedPeople.Writers,
+                                    "producers" => categorizedPeople.Producers,
                                     _ => null
                                 };
                                 
-                                var targetList = field switch
+                                var targetList = fieldKey switch
                                 {
-                                    "Actors" => referenceMetadata.Actors,
-                                    "Directors" => referenceMetadata.Directors,
-                                    "Writers" => referenceMetadata.Writers,
-                                    "Producers" => referenceMetadata.Producers,
+                                    "actors" => referenceMetadata.Actors,
+                                    "directors" => referenceMetadata.Directors,
+                                    "writers" => referenceMetadata.Writers,
+                                    "producers" => referenceMetadata.Producers,
                                     _ => null
                                 };
                                 
@@ -2012,7 +2029,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             }
                             break;
                             
-                        case "Studios":
+                        case "studios":
                             if (item.Studios != null)
                             {
                                 foreach (var studio in item.Studios)
@@ -2025,7 +2042,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             }
                             break;
                             
-                        case "Audio Languages":
+                        case "audio languages":
                             // Reuse compatibility helper to extract audio languages via reflection-backed paths
                             // This avoids direct GetMediaStreams() call which can fail on some BaseItem types/Jellyfin versions
                             try
@@ -2043,21 +2060,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             }
                             break;
                             
-                        case "Name":
+                        case "name":
                             if (!string.IsNullOrWhiteSpace(item.Name))
                             {
                                 referenceMetadata.Names.Add(item.Name);
                             }
                             break;
                             
-                        case "Production Year":
+                        case "production year":
                             if (item.ProductionYear.HasValue && item.ProductionYear.Value > 0)
                             {
                                 referenceMetadata.ProductionYears.Add(item.ProductionYear.Value);
                             }
                             break;
                             
-                        case "Parental Rating":
+                        case "parental rating":
                             if (!string.IsNullOrWhiteSpace(item.OfficialRating))
                             {
                                 referenceMetadata.ParentalRatings.Add(item.OfficialRating);
@@ -2095,7 +2112,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
             if (comparisonFields == null || comparisonFields.Count == 0)
             {
-                comparisonFields = DefaultSimilarityComparisonFields;
+                comparisonFields = DefaultSimilarityComparisonFields.ToList();
             }
             
             // Normalize comparison field names for case-insensitive matching (defensive coding)
