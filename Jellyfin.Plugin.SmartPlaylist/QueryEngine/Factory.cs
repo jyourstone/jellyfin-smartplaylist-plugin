@@ -62,8 +62,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
             public Dictionary<Guid, string> SeriesNameById { get; } = [];
             public Dictionary<Guid, List<string>> SeriesTagsById { get; } = [];
-            public Dictionary<Guid, List<string>> ItemPeople { get; } = [];
+            public Dictionary<Guid, CategorizedPeople> ItemPeople { get; } = [];
             public bool PeopleCacheInitialized { get; set; } = false;
+        }
+        
+        /// <summary>
+        /// Holds categorized people data for an item.
+        /// </summary>
+        public class CategorizedPeople
+        {
+            public List<string> AllPeople { get; set; } = [];
+            public List<string> Actors { get; set; } = [];
+            public List<string> Directors { get; set; } = [];
+            public List<string> Writers { get; set; } = [];
+            public List<string> Producers { get; set; } = [];
+            public List<string> GuestStars { get; set; } = [];
         }
 
         /// <summary>
@@ -78,6 +91,94 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.PlayCountByUser[userId] = isPlayed ? 1 : 0;
             operand.IsFavoriteByUser[userId] = false;
             operand.LastPlayedDateByUser[userId] = -1; // Never played
+        }
+        
+        /// <summary>
+        /// Helper method to categorize people by their type/role.
+        /// This ensures we only have one place to maintain the categorization logic (DRY principle).
+        /// </summary>
+        /// <param name="peopleEnumerable">The enumerable of person objects from GetPeople</param>
+        /// <param name="logger">Optional logger for debugging</param>
+        /// <returns>Categorized people data</returns>
+        private static CategorizedPeople CategorizePeople(IEnumerable<object> peopleEnumerable, ILogger logger = null)
+        {
+            var categorized = new CategorizedPeople();
+            var allPeopleNames = new HashSet<string>(); // Use HashSet to avoid duplicates
+            
+            foreach (var person in peopleEnumerable)
+            {
+                if (person == null) continue;
+                
+                try
+                {
+                    // Extract Name property
+                    var nameProperty = person.GetType().GetProperty("Name");
+                    if (nameProperty == null) continue;
+                    
+                    var name = nameProperty.GetValue(person) as string;
+                    if (string.IsNullOrEmpty(name)) continue;
+                    
+                    // Add to all people (only if not already present)
+                    allPeopleNames.Add(name);
+                    
+                    // Extract Type property to categorize
+                    var typeProperty = person.GetType().GetProperty("Type");
+                    if (typeProperty != null)
+                    {
+                        var typeValue = typeProperty.GetValue(person);
+                        if (typeValue != null)
+                        {
+                            var typeString = typeValue.ToString();
+                            
+                            // Categorize based on the Type enum value
+                            switch (typeString)
+                            {
+                                case "Actor":
+                                    if (!categorized.Actors.Contains(name))
+                                    {
+                                        categorized.Actors.Add(name);
+                                    }
+                                    break;
+                                case "Director":
+                                    if (!categorized.Directors.Contains(name))
+                                    {
+                                        categorized.Directors.Add(name);
+                                    }
+                                    break;
+                                case "Writer":
+                                    if (!categorized.Writers.Contains(name))
+                                    {
+                                        categorized.Writers.Add(name);
+                                    }
+                                    break;
+                                case "Producer":
+                                    if (!categorized.Producers.Contains(name))
+                                    {
+                                        categorized.Producers.Add(name);
+                                    }
+                                    break;
+                                case "GuestStar":
+                                    if (!categorized.GuestStars.Contains(name))
+                                    {
+                                        categorized.GuestStars.Add(name);
+                                    }
+                                    break;
+                                // Add other types as needed, but they won't be categorized
+                                default:
+                                    logger?.LogDebug("Encountered uncategorized person type: {Type} for {Name}", typeString, name);
+                                    break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogDebug(ex, "Error categorizing person");
+                }
+            }
+            
+            categorized.AllPeople = allPeopleNames.ToList();
+            return categorized;
         }
 
         /// <summary>
@@ -697,12 +798,23 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
         {
+            // Initialize all people fields
             operand.People = [];
+            operand.Actors = [];
+            operand.Directors = [];
+            operand.Writers = [];
+            operand.Producers = [];
+            operand.GuestStars = [];
             
             // Check cache first if available
             if (cache != null && cache.ItemPeople.TryGetValue(baseItem.Id, out var cachedPeople))
             {
-                operand.People = new List<string>(cachedPeople);
+                operand.People = new List<string>(cachedPeople.AllPeople);
+                operand.Actors = new List<string>(cachedPeople.Actors);
+                operand.Directors = new List<string>(cachedPeople.Directors);
+                operand.Writers = new List<string>(cachedPeople.Writers);
+                operand.Producers = new List<string>(cachedPeople.Producers);
+                operand.GuestStars = new List<string>(cachedPeople.GuestStars);
                 return;
             }
             
@@ -737,31 +849,33 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                     
                     if (result is IEnumerable<object> peopleEnum)
                     {
-                        foreach (var person in peopleEnum)
-                        {
-                            if (person != null)
-                            {
-                                var nameProperty = person.GetType().GetProperty("Name");
-                                if (nameProperty != null)
-                                {
-                                    var name = nameProperty.GetValue(person) as string;
-                                    if (!string.IsNullOrEmpty(name) && !operand.People.Contains(name))
-                                    {
-                                        operand.People.Add(name);
-                                    }
-                                }
-                            }
-                        }
+                        // Use the helper method to categorize people (DRY principle)
+                        var categorized = CategorizePeople(peopleEnum, logger);
+                        
+                        operand.People = categorized.AllPeople;
+                        operand.Actors = categorized.Actors;
+                        operand.Directors = categorized.Directors;
+                        operand.Writers = categorized.Writers;
+                        operand.Producers = categorized.Producers;
+                        operand.GuestStars = categorized.GuestStars;
                     }
                     
                     stopwatch.Stop();
-                    logger?.LogDebug("People query for item {ItemId} completed in {Ms}ms ({PeopleCount} people)", 
-                        baseItem.Id, stopwatch.ElapsedMilliseconds, operand.People.Count);
+                    logger?.LogDebug("People query for item {ItemId} completed in {Ms}ms ({PeopleCount} people, {ActorCount} actors, {DirectorCount} directors)", 
+                        baseItem.Id, stopwatch.ElapsedMilliseconds, operand.People.Count, operand.Actors.Count, operand.Directors.Count);
                     
                     // Store in cache for future use
                     if (cache != null)
                     {
-                        cache.ItemPeople[baseItem.Id] = new List<string>(operand.People);
+                        cache.ItemPeople[baseItem.Id] = new CategorizedPeople
+                        {
+                            AllPeople = new List<string>(operand.People),
+                            Actors = new List<string>(operand.Actors),
+                            Directors = new List<string>(operand.Directors),
+                            Writers = new List<string>(operand.Writers),
+                            Producers = new List<string>(operand.Producers),
+                            GuestStars = new List<string>(operand.GuestStars)
+                        };
                     }
                 }
             }
@@ -798,7 +912,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
             
             // Thread-safe dictionary for collecting results
-            var tempCache = new ConcurrentDictionary<Guid, List<string>>();
+            var tempCache = new ConcurrentDictionary<Guid, CategorizedPeople>();
             var processedCount = 0;
             var totalMs = 0L;
             var lockObj = new object();
@@ -835,28 +949,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             };
                             
                             var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
-                            var peopleList = new List<string>();
                             
                             if (result is IEnumerable<object> peopleEnum)
                             {
-                                foreach (var person in peopleEnum)
-                                {
-                                    if (person != null)
-                                    {
-                                        var nameProperty = person.GetType().GetProperty("Name");
-                                        if (nameProperty != null)
-                                        {
-                                            var name = nameProperty.GetValue(person) as string;
-                                            if (!string.IsNullOrEmpty(name) && !peopleList.Contains(name))
-                                            {
-                                                peopleList.Add(name);
-                                            }
-                                        }
-                                    }
-                                }
+                                // Use the helper method to categorize people (DRY principle)
+                                var categorized = CategorizePeople(peopleEnum, logger);
+                                tempCache[item.Id] = categorized;
                             }
-                            
-                            tempCache[item.Id] = peopleList;
                             
                             itemStopwatch.Stop();
                             lock (lockObj)
@@ -1174,6 +1273,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 operand.People = [];
+                operand.Actors = [];
+                operand.Directors = [];
+                operand.Writers = [];
+                operand.Producers = [];
+                operand.GuestStars = [];
                 logger?.LogDebug("People extraction skipped for item {Name} - not needed by rules", baseItem.Name);
             }
 

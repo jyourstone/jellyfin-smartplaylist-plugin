@@ -658,10 +658,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "DateLastRefreshed", Label = "Last Metadata Refresh" },
                     new { Value = "DateLastSaved", Label = "Last Database Save" }
                 },
+                PeopleFields = new[]
+                {
+                    new { Value = "People", Label = "People (All)" },
+                    new { Value = "Actors", Label = "Actors" },
+                    new { Value = "Directors", Label = "Directors" },
+                    new { Value = "Writers", Label = "Writers" },
+                    new { Value = "Producers", Label = "Producers" },
+                    new { Value = "GuestStars", Label = "Guest Stars" }
+                },
                 CollectionFields = new[]
                 {
                     new { Value = "Collections", Label = "Collections" },
-                    new { Value = "People", Label = "People" },
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },
                     new { Value = "Tags", Label = "Tags" },

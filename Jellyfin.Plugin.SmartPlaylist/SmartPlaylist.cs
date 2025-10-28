@@ -629,6 +629,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             .Any(expr => expr != null
                                 && expr.MemberName != "AudioLanguages"
                                 && expr.MemberName != "People"
+                                && expr.MemberName != "Actors"
+                                && expr.MemberName != "Directors"
+                                && expr.MemberName != "Writers"
+                                && expr.MemberName != "Producers"
+                                && expr.MemberName != "GuestStars"
                                 && expr.MemberName != "Collections"
                                 && expr.MemberName != "NextUnwatched"
                                 && expr.MemberName != "SeriesName"
@@ -1243,6 +1248,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     // Check if this is an expensive field
                                     bool isExpensive = expr.MemberName == "AudioLanguages" || 
                                                       expr.MemberName == "People" || 
+                                                      expr.MemberName == "Actors" ||
+                                                      expr.MemberName == "Directors" ||
+                                                      expr.MemberName == "Writers" ||
+                                                      expr.MemberName == "Producers" ||
+                                                      expr.MemberName == "GuestStars" ||
                                                       expr.MemberName == "Collections" || 
                                                       expr.MemberName == "NextUnwatched" || 
                                                       expr.MemberName == "SeriesName" ||
@@ -1730,7 +1740,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
             requirements.NeedsPeople = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
-                .Any(expr => expr?.MemberName == "People");
+                .Any(expr => expr?.MemberName == "People" || expr?.MemberName == "Actors" || 
+                             expr?.MemberName == "Directors" || expr?.MemberName == "Writers" || 
+                             expr?.MemberName == "Producers" || expr?.MemberName == "GuestStars");
                 
             requirements.NeedsCollections = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])

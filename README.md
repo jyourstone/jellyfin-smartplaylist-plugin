@@ -319,7 +319,7 @@ When adding new rule fields to the plugin, ensure they are categorized correctly
 
 #### Field Type Categories
 
-- **`LIST_FIELDS`** - Multi-valued fields (Collections, People, Genres, Studios, Tags, Artists, AlbumArtists)
+- **`LIST_FIELDS`** - Multi-valued fields (Collections, People, Actors, Directors, Writers, Producers, GuestStars, Genres, Studios, Tags, Artists, AlbumArtists)
   - **Operators**: Contains, NotContains, IsIn, IsNotIn, MatchRegex
   - **Use for**: Fields that can have multiple values per item
 
@@ -414,9 +414,18 @@ The web interface provides access to all available fields for creating playlist 
 - **Last Metadata Refresh** - When Jellyfin last updated metadata from online sources
 - **Last Database Save** - When the item's data was last saved to Jellyfin's database
 
+#### **People** *(Movies & TV Shows)*
+- **People (All)** - All cast and crew (actors, directors, producers, writers, guest stars, etc.)
+- **Actors** - Actors in the movie or TV show
+- **Directors** - Directors of the movie or TV show
+- **Writers** - Writers/screenwriters of the movie or TV show
+- **Producers** - Producers of the movie or TV show
+- **Guest Stars** - Guest stars in TV show episodes
+
+> **People Field Details**: The **People** fields are specifically designed for movies and TV shows. They allow you to filter content by specific roles, making it easy to create playlists like "Movies directed by Christopher Nolan" or "Episodes featuring specific guest stars". The **People (All)** field searches across all roles, while the specific fields (Actors, Directors, etc.) let you target particular crew members.
+
 #### **Collections**
 - **Collections** - All Jellyfin collections that contain the media item
-- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
@@ -450,7 +459,7 @@ The web interface provides access to all available fields for creating playlist 
 > 
 > **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
 
-> **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** field is designed for movies/TV and contains cast/crew information rather than music performers.
+> **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** fields (found in the People section) are designed for movies/TV and contain cast/crew information (actors, directors, etc.) rather than music performers.
 
 ### Available Operators
 

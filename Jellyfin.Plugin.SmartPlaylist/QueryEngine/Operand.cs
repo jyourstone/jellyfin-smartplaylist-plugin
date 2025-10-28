@@ -28,6 +28,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public string OfficialRating { get; set; } = "";
         public List<string> AudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
+        public List<string> Actors { get; set; } = [];
+        public List<string> Directors { get; set; } = [];
+        public List<string> Writers { get; set; } = [];
+        public List<string> Producers { get; set; } = [];
+        public List<string> GuestStars { get; set; } = [];
         public string Resolution { get; set; } = "";
         public float? Framerate { get; set; } = null;
         

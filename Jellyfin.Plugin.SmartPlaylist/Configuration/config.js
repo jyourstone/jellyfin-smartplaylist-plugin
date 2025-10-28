@@ -15,7 +15,7 @@
     
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
-        LIST_FIELDS: ['Collections', 'People', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
+        LIST_FIELDS: ['Collections', 'People', 'Actors', 'Directors', 'Writers', 'Producers', 'GuestStars', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount', 'Framerate'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
@@ -1048,6 +1048,7 @@
             { key: 'RatingsPlaybackFields', label: 'Ratings & Playback' },
             { key: 'LibraryFields', label: 'Library' },
             { key: 'FileFields', label: 'File Info' },
+            { key: 'PeopleFields', label: 'People' },
             { key: 'CollectionFields', label: 'Collections' }
         ];
         

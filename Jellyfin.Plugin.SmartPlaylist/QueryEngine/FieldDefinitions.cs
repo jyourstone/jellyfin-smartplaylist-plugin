@@ -27,6 +27,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         [
             "Collections",
             "People",
+            "Actors",
+            "Directors",
+            "Writers",
+            "Producers",
+            "GuestStars",
             "Genres", 
             "Studios",
             "Tags",
