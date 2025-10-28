@@ -2813,8 +2813,7 @@
                 playlistDto.SimilarityComparisonFields = similarityComparisonFields;
             }
 
-            // Add ID if in edit mode
-            const editState = getPageEditState(page);
+            // Add ID if in edit mode (reuse editState from top of function)
             if (editState.editMode && editState.editingPlaylistId) {
                 playlistDto.Id = editState.editingPlaylistId;
             }
@@ -5316,6 +5315,10 @@
                                     const firstRuleRow = logicGroup.querySelector('.rule-row');
                                     if (firstRuleRow) {
                                         populateRuleRow(firstRuleRow, expression);
+                                        // Restore similarity field selections when cloning
+                                        if (expression.MemberName === 'SimilarTo') {
+                                            updateSimilarityOptionsVisibility(firstRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
+                                        }
                                     }
                                 } else {
                                     // Add additional rule rows
@@ -5323,6 +5326,10 @@
                                     const newRuleRow = logicGroup.querySelector('.rule-row:last-child');
                                     if (newRuleRow) {
                                         populateRuleRow(newRuleRow, expression);
+                                        // Restore similarity field selections when cloning
+                                        if (expression.MemberName === 'SimilarTo') {
+                                            updateSimilarityOptionsVisibility(newRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
+                                        }
                                     }
                                 }
                             });

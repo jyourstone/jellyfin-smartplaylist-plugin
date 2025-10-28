@@ -1797,6 +1797,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Default comparison fields for Similar To matching - Genre and Tags provide the best balance
+        /// of accuracy and performance.
+        /// </summary>
+        public static readonly List<string> DefaultSimilarityComparisonFields = ["Genre", "Tags"];
+
+        /// <summary>
         /// Reference metadata extracted from similar-to queries for comparison.
         /// Uses Lists instead of HashSets to preserve duplicates - duplicates represent stronger signals
         /// when multiple reference items share the same metadata.
@@ -1900,7 +1906,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
             if (comparisonFields == null || comparisonFields.Count == 0)
             {
-                comparisonFields = ["Genre", "Tags"];
+                comparisonFields = DefaultSimilarityComparisonFields;
             }
             
             logger?.LogDebug("Extracting comparison fields: {Fields}", string.Join(", ", comparisonFields));
@@ -1908,6 +1914,35 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Extract and aggregate metadata from reference items based on selected comparison fields
             foreach (var item in referenceItems)
             {
+                // Pre-fetch people data once per item if any people fields are needed (performance optimization)
+                CategorizedPeople categorizedPeople = null;
+                bool needsPeople = comparisonFields.Any(f =>
+                    f.Equals("Actors", StringComparison.OrdinalIgnoreCase) ||
+                    f.Equals("Writers", StringComparison.OrdinalIgnoreCase) ||
+                    f.Equals("Producers", StringComparison.OrdinalIgnoreCase) ||
+                    f.Equals("Directors", StringComparison.OrdinalIgnoreCase));
+                
+                if (needsPeople && libraryManager != null)
+                {
+                    try
+                    {
+                        var peopleQuery = new InternalPeopleQuery { ItemId = item.Id };
+                        var getPeopleMethod = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                        if (getPeopleMethod != null)
+                        {
+                            var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
+                            if (result is IEnumerable<object> peopleEnum)
+                            {
+                                categorizedPeople = CategorizePeople(peopleEnum, logger);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to extract people for reference item {ItemName}", item.Name);
+                    }
+                }
+                
                 foreach (var field in comparisonFields)
                 {
                     switch (field)
@@ -1942,56 +1977,30 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         case "Writers":
                         case "Producers":
                         case "Directors":
-                            // Extract people with specific roles
-                            var peopleQuery = new InternalPeopleQuery 
-                            { 
-                                ItemId = item.Id
-                            };
-                            
-                            var getPeopleMethod = libraryManager?.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
-                            if (getPeopleMethod != null)
+                            // Use pre-fetched categorized people data (queried once per item for all roles)
+                            if (categorizedPeople != null)
                             {
-                                var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
-                                if (result != null && result is System.Collections.IEnumerable enumerable)
+                                var sourceList = field switch
                                 {
-                                    foreach (var person in enumerable)
-                                    {
-                                        var nameProperty = person.GetType().GetProperty("Name");
-                                        var typeProperty = person.GetType().GetProperty("Type");
-                                        
-                                        if (nameProperty != null && typeProperty != null)
-                                        {
-                                            var name = nameProperty.GetValue(person)?.ToString();
-                                            var typeValue = typeProperty.GetValue(person);
-                                            var typeString = typeValue?.ToString();
-                                            
-                                            if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(typeString))
-                                            {
-                                                // Filter by the role we're looking for
-                                                bool matchesRole = field switch
-                                                {
-                                                    "Actors" => typeString == "Actor",
-                                                    "Directors" => typeString == "Director",
-                                                    "Writers" => typeString == "Writer",
-                                                    "Producers" => typeString == "Producer",
-                                                    _ => false
-                                                };
-                                                
-                                                if (matchesRole)
-                                                {
-                                                    var targetList = field switch
-                                                    {
-                                                        "Actors" => referenceMetadata.Actors,
-                                                        "Directors" => referenceMetadata.Directors,
-                                                        "Writers" => referenceMetadata.Writers,
-                                                        "Producers" => referenceMetadata.Producers,
-                                                        _ => null
-                                                    };
-                                                    targetList?.Add(name);
-                                                }
-                                            }
-                                        }
-                                    }
+                                    "Actors" => categorizedPeople.Actors,
+                                    "Directors" => categorizedPeople.Directors,
+                                    "Writers" => categorizedPeople.Writers,
+                                    "Producers" => categorizedPeople.Producers,
+                                    _ => null
+                                };
+                                
+                                var targetList = field switch
+                                {
+                                    "Actors" => referenceMetadata.Actors,
+                                    "Directors" => referenceMetadata.Directors,
+                                    "Writers" => referenceMetadata.Writers,
+                                    "Producers" => referenceMetadata.Producers,
+                                    _ => null
+                                };
+                                
+                                if (sourceList != null && targetList != null)
+                                {
+                                    targetList.AddRange(sourceList);
                                 }
                             }
                             break;
@@ -2010,18 +2019,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             break;
                             
                         case "Audio Languages":
-                            // Extract audio languages from media streams
-                            var mediaStreams = item.GetMediaStreams();
-                            if (mediaStreams != null)
+                            // Reuse compatibility helper to extract audio languages via reflection-backed paths
+                            // This avoids direct GetMediaStreams() call which can fail on some BaseItem types/Jellyfin versions
+                            try
                             {
-                                var audioStreams = mediaStreams.Where(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Audio);
-                                foreach (var stream in audioStreams)
+                                var tempOperand = new Operand(item.Name);
+                                ExtractAudioLanguages(tempOperand, item, logger);
+                                if (tempOperand.AudioLanguages != null && tempOperand.AudioLanguages.Count > 0)
                                 {
-                                    if (!string.IsNullOrWhiteSpace(stream.Language))
-                                    {
-                                        referenceMetadata.AudioLanguages.Add(stream.Language);
-                                    }
+                                    referenceMetadata.AudioLanguages.AddRange(tempOperand.AudioLanguages);
                                 }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to extract audio languages for reference item {ItemName}", item.Name);
                             }
                             break;
                             
@@ -2077,7 +2088,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
             if (comparisonFields == null || comparisonFields.Count == 0)
             {
-                comparisonFields = ["Genre", "Tags"];
+                comparisonFields = DefaultSimilarityComparisonFields;
             }
             
             float score = 0;
