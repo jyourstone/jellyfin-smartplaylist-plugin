@@ -1021,7 +1021,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Check for either new Schedules array or legacy ScheduleTrigger
                 var scheduledPlaylists = allPlaylists.Where(p => 
                     p.Enabled && (
-                        (p.Schedules != null && p.Schedules.Any(s => s != null)) ||  // Null-safe check
+                        (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null)) ||  // Filter to valid triggers
                         (p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None)
                     )).ToList();
                 
@@ -1034,9 +1034,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Found {Count} playlists with schedules: {PlaylistNames}", 
                     scheduledPlaylists.Count, 
                     string.Join(", ", scheduledPlaylists.Select(p => {
-                        if (p.Schedules != null && p.Schedules.Any(s => s != null))  // Null-safe check
+                        if (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null))  // Filter to valid triggers
                         {
-                            var triggers = string.Join(", ", p.Schedules.Where(s => s != null).Select(s => s.Trigger.ToString()));
+                            var triggers = string.Join(", ", p.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
                             return $"'{p.Name}' ({triggers})";
                         }
                         return $"'{p.Name}' ({p.ScheduleTrigger})";
@@ -1133,10 +1133,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool IsPlaylistDueForRefresh(SmartPlaylistDto playlist, DateTime now)
         {
             // Check new Schedules array first (supports multiple schedules)
-            if (playlist.Schedules != null && playlist.Schedules.Any())
+            // Pre-filter to valid schedules only
+            var validSchedules = playlist.Schedules?.Where(s => s?.Trigger != null).ToList();
+            if (validSchedules is { Count: > 0 })
             {
                 // Check if ANY schedule is due (OR logic across schedules)
-                foreach (var schedule in playlist.Schedules)
+                foreach (var schedule in validSchedules)
                 {
                     if (IsScheduleDue(schedule, now, playlist.Name))
                     {
@@ -1450,6 +1452,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool IsIntervalDue(Schedule schedule, DateTime now, string playlistName)
         {
             var interval = schedule.Interval ?? TimeSpan.FromHours(24);
+            
+            // Guard against invalid intervals
+            if (interval <= TimeSpan.Zero)
+            {
+                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
+                    schedule.Interval, playlistName);
+                interval = TimeSpan.FromHours(24);
+            }
+            
             bool isDue = false;
             
             if (interval == TimeSpan.FromMinutes(15))
