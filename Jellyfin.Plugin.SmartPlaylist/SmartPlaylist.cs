@@ -40,6 +40,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private static readonly object _cacheCleanupLock = new();
         private static DateTime _lastCleanupTime = DateTime.MinValue;
         private static readonly TimeSpan MIN_CLEANUP_INTERVAL = TimeSpan.FromMinutes(5); // Minimum time between cleanups
+        
+        // Expensive fields that require database queries or complex extraction
+        private static readonly HashSet<string> ExpensiveFields = new(StringComparer.Ordinal)
+        {
+            "AudioLanguages", "People", "Actors", "Directors", "Writers", "Producers", "GuestStars",
+            "Collections", "NextUnwatched", "SeriesName"
+        };
 
         public SmartPlaylist(SmartPlaylistDto dto)
         {
@@ -627,11 +634,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         hasNonExpensiveRules = ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
                             .Any(expr => expr != null
-                                && expr.MemberName != "AudioLanguages"
-                                && expr.MemberName != "People"
-                                && expr.MemberName != "Collections"
-                                && expr.MemberName != "NextUnwatched"
-                                && expr.MemberName != "SeriesName"
+                                && !ExpensiveFields.Contains(expr.MemberName)
                                 && !(expr.MemberName == "Tags" && expr.IncludeParentSeriesTags == true));
                     }
                 }
@@ -1241,11 +1244,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     var compiledRule = compiledRules[setIndex][compiledIndex++];
                                     
                                     // Check if this is an expensive field
-                                    bool isExpensive = expr.MemberName == "AudioLanguages" || 
-                                                      expr.MemberName == "People" || 
-                                                      expr.MemberName == "Collections" || 
-                                                      expr.MemberName == "NextUnwatched" || 
-                                                      expr.MemberName == "SeriesName" ||
+                                    bool isExpensive = ExpensiveFields.Contains(expr.MemberName) ||
                                                       (expr.MemberName == "Tags" && expr.IncludeParentSeriesTags == true);
                                     
                                     if (isExpensive)
@@ -1730,7 +1729,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
             requirements.NeedsPeople = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
-                .Any(expr => expr?.MemberName == "People");
+                .Any(expr => expr?.MemberName != null && FieldDefinitions.IsPeopleField(expr.MemberName));
                 
             requirements.NeedsCollections = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])

@@ -37,9 +37,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
 
         /// <summary>
         /// Operators for multi-valued fields (collections, lists, etc.).
-        /// Equal/NotEqual check if the entire list matches exactly.
+        /// Note: Equal/NotEqual are not supported for multi-valued fields as they would check if the entire list matches.
+        /// Use Contains for partial matching or IsIn for exact matching of individual items.
         /// </summary>
-        public static readonly string[] MultiValuedFieldOperators = ["Equal", "NotEqual", "Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"];
+        public static readonly string[] MultiValuedFieldOperators = ["Contains", "NotContains", "IsIn", "IsNotIn", "MatchRegex"];
 
         /// <summary>
         /// Operators for string fields (text-based fields like Name, Album, etc).
@@ -91,7 +92,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
             return fieldName switch
             {
                 // Multi-valued fields with full operator support
-                "People" or "Genres" or "Studios" or "Tags" or "Artists" or "AlbumArtists" or "AudioLanguages" 
+                "People" or "Actors" or "Directors" or "Writers" or "Producers" or "GuestStars" or 
+                "Genres" or "Studios" or "Tags" or "Artists" or "AlbumArtists" or "AudioLanguages" 
                     => MultiValuedFieldOperators,
                 
                 // Multi-valued fields with limited operators (Collections)
@@ -143,6 +145,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 // Note: IsNotIn and NotContains excluded from Collections to avoid confusion with series expansion logic
                 ["Collections"] = LimitedMultiValuedFieldOperators,
                 ["People"] = MultiValuedFieldOperators,
+                ["Actors"] = MultiValuedFieldOperators,
+                ["Directors"] = MultiValuedFieldOperators,
+                ["Writers"] = MultiValuedFieldOperators,
+                ["Producers"] = MultiValuedFieldOperators,
+                ["GuestStars"] = MultiValuedFieldOperators,
                 ["Genres"] = MultiValuedFieldOperators,
                 ["Studios"] = MultiValuedFieldOperators,
                 ["Tags"] = MultiValuedFieldOperators,

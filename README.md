@@ -147,7 +147,7 @@ Configure playlists to refresh automatically when your library changes:
 Configure individual playlists with their own refresh schedules:
 
 - **Per-playlist scheduling**: Each playlist can have its own schedule.
-- **Schedule types**: Daily (at a specific time), Weekly (specific day and time), Monthly (specific day and time), or Interval (every X minutes/hours).
+- **Schedule types**: Daily (at a specific time), Weekly (specific day and time), Monthly (specific day and time), Yearly (specific month, day and time), or Interval (every X minutes/hours).
 - **Flexible intervals**: 15 min, 30 min, 1 h, 2 h, 3 h, 4 h, 6 h, 8 h, 12 h, or 24 h.
 - **Backward compatible**: Existing playlists continue using legacy Jellyfin scheduled tasks.
 - **User visibility**: Clear indication of which scheduling system each playlist uses.
@@ -156,6 +156,7 @@ Configure individual playlists with their own refresh schedules:
 - **Daily**: Refresh at a specific time each day (e.g., 3:00 AM).
 - **Weekly**: Refresh on a specific day and time each week (e.g., Sunday at 8:00 PM).
 - **Monthly**: Refresh on a specific day and time each month (e.g., 1st at 2:00 AM).
+- **Yearly**: Refresh on a specific month, day and time each year (e.g., January 1st at midnight).
 - **Interval**: Refresh at regular intervals (e.g., every 2 hours, every 30 minutes).
 - **No schedule**: Disable all scheduled refreshes (auto-refresh and manual only).
 
@@ -319,7 +320,7 @@ When adding new rule fields to the plugin, ensure they are categorized correctly
 
 #### Field Type Categories
 
-- **`LIST_FIELDS`** - Multi-valued fields (Collections, People, Genres, Studios, Tags, Artists, AlbumArtists)
+- **`LIST_FIELDS`** - Multi-valued fields (Collections, People, Actors, Directors, Writers, Producers, GuestStars, Genres, Studios, Tags, Artists, AlbumArtists)
   - **Operators**: Contains, NotContains, IsIn, IsNotIn, MatchRegex
   - **Use for**: Fields that can have multiple values per item
 
@@ -414,9 +415,20 @@ The web interface provides access to all available fields for creating playlist 
 - **Last Metadata Refresh** - When Jellyfin last updated metadata from online sources
 - **Last Database Save** - When the item's data was last saved to Jellyfin's database
 
+#### **People** *(Movies & TV Shows)*
+- **People (All)** - All cast and crew (actors, directors, producers, writers, guest stars, etc.)
+- **Actors** - Actors in the movie or TV show
+- **Directors** - Directors of the movie or TV show
+- **Writers** - Writers/screenwriters of the movie or TV show
+- **Producers** - Producers of the movie or TV show
+- **Guest Stars** - Guest stars in TV show episodes
+
+> **People Field Details**: The **People** fields are specifically designed for movies and TV shows. They allow you to filter content by specific roles, making it easy to create playlists like "Movies directed by Christopher Nolan" or "Episodes featuring specific guest stars". The **People (All)** field searches across all roles, while the specific fields (Actors, Directors, etc.) let you target particular cast and crew members.
+> 
+> **Performance Note**: People fields require database queries to retrieve cast and crew information, making them slower to evaluate than basic fields like Genre or Studio. The plugin automatically optimizes filtering by checking cheaper rules first when possible.
+
 #### **Collections**
 - **Collections** - All Jellyfin collections that contain the media item
-- **People** - Cast and crew (actors, directors, producers, etc.) *for movies and TV shows*
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
@@ -450,7 +462,7 @@ The web interface provides access to all available fields for creating playlist 
 > 
 > **Note**: Relative date calculations use UTC time to ensure consistent behavior across different server timezones. This means "items from the last 3 days" is calculated from the current UTC time, not your local timezone.
 
-> **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** field is designed for movies/TV and contains cast/crew information rather than music performers.
+> **Music Fields**: For music libraries, use **Artists** to find specific artists and **Album Artists** to find music by the primary artist of an album. The **People** fields (found in the People section) are designed for movies/TV and contain cast/crew information (actors, directors, etc.) rather than music performers.
 
 ### Available Operators
 

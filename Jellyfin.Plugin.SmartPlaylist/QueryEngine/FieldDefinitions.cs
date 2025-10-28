@@ -27,11 +27,30 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         [
             "Collections",
             "People",
+            "Actors",
+            "Directors",
+            "Writers",
+            "Producers",
+            "GuestStars",
             "Genres", 
             "Studios",
             "Tags",
             "Artists",
             "AlbumArtists"
+        ];
+
+        /// <summary>
+        /// People role fields for movies and TV shows (subset of ListFields).
+        /// These fields allow filtering by specific cast and crew roles.
+        /// </summary>
+        public static readonly HashSet<string> PeopleRoleFields =
+        [
+            "People",
+            "Actors",
+            "Directors",
+            "Writers",
+            "Producers",
+            "GuestStars"
         ];
 
         /// <summary>
@@ -190,6 +209,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public static bool IsSimilarityField(string fieldName)
         {
             return SimilarityFields.Contains(fieldName);
+        }
+
+        /// <summary>
+        /// Checks if a field is a people role field (cast/crew for movies and TV shows).
+        /// </summary>
+        /// <param name="fieldName">The field name to check</param>
+        /// <returns>True if it's a people role field, false otherwise</returns>
+        public static bool IsPeopleField(string fieldName)
+        {
+            return PeopleRoleFields.Contains(fieldName);
         }
 
         /// <summary>
