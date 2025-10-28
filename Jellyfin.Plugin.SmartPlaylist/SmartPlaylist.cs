@@ -43,7 +43,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private static readonly TimeSpan MIN_CLEANUP_INTERVAL = TimeSpan.FromMinutes(5); // Minimum time between cleanups
         
         // Expensive fields that require database queries or complex extraction
-        private static readonly HashSet<string> ExpensiveFields = new(StringComparer.Ordinal)
+        private static readonly HashSet<string> ExpensiveFields = new(StringComparer.OrdinalIgnoreCase)
         {
             "AudioLanguages", "People", "Actors", "Directors", "Writers", "Producers", "GuestStars",
             "Collections", "NextUnwatched", "SeriesName"
@@ -513,7 +513,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return [];
                 }
                 
-                var itemCount = items.Count();
+                // Materialize items once to avoid double enumeration (Count + ToArray later)
+                var itemsArray = items as BaseItem[] ?? items.ToArray();
+                var itemCount = itemsArray.Length;
+                
                 logger?.LogDebug("FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                     itemCount, ExpressionSets?.Count ?? 0, MediaTypes != null ? string.Join(",", MediaTypes) : "None");
                 
@@ -677,12 +680,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     logger?.LogDebug("Building reference metadata for SimilarTo queries (once per filter run) using fields: {Fields}", 
                         string.Join(", ", similarityComparisonFields));
-                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, items, similarityComparisonFields, libraryManager, logger);
+                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, itemsArray, similarityComparisonFields, libraryManager, logger);
                 }
                 
                 // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
                 const int chunkSize = 1000; // Process 1000 items at a time
-                var itemsArray = items.ToArray();
+                // itemsArray already materialized above to avoid double enumeration
                 var totalItems = itemsArray.Length;
                 
                 if (totalItems > chunkSize)

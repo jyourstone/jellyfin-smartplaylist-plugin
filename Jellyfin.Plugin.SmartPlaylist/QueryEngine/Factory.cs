@@ -1820,6 +1820,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public List<string> Names { get; set; } = [];
             public List<int> ProductionYears { get; set; } = [];
             public List<string> ParentalRatings { get; set; } = [];
+            
+            // Cached frequency maps (built once; reused for every candidate item)
+            // This avoids rebuilding dictionaries thousands of times for large playlists
+            public IReadOnlyDictionary<string, int> GenreFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> TagFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> ActorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> WriterFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> ProducerFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> DirectorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> StudioFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> AudioLangFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -2084,6 +2095,40 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
             }
             
+            // PERFORMANCE: Build frequency maps once here for O(1) lookups during scoring
+            // This avoids rebuilding dictionaries for every candidate item (huge win on large libraries)
+            referenceMetadata.GenreFreq = referenceMetadata.Genres
+                .GroupBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.TagFreq = referenceMetadata.Tags
+                .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(t => t.Key, t => t.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.ActorFreq = referenceMetadata.Actors
+                .GroupBy(a => a, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(a => a.Key, a => a.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.WriterFreq = referenceMetadata.Writers
+                .GroupBy(w => w, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(w => w.Key, w => w.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.ProducerFreq = referenceMetadata.Producers
+                .GroupBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(p => p.Key, p => p.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.DirectorFreq = referenceMetadata.Directors
+                .GroupBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(d => d.Key, d => d.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.StudioFreq = referenceMetadata.Studios
+                .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(s => s.Key, s => s.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.AudioLangFreq = referenceMetadata.AudioLanguages
+                .GroupBy(l => l, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(l => l.Key, l => l.Count(), StringComparer.OrdinalIgnoreCase);
+            
             logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}, Actors: {ActorCount}, Writers: {WriterCount}, Producers: {ProducerCount}, Directors: {DirectorCount}, Studios: {StudioCount}, AudioLanguages: {AudioCount}, Names: {NameCount}, ProductionYears: {YearCount}, ParentalRatings: {RatingCount}",
                 referenceMetadata.Genres.Count, referenceMetadata.Tags.Count, referenceMetadata.Actors.Count, referenceMetadata.Writers.Count, referenceMetadata.Producers.Count, referenceMetadata.Directors.Count, referenceMetadata.Studios.Count, referenceMetadata.AudioLanguages.Count, referenceMetadata.Names.Count, referenceMetadata.ProductionYears.Count, referenceMetadata.ParentalRatings.Count);
             
@@ -2122,39 +2167,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
             
-            // PERFORMANCE OPTIMIZATION: Pre-compute frequency dictionaries once for O(1) lookups
-            // This avoids repeatedly scanning reference lists for every candidate item
-            var genreFrequencies = referenceMetadata.Genres
-                .GroupBy(g => g, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var tagFrequencies = referenceMetadata.Tags
-                .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(t => t.Key, t => t.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var actorFrequencies = referenceMetadata.Actors
-                .GroupBy(a => a, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(a => a.Key, a => a.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var writerFrequencies = referenceMetadata.Writers
-                .GroupBy(w => w, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(w => w.Key, w => w.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var producerFrequencies = referenceMetadata.Producers
-                .GroupBy(p => p, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(p => p.Key, p => p.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var directorFrequencies = referenceMetadata.Directors
-                .GroupBy(d => d, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(d => d.Key, d => d.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var studioFrequencies = referenceMetadata.Studios
-                .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(s => s.Key, s => s.Count(), StringComparer.OrdinalIgnoreCase);
-            
-            var audioLangFrequencies = referenceMetadata.AudioLanguages
-                .GroupBy(l => l, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(l => l.Key, l => l.Count(), StringComparer.OrdinalIgnoreCase);
+            // PERFORMANCE OPTIMIZATION: Use pre-computed frequency dictionaries from ReferenceMetadata
+            // These were built once in BuildReferenceMetadata and are reused for all candidate items
+            var genreFrequencies = referenceMetadata.GenreFreq;
+            var tagFrequencies = referenceMetadata.TagFreq;
+            var actorFrequencies = referenceMetadata.ActorFreq;
+            var writerFrequencies = referenceMetadata.WriterFreq;
+            var producerFrequencies = referenceMetadata.ProducerFreq;
+            var directorFrequencies = referenceMetadata.DirectorFreq;
+            var studioFrequencies = referenceMetadata.StudioFreq;
+            var audioLangFrequencies = referenceMetadata.AudioLangFreq;
             
             float score = 0;
             var fieldMatches = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // Track matches per field (case-insensitive)
@@ -2302,15 +2324,18 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             }
                             else
                             {
-                                // Check for partial match (any reference name contains operand name or vice versa)
-                                var partialMatches = referenceMetadata.Names
-                                    .Where(n => n.Contains(operand.Name, StringComparison.OrdinalIgnoreCase) || 
-                                               operand.Name.Contains(n, StringComparison.OrdinalIgnoreCase))
-                                    .Count();
-                                if (partialMatches > 0)
+                                // Check for partial match only if name is reasonably long (3+ chars) to avoid noise
+                                var nameForPartial = operand.Name.Trim();
+                                if (nameForPartial.Length >= 3)
                                 {
-                                    fieldMatchCount++;
-                                    score += partialMatches; // Single weight for partial match
+                                    int partialMatches = referenceMetadata.Names
+                                        .Count(n => n.Contains(nameForPartial, StringComparison.OrdinalIgnoreCase) || 
+                                                   nameForPartial.Contains(n, StringComparison.OrdinalIgnoreCase));
+                                    if (partialMatches > 0)
+                                    {
+                                        fieldMatchCount++;
+                                        score += partialMatches; // Single weight for partial match
+                                    }
                                 }
                             }
                         }
