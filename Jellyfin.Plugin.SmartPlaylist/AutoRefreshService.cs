@@ -472,6 +472,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 foreach (var expression in expressionSet.Expressions)
                 {
+                    // Skip expressions with empty or whitespace-only field names to avoid malformed cache keys
+                    if (string.IsNullOrWhiteSpace(expression.MemberName)) continue;
+                    
                     foreach (var mediaType in mediaTypes)
                     {
                         var cacheKey = $"{mediaType}+{expression.MemberName}";
@@ -827,18 +830,32 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private string GetMediaTypeForItem(BaseItem item)
         {
-            // Map Jellyfin item types to our MediaTypes constants
-            return item switch
+            // First try direct type matching for common types with concrete classes
+            var directMatch = item switch
             {
                 MediaBrowser.Controller.Entities.Movies.Movie => MediaTypes.Movie,
                 MediaBrowser.Controller.Entities.TV.Series => MediaTypes.Series,
                 MediaBrowser.Controller.Entities.TV.Episode => MediaTypes.Episode,
                 MediaBrowser.Controller.Entities.Audio.Audio => MediaTypes.Audio,
                 MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
+                MediaBrowser.Controller.Entities.Video => MediaTypes.Video,
                 MediaBrowser.Controller.Entities.Photo => MediaTypes.Photo,
                 MediaBrowser.Controller.Entities.Book => MediaTypes.Book,
-                _ => MediaTypes.Unknown
+                _ => null
             };
+            
+            if (directMatch != null)
+            {
+                return directMatch;
+            }
+            
+            // Fallback to BaseItemKind mapping for types without concrete C# classes (e.g., AudioBook)
+            if (MediaTypes.BaseItemKindToMediaType.TryGetValue(item.GetBaseItemKind(), out var mappedType))
+            {
+                return mappedType;
+            }
+            
+            return MediaTypes.Unknown;
         }
         
 
