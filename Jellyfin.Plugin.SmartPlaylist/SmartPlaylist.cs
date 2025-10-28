@@ -1279,7 +1279,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -1314,12 +1314,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     IncludeUnwatchedSeries = includeUnwatchedSeries,
                                     AdditionalUserIds = additionalUserIds
                                 }, refreshCache);
-                                
-                                // Debug: Log expensive data found for first few items
-                                if (results.Count < 5)
-                                {
-
-                                }
                                 
                                 // Calculate similarity score if SimilarTo is active
                                 bool passesSimilarity = true;
@@ -1550,7 +1544,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
                 }
                 
                 return results;
@@ -1573,7 +1567,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+            List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<string> similarityComparisonFields, bool needsSimilarTo,
+            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
             var results = new List<BaseItem>();
             
@@ -1610,12 +1605,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             AdditionalUserIds = additionalUserIds
                         }, refreshCache);
                         
+                        // Check similarity first if SimilarTo is active
+                        bool passesSimilarity = true;
+                        if (needsSimilarTo && referenceMetadata != null)
+                        {
+                            passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
+                            if (operand.SimilarityScore.HasValue)
+                            {
+                                _similarityScores[item.Id] = operand.SimilarityScore.Value;
+                            }
+                        }
+                        
                         bool matches = false;
                         if (!hasAnyRules) {
                             matches = true;
                         } else {
                             matches = EvaluateLogicGroups(compiledRules, operand);
                         }
+                        
+                        // Apply similarity filter
+                        matches = matches && passesSimilarity;
                         
                         if (matches)
                         {

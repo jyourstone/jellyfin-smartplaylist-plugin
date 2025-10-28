@@ -2091,24 +2091,67 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 comparisonFields = DefaultSimilarityComparisonFields;
             }
             
+            // Normalize comparison field names for case-insensitive matching (defensive coding)
+            comparisonFields = comparisonFields
+                .Select(f => f?.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            
+            // PERFORMANCE OPTIMIZATION: Pre-compute frequency dictionaries once for O(1) lookups
+            // This avoids repeatedly scanning reference lists for every candidate item
+            var genreFrequencies = referenceMetadata.Genres
+                .GroupBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var tagFrequencies = referenceMetadata.Tags
+                .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(t => t.Key, t => t.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var actorFrequencies = referenceMetadata.Actors
+                .GroupBy(a => a, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(a => a.Key, a => a.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var writerFrequencies = referenceMetadata.Writers
+                .GroupBy(w => w, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(w => w.Key, w => w.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var producerFrequencies = referenceMetadata.Producers
+                .GroupBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(p => p.Key, p => p.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var directorFrequencies = referenceMetadata.Directors
+                .GroupBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(d => d.Key, d => d.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var studioFrequencies = referenceMetadata.Studios
+                .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(s => s.Key, s => s.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            var audioLangFrequencies = referenceMetadata.AudioLanguages
+                .GroupBy(l => l, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(l => l.Key, l => l.Count(), StringComparer.OrdinalIgnoreCase);
+            
             float score = 0;
-            var fieldMatches = new Dictionary<string, int>(); // Track matches per field
+            var fieldMatches = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // Track matches per field (case-insensitive)
             
             // Process each comparison field
             foreach (var field in comparisonFields)
             {
                 int fieldMatchCount = 0;
                 
-                switch (field)
+                // Normalize field name for case-insensitive switch
+                var normalizedField = field?.Trim() ?? string.Empty;
+                
+                switch (normalizedField)
                 {
                     case "Genre":
-                        // Frequency-based matching for genres
-            if (operand.Genres != null && referenceMetadata.Genres.Count > 0)
+                        // Frequency-based matching for genres (O(1) dictionary lookup)
+            if (operand.Genres != null && genreFrequencies.Count > 0)
             {
                 foreach (var genre in operand.Genres.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    int frequency = referenceMetadata.Genres.Count(g => g.Equals(genre, StringComparison.OrdinalIgnoreCase));
-                    if (frequency > 0)
+                    if (genreFrequencies.TryGetValue(genre, out int frequency))
                     {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2118,13 +2161,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
             
                     case "Tags":
-                        // Frequency-based matching for tags
-            if (operand.Tags != null && referenceMetadata.Tags.Count > 0)
+                        // Frequency-based matching for tags (O(1) dictionary lookup)
+            if (operand.Tags != null && tagFrequencies.Count > 0)
             {
                 foreach (var tag in operand.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    int frequency = referenceMetadata.Tags.Count(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
-                    if (frequency > 0)
+                    if (tagFrequencies.TryGetValue(tag, out int frequency))
                     {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2134,13 +2176,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                         
                     case "Actors":
-                        // Frequency-based matching for actors
-                        if (operand.Actors != null && referenceMetadata.Actors.Count > 0)
+                        // Frequency-based matching for actors (O(1) dictionary lookup)
+                        if (operand.Actors != null && actorFrequencies.Count > 0)
                         {
                             foreach (var actor in operand.Actors.Distinct(StringComparer.OrdinalIgnoreCase))
                             {
-                                int frequency = referenceMetadata.Actors.Count(a => a.Equals(actor, StringComparison.OrdinalIgnoreCase));
-                                if (frequency > 0)
+                                if (actorFrequencies.TryGetValue(actor, out int frequency))
                                 {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2150,13 +2191,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                         
                     case "Writers":
-                        // Frequency-based matching for writers
-                        if (operand.Writers != null && referenceMetadata.Writers.Count > 0)
+                        // Frequency-based matching for writers (O(1) dictionary lookup)
+                        if (operand.Writers != null && writerFrequencies.Count > 0)
                         {
                             foreach (var writer in operand.Writers.Distinct(StringComparer.OrdinalIgnoreCase))
                             {
-                                int frequency = referenceMetadata.Writers.Count(w => w.Equals(writer, StringComparison.OrdinalIgnoreCase));
-                                if (frequency > 0)
+                                if (writerFrequencies.TryGetValue(writer, out int frequency))
                                 {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2166,13 +2206,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                         
                     case "Producers":
-                        // Frequency-based matching for producers
-                        if (operand.Producers != null && referenceMetadata.Producers.Count > 0)
+                        // Frequency-based matching for producers (O(1) dictionary lookup)
+                        if (operand.Producers != null && producerFrequencies.Count > 0)
                         {
                             foreach (var producer in operand.Producers.Distinct(StringComparer.OrdinalIgnoreCase))
                             {
-                                int frequency = referenceMetadata.Producers.Count(p => p.Equals(producer, StringComparison.OrdinalIgnoreCase));
-                                if (frequency > 0)
+                                if (producerFrequencies.TryGetValue(producer, out int frequency))
                                 {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2182,13 +2221,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                         
                     case "Directors":
-                        // Frequency-based matching for directors
-                        if (operand.Directors != null && referenceMetadata.Directors.Count > 0)
+                        // Frequency-based matching for directors (O(1) dictionary lookup)
+                        if (operand.Directors != null && directorFrequencies.Count > 0)
                         {
                             foreach (var director in operand.Directors.Distinct(StringComparer.OrdinalIgnoreCase))
                             {
-                                int frequency = referenceMetadata.Directors.Count(d => d.Equals(director, StringComparison.OrdinalIgnoreCase));
-                                if (frequency > 0)
+                                if (directorFrequencies.TryGetValue(director, out int frequency))
                                 {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2198,13 +2236,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                         
                     case "Studios":
-                        // Frequency-based matching for studios
-                        if (operand.Studios != null && referenceMetadata.Studios.Count > 0)
+                        // Frequency-based matching for studios (O(1) dictionary lookup)
+                        if (operand.Studios != null && studioFrequencies.Count > 0)
                         {
                             foreach (var studio in operand.Studios.Distinct(StringComparer.OrdinalIgnoreCase))
                             {
-                                int frequency = referenceMetadata.Studios.Count(s => s.Equals(studio, StringComparison.OrdinalIgnoreCase));
-                                if (frequency > 0)
+                                if (studioFrequencies.TryGetValue(studio, out int frequency))
                                 {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2214,13 +2251,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                         
                     case "Audio Languages":
-                        // Frequency-based matching for audio languages
-                        if (operand.AudioLanguages != null && referenceMetadata.AudioLanguages.Count > 0)
+                        // Frequency-based matching for audio languages (O(1) dictionary lookup)
+                        if (operand.AudioLanguages != null && audioLangFrequencies.Count > 0)
                         {
                             foreach (var lang in operand.AudioLanguages.Distinct(StringComparer.OrdinalIgnoreCase))
                             {
-                                int frequency = referenceMetadata.AudioLanguages.Count(l => l.Equals(lang, StringComparison.OrdinalIgnoreCase));
-                                if (frequency > 0)
+                                if (audioLangFrequencies.TryGetValue(lang, out int frequency))
                                 {
                                     fieldMatchCount++;
                                     score += frequency;
@@ -2285,10 +2321,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         break;
                 }
                 
-                // Record matches for this field
+                // Record matches for this field (use normalized field name for consistency)
                 if (fieldMatchCount > 0)
                 {
-                    fieldMatches[field] = fieldMatchCount;
+                    fieldMatches[normalizedField] = fieldMatchCount;
                 }
             }
             
@@ -2304,8 +2340,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             bool passes = totalUniqueMatches >= minRequiredMatches;
             
             // Special handling for Genre field - if Genre is selected, require at least 1 genre match
-            // This ensures thematic similarity
-            bool hasGenreRequirement = comparisonFields.Contains("Genre");
+            // This ensures thematic similarity (case-insensitive check)
+            bool hasGenreRequirement = comparisonFields.Any(f => f.Equals("Genre", StringComparison.OrdinalIgnoreCase));
             bool hasGenreMatch = fieldMatches.ContainsKey("Genre") && fieldMatches["Genre"] > 0;
             
             if (hasGenreRequirement && !hasGenreMatch)
