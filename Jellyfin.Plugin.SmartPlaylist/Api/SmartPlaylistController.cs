@@ -676,6 +676,20 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "Artists", Label = "Artists" },
                     new { Value = "AlbumArtists", Label = "Album Artists" }
                 },
+                SimilarityComparisonFields = new[]
+                {
+                    new { Value = "Genre", Label = "Genre" },
+                    new { Value = "Tags", Label = "Tags" },
+                    new { Value = "Actors", Label = "Actors" },
+                    new { Value = "Writers", Label = "Writers" },
+                    new { Value = "Producers", Label = "Producers" },
+                    new { Value = "Directors", Label = "Directors" },
+                    new { Value = "Studios", Label = "Studios" },
+                    new { Value = "Audio Languages", Label = "Audio Languages" },
+                    new { Value = "Name", Label = "Name" },
+                    new { Value = "Production Year", Label = "Production Year" },
+                    new { Value = "Parental Rating", Label = "Parental Rating" }
+                },
                 Operators = Constants.Operators.AllOperators,
                 FieldOperators = GetFieldOperators(),
                 OrderOptions = new[]

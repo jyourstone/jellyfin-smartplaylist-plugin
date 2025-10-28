@@ -24,6 +24,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<ExpressionSet> ExpressionSets { get; set; }
         public int MaxItems { get; set; }
         public int MaxPlayTimeMinutes { get; set; }
+        public List<string> SimilarityComparisonFields { get; set; }
         
         // UserManager for resolving user-specific queries (Jellyfin 10.11+)
         public IUserManager UserManager { get; set; }
@@ -42,7 +43,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private static readonly TimeSpan MIN_CLEANUP_INTERVAL = TimeSpan.FromMinutes(5); // Minimum time between cleanups
         
         // Expensive fields that require database queries or complex extraction
-        private static readonly HashSet<string> ExpensiveFields = new(StringComparer.Ordinal)
+        private static readonly HashSet<string> ExpensiveFields = new(StringComparer.OrdinalIgnoreCase)
         {
             "AudioLanguages", "People", "Actors", "Directors", "Writers", "Producers", "GuestStars",
             "Collections", "NextUnwatched", "SeriesName"
@@ -58,6 +59,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             MediaTypes = dto.MediaTypes != null ? new List<string>(dto.MediaTypes) : null; // Create defensive copy to prevent corruption
             MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
             MaxPlayTimeMinutes = dto.MaxPlayTimeMinutes ?? 0; // Default to 0 (unlimited) for backwards compatibility
+            SimilarityComparisonFields = dto.SimilarityComparisonFields != null ? new List<string>(dto.SimilarityComparisonFields) : null; // Create defensive copy
 
             if (dto.ExpressionSets != null && dto.ExpressionSets.Count > 0)
             {
@@ -511,7 +513,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     return [];
                 }
                 
-                var itemCount = items.Count();
+                // Materialize items once to avoid double enumeration (Count + ToArray later)
+                var itemsArray = items as BaseItem[] ?? items.ToArray();
+                var itemCount = itemsArray.Length;
+                
                 logger?.LogDebug("FilterPlaylistItems called with {ItemCount} items, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}", 
                     itemCount, ExpressionSets?.Count ?? 0, MediaTypes != null ? string.Join(",", MediaTypes) : "None");
                 
@@ -539,6 +544,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var includeUnwatchedSeries = true; // Default to true for backwards compatibility
                 var similarToExpressions = new List<Expression>();
                 var additionalUserIds = new List<string>();
+                var similarityComparisonFields = SimilarityComparisonFields ?? OperandFactory.DefaultSimilarityComparisonFields.ToList(); // Default to Genre and Tags for backwards compatibility
                 
                 try
                 {
@@ -581,6 +587,30 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 catch (Exception ex)
                 {
                     logger?.LogWarning(ex, "Error analyzing expression sets for expensive fields in playlist '{PlaylistName}'. Assuming no expensive fields needed.", Name);
+                }
+                
+                // CRITICAL: Enable expensive extraction when SimilarTo requires it (people/audio languages)
+                // Without this, similarity matching on people/audio language fields will fail
+                try
+                {
+                    if (needsSimilarTo && similarityComparisonFields is { Count: > 0 })
+                    {
+                        var simFields = new HashSet<string>(similarityComparisonFields, StringComparer.OrdinalIgnoreCase);
+                        if (simFields.Overlaps(new[] { "Actors", "Writers", "Producers", "Directors" }))
+                        {
+                            needsPeople = true;
+                            logger?.LogDebug("Enabled People extraction for SimilarTo comparison fields");
+                        }
+                        if (simFields.Contains("Audio Languages"))
+                        {
+                            needsAudioLanguages = true;
+                            logger?.LogDebug("Enabled Audio Languages extraction for SimilarTo comparison fields");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogDebug(ex, "Error merging SimilarTo comparison fields into expensive-field requirements");
                 }
 
                 // Early validation of additional users to prevent exceptions during item processing
@@ -648,13 +678,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 OperandFactory.ReferenceMetadata referenceMetadata = null;
                 if (needsSimilarTo)
                 {
-                    logger?.LogDebug("Building reference metadata for SimilarTo queries (once per filter run)");
-                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, items, logger);
+                    logger?.LogDebug("Building reference metadata for SimilarTo queries (once per filter run) using fields: {Fields}", 
+                        string.Join(", ", similarityComparisonFields));
+                    referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, itemsArray, similarityComparisonFields, libraryManager, logger);
                 }
                 
                 // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
                 const int chunkSize = 1000; // Process 1000 items at a time
-                var itemsArray = items.ToArray();
+                // itemsArray already materialized above to avoid double enumeration
                 var totalItems = itemsArray.Length;
                 
                 if (totalItems > chunkSize)
@@ -676,7 +707,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                         
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger, 
-                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, compiledRules, hasAnyRules, hasNonExpensiveRules);
                         results.AddRange(chunkResults);
                         
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
@@ -1182,7 +1213,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsSimilarTo, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
+            List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
         {
             var results = new List<BaseItem>();
             
@@ -1275,7 +1306,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
                     }
                     
                     if (!hasNonExpensiveRules)
@@ -1311,18 +1342,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     AdditionalUserIds = additionalUserIds
                                 }, refreshCache);
                                 
-                                // Debug: Log expensive data found for first few items
-                                if (results.Count < 5)
-                                {
-
-                                }
-                                
                                 // Calculate similarity score if SimilarTo is active
                                 bool passesSimilarity = true;
                                 if (needsSimilarTo && referenceMetadata != null)
                                 {
-                                    const int minSharedItems = 2; // Minimum 2 shared genres/tags
-                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, minSharedItems, logger);
+                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
                                     
                                     // Store similarity score for potential sorting
                                     if (operand.SimilarityScore.HasValue)
@@ -1505,8 +1529,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 bool passesSimilarity = true;
                                 if (needsSimilarTo && referenceMetadata != null)
                                 {
-                                    const int minSharedItems = 2; // Minimum 2 shared genres/tags
-                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, minSharedItems, logger);
+                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, similarityComparisonFields, logger);
                                     
                                     // Store similarity score for potential sorting
                                     if (fullOperand.SimilarityScore.HasValue)
@@ -1548,7 +1571,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
                 }
                 
                 return results;
@@ -1571,7 +1594,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// </summary>
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager userDataManager, ILogger logger, bool needsAudioLanguages, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+            List<string> additionalUserIds, OperandFactory.ReferenceMetadata referenceMetadata, List<string> similarityComparisonFields, bool needsSimilarTo,
+            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
         {
             var results = new List<BaseItem>();
             
@@ -1608,12 +1632,26 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             AdditionalUserIds = additionalUserIds
                         }, refreshCache);
                         
+                        // Check similarity first if SimilarTo is active
+                        bool passesSimilarity = true;
+                        if (needsSimilarTo && referenceMetadata != null)
+                        {
+                            passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
+                            if (operand.SimilarityScore.HasValue)
+                            {
+                                _similarityScores[item.Id] = operand.SimilarityScore.Value;
+                            }
+                        }
+                        
                         bool matches = false;
                         if (!hasAnyRules) {
                             matches = true;
                         } else {
                             matches = EvaluateLogicGroups(compiledRules, operand);
                         }
+                        
+                        // Apply similarity filter
+                        matches = matches && passesSimilarity;
                         
                         if (matches)
                         {

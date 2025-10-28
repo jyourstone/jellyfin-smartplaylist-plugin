@@ -201,6 +201,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? TotalRuntimeMinutes { get; set; } // Total runtime of all items in minutes
         
+        // Similar To comparison fields - which metadata properties to use for similarity matching
+        // Defaults to ["Genre", "Tags"] for backwards compatibility
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<string> SimilarityComparisonFields { get; set; }
+        
         // Legacy support - for migration from old User field
         [Obsolete("Use UserId instead. This property is for backward compatibility only.")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

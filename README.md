@@ -365,25 +365,63 @@ The web interface provides access to all available fields for creating playlist 
 >
 > **How it works:**
 > 1. You specify one or more reference items by name (e.g., "Similar To contains 'My Movie'")
-> 2. The system finds all items matching that query and aggregates their genres and tags (keeping duplicates)
-> 3. Other items are scored based on shared metadata with **frequency weighting**:
->    - Each shared **Genre** or **Tag** adds points equal to how many reference items have it
->    - Example: If both Movie A and Movie B have "Sci-Fi", matching "Sci-Fi" gives 2 points (not 1)
->    - This means genres/tags that appear in multiple reference items are weighted MORE heavily
-> 4. Items must share at least **1 genre** AND at least **2 total unique genres/tags** to be included (the reference items themselves will also be included if they meet this threshold)
+> 2. Choose which metadata properties to compare (defaults to **Genre** and **Tags**)
+> 3. The system finds all items matching that query and aggregates the selected metadata (keeping duplicates)
+> 4. Other items are scored based on shared metadata with **frequency weighting**:
+>    - Each shared metadata item adds points equal to how many reference items have it
+>    - Example: If both Movie A and Movie B have "Sci-Fi" genre, matching "Sci-Fi" gives 2 points (not 1)
+>    - This means metadata that appears in multiple reference items is weighted MORE heavily
+> 5. Items must meet the similarity threshold to be included:
+>    - **1 field selected:** At least **1 match** in that field
+>    - **2+ fields selected:** At least **2 total matches** across all selected fields
+>    - **Special rule:** If **Genre** is selected, at least **1 genre match** is always required (ensures thematic similarity)
+>    - This allows flexible matching while maintaining relevance
 >
-> **Why only Genres and Tags?** These fields accurately describe *what* a movie/show is about. Including actors/directors/studios would match unrelated content. Genres and tags are fast to process and provide the most accurate similarity matching.
+> **Customizable Comparison Fields:**
+> When you select the **Similar To** field, you can choose which metadata properties to use for comparison:
+> - **Genre** (default) - Content genres like "Action", "Comedy", "Drama"
+> - **Tags** (default) - Custom tags like "Space Opera", "Dystopian", "Mind-Bending"
+> - **Actors** - Compare by cast members
+> - **Writers** - Compare by screenplay/story writers
+> - **Producers** - Compare by production team
+> - **Directors** - Compare by directors
+> - **Studios** - Compare by production studios
+> - **Audio Languages** - Compare by available audio tracks
+> - **Name** - Partial name similarity (e.g., sequels, series)
+> - **Production Year** - Compare by release year (±2 years)
+> - **Parental Rating** - Compare by content rating (exact match)
+>
+> **Matching Rules by Field Type:**
+> - **Genre, Tags, Actors, Writers, Producers, Directors, Studios, Audio Languages**: Frequency-based matching (more matches = higher score)
+> - **Name**: Partial matching (exact match scores 2x, partial match scores 1x)
+> - **Production Year**: Within ±2 years range
+> - **Parental Rating**: Exact match only
 >
 > **Example Uses:**
 > - `Similar To contains "Movie A"` → Find movies similar to Movie A (partially matched)
 > - `Similar To is in "Movie A;Movie B"` → Find movies similar to either Movie A or Movie B
 > - `Similar To equals "Movie A"` → Find movies similar to Movie A (exact match)
+> - Select **Genre + Tags + Actors** for thematic similarity with similar cast
+> - Select **Directors + Production Year** for stylistically similar films from the same era
+> - Select **Name + Production Year** to find sequels and related titles
+>
+> **Performance Considerations:**
+> - **Genre + Tags** (default) are the **fastest** comparison fields - they use simple property access
+> - **Actors, Writers, Producers, Directors** require database queries and will be **slower** on large libraries
+> - **Audio Languages** requires media stream analysis and will be **slower**
+> - **Name, Production Year, Parental Rating, Studios** are fast (simple property access)
+> - The more expensive fields you add, the longer the similarity matching will take
+> - For best performance with large libraries, stick to Genre + Tags, or add only 1-2 additional fields
 >
 > **Best Practices:**
+> - **Genre + Tags** (default) provide the most accurate thematic matching with best performance
+> - Add **Actors** or **Directors** to find films with similar creative teams (slower but more specific)
+> - Use **Production Year** to limit results to a specific era (fast)
+> - Use **Studios** to find content from the same production companies (fast)
 > - Combine with other filters (e.g., "Similar To 'Movie A' AND Production Year > 2010")
 > - Use **Similarity Descending** sort order to show most similar items first
 > - Set Max Items to limit results to top matches (e.g., top 20 most similar)
-> - Tag your movies well for best results - tags like "Space Opera", "Dystopian", "Mind-Bending" help find truly similar content
+> - Tag your movies well for best results - custom tags dramatically improve similarity matching
 
 #### **Ratings & Playback**
 - **Community Rating** - User ratings (0-10)

@@ -1094,8 +1094,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
 
             var operand = new Operand(baseItem.Name)
             {
-                Genres = [.. baseItem.Genres],
-                Studios = [.. baseItem.Studios],
+                Genres = baseItem.Genres is not null ? [.. baseItem.Genres] : [],
+                Studios = baseItem.Studios is not null ? [.. baseItem.Studios] : [],
                 CommunityRating = baseItem.CommunityRating.GetValueOrDefault(),
                 CriticRating = baseItem.CriticRating.GetValueOrDefault(),
                 MediaType = baseItem.MediaType.ToString(),
@@ -1797,6 +1797,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Default comparison fields for Similar To matching - Genre and Tags provide the best balance
+        /// of accuracy and performance. Exposed as IReadOnlyList to prevent accidental mutation.
+        /// </summary>
+        public static IReadOnlyList<string> DefaultSimilarityComparisonFields { get; } = new[] { "Genre", "Tags" };
+
+        /// <summary>
         /// Reference metadata extracted from similar-to queries for comparison.
         /// Uses Lists instead of HashSets to preserve duplicates - duplicates represent stronger signals
         /// when multiple reference items share the same metadata.
@@ -1805,6 +1811,26 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         {
             public List<string> Genres { get; set; } = [];
             public List<string> Tags { get; set; } = [];
+            public List<string> Actors { get; set; } = [];
+            public List<string> Writers { get; set; } = [];
+            public List<string> Producers { get; set; } = [];
+            public List<string> Directors { get; set; } = [];
+            public List<string> Studios { get; set; } = [];
+            public List<string> AudioLanguages { get; set; } = [];
+            public List<string> Names { get; set; } = [];
+            public List<int> ProductionYears { get; set; } = [];
+            public List<string> ParentalRatings { get; set; } = [];
+            
+            // Cached frequency maps (built once; reused for every candidate item)
+            // This avoids rebuilding dictionaries thousands of times for large playlists
+            public IReadOnlyDictionary<string, int> GenreFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> TagFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> ActorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> WriterFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> ProducerFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> DirectorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> StudioFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> AudioLangFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -1812,11 +1838,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="similarToExpressions">List of SimilarTo expressions to process</param>
         /// <param name="allItems">All items to search through for matches</param>
+        /// <param name="comparisonFields">List of fields to extract for comparison (e.g., ["Genre", "Tags"])</param>
+        /// <param name="libraryManager">Library manager for accessing expensive fields like People</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>Aggregated reference metadata</returns>
         public static ReferenceMetadata BuildReferenceMetadata(
             List<Expression> similarToExpressions,
             IEnumerable<BaseItem> allItems,
+            List<string> comparisonFields,
+            ILibraryManager libraryManager,
             ILogger logger)
         {
             var referenceMetadata = new ReferenceMetadata();
@@ -1884,10 +1914,75 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogDebug("Reference item: '{Name}'", item.Name);
             }
             
-            // Extract and aggregate metadata from reference items (only Genres and Tags for accurate similarity)
+            // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
+            if (comparisonFields == null || comparisonFields.Count == 0)
+            {
+                comparisonFields = DefaultSimilarityComparisonFields.ToList();
+            }
+            
+            // Normalize comparison field names (trim, deduplicate, case-insensitive) for consistency
+            comparisonFields = comparisonFields
+                .Select(f => f?.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            
+            logger?.LogDebug("Extracting comparison fields: {Fields}", string.Join(", ", comparisonFields));
+            
+            // Extract and aggregate metadata from reference items based on selected comparison fields
             foreach (var item in referenceItems)
             {
-                // Extract genres
+                // Pre-fetch people data once per item if any people fields are needed (performance optimization)
+                CategorizedPeople categorizedPeople = null;
+                bool needsPeople = comparisonFields.Any(f =>
+                    f.Equals("Actors", StringComparison.OrdinalIgnoreCase) ||
+                    f.Equals("Writers", StringComparison.OrdinalIgnoreCase) ||
+                    f.Equals("Producers", StringComparison.OrdinalIgnoreCase) ||
+                    f.Equals("Directors", StringComparison.OrdinalIgnoreCase));
+                
+                if (needsPeople && libraryManager != null)
+                {
+                    try
+                    {
+                        var peopleQuery = new InternalPeopleQuery { ItemId = item.Id };
+                        
+                        // Reuse cached GetPeople method lookup for better performance
+                        var getPeopleMethod = _getPeopleMethodCache;
+                        if (getPeopleMethod == null)
+                        {
+                            lock (_getPeopleMethodLock)
+                            {
+                                if (_getPeopleMethodCache == null)
+                                {
+                                    _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", new[] { typeof(InternalPeopleQuery) });
+                                }
+                                getPeopleMethod = _getPeopleMethodCache;
+                            }
+                        }
+                        
+                        if (getPeopleMethod != null)
+                        {
+                            var result = getPeopleMethod.Invoke(libraryManager, new object[] { peopleQuery });
+                            if (result is IEnumerable<object> peopleEnum)
+                            {
+                                categorizedPeople = CategorizePeople(peopleEnum, logger);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to extract people for reference item {ItemName}", item.Name);
+                    }
+                }
+                
+                foreach (var field in comparisonFields)
+                {
+                    // Normalize field name to lowercase for truly case-insensitive switch
+                    var fieldKey = (field ?? string.Empty).Trim().ToLowerInvariant();
+                    
+                    switch (fieldKey)
+                    {
+                        case "genre":
                 if (item.Genres != null)
                 {
                     foreach (var genre in item.Genres)
@@ -1898,8 +1993,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                     }
                 }
+                            break;
                 
-                // Extract tags
+                        case "tags":
                 if (item.Tags != null)
                 {
                     foreach (var tag in item.Tags)
@@ -1910,10 +2006,131 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         }
                     }
                 }
+                            break;
+                            
+                        case "actors":
+                        case "writers":
+                        case "producers":
+                        case "directors":
+                            // Use pre-fetched categorized people data (queried once per item for all roles)
+                            if (categorizedPeople != null)
+                            {
+                                var sourceList = fieldKey switch
+                                {
+                                    "actors" => categorizedPeople.Actors,
+                                    "directors" => categorizedPeople.Directors,
+                                    "writers" => categorizedPeople.Writers,
+                                    "producers" => categorizedPeople.Producers,
+                                    _ => null
+                                };
+                                
+                                var targetList = fieldKey switch
+                                {
+                                    "actors" => referenceMetadata.Actors,
+                                    "directors" => referenceMetadata.Directors,
+                                    "writers" => referenceMetadata.Writers,
+                                    "producers" => referenceMetadata.Producers,
+                                    _ => null
+                                };
+                                
+                                if (sourceList != null && targetList != null)
+                                {
+                                    targetList.AddRange(sourceList);
+                                }
+                            }
+                            break;
+                            
+                        case "studios":
+                            if (item.Studios != null)
+                            {
+                                foreach (var studio in item.Studios)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(studio))
+                                    {
+                                        referenceMetadata.Studios.Add(studio);
+                                    }
+                                }
+                            }
+                            break;
+                            
+                        case "audio languages":
+                            // Reuse compatibility helper to extract audio languages via reflection-backed paths
+                            // This avoids direct GetMediaStreams() call which can fail on some BaseItem types/Jellyfin versions
+                            try
+                            {
+                                var tempOperand = new Operand(item.Name);
+                                ExtractAudioLanguages(tempOperand, item, logger);
+                                if (tempOperand.AudioLanguages != null && tempOperand.AudioLanguages.Count > 0)
+                                {
+                                    referenceMetadata.AudioLanguages.AddRange(tempOperand.AudioLanguages);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to extract audio languages for reference item {ItemName}", item.Name);
+                            }
+                            break;
+                            
+                        case "name":
+                            if (!string.IsNullOrWhiteSpace(item.Name))
+                            {
+                                referenceMetadata.Names.Add(item.Name);
+                            }
+                            break;
+                            
+                        case "production year":
+                            if (item.ProductionYear.HasValue && item.ProductionYear.Value > 0)
+                            {
+                                referenceMetadata.ProductionYears.Add(item.ProductionYear.Value);
+                            }
+                            break;
+                            
+                        case "parental rating":
+                            if (!string.IsNullOrWhiteSpace(item.OfficialRating))
+                            {
+                                referenceMetadata.ParentalRatings.Add(item.OfficialRating);
+                            }
+                            break;
+                    }
+                }
             }
             
-            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}",
-                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count);
+            // PERFORMANCE: Build frequency maps once here for O(1) lookups during scoring
+            // This avoids rebuilding dictionaries for every candidate item (huge win on large libraries)
+            referenceMetadata.GenreFreq = referenceMetadata.Genres
+                .GroupBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.TagFreq = referenceMetadata.Tags
+                .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(t => t.Key, t => t.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.ActorFreq = referenceMetadata.Actors
+                .GroupBy(a => a, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(a => a.Key, a => a.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.WriterFreq = referenceMetadata.Writers
+                .GroupBy(w => w, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(w => w.Key, w => w.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.ProducerFreq = referenceMetadata.Producers
+                .GroupBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(p => p.Key, p => p.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.DirectorFreq = referenceMetadata.Directors
+                .GroupBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(d => d.Key, d => d.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.StudioFreq = referenceMetadata.Studios
+                .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(s => s.Key, s => s.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            referenceMetadata.AudioLangFreq = referenceMetadata.AudioLanguages
+                .GroupBy(l => l, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(l => l.Key, l => l.Count(), StringComparer.OrdinalIgnoreCase);
+            
+            logger?.LogDebug("Reference metadata - Genres: {GenreCount}, Tags: {TagCount}, Actors: {ActorCount}, Writers: {WriterCount}, Producers: {ProducerCount}, Directors: {DirectorCount}, Studios: {StudioCount}, AudioLanguages: {AudioCount}, Names: {NameCount}, ProductionYears: {YearCount}, ParentalRatings: {RatingCount}",
+                referenceMetadata.Genres.Count, referenceMetadata.Tags.Count, referenceMetadata.Actors.Count, referenceMetadata.Writers.Count, referenceMetadata.Producers.Count, referenceMetadata.Directors.Count, referenceMetadata.Studios.Count, referenceMetadata.AudioLanguages.Count, referenceMetadata.Names.Count, referenceMetadata.ProductionYears.Count, referenceMetadata.ParentalRatings.Count);
             
             return referenceMetadata;
         }
@@ -1923,13 +2140,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// </summary>
         /// <param name="operand">The operand to calculate similarity for</param>
         /// <param name="referenceMetadata">Reference metadata to compare against</param>
-        /// <param name="minSharedItems">Minimum number of shared metadata items required</param>
+        /// <param name="comparisonFields">List of fields being compared</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>True if item passes similarity threshold, false otherwise</returns>
         public static bool CalculateSimilarityScore(
             Operand operand,
             ReferenceMetadata referenceMetadata,
-            int minSharedItems,
+            List<string> comparisonFields,
             ILogger logger)
         {
             if (operand == null || referenceMetadata == null)
@@ -1937,57 +2154,269 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 return false;
             }
             
-            int sharedUniqueCount = 0; // Count of unique genres/tags that match
-            int sharedGenresCount = 0;
-            float score = 0;
+            // Default to Genre and Tags if no comparison fields specified (backwards compatibility)
+            if (comparisonFields == null || comparisonFields.Count == 0)
+            {
+                comparisonFields = DefaultSimilarityComparisonFields.ToList();
+            }
             
-            // Count shared genres - weighted by frequency in reference metadata
-            // If multiple reference items share a genre, that genre is more important
-            if (operand.Genres != null && referenceMetadata.Genres.Count > 0)
+            // Normalize comparison field names for case-insensitive matching (defensive coding)
+            comparisonFields = comparisonFields
+                .Select(f => f?.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            
+            // PERFORMANCE OPTIMIZATION: Use pre-computed frequency dictionaries from ReferenceMetadata
+            // These were built once in BuildReferenceMetadata and are reused for all candidate items
+            var genreFrequencies = referenceMetadata.GenreFreq;
+            var tagFrequencies = referenceMetadata.TagFreq;
+            var actorFrequencies = referenceMetadata.ActorFreq;
+            var writerFrequencies = referenceMetadata.WriterFreq;
+            var producerFrequencies = referenceMetadata.ProducerFreq;
+            var directorFrequencies = referenceMetadata.DirectorFreq;
+            var studioFrequencies = referenceMetadata.StudioFreq;
+            var audioLangFrequencies = referenceMetadata.AudioLangFreq;
+            
+            float score = 0;
+            var fieldMatches = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // Track matches per field (case-insensitive)
+            
+            // Process each comparison field
+            foreach (var field in comparisonFields)
+            {
+                int fieldMatchCount = 0;
+                
+                // Normalize field name to lowercase for truly case-insensitive switch
+                var fieldKey = (field ?? string.Empty).Trim().ToLowerInvariant();
+                
+                switch (fieldKey)
+                {
+                    case "genre":
+                        // Frequency-based matching for genres (O(1) dictionary lookup)
+            if (operand.Genres != null && genreFrequencies.Count > 0)
             {
                 foreach (var genre in operand.Genres.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    // Count how many times this genre appears in the reference metadata
-                    int frequency = referenceMetadata.Genres.Count(g => g.Equals(genre, StringComparison.OrdinalIgnoreCase));
-                    if (frequency > 0)
+                    if (genreFrequencies.TryGetValue(genre, out int frequency))
                     {
-                        sharedGenresCount++; // Count unique genres
-                        sharedUniqueCount++; // Count total unique items
-                        score += frequency; // Add frequency to score for weighting
+                                    fieldMatchCount++;
+                                    score += frequency;
                     }
                 }
             }
+                        break;
             
-            // Count shared tags - weighted by frequency in reference metadata
-            if (operand.Tags != null && referenceMetadata.Tags.Count > 0)
+                    case "tags":
+                        // Frequency-based matching for tags (O(1) dictionary lookup)
+            if (operand.Tags != null && tagFrequencies.Count > 0)
             {
                 foreach (var tag in operand.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    // Count how many times this tag appears in the reference metadata
-                    int frequency = referenceMetadata.Tags.Count(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
-                    if (frequency > 0)
+                    if (tagFrequencies.TryGetValue(tag, out int frequency))
                     {
-                        sharedUniqueCount++; // Count total unique items
-                        score += frequency; // Add frequency to score for weighting
-                    }
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "actors":
+                        // Frequency-based matching for actors (O(1) dictionary lookup)
+                        if (operand.Actors != null && actorFrequencies.Count > 0)
+                        {
+                            foreach (var actor in operand.Actors.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (actorFrequencies.TryGetValue(actor, out int frequency))
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "writers":
+                        // Frequency-based matching for writers (O(1) dictionary lookup)
+                        if (operand.Writers != null && writerFrequencies.Count > 0)
+                        {
+                            foreach (var writer in operand.Writers.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (writerFrequencies.TryGetValue(writer, out int frequency))
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "producers":
+                        // Frequency-based matching for producers (O(1) dictionary lookup)
+                        if (operand.Producers != null && producerFrequencies.Count > 0)
+                        {
+                            foreach (var producer in operand.Producers.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (producerFrequencies.TryGetValue(producer, out int frequency))
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "directors":
+                        // Frequency-based matching for directors (O(1) dictionary lookup)
+                        if (operand.Directors != null && directorFrequencies.Count > 0)
+                        {
+                            foreach (var director in operand.Directors.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (directorFrequencies.TryGetValue(director, out int frequency))
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "studios":
+                        // Frequency-based matching for studios (O(1) dictionary lookup)
+                        if (operand.Studios != null && studioFrequencies.Count > 0)
+                        {
+                            foreach (var studio in operand.Studios.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (studioFrequencies.TryGetValue(studio, out int frequency))
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "audio languages":
+                        // Frequency-based matching for audio languages (O(1) dictionary lookup)
+                        if (operand.AudioLanguages != null && audioLangFrequencies.Count > 0)
+                        {
+                            foreach (var lang in operand.AudioLanguages.Distinct(StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (audioLangFrequencies.TryGetValue(lang, out int frequency))
+                                {
+                                    fieldMatchCount++;
+                                    score += frequency;
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "name":
+                        // Partial similarity for names (frequency-based)
+                        if (!string.IsNullOrWhiteSpace(operand.Name) && referenceMetadata.Names.Count > 0)
+                        {
+                            // Check for exact match
+                            int exactFrequency = referenceMetadata.Names.Count(n => n.Equals(operand.Name, StringComparison.OrdinalIgnoreCase));
+                            if (exactFrequency > 0)
+                            {
+                                fieldMatchCount++;
+                                score += exactFrequency * 2; // Double weight for exact match
+                            }
+                            else
+                            {
+                                // Check for partial match only if name is reasonably long (3+ chars) to avoid noise
+                                var nameForPartial = operand.Name.Trim();
+                                if (nameForPartial.Length >= 3)
+                                {
+                                    int partialMatches = referenceMetadata.Names
+                                        .Count(n => n.Contains(nameForPartial, StringComparison.OrdinalIgnoreCase) || 
+                                                   nameForPartial.Contains(n, StringComparison.OrdinalIgnoreCase));
+                                    if (partialMatches > 0)
+                                    {
+                                        fieldMatchCount++;
+                                        score += partialMatches; // Single weight for partial match
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                        
+                    case "production year":
+                        // Within ±2 years range
+                        if (operand.ProductionYear > 0 && referenceMetadata.ProductionYears.Count > 0)
+                        {
+                            var matchingYears = referenceMetadata.ProductionYears
+                                .Where(y => Math.Abs(y - operand.ProductionYear) <= 2)
+                                .Count();
+                            if (matchingYears > 0)
+                            {
+                                fieldMatchCount++;
+                                score += matchingYears;
+                            }
+                        }
+                        break;
+                        
+                    case "parental rating":
+                        // Exact match for parental rating
+                        if (!string.IsNullOrWhiteSpace(operand.OfficialRating) && referenceMetadata.ParentalRatings.Count > 0)
+                        {
+                            int frequency = referenceMetadata.ParentalRatings.Count(r => r.Equals(operand.OfficialRating, StringComparison.OrdinalIgnoreCase));
+                            if (frequency > 0)
+                            {
+                                fieldMatchCount++;
+                                score += frequency;
+                            }
+                        }
+                        break;
+                }
+                
+                // Record matches for this field (use lowercase key for consistency)
+                if (fieldMatchCount > 0)
+                {
+                    fieldMatches[fieldKey] = fieldMatchCount;
                 }
             }
             
             // Store score in operand for potential sorting
             operand.SimilarityScore = score;
             
-            // Check if meets minimum threshold: at least 2 unique genres/tags AND at least 1 genre
-            bool passes = sharedUniqueCount >= minSharedItems && sharedGenresCount >= 1;
+            // Check if meets minimum threshold
+            // - If only 1 field selected: require at least 1 match
+            // - If 2+ fields selected: require at least 2 total matches
+            // This scales appropriately with the number of comparison fields
+            int totalUniqueMatches = fieldMatches.Values.Sum();
+            int minRequiredMatches = comparisonFields.Count == 1 ? 1 : 2;
+            bool passes = totalUniqueMatches >= minRequiredMatches;
+            
+            // Special handling for Genre field - if Genre is selected, require at least 1 genre match
+            // This ensures thematic similarity (use lowercase key)
+            bool hasGenreRequirement = comparisonFields.Any(f => f.Equals("Genre", StringComparison.OrdinalIgnoreCase));
+            bool hasGenreMatch = fieldMatches.ContainsKey("genre") && fieldMatches["genre"] > 0;
+            
+            if (hasGenreRequirement && !hasGenreMatch)
+            {
+                passes = false; // Fail if Genre is selected but no genre matches
+            }
             
             if (passes)
             {
-                logger?.LogDebug("Item '{Name}' passes similarity threshold: {SharedGenres} unique genres, {SharedTotal} unique items, score: {Score}",
-                    operand.Name, sharedGenresCount, sharedUniqueCount, score);
+                var matchDetails = string.Join(", ", fieldMatches.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+                logger?.LogDebug("Item '{Name}' passes similarity threshold with score {Score}. Matches: {Matches} (total: {Total})",
+                    operand.Name, score, matchDetails, totalUniqueMatches);
             }
-            else if (sharedUniqueCount >= minSharedItems)
+            else
             {
-                logger?.LogDebug("Item '{Name}' fails similarity: has {SharedTotal} unique items but no shared genres",
-                    operand.Name, sharedUniqueCount);
+                var missingFields = comparisonFields.Except(fieldMatches.Keys, StringComparer.OrdinalIgnoreCase).ToList();
+                if (hasGenreRequirement && !hasGenreMatch)
+                {
+                    logger?.LogDebug("Item '{Name}' fails similarity: no genre match (genre required). Total matches: {Total}",
+                        operand.Name, totalUniqueMatches);
+                }
+                else
+                {
+                    logger?.LogDebug("Item '{Name}' fails similarity: only {Total} unique matches (need at least {Required}). Missing fields: {MissingFields}",
+                        operand.Name, totalUniqueMatches, minRequiredMatches, string.Join(", ", missingFields));
+                }
             }
             
             return passes;

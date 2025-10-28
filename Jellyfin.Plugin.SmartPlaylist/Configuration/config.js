@@ -2335,6 +2335,14 @@
                     <option value="false">No - Only check episode tags</option>
                     <option value="true">Yes - Also check tags from parent series</option>
                 </select>
+            </div>
+            <div class="rule-similarity-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.5em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Compare using these metadata fields (default: Genre + Tags):
+                </label>
+                <div class="similarity-fields-container" style="display: flex; flex-wrap: wrap; gap: 0.5em;">
+                    <!-- Options will be populated dynamically -->
+                </div>
             </div>`;
         
         ruleDiv.innerHTML = fieldsHtml;
@@ -2371,6 +2379,9 @@
         // Initialize Tags options visibility
         updateTagsOptionsVisibility(newRuleRow, fieldSelect.value);
         
+        // Initialize Similarity options visibility
+        updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
+        
         // Add event listeners with AbortController signal (if supported)
         const listenerOptions = getEventListenerOptions(signal);
         fieldSelect.addEventListener('change', function() {
@@ -2380,6 +2391,7 @@
             updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
             updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
             updateTagsOptionsVisibility(newRuleRow, fieldSelect.value);
+            updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
@@ -2565,6 +2577,7 @@
                     updateNextUnwatchedOptionsVisibility(ruleRow, currentFieldValue);
                     updateCollectionsOptionsVisibility(ruleRow, currentFieldValue);
                     updateTagsOptionsVisibility(ruleRow, currentFieldValue);
+                    updateSimilarityOptionsVisibility(ruleRow, currentFieldValue);
                 }
                 
                 // Re-add event listeners
@@ -2576,6 +2589,7 @@
                     updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value);
                     updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value);
                     updateTagsOptionsVisibility(ruleRow, fieldSelect.value);
+                    updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
                 }, listenerOptions);
                 
@@ -2766,6 +2780,20 @@
                 return;
             }
 
+            // Collect similarity comparison fields from SimilarTo rules
+            let similarityComparisonFields = null;
+            const allRules = page.querySelectorAll('.rule-row');
+            for (const ruleRow of allRules) {
+                const fieldSelect = ruleRow.querySelector('.rule-field-select');
+                if (fieldSelect && fieldSelect.value === 'SimilarTo') {
+                    const fields = getSimilarityComparisonFields(ruleRow);
+                    if (fields && fields.length > 0) {
+                        similarityComparisonFields = fields;
+                        break; // Use the first SimilarTo rule's settings for the entire playlist
+                    }
+                }
+            }
+
             const playlistDto = {
                 Name: playlistName,
                 ExpressionSets: expressionSets,
@@ -2779,9 +2807,13 @@
                 AutoRefresh: autoRefreshMode,
                 Schedules: schedules.length > 0 ? schedules : []
             };
+            
+            // Add similarity comparison fields if specified
+            if (similarityComparisonFields) {
+                playlistDto.SimilarityComparisonFields = similarityComparisonFields;
+            }
 
-            // Add ID if in edit mode
-            const editState = getPageEditState(page);
+            // Add ID if in edit mode (reuse editState from top of function)
             if (editState.editMode && editState.editingPlaylistId) {
                 playlistDto.Id = editState.editingPlaylistId;
             }
@@ -2963,6 +2995,74 @@
                 }
             }
         }
+    }
+
+    function updateSimilarityOptionsVisibility(ruleRow, fieldValue, savedFields) {
+        const isSimilarToField = fieldValue === 'SimilarTo';
+        const similarityOptionsDiv = ruleRow.querySelector('.rule-similarity-options');
+        
+        if (similarityOptionsDiv) {
+            if (isSimilarToField) {
+                similarityOptionsDiv.style.display = 'block';
+                // Populate similarity fields if not already populated
+                const fieldsContainer = similarityOptionsDiv.querySelector('.similarity-fields-container');
+                if (fieldsContainer && fieldsContainer.children.length === 0) {
+                    populateSimilarityFields(fieldsContainer, savedFields);
+                }
+            } else {
+                similarityOptionsDiv.style.display = 'none';
+            }
+        }
+    }
+
+    function populateSimilarityFields(container, savedFields) {
+        if (!availableFields.SimilarityComparisonFields) {
+            return;
+        }
+        
+        // Clear existing content
+        container.innerHTML = '';
+        
+        // Use saved fields if provided, otherwise default to Genre and Tags
+        const selectedFields = savedFields || ['Genre', 'Tags'];
+        
+        // Create checkboxes for each comparison field
+        availableFields.SimilarityComparisonFields.forEach(function(field) {
+            const checkboxWrapper = document.createElement('label');
+            checkboxWrapper.style.cssText = 'display: flex; align-items: center; gap: 0.25em; cursor: pointer; padding: 0.25em 0.5em; background: rgba(255,255,255,0.05); border-radius: 3px; font-size: 0.9em;';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = field.Value;
+            checkbox.className = 'similarity-field-checkbox';
+            checkbox.checked = selectedFields.includes(field.Value);
+            
+            const label = document.createElement('span');
+            label.textContent = field.Label;
+            
+            checkboxWrapper.appendChild(checkbox);
+            checkboxWrapper.appendChild(label);
+            container.appendChild(checkboxWrapper);
+        });
+    }
+
+    function getSimilarityComparisonFields(ruleRow) {
+        const similarityOptionsDiv = ruleRow.querySelector('.rule-similarity-options');
+        if (!similarityOptionsDiv || similarityOptionsDiv.style.display === 'none') {
+            return null; // Not a SimilarTo rule
+        }
+        
+        const checkboxes = similarityOptionsDiv.querySelectorAll('.similarity-field-checkbox:checked');
+        const selectedFields = Array.from(checkboxes).map(cb => cb.value);
+        
+        // Return null if using defaults (Genre + Tags) for backwards compatibility
+        if (selectedFields.length === 2 && 
+            selectedFields.includes('Genre') && 
+            selectedFields.includes('Tags')) {
+            return null;
+        }
+        
+        return selectedFields.length > 0 ? selectedFields : ['Genre', 'Tags'];
     }
 
     async function loadUsersForRule(userSelect, isOptional = false) {
@@ -3473,8 +3573,18 @@
                             tagsInfo = ' (including parent series tags)';
                         }
                         
+                        // Add SimilarTo comparison fields info
+                        let similarityInfo = '';
+                        if (rule.MemberName === 'SimilarTo') {
+                            if (playlist.SimilarityComparisonFields && playlist.SimilarityComparisonFields.length > 0) {
+                                similarityInfo = ' (comparing: ' + playlist.SimilarityComparisonFields.join(', ') + ')';
+                            } else {
+                                similarityInfo = ' (comparing: Genre, Tags)'; // Default
+                            }
+                        }
+                        
                         rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
-                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo) + escapeHtml(tagsInfo);
+                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo) + escapeHtml(tagsInfo) + escapeHtml(similarityInfo);
                         rulesHtml += '</span>';
                     }
                     rulesHtml += '</div>';
@@ -4988,6 +5098,8 @@
                                 updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName);
                                 updateCollectionsOptionsVisibility(currentRule, expression.MemberName);
                                 updateTagsOptionsVisibility(currentRule, expression.MemberName);
+                                // Pass the playlist's saved similarity fields (if any) so they're loaded correctly
+                                updateSimilarityOptionsVisibility(currentRule, expression.MemberName, playlist.SimilarityComparisonFields);
                                 
                                 // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
@@ -5061,6 +5173,8 @@
                                         tagsSelect.value = includeValue;
                                     }
                                 }
+                                
+                                // Note: Similarity comparison fields are now loaded automatically by updateSimilarityOptionsVisibility above
                                 
                                 updateRegexHelp(currentRule);
                             });
@@ -5201,6 +5315,10 @@
                                     const firstRuleRow = logicGroup.querySelector('.rule-row');
                                     if (firstRuleRow) {
                                         populateRuleRow(firstRuleRow, expression);
+                                        // Restore similarity field selections when cloning
+                                        if (expression.MemberName === 'SimilarTo') {
+                                            updateSimilarityOptionsVisibility(firstRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
+                                        }
                                     }
                                 } else {
                                     // Add additional rule rows
@@ -5208,6 +5326,10 @@
                                     const newRuleRow = logicGroup.querySelector('.rule-row:last-child');
                                     if (newRuleRow) {
                                         populateRuleRow(newRuleRow, expression);
+                                        // Restore similarity field selections when cloning
+                                        if (expression.MemberName === 'SimilarTo') {
+                                            updateSimilarityOptionsVisibility(newRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
+                                        }
                                     }
                                 }
                             });
