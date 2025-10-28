@@ -29,7 +29,51 @@ namespace Jellyfin.Plugin.SmartPlaylist
         Daily = 1,    // Once per day at specified time
         Weekly = 2,   // Once per week on specified day/time  
         Monthly = 3,  // Once per month on specified day and time
-        Interval = 4  // Every X hours/minutes
+        Interval = 4, // Every X hours/minutes
+        Yearly = 5    // Once per year on specified month, day, and time
+    }
+
+    /// <summary>
+    /// Represents a single schedule configuration for a playlist.
+    /// Supports multiple schedules per playlist for flexible scheduling.
+    /// </summary>
+    [Serializable]
+    public class Schedule
+    {
+        /// <summary>
+        /// The type of schedule trigger (Daily, Weekly, Monthly, Yearly, Interval)
+        /// </summary>
+        public ScheduleTrigger Trigger { get; set; }
+        
+        /// <summary>
+        /// Time of day for Daily/Weekly/Monthly/Yearly schedules (e.g., 15:00)
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TimeSpan? Time { get; set; }
+        
+        /// <summary>
+        /// Day of week for Weekly schedules (0 = Sunday, 6 = Saturday)
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DayOfWeek? DayOfWeek { get; set; }
+        
+        /// <summary>
+        /// Day of month for Monthly/Yearly schedules (1-31)
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? DayOfMonth { get; set; }
+        
+        /// <summary>
+        /// Month for Yearly schedules (1 = January, 12 = December)
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Month { get; set; }
+        
+        /// <summary>
+        /// Interval for Interval-based schedules (e.g., 2 hours)
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TimeSpan? Interval { get; set; }
     }
 
     [Serializable]
@@ -44,6 +88,68 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public OrderDto Order { get; set; }
         public bool Public { get; set; } = false; // Default to private
         private List<string> _mediaTypes = [];
+        
+        /// <summary>
+        /// Migrates legacy single schedule fields to the new Schedules array format.
+        /// This is called automatically during save operations.
+        /// </summary>
+        public void MigrateToNewScheduleFormat()
+        {
+            // If already using new format (Schedules array exists), nothing to do
+            if (Schedules != null)
+            {
+                return;
+            }
+            
+            // If no legacy schedule exists or it's set to None, don't migrate
+            // This preserves truly legacy playlists (v10.10) that have no custom schedules
+            if (!ScheduleTrigger.HasValue || ScheduleTrigger.Value == Jellyfin.Plugin.SmartPlaylist.ScheduleTrigger.None)
+            {
+                return;
+            }
+            
+            // Migrate legacy single schedule to new array format
+            var legacySchedule = new Schedule
+            {
+                Trigger = ScheduleTrigger.Value
+            };
+            
+            if (ScheduleTime != null)
+            {
+                legacySchedule.Time = ScheduleTime;
+            }
+            
+            if (ScheduleDayOfWeek != null)
+            {
+                legacySchedule.DayOfWeek = ScheduleDayOfWeek;
+            }
+            
+            if (ScheduleDayOfMonth != null)
+            {
+                legacySchedule.DayOfMonth = ScheduleDayOfMonth;
+            }
+            
+            if (ScheduleMonth != null)
+            {
+                legacySchedule.Month = ScheduleMonth;
+            }
+            
+            if (ScheduleInterval != null)
+            {
+                legacySchedule.Interval = ScheduleInterval;
+            }
+            
+            // Set the new format
+            Schedules = [legacySchedule];
+            
+            // Clear legacy fields so they don't get serialized
+            ScheduleTrigger = null;
+            ScheduleTime = null;
+            ScheduleDayOfWeek = null;
+            ScheduleDayOfMonth = null;
+            ScheduleMonth = null;
+            ScheduleInterval = null;
+        }
         
         /// <summary>
         /// Pre-filter media types with validation to prevent corruption
@@ -66,15 +172,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public int? MaxPlayTimeMinutes { get; set; } // Nullable to support backwards compatibility
         public AutoRefreshMode AutoRefresh { get; set; } = AutoRefreshMode.Never; // Default to never for backward compatibility
         
-        // Custom scheduling properties (null = no custom schedule, use legacy tasks)
+        // Multiple schedules support (new approach)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<Schedule> Schedules { get; set; }
+        
+        // Legacy single schedule properties - kept for backward compatibility
+        // These are still read/written for rollback safety and legacy playlist support
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ScheduleTrigger? ScheduleTrigger { get; set; } = null;
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly/Monthly (e.g., 15:00)
+        public TimeSpan? ScheduleTime { get; set; } // Time of day for Daily/Weekly/Monthly/Yearly (e.g., 15:00)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DayOfWeek? ScheduleDayOfWeek { get; set; } // Day of week for Weekly
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? ScheduleDayOfMonth { get; set; } // Day of month for Monthly (1-31)
+        public int? ScheduleDayOfMonth { get; set; } // Day of month for Monthly/Yearly (1-31)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? ScheduleMonth { get; set; } // Month for Yearly (1-12, 1=January)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TimeSpan? ScheduleInterval { get; set; } // Interval for Interval mode (e.g., 2 hours)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

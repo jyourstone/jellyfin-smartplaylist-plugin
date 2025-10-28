@@ -1018,7 +1018,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Checking for scheduled playlist refreshes (15-minute boundary check) at {CurrentTime}", now);
                 
                 var allPlaylists = await _playlistStore.GetAllSmartPlaylistsAsync().ConfigureAwait(false);
-                var scheduledPlaylists = allPlaylists.Where(p => p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None && p.Enabled).ToList();
+                // Check for either new Schedules array or legacy ScheduleTrigger
+                var scheduledPlaylists = allPlaylists.Where(p => 
+                    p.Enabled && (
+                        (p.Schedules != null && p.Schedules.Any(s => s != null)) ||  // Null-safe check
+                        (p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None)
+                    )).ToList();
                 
                 if (!scheduledPlaylists.Any())
                 {
@@ -1028,7 +1033,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 _logger.LogDebug("Found {Count} playlists with schedules: {PlaylistNames}", 
                     scheduledPlaylists.Count, 
-                    string.Join(", ", scheduledPlaylists.Select(p => $"'{p.Name}' ({p.ScheduleTrigger})")));
+                    string.Join(", ", scheduledPlaylists.Select(p => {
+                        if (p.Schedules != null && p.Schedules.Any(s => s != null))  // Null-safe check
+                        {
+                            var triggers = string.Join(", ", p.Schedules.Where(s => s != null).Select(s => s.Trigger.ToString()));
+                            return $"'{p.Name}' ({triggers})";
+                        }
+                        return $"'{p.Name}' ({p.ScheduleTrigger})";
+                    })));
                 
                 var duePlaylist = scheduledPlaylists.Where(p => IsPlaylistDueForRefresh(p, now)).ToList();
                 
@@ -1120,6 +1132,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private bool IsPlaylistDueForRefresh(SmartPlaylistDto playlist, DateTime now)
         {
+            // Check new Schedules array first (supports multiple schedules)
+            if (playlist.Schedules != null && playlist.Schedules.Any())
+            {
+                // Check if ANY schedule is due (OR logic across schedules)
+                foreach (var schedule in playlist.Schedules)
+                {
+                    if (IsScheduleDue(schedule, now, playlist.Name))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            // Legacy: Check old single schedule fields for backward compatibility
             if (playlist.ScheduleTrigger == null || playlist.ScheduleTrigger == ScheduleTrigger.None) return false;
             
             return playlist.ScheduleTrigger switch
@@ -1127,7 +1154,28 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 ScheduleTrigger.Daily => IsDailyDue(playlist, now),
                 ScheduleTrigger.Weekly => IsWeeklyDue(playlist, now),
                 ScheduleTrigger.Monthly => IsMonthlyDue(playlist, now),
+                ScheduleTrigger.Yearly => IsYearlyDue(playlist, now),
                 ScheduleTrigger.Interval => IsIntervalDue(playlist, now),
+                _ => false
+            };
+        }
+        
+        private bool IsScheduleDue(Schedule schedule, DateTime now, string playlistName)
+        {
+            // Defensive null check
+            if (schedule?.Trigger == null)
+            {
+                _logger.LogWarning("Schedule for playlist '{PlaylistName}' has null Trigger, skipping", playlistName);
+                return false;
+            }
+            
+            return schedule.Trigger switch
+            {
+                ScheduleTrigger.Daily => IsDailyDue(schedule, now, playlistName),
+                ScheduleTrigger.Weekly => IsWeeklyDue(schedule, now, playlistName),
+                ScheduleTrigger.Monthly => IsMonthlyDue(schedule, now, playlistName),
+                ScheduleTrigger.Yearly => IsYearlyDue(schedule, now, playlistName),
+                ScheduleTrigger.Interval => IsIntervalDue(schedule, now, playlistName),
                 _ => false
             };
         }
@@ -1265,6 +1313,193 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}", 
                 playlist.Name, now, interval, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsYearlyDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var scheduledMonth = Math.Clamp(playlist.ScheduleMonth ?? 1, 1, 12); // Clamp to valid month range
+            var scheduledDayOfMonth = Math.Max(1, playlist.ScheduleDayOfMonth ?? 1); // At least day 1
+            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
+            
+            // Convert UTC now to local time for comparison with user-configured schedule times
+            var localNow = now.ToLocalTime();
+            
+            // Check if current month matches
+            if (localNow.Month != scheduledMonth)
+            {
+                return false;
+            }
+            
+            // Handle months with fewer days (e.g., Feb 30th becomes Feb 28th/29th)
+            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, scheduledMonth);
+            var effectiveDayOfMonth = Math.Clamp(scheduledDayOfMonth, 1, daysInCurrentMonth);
+            
+            // Check if current day matches
+            if (localNow.Day != effectiveDayOfMonth)
+            {
+                return false;
+            }
+            
+            var scheduledDateTime = new DateTime(localNow.Year, scheduledMonth, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
+            
+            _logger.LogDebug("Yearly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
+                playlist.Name, localNow, scheduledMonth, effectiveDayOfMonth, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        // Overloaded methods for Schedule objects (new array-based approach)
+        
+        private bool IsDailyDue(Schedule schedule, DateTime now, string playlistName)
+        {
+            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            var localNow = now.ToLocalTime();
+            
+            var todayScheduled = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            if (IsWithinTimeBuffer(localNow, todayScheduled))
+            {
+                _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (today), Due=True", 
+                    playlistName, localNow, scheduledTime);
+                return true;
+            }
+            
+            var tomorrowScheduled = todayScheduled.AddDays(1);
+            var isDue = IsWithinTimeBuffer(localNow, tomorrowScheduled);
+            
+            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (checked today and tomorrow), Due={Due}", 
+                playlistName, localNow, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsWeeklyDue(Schedule schedule, DateTime now, string playlistName)
+        {
+            var scheduledDay = schedule.DayOfWeek ?? DayOfWeek.Sunday;
+            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            var localNow = now.ToLocalTime();
+            
+            if (localNow.DayOfWeek != scheduledDay)
+            {
+                return false;
+            }
+            
+            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
+            
+            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm:ss} (local), Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}", 
+                playlistName, localNow, scheduledDay, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsMonthlyDue(Schedule schedule, DateTime now, string playlistName)
+        {
+            var scheduledDayOfMonth = schedule.DayOfMonth ?? 1;
+            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            var localNow = now.ToLocalTime();
+            
+            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
+            var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
+            
+            if (localNow.Day != effectiveDayOfMonth)
+            {
+                return false;
+            }
+            
+            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
+            
+            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
+                playlistName, localNow, effectiveDayOfMonth, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsYearlyDue(Schedule schedule, DateTime now, string playlistName)
+        {
+            var scheduledMonth = Math.Clamp(schedule.Month ?? 1, 1, 12); // Clamp to valid month range
+            var scheduledDayOfMonth = Math.Max(1, schedule.DayOfMonth ?? 1); // At least day 1
+            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            var localNow = now.ToLocalTime();
+            
+            if (localNow.Month != scheduledMonth)
+            {
+                return false;
+            }
+            
+            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, scheduledMonth);
+            var effectiveDayOfMonth = Math.Clamp(scheduledDayOfMonth, 1, daysInCurrentMonth);
+            
+            if (localNow.Day != effectiveDayOfMonth)
+            {
+                return false;
+            }
+            
+            var scheduledDateTime = new DateTime(localNow.Year, scheduledMonth, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
+            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
+            
+            _logger.LogDebug("Yearly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}", 
+                playlistName, localNow, scheduledMonth, effectiveDayOfMonth, scheduledTime, isDue);
+            
+            return isDue;
+        }
+        
+        private bool IsIntervalDue(Schedule schedule, DateTime now, string playlistName)
+        {
+            var interval = schedule.Interval ?? TimeSpan.FromHours(24);
+            bool isDue = false;
+            
+            if (interval == TimeSpan.FromMinutes(15))
+            {
+                isDue = IsWithinIntervalBuffer(now, 15);
+            }
+            else if (interval == TimeSpan.FromMinutes(30))
+            {
+                isDue = IsWithinIntervalBuffer(now, 30);
+            }
+            else if (interval == TimeSpan.FromHours(1))
+            {
+                isDue = IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(2))
+            {
+                isDue = now.Hour % 2 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(3))
+            {
+                isDue = now.Hour % 3 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(4))
+            {
+                isDue = now.Hour % 4 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(6))
+            {
+                isDue = now.Hour % 6 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(8))
+            {
+                isDue = now.Hour % 8 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(12))
+            {
+                isDue = now.Hour % 12 == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else if (interval == TimeSpan.FromHours(24))
+            {
+                isDue = now.Hour == 0 && IsWithinIntervalBuffer(now, 60);
+            }
+            else
+            {
+                var totalMinutes = (int)interval.TotalMinutes;
+                isDue = IsWithinIntervalBuffer(now, totalMinutes);
+            }
+            
+            _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}", 
+                playlistName, now, interval, isDue);
             
             return isDue;
         }
