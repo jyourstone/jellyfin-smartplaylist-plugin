@@ -1729,9 +1729,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
             requirements.NeedsPeople = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
-                .Any(expr => expr?.MemberName == "People" || expr?.MemberName == "Actors" || 
-                             expr?.MemberName == "Directors" || expr?.MemberName == "Writers" || 
-                             expr?.MemberName == "Producers" || expr?.MemberName == "GuestStars");
+                .Any(expr => expr?.MemberName != null && FieldDefinitions.IsPeopleField(expr.MemberName));
                 
             requirements.NeedsCollections = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])

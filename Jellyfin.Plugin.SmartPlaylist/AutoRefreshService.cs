@@ -803,6 +803,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 case LibraryChangeType.Removed:
                     // Library changes affect these fields
                     fields.AddRange(["FolderPath", "Genres", "Studios", "Tags", "ProductionYear"]);
+                    // People fields (role-specific filters for cast/crew)
+                    fields.AddRange(Jellyfin.Plugin.SmartPlaylist.QueryEngine.FieldDefinitions.PeopleRoleFields);
                     break;
                     
                 case LibraryChangeType.Updated:
@@ -813,6 +815,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber",
                         "NextUnwatched"
                     ]);
+                    // People fields (role-specific filters for cast/crew)
+                    fields.AddRange(Jellyfin.Plugin.SmartPlaylist.QueryEngine.FieldDefinitions.PeopleRoleFields);
                     break;
             }
             
@@ -1261,6 +1265,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
         {
             var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
+            
+            // Guard against invalid intervals
+            if (interval <= TimeSpan.Zero)
+            {
+                _logger.LogWarning("Invalid legacy interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
+                    playlist.ScheduleInterval, playlist.Name);
+                interval = TimeSpan.FromHours(24);
+            }
             
             // For intervals, we use UTC time since intervals are about absolute time periods
             // Check if current time aligns with interval boundaries
