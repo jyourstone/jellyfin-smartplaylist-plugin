@@ -183,7 +183,7 @@
     function generateAutoRefreshOptions(defaultValue) {
         var options = [
             { value: 'Never', label: 'Never - Manual/scheduled refresh only' },
-            { value: 'OnLibraryChanges', label: 'On library changes - When items are added/removed' },
+            { value: 'OnLibraryChanges', label: 'On library changes - When items are added' },
             { value: 'OnAllChanges', label: 'On all changes - Including playback status changes' }
         ];
         // Mark the default option as selected
@@ -3605,8 +3605,8 @@
         const statusDisplayText = isEnabled ? 'Enabled' : 'Disabled';
         const autoRefreshMode = playlist.AutoRefresh || 'Never';
         const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
-                                 autoRefreshMode === 'OnLibraryChanges' ? 'On library changes' :
-                                 autoRefreshMode === 'OnAllChanges' ? 'On all changes' : autoRefreshMode;
+                                 autoRefreshMode === 'OnLibraryChanges' ? 'On library changes - When items are added' :
+                                 autoRefreshMode === 'OnAllChanges' ? 'On all changes - Including playback status' : autoRefreshMode;
         const scheduleDisplay = formatScheduleDisplay(playlist);
         
         // Format last scheduled refresh display

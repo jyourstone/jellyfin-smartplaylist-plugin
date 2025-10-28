@@ -61,6 +61,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
         // Performance optimization: Cache mapping rule types to playlists that use them
         // Key format: "MediaType+FieldType" (e.g., "Movie+IsPlayed", "Episode+SeriesName")
         private readonly ConcurrentDictionary<string, HashSet<string>> _ruleTypeToPlaylistsCache = new();
+        
+        // Simpler cache: MediaType -> All playlists for that media type (regardless of fields)
+        // Key format: "MediaType" (e.g., "Movie", "Episode", "Audio")
+        private readonly ConcurrentDictionary<string, HashSet<string>> _mediaTypeToPlaylistsCache = new();
+        
         private volatile bool _cacheInitialized = false;
         private readonly object _cacheInvalidationLock = new();
         
@@ -139,8 +144,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
                 
                 _cacheInitialized = true;
-                _logger.LogInformation("Rule type cache initialized with {CacheEntries} playlist mappings across {RuleTypes} rule types", 
-                    cacheEntries, _ruleTypeToPlaylistsCache.Count);
+                _logger.LogInformation("Auto-refresh cache initialized: {PlaylistCount} playlists, {MediaTypeCount} media types, {RuleTypeCount} field-based entries", 
+                    cacheEntries, _mediaTypeToPlaylistsCache.Count, _ruleTypeToPlaylistsCache.Count);
             }
             catch (Exception ex)
             {
@@ -423,6 +428,21 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             var mediaTypes = playlist.MediaTypes?.ToList() ?? [.. MediaTypes.All];
             
+            // Add to the simple media type cache (always, regardless of rules)
+            foreach (var mediaType in mediaTypes)
+            {
+                _mediaTypeToPlaylistsCache.AddOrUpdate(
+                    mediaType,
+                    new HashSet<string> { playlist.Id },
+                    (key, existing) =>
+                    {
+                        existing.Add(playlist.Id);
+                        return existing;
+                    }
+                );
+            }
+            
+            // Also maintain the detailed field-based cache (kept for potential future optimizations)
             // Handle playlists with no rules - they should be refreshed for any change to their media types
             if (playlist.ExpressionSets == null || !playlist.ExpressionSets.Any() || 
                 !playlist.ExpressionSets.Any(es => es.Expressions?.Any() == true))
@@ -452,6 +472,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 foreach (var expression in expressionSet.Expressions)
                 {
+                    // Skip expressions with empty or whitespace-only field names to avoid malformed cache keys
+                    if (string.IsNullOrWhiteSpace(expression.MemberName)) continue;
+                    
                     foreach (var mediaType in mediaTypes)
                     {
                         var cacheKey = $"{mediaType}+{expression.MemberName}";
@@ -472,12 +495,23 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private void RemovePlaylistFromRuleCache(string playlistId)
         {
+            // Remove from field-based cache
             foreach (var kvp in _ruleTypeToPlaylistsCache.ToList())
             {
                 kvp.Value.Remove(playlistId);
                 if (kvp.Value.Count == 0)
                 {
                     _ruleTypeToPlaylistsCache.TryRemove(kvp.Key, out _);
+                }
+            }
+            
+            // Remove from media type cache
+            foreach (var kvp in _mediaTypeToPlaylistsCache.ToList())
+            {
+                kvp.Value.Remove(playlistId);
+                if (kvp.Value.Count == 0)
+                {
+                    _mediaTypeToPlaylistsCache.TryRemove(kvp.Key, out _);
                 }
             }
         }
@@ -487,6 +521,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             lock (_cacheInvalidationLock)
             {
                 _ruleTypeToPlaylistsCache.Clear();
+                _mediaTypeToPlaylistsCache.Clear();
                 _cacheInitialized = false;
             }
             
@@ -517,6 +552,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     _logger.LogError(ex, "Error updating cache for playlist '{PlaylistName}' - invalidating cache", playlist.Name);
                     // Clear cache and mark as uninitialized, but don't call InvalidateRuleCache to avoid recursive lock
                     _ruleTypeToPlaylistsCache.Clear();
+                    _mediaTypeToPlaylistsCache.Clear();
                     _cacheInitialized = false;
                 }
             }
@@ -544,6 +580,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     _logger.LogError(ex, "Error removing playlist {PlaylistId} from cache - invalidating cache", playlistId);
                     // Clear cache and mark as uninitialized, but don't call InvalidateRuleCache to avoid recursive lock
                     _ruleTypeToPlaylistsCache.Clear();
+                    _mediaTypeToPlaylistsCache.Clear();
                     _cacheInitialized = false;
                 }
             }
@@ -575,33 +612,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 var mediaType = GetMediaTypeFromItem(item);
                 
-                // Get potential fields that could be affected by this change
-                var potentialFields = GetPotentialAffectedFields(item, changeType);
-                
-                foreach (var field in potentialFields)
+                // For Removed events, skip entirely (Jellyfin auto-removes items from playlists)
+                if (changeType == LibraryChangeType.Removed)
                 {
-                    var cacheKey = $"{mediaType}+{field}";
-                    
-                    if (_ruleTypeToPlaylistsCache.TryGetValue(cacheKey, out var playlistIds))
-                    {
-                        foreach (var playlistId in playlistIds)
-                        {
-                            affectedPlaylists.Add(playlistId);
-                        }
-                    }
+                    _logger.LogDebug("Item '{ItemName}' removed - Jellyfin will auto-remove from playlists, no refresh needed", item.Name);
+                    return [];
                 }
                 
-                // Also check for playlists with no rules (wildcard entries) for this media type
-                var wildcardKey = $"{mediaType}+*";
-                if (_ruleTypeToPlaylistsCache.TryGetValue(wildcardKey, out var wildcardPlaylistIds))
+                // Use the simple media type cache to get all playlists for this media type
+                // This is much more efficient than looping through all possible fields
+                if (_mediaTypeToPlaylistsCache.TryGetValue(mediaType, out var playlistIds))
                 {
-                    foreach (var playlistId in wildcardPlaylistIds)
-                    {
-                        affectedPlaylists.Add(playlistId);
-                    }
+                    affectedPlaylists.UnionWith(playlistIds);
                 }
                 
                 // Apply filtering based on change type and auto-refresh mode
+                // This is where the real filtering happens (OnLibraryChanges vs OnAllChanges)
                 var finalPlaylists = await FilterPlaylistsByChangeTypeAsync(affectedPlaylists.ToList(), changeType, triggeringUserId).ConfigureAwait(false);
                 
                 if (triggeringUserId.HasValue)
@@ -789,44 +815,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return filteredPlaylists;
         }
         
-        private List<string> GetPotentialAffectedFields(BaseItem item, LibraryChangeType changeType)
-        {
-            var fields = new List<string>();
-            
-            // Always check these fields for any change
-            fields.AddRange(["Name", "DateCreated", "DateModified", "CommunityRating", "CriticRating"]);
-            
-            // Add fields specific to change type
-            switch (changeType)
-            {
-                case LibraryChangeType.Added:
-                case LibraryChangeType.Removed:
-                    // Library changes affect these fields
-                    fields.AddRange(["FolderPath", "Genres", "Studios", "Tags", "ProductionYear"]);
-                    // People fields (role-specific filters for cast/crew)
-                    fields.AddRange(Jellyfin.Plugin.SmartPlaylist.QueryEngine.FieldDefinitions.PeopleRoleFields);
-                    // Music-specific fields
-                    fields.AddRange(["Artists", "AlbumArtists", "Album", "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels"]);
-                    break;
-                    
-                case LibraryChangeType.Updated:
-                    // Updates could affect any field, including playback status
-                    fields.AddRange([
-                        "IsPlayed", "PlayCount", "LastPlayedDate", "IsFavorite",
-                        "FolderPath", "Genres", "Studios", "Tags", "ProductionYear",
-                        "OfficialRating", "SeriesName", "SeasonNumber", "EpisodeNumber",
-                        "NextUnwatched"
-                    ]);
-                    // People fields (role-specific filters for cast/crew)
-                    fields.AddRange(Jellyfin.Plugin.SmartPlaylist.QueryEngine.FieldDefinitions.PeopleRoleFields);
-                    // Music-specific fields
-                    fields.AddRange(["Artists", "AlbumArtists", "Album", "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels"]);
-                    break;
-            }
-            
-            return fields.Distinct().ToList();
-        }
-        
         private string GetMediaTypeFromItem(BaseItem item) => GetMediaTypeForItem(item);
         
         private bool IsItemRelevantToPlaylist(BaseItem item, SmartPlaylistDto playlist)
@@ -842,18 +830,32 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         private string GetMediaTypeForItem(BaseItem item)
         {
-            // Map Jellyfin item types to our MediaTypes constants
-            return item switch
+            // First try direct type matching for common types with concrete classes
+            var directMatch = item switch
             {
                 MediaBrowser.Controller.Entities.Movies.Movie => MediaTypes.Movie,
                 MediaBrowser.Controller.Entities.TV.Series => MediaTypes.Series,
                 MediaBrowser.Controller.Entities.TV.Episode => MediaTypes.Episode,
                 MediaBrowser.Controller.Entities.Audio.Audio => MediaTypes.Audio,
                 MediaBrowser.Controller.Entities.MusicVideo => MediaTypes.MusicVideo,
+                MediaBrowser.Controller.Entities.Video => MediaTypes.Video,
                 MediaBrowser.Controller.Entities.Photo => MediaTypes.Photo,
                 MediaBrowser.Controller.Entities.Book => MediaTypes.Book,
-                _ => MediaTypes.Unknown
+                _ => null
             };
+            
+            if (directMatch != null)
+            {
+                return directMatch;
+            }
+            
+            // Fallback to BaseItemKind mapping for types without concrete C# classes (e.g., AudioBook)
+            if (MediaTypes.BaseItemKindToMediaType.TryGetValue(item.GetBaseItemKind(), out var mappedType))
+            {
+                return mappedType;
+            }
+            
+            return MediaTypes.Unknown;
         }
         
 
