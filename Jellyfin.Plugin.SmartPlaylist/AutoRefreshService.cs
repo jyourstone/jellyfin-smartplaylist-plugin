@@ -219,6 +219,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     var item = _libraryManager.GetItemById(e.Item.Id);
                     if (item == null)
                     {
+                        _logger.LogDebug("Item {ItemId} not found when processing user data change - item may have been deleted", e.Item.Id);
                         return;
                     }
                     
@@ -1259,15 +1260,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return isDue;
         }
         
-        private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
+        /// <summary>
+        /// Common interval checking logic shared between legacy and new scheduling systems.
+        /// </summary>
+        private bool IsIntervalDueCommon(TimeSpan interval, DateTime now, string playlistName)
         {
-            var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
-            
             // Guard against invalid intervals
             if (interval <= TimeSpan.Zero)
             {
-                _logger.LogWarning("Invalid legacy interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
-                    playlist.ScheduleInterval, playlist.Name);
+                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
+                    interval, playlistName);
                 interval = TimeSpan.FromHours(24);
             }
             
@@ -1289,9 +1291,15 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
             
             _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}", 
-                playlist.Name, now, interval, isDue);
+                playlistName, now, interval, isDue);
             
             return isDue;
+        }
+        
+        private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
+            return IsIntervalDueCommon(interval, now, playlist.Name);
         }
         
         private bool IsYearlyDue(SmartPlaylistDto playlist, DateTime now)
@@ -1427,36 +1435,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool IsIntervalDue(Schedule schedule, DateTime now, string playlistName)
         {
             var interval = schedule.Interval ?? TimeSpan.FromHours(24);
-            
-            // Guard against invalid intervals
-            if (interval <= TimeSpan.Zero)
-            {
-                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
-                    schedule.Interval, playlistName);
-                interval = TimeSpan.FromHours(24);
-            }
-            
-            // For intervals, we use UTC time since intervals are about absolute time periods
-            var totalMinutes = (int)interval.TotalMinutes;
-            bool isDue;
-            
-            // For intervals >= 2 hours, check if we're at an hour boundary that aligns with the interval
-            if (totalMinutes >= 120)
-            {
-                var intervalHours = totalMinutes / 60;
-                var isHourBoundary = now.Hour % intervalHours == 0;
-                isDue = isHourBoundary && IsWithinIntervalBuffer(now, 60);
-            }
-            else
-            {
-                // For shorter intervals (< 2 hours), just check if we're within the interval window
-                isDue = IsWithinIntervalBuffer(now, totalMinutes);
-            }
-            
-            _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}", 
-                playlistName, now, interval, isDue);
-            
-            return isDue;
+            return IsIntervalDueCommon(interval, now, playlistName);
         }
         
         private async Task RefreshScheduledPlaylists(List<SmartPlaylistDto> playlists)
