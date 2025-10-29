@@ -119,7 +119,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Subscribe to user data events (for playback status changes)
             _userDataManager.UserDataSaved += OnUserDataSaved;
             
-            _logger.LogDebug("AutoRefreshService initialized (library batch delay: {DelaySeconds}s; user data: immediate)", _batchDelay.TotalSeconds);
+            _logger.LogDebug("AutoRefreshService initialized (batch delay: {DelaySeconds}s for all changes)", _batchDelay.TotalSeconds);
             
             // Initialize the rule cache in the background
             _ = Task.Run(InitializeRuleCache);
@@ -161,7 +161,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 try
                 {
-                    await HandleLibraryChangeAsync(e.Item, LibraryChangeType.Added, isLibraryEvent: true).ConfigureAwait(false);
+                    await HandleLibraryChangeAsync(e.Item, LibraryChangeType.Added).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -178,7 +178,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 try
                 {
-                    await HandleLibraryChangeAsync(e.Item, LibraryChangeType.Removed, isLibraryEvent: true).ConfigureAwait(false);
+                    await HandleLibraryChangeAsync(e.Item, LibraryChangeType.Removed).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -195,7 +195,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 try
                 {
-                    await HandleLibraryChangeAsync(e.Item, LibraryChangeType.Updated, isLibraryEvent: true).ConfigureAwait(false);
+                    await HandleLibraryChangeAsync(e.Item, LibraryChangeType.Updated).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -210,19 +210,29 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (e.Item == null) return;
             
             // Handle playback status changes (IsPlayed, PlayCount, etc.)
+            // Now uses batching like OnItemUpdated to handle bulk operations (e.g., marking series as watched)
             try
             {
-                var item = _libraryManager.GetItemById(e.Item.Id);
-                if (item != null && IsRelevantUserDataChange(e))
+                // Check relevance first to avoid unnecessary DB calls for progress updates
+                if (IsRelevantUserDataChange(e))
                 {
-                    _logger.LogDebug("Relevant user data change for item '{ItemName}' by user {UserId} - triggering auto-refresh", 
+                    var item = _libraryManager.GetItemById(e.Item.Id);
+                    if (item == null)
+                    {
+                        _logger.LogDebug("Item {ItemId} not found when processing user data change - item may have been deleted", e.Item.Id);
+                        return;
+                    }
+                    
+                    _logger.LogDebug("Relevant user data change for item '{ItemName}' by user {UserId} - queuing for batched refresh", 
                         item.Name, e.UserId);
                     
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await HandleLibraryChangeAsync(item, LibraryChangeType.Updated, isLibraryEvent: false, triggeringUserId: e.UserId).ConfigureAwait(false);
+                            // Use batched processing to handle bulk operations efficiently
+                            // The triggeringUserId allows filtering to OnAllChanges playlists only
+                            await HandleLibraryChangeAsync(item, LibraryChangeType.Updated, triggeringUserId: e.UserId).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -230,9 +240,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                     });
                 }
-                else if (item != null)
+                else
                 {
-                    _logger.LogDebug("Ignoring non-relevant user data change for item '{ItemName}' (progress update, etc.)", item.Name);
+                    _logger.LogDebug("Ignoring non-relevant user data change for ItemId={ItemId} (progress update, etc.)", e.Item.Id);
                 }
             }
             catch (Exception ex)
@@ -346,7 +356,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             }
         }
         
-        private async Task HandleLibraryChangeAsync(BaseItem item, LibraryChangeType changeType, bool isLibraryEvent, Guid? triggeringUserId = null)
+        private async Task HandleLibraryChangeAsync(BaseItem item, LibraryChangeType changeType, Guid? triggeringUserId = null)
         {
             try
             {
@@ -362,24 +372,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 if (affectedPlaylistIds.Any())
                 {
-                    if (isLibraryEvent)
+                    // Use batching for all changes to avoid spam during bulk operations
+                    // (e.g., marking a series as watched, or scanning a library folder)
+                    _logger.LogDebug("Queued {PlaylistCount} playlists for batched refresh due to {ChangeType} of '{ItemName}'", 
+                        affectedPlaylistIds.Count, changeType, item.Name);
+                    
+                    foreach (var playlistId in affectedPlaylistIds)
                     {
-                        // Library events (add/remove/update) - use batching to avoid spam during bulk operations
-                        _logger.LogDebug("Queued {PlaylistCount} playlists for batched refresh due to {ChangeType} of '{ItemName}'", 
-                            affectedPlaylistIds.Count, changeType, item.Name);
-                        
-                        foreach (var playlistId in affectedPlaylistIds)
-                        {
-                            _pendingLibraryRefreshes[playlistId] = DateTime.UtcNow.Add(_batchDelay);
-                        }
-                    }
-                    else
-                    {
-                        // UserData events (playback status) - process immediately for instant feedback
-                        _logger.LogDebug("Triggering instant refresh for {PlaylistCount} playlists due to playback status change for '{ItemName}'", 
-                            affectedPlaylistIds.Count, item.Name);
-                        
-                        _ = Task.Run(async () => await ProcessPlaylistRefreshes(affectedPlaylistIds, isUserDataRefresh: true));
+                        _pendingLibraryRefreshes[playlistId] = DateTime.UtcNow.Add(_batchDelay);
                     }
                 }
             }
@@ -623,7 +623,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // This is much more efficient than looping through all possible fields
                 if (_mediaTypeToPlaylistsCache.TryGetValue(mediaType, out var playlistIds))
                 {
-                    affectedPlaylists.UnionWith(playlistIds);
+                    // Snapshot to avoid concurrent modification during enumeration
+                    affectedPlaylists.UnionWith(playlistIds.ToArray());
                 }
                 
                 // Apply filtering based on change type and auto-refresh mode
@@ -743,15 +744,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return changeType switch
             {
-                LibraryChangeType.Added or LibraryChangeType.Removed => 
+                LibraryChangeType.Added => 
+                    // Added events trigger OnLibraryChanges playlists (items being added to library)
                     playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+                    
+                LibraryChangeType.Removed => 
+                    // Removed events never trigger refreshes - Jellyfin automatically removes items from playlists
+                    // No playlist refresh needed regardless of AutoRefreshMode setting
+                    false,
+                    
                 LibraryChangeType.Updated => 
-                    // For Updated events, distinguish between library changes and user data changes
-                    // Library metadata updates should trigger OnLibraryChanges playlists
-                    // User data updates (playback status) should only trigger OnAllChanges playlists
-                    triggeringUserId.HasValue ? 
-                        playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges :  // User data change
-                        playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges, // Library metadata change
+                    // Updated events (metadata or user data changes) only trigger OnAllChanges playlists
+                    // OnLibraryChanges is specifically for "when items are added", not for updates to existing items
+                    playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges,
+                    
                 _ => false
             };
         }
@@ -900,22 +906,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                     var results = await _playlistRefreshCache.RefreshPlaylistsWithCacheAsync(
                         playlists, 
-                        updateLastRefreshTime: false, // Don't update LastRefreshed for library updates (will be updated per playlist)
+                        updateLastRefreshTime: true, // Update LastRefreshed for auto-refresh batches (saves internally)
                         CancellationToken.None);
-
-                    // Save updated playlists to persist LastRefreshed timestamps
-                    foreach (var playlist in playlists)
-                    {
-                        try
-                        {
-                            await _playlistStore.SaveAsync(playlist);
-                            _logger.LogDebug("Saved updated playlist '{PlaylistName}' with LastRefreshed timestamp", playlist.Name);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to save updated playlist '{PlaylistName}'", playlist.Name);
-                        }
-                    }
 
                     // Log individual results
                     foreach (var result in results)
@@ -1268,73 +1260,46 @@ namespace Jellyfin.Plugin.SmartPlaylist
             return isDue;
         }
         
-        private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
+        /// <summary>
+        /// Common interval checking logic shared between legacy and new scheduling systems.
+        /// </summary>
+        private bool IsIntervalDueCommon(TimeSpan interval, DateTime now, string playlistName)
         {
-            var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
-            
             // Guard against invalid intervals
             if (interval <= TimeSpan.Zero)
             {
-                _logger.LogWarning("Invalid legacy interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
-                    playlist.ScheduleInterval, playlist.Name);
+                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
+                    interval, playlistName);
                 interval = TimeSpan.FromHours(24);
             }
             
             // For intervals, we use UTC time since intervals are about absolute time periods
-            // Check if current time aligns with interval boundaries
-            bool isDue = false;
+            var totalMinutes = (int)interval.TotalMinutes;
+            bool isDue;
             
-            if (interval == TimeSpan.FromMinutes(15))
+            // For intervals >= 2 hours, check if we're at an hour boundary that aligns with the interval
+            if (totalMinutes >= 120)
             {
-                isDue = IsWithinIntervalBuffer(now, 15);
-            }
-            else if (interval == TimeSpan.FromMinutes(30))
-            {
-                isDue = IsWithinIntervalBuffer(now, 30);
-            }
-            else if (interval == TimeSpan.FromHours(1))
-            {
-                isDue = IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(2))
-            {
-                isDue = now.Hour % 2 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(3))
-            {
-                isDue = now.Hour % 3 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(4))
-            {
-                isDue = now.Hour % 4 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(6))
-            {
-                isDue = now.Hour % 6 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(8))
-            {
-                isDue = now.Hour % 8 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(12))
-            {
-                isDue = now.Hour % 12 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(24))
-            {
-                isDue = now.Hour == 0 && IsWithinIntervalBuffer(now, 60);
+                var intervalHours = totalMinutes / 60;
+                var isHourBoundary = now.Hour % intervalHours == 0;
+                isDue = isHourBoundary && IsWithinIntervalBuffer(now, 60);
             }
             else
             {
-                // For non-standard intervals, use the generic interval buffer
-                var totalMinutes = (int)interval.TotalMinutes;
+                // For shorter intervals (< 2 hours), just check if we're within the interval window
                 isDue = IsWithinIntervalBuffer(now, totalMinutes);
             }
             
             _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}", 
-                playlist.Name, now, interval, isDue);
+                playlistName, now, interval, isDue);
             
             return isDue;
+        }
+        
+        private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
+        {
+            var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
+            return IsIntervalDueCommon(interval, now, playlist.Name);
         }
         
         private bool IsYearlyDue(SmartPlaylistDto playlist, DateTime now)
@@ -1470,67 +1435,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private bool IsIntervalDue(Schedule schedule, DateTime now, string playlistName)
         {
             var interval = schedule.Interval ?? TimeSpan.FromHours(24);
-            
-            // Guard against invalid intervals
-            if (interval <= TimeSpan.Zero)
-            {
-                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
-                    schedule.Interval, playlistName);
-                interval = TimeSpan.FromHours(24);
-            }
-            
-            bool isDue = false;
-            
-            if (interval == TimeSpan.FromMinutes(15))
-            {
-                isDue = IsWithinIntervalBuffer(now, 15);
-            }
-            else if (interval == TimeSpan.FromMinutes(30))
-            {
-                isDue = IsWithinIntervalBuffer(now, 30);
-            }
-            else if (interval == TimeSpan.FromHours(1))
-            {
-                isDue = IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(2))
-            {
-                isDue = now.Hour % 2 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(3))
-            {
-                isDue = now.Hour % 3 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(4))
-            {
-                isDue = now.Hour % 4 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(6))
-            {
-                isDue = now.Hour % 6 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(8))
-            {
-                isDue = now.Hour % 8 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(12))
-            {
-                isDue = now.Hour % 12 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(24))
-            {
-                isDue = now.Hour == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else
-            {
-                var totalMinutes = (int)interval.TotalMinutes;
-                isDue = IsWithinIntervalBuffer(now, totalMinutes);
-            }
-            
-            _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}", 
-                playlistName, now, interval, isDue);
-            
-            return isDue;
+            return IsIntervalDueCommon(interval, now, playlistName);
         }
         
         private async Task RefreshScheduledPlaylists(List<SmartPlaylistDto> playlists)

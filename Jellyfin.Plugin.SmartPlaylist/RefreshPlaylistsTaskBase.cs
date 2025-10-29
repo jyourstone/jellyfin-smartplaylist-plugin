@@ -214,11 +214,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 var mediaTypeFilteredDtos = FilterPlaylistsByMediaType(allDtos);
                 
                 // Filter by custom schedule settings (backward compatibility logic):
-                // - ScheduleTrigger == null: Setting doesn't exist, use legacy tasks for backward compatibility
-                // - ScheduleTrigger == "None": User explicitly selected "No schedule", skip legacy tasks
-                // - ScheduleTrigger has value: User has custom schedule, skip legacy tasks
+                // Legacy tasks only refresh playlists with NO custom schedule configured
+                // Skip if either:
+                // - Has new Schedules array with items (new system)
+                // - Has legacy ScheduleTrigger set (old system)
                 var relevantDtos = mediaTypeFilteredDtos
-                    .Where(dto => dto.ScheduleTrigger == null) // Only null (no setting) uses legacy tasks
+                    .Where(dto => !HasAnyCustomSchedule(dto))
                     .ToArray();
                 
                 logger.LogInformation("Found {RelevantCount} relevant playlists out of {TotalCount} total (handling {MediaTypes}, no custom schedule)", 
@@ -437,6 +438,30 @@ namespace Jellyfin.Plugin.SmartPlaylist
             ];
         }
 
+        /// <summary>
+        /// Checks if a playlist has the schedule settings configured (new or legacy system).
+        /// This includes both having schedules AND explicitly setting "no schedule" (empty array).
+        /// </summary>
+        /// <param name="dto">The playlist DTO.</param>
+        /// <returns>True if the playlist has schedule settings configured, false if using defaults.</returns>
+        private static bool HasAnyCustomSchedule(SmartPlaylistDto dto)
+        {
+            // User has configured the new Schedules property (even empty array means "no schedule" was explicitly set)
+            // Only null means the property wasn't configured and should use legacy tasks
+            if (dto.Schedules != null)
+            {
+                return true;
+            }
+            
+            // Has legacy ScheduleTrigger set (any value including "None" means user configured it)
+            if (dto.ScheduleTrigger != null)
+            {
+                return true;
+            }
+            
+            return false;
+        }
+        
         /// <summary>
         /// Gets the user for a playlist.
         /// </summary>

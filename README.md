@@ -134,14 +134,14 @@ Configure playlists to refresh automatically when your library changes:
 
 - **Per-Playlist Setting**: Each playlist can be set to `Never`, `On Library Changes`, or `On All Changes`
 - **Global Default**: Set the default auto-refresh mode for new playlists in Settings
-- **Instant Playback Updates**: Changes to playback status (watched/unwatched, favorites) refresh immediately
-- **Batched Library Updates**: Library additions, removals, and metadata updates are intelligently batched to prevent spam during bulk operations
+- **Unified Batching**: All changes use intelligent 3-second batching to prevent spam during bulk operations (marking series as watched, library scans, etc.)
 - **Performance Optimized**: Uses advanced caching to only refresh playlists that are actually affected by changes
+- **Automatic Deduplication**: Multiple events for the same item are combined into a single refresh
 
 **Auto-Refresh Modes:**
 - **Never**: Scheduled and manual refresh only (original behavior)
-- **On Library Changes**: Refresh when items are added, removed, or metadata is updated
-- **On All Changes**: Also refresh immediately when playback status changes (watched, favorites, etc.)
+- **On Library Changes**: Refresh only when new items are added to your library
+- **On All Changes**: Refresh for library additions AND all updates (metadata changes, playback status, favorites, etc.)
 
 #### **🕐 Custom Playlist Scheduling**
 Configure individual playlists with their own refresh schedules:
@@ -175,9 +175,9 @@ For old playlists where custom schedules do not exist, the original Jellyfin sch
 - **Background Refresh**: Mood-based music playlist with 4-hour intervals → regular updates without being intrusive.
 
 **Auto-Refresh Examples:**
-- **Continue Watching**: NextUnwatched playlist with auto-refresh on all changes → instant updates when episodes are watched
-- **New Releases**: Date-based playlist with auto-refresh on library changes → updates immediately when content is added
-- **Favorites Collection**: Favorite-based playlist with auto-refresh on all changes → updates when items are favorited/unfavorited
+- **Continue Watching**: NextUnwatched playlist with auto-refresh on all changes → updates when episodes are watched (batched)
+- **New Releases**: Date-based playlist with auto-refresh on library changes → updates when new content is added
+- **Favorites Collection**: Favorite-based playlist with auto-refresh on all changes → updates when items are favorited/unfavorited (batched)
 
 **Mixed Approach:**
 Combine both systems for optimal performance:
@@ -210,13 +210,14 @@ Each playlist has a **"Refresh on scheduled tasks"** setting that controls wheth
 
 **Auto-Refresh Settings:**
 - **`Never`**: Best performance, no automatic refreshes
-- **`On Library Changes`**: Good performance, refreshes for library additions/removals and metadata updates
-- **`On All Changes`**: ⚠️ **Use with caution on large libraries** - refreshes immediately for every playback status change
+- **`On Library Changes`**: Good performance, refreshes only for library additions
+- **`On All Changes`**: Refreshes for additions AND updates (metadata, playback status, etc.)
 
 **Large Library Recommendations:**
-- For libraries with **1000+ items**, consider using `On Library Changes` instead of `On All Changes`
-- Monitor your server performance when enabling `On All Changes` for multiple playlists
-- **Bulk operations** (like library imports) are automatically batched with a 3-second delay to prevent spam
+- All changes are automatically batched with a 3-second delay to prevent spam during bulk operations
+- Even `On All Changes` is efficient thanks to intelligent batching during large library scans
+- **Removed items** are automatically handled by Jellyfin (no refresh needed)
+- Consider limiting the number of playlists with auto-refresh enabled to optimize server performance
 
 **Third-Party Plugin Compatibility:**
 - Plugins that sync watched status may trigger many simultaneous updates
