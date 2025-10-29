@@ -1436,51 +1436,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 interval = TimeSpan.FromHours(24);
             }
             
-            bool isDue = false;
+            // For intervals, we use UTC time since intervals are about absolute time periods
+            var totalMinutes = (int)interval.TotalMinutes;
+            bool isDue;
             
-            if (interval == TimeSpan.FromMinutes(15))
+            // For intervals >= 2 hours, check if we're at an hour boundary that aligns with the interval
+            if (totalMinutes >= 120)
             {
-                isDue = IsWithinIntervalBuffer(now, 15);
-            }
-            else if (interval == TimeSpan.FromMinutes(30))
-            {
-                isDue = IsWithinIntervalBuffer(now, 30);
-            }
-            else if (interval == TimeSpan.FromHours(1))
-            {
-                isDue = IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(2))
-            {
-                isDue = now.Hour % 2 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(3))
-            {
-                isDue = now.Hour % 3 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(4))
-            {
-                isDue = now.Hour % 4 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(6))
-            {
-                isDue = now.Hour % 6 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(8))
-            {
-                isDue = now.Hour % 8 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(12))
-            {
-                isDue = now.Hour % 12 == 0 && IsWithinIntervalBuffer(now, 60);
-            }
-            else if (interval == TimeSpan.FromHours(24))
-            {
-                isDue = now.Hour == 0 && IsWithinIntervalBuffer(now, 60);
+                var intervalHours = totalMinutes / 60;
+                var isHourBoundary = now.Hour % intervalHours == 0;
+                isDue = isHourBoundary && IsWithinIntervalBuffer(now, 60);
             }
             else
             {
-                var totalMinutes = (int)interval.TotalMinutes;
+                // For shorter intervals (< 2 hours), just check if we're within the interval window
                 isDue = IsWithinIntervalBuffer(now, totalMinutes);
             }
             
