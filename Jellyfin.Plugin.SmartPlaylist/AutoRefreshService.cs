@@ -119,7 +119,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Subscribe to user data events (for playback status changes)
             _userDataManager.UserDataSaved += OnUserDataSaved;
             
-            _logger.LogDebug("AutoRefreshService initialized (library batch delay: {DelaySeconds}s; user data: immediate)", _batchDelay.TotalSeconds);
+            _logger.LogDebug("AutoRefreshService initialized (batch delay: {DelaySeconds}s for all changes)", _batchDelay.TotalSeconds);
             
             // Initialize the rule cache in the background
             _ = Task.Run(InitializeRuleCache);
@@ -210,19 +210,22 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (e.Item == null) return;
             
             // Handle playback status changes (IsPlayed, PlayCount, etc.)
+            // Now uses batching like OnItemUpdated to handle bulk operations (e.g., marking series as watched)
             try
             {
                 var item = _libraryManager.GetItemById(e.Item.Id);
                 if (item != null && IsRelevantUserDataChange(e))
                 {
-                    _logger.LogDebug("Relevant user data change for item '{ItemName}' by user {UserId} - triggering auto-refresh", 
+                    _logger.LogDebug("Relevant user data change for item '{ItemName}' by user {UserId} - queuing for batched refresh", 
                         item.Name, e.UserId);
                     
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await HandleLibraryChangeAsync(item, LibraryChangeType.Updated, isLibraryEvent: false, triggeringUserId: e.UserId).ConfigureAwait(false);
+                            // Use batched processing (isLibraryEvent: true) to handle bulk operations efficiently
+                            // The triggeringUserId allows filtering to OnAllChanges playlists only
+                            await HandleLibraryChangeAsync(item, LibraryChangeType.Updated, isLibraryEvent: true, triggeringUserId: e.UserId).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -362,24 +365,14 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 
                 if (affectedPlaylistIds.Any())
                 {
-                    if (isLibraryEvent)
+                    // Use batching for all changes to avoid spam during bulk operations
+                    // (e.g., marking a series as watched, or scanning a library folder)
+                    _logger.LogDebug("Queued {PlaylistCount} playlists for batched refresh due to {ChangeType} of '{ItemName}'", 
+                        affectedPlaylistIds.Count, changeType, item.Name);
+                    
+                    foreach (var playlistId in affectedPlaylistIds)
                     {
-                        // Library events (add/remove/update) - use batching to avoid spam during bulk operations
-                        _logger.LogDebug("Queued {PlaylistCount} playlists for batched refresh due to {ChangeType} of '{ItemName}'", 
-                            affectedPlaylistIds.Count, changeType, item.Name);
-                        
-                        foreach (var playlistId in affectedPlaylistIds)
-                        {
-                            _pendingLibraryRefreshes[playlistId] = DateTime.UtcNow.Add(_batchDelay);
-                        }
-                    }
-                    else
-                    {
-                        // UserData events (playback status) - process immediately for instant feedback
-                        _logger.LogDebug("Triggering instant refresh for {PlaylistCount} playlists due to playback status change for '{ItemName}'", 
-                            affectedPlaylistIds.Count, item.Name);
-                        
-                        _ = Task.Run(async () => await ProcessPlaylistRefreshes(affectedPlaylistIds, isUserDataRefresh: true));
+                        _pendingLibraryRefreshes[playlistId] = DateTime.UtcNow.Add(_batchDelay);
                     }
                 }
             }
@@ -743,15 +736,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
         {
             return changeType switch
             {
-                LibraryChangeType.Added or LibraryChangeType.Removed => 
+                LibraryChangeType.Added => 
+                    // Added events trigger OnLibraryChanges playlists (items being added to library)
                     playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+                    
+                LibraryChangeType.Removed => 
+                    // Removed events never trigger refreshes - Jellyfin automatically removes items from playlists
+                    // No playlist refresh needed regardless of AutoRefreshMode setting
+                    false,
+                    
                 LibraryChangeType.Updated => 
-                    // For Updated events, distinguish between library changes and user data changes
-                    // Library metadata updates should trigger OnLibraryChanges playlists
-                    // User data updates (playback status) should only trigger OnAllChanges playlists
-                    triggeringUserId.HasValue ? 
-                        playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges :  // User data change
-                        playlist.AutoRefresh >= AutoRefreshMode.OnLibraryChanges, // Library metadata change
+                    // Updated events (metadata or user data changes) only trigger OnAllChanges playlists
+                    // OnLibraryChanges is specifically for "when items are added", not for updates to existing items
+                    playlist.AutoRefresh >= AutoRefreshMode.OnAllChanges,
+                    
                 _ => false
             };
         }
