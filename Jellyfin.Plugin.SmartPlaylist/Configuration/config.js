@@ -3605,7 +3605,7 @@
         const statusDisplayText = isEnabled ? 'Enabled' : 'Disabled';
         const autoRefreshMode = playlist.AutoRefresh || 'Never';
         const autoRefreshDisplay = autoRefreshMode === 'Never' ? 'Manual/scheduled only' :
-                                 autoRefreshMode === 'OnLibraryChanges' ? 'On library changes - When items are added' :
+                                 autoRefreshMode === 'OnLibraryChanges' ? 'On library changes - When new items are added' :
                                  autoRefreshMode === 'OnAllChanges' ? 'On all changes - Including playback status' : autoRefreshMode;
         const scheduleDisplay = formatScheduleDisplay(playlist);
         
