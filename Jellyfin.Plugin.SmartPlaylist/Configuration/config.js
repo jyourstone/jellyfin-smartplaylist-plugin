@@ -25,6 +25,16 @@
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
+    // Default values for optional rule field settings
+    const DEFAULT_VALUES = {
+        NEXT_UNWATCHED: 'true',      // Default to including unwatched series
+        COLLECTIONS_INCLUDE: 'false', // Default to not including episodes within series
+        TAGS_INCLUDE: 'false'         // Default to not including parent series tags
+    };
+    
+    // Debounce delay for media type change updates (milliseconds)
+    const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;
+    
     // Helper functions to generate common option sets (DRY principle)
     function generateTimeOptions(defaultValue) {
         var options = [];
@@ -773,6 +783,17 @@
         mainContainer.className = 'checkboxList paperList';
         mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
         
+        // Debounce timer for media type updates (shared across all checkboxes)
+        let mediaTypeUpdateTimer = null;
+        
+        // Batch update function for all media type changes
+        const batchUpdateMediaTypeChanges = () => {
+            updateAllTagsOptionsVisibility(page);
+            updateAllCollectionsOptionsVisibility(page);
+            updateAllNextUnwatchedOptionsVisibility(page);
+            updateAllFieldSelects(page);
+        };
+        
         // Generate checkboxes for each media type
         mediaTypes.forEach(mediaType => {
             const sectionCheckbox = document.createElement('div');
@@ -789,12 +810,18 @@
             checkbox.className = 'emby-checkbox media-type-checkbox';
             checkbox.value = mediaType.Value;
             
-            // Add event listener to update field visibility when media types change
+            // Add debounced event listener to batch updates when media types change
             checkbox.addEventListener('change', function() {
-                updateAllTagsOptionsVisibility(page);
-                updateAllCollectionsOptionsVisibility(page);
-                updateAllNextUnwatchedOptionsVisibility(page);
-                updateAllFieldSelects(page);
+                // Clear any pending update
+                if (mediaTypeUpdateTimer) {
+                    clearTimeout(mediaTypeUpdateTimer);
+                }
+                
+                // Schedule batched update after debounce delay
+                mediaTypeUpdateTimer = setTimeout(() => {
+                    batchUpdateMediaTypeChanges();
+                    mediaTypeUpdateTimer = null;
+                }, MEDIA_TYPE_UPDATE_DEBOUNCE_MS);
             });
             
             const span = document.createElement('span');
@@ -3005,34 +3032,20 @@
                 if (hasEpisode) {
                     nextUnwatchedOptionsDiv.style.display = 'block';
                 } else {
+                    // Hide but preserve user's selection - don't reset value
                     nextUnwatchedOptionsDiv.style.display = 'none';
-                    // Reset to default when hiding
-                    const nextUnwatchedSelect = nextUnwatchedOptionsDiv.querySelector('.rule-nextunwatched-select');
-                    if (nextUnwatchedSelect) {
-                        nextUnwatchedSelect.value = 'true'; // Default to including unwatched series
-                    }
                 }
             } else {
+                // Hide but preserve user's selection - don't reset value
                 nextUnwatchedOptionsDiv.style.display = 'none';
-                // Reset to default when hiding
-                const nextUnwatchedSelect = nextUnwatchedOptionsDiv.querySelector('.rule-nextunwatched-select');
-                if (nextUnwatchedSelect) {
-                    nextUnwatchedSelect.value = 'true'; // Default to including unwatched series
-                }
             }
         }
     }
     
     // Update visibility of NextUnwatched options for all rules when media types change
-    function updateAllNextUnwatchedOptionsVisibility(page) {
-        const allRuleRows = page.querySelectorAll('.rule-row');
-        allRuleRows.forEach(ruleRow => {
-            const fieldSelect = ruleRow.querySelector('.rule-field-select');
-            if (fieldSelect) {
-                updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value, page);
-            }
-        });
-    }
+    const updateAllNextUnwatchedOptionsVisibility = (page) => {
+        updateAllRules(page, updateNextUnwatchedOptionsVisibility);
+    };
     
     function updateCollectionsOptionsVisibility(ruleRow, fieldValue, page) {
         const isCollectionsField = fieldValue === 'Collections';
@@ -3047,34 +3060,20 @@
                 if (hasEpisode) {
                     collectionsOptionsDiv.style.display = 'block';
                 } else {
+                    // Hide but preserve user's selection - don't reset value
                     collectionsOptionsDiv.style.display = 'none';
-                    // Reset to default when hiding
-                    const collectionsSelect = collectionsOptionsDiv.querySelector('.rule-collections-select');
-                    if (collectionsSelect) {
-                        collectionsSelect.value = 'false'; // Default to not including episodes within series
-                    }
                 }
             } else {
+                // Hide but preserve user's selection - don't reset value
                 collectionsOptionsDiv.style.display = 'none';
-                // Reset to default when hiding
-                const collectionsSelect = collectionsOptionsDiv.querySelector('.rule-collections-select');
-                if (collectionsSelect) {
-                    collectionsSelect.value = 'false'; // Default to not including episodes within series
-                }
             }
         }
     }
     
     // Update visibility of Collections options for all rules when media types change
-    function updateAllCollectionsOptionsVisibility(page) {
-        const allRuleRows = page.querySelectorAll('.rule-row');
-        allRuleRows.forEach(ruleRow => {
-            const fieldSelect = ruleRow.querySelector('.rule-field-select');
-            if (fieldSelect) {
-                updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value, page);
-            }
-        });
-    }
+    const updateAllCollectionsOptionsVisibility = (page) => {
+        updateAllRules(page, updateCollectionsOptionsVisibility);
+    };
     
     // Helper function to get selected media types from the page
     function getSelectedMediaTypes(page) {
@@ -3086,6 +3085,22 @@
             }
         });
         return selectedMediaTypes;
+    }
+    
+    // Generic helper to update all rules using a provided update function
+    // Reduces duplication across updateAll* functions
+    function updateAllRules(page, updateFunction) {
+        if (!page || typeof updateFunction !== 'function') {
+            return;
+        }
+        
+        const allRuleRows = page.querySelectorAll('.rule-row');
+        allRuleRows.forEach(ruleRow => {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect) {
+                updateFunction(ruleRow, fieldSelect.value, page);
+            }
+        });
     }
     
     // Field visibility definitions based on media types
@@ -3170,34 +3185,20 @@
                 if (hasEpisode) {
                     tagsOptionsDiv.style.display = 'block';
                 } else {
+                    // Hide but preserve user's selection - don't reset value
                     tagsOptionsDiv.style.display = 'none';
-                    // Reset to default when hiding
-                    const tagsSelect = tagsOptionsDiv.querySelector('.rule-tags-select');
-                    if (tagsSelect) {
-                        tagsSelect.value = 'false'; // Default to not including parent series tags
-                    }
                 }
             } else {
+                // Hide but preserve user's selection - don't reset value
                 tagsOptionsDiv.style.display = 'none';
-                // Reset to default when hiding
-                const tagsSelect = tagsOptionsDiv.querySelector('.rule-tags-select');
-                if (tagsSelect) {
-                    tagsSelect.value = 'false'; // Default to not including parent series tags
-                }
             }
         }
     }
     
     // Update visibility of Tags options for all rules when media types change
-    function updateAllTagsOptionsVisibility(page) {
-        const allRuleRows = page.querySelectorAll('.rule-row');
-        allRuleRows.forEach(ruleRow => {
-            const fieldSelect = ruleRow.querySelector('.rule-field-select');
-            if (fieldSelect) {
-                updateTagsOptionsVisibility(ruleRow, fieldSelect.value, page);
-            }
-        });
-    }
+    const updateAllTagsOptionsVisibility = (page) => {
+        updateAllRules(page, updateTagsOptionsVisibility);
+    };
 
     function updateSimilarityOptionsVisibility(ruleRow, fieldValue, savedFields) {
         const isSimilarToField = fieldValue === 'SimilarTo';
