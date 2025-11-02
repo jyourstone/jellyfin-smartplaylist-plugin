@@ -1147,6 +1147,7 @@
                     
                     // Re-sync field-specific UI after invalidation
                     updateUserSelectorVisibility(ruleRow, '');
+                    updateRegexHelp(ruleRow, '');
                     if (page) {
                         updateNextUnwatchedOptionsVisibility(ruleRow, '', page);
                         updateCollectionsOptionsVisibility(ruleRow, '', page);
@@ -1159,6 +1160,7 @@
                     
                     // Also ensure field-specific UI is aligned with the restored value
                     updateUserSelectorVisibility(ruleRow, currentValue);
+                    updateRegexHelp(ruleRow, currentValue);
                     if (page) {
                         updateNextUnwatchedOptionsVisibility(ruleRow, currentValue, page);
                         updateCollectionsOptionsVisibility(ruleRow, currentValue, page);
@@ -2753,13 +2755,7 @@
             }
 
             // Get selected media types early to gate series-only flags
-            const selectedMediaTypes = [];
-            const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
-            mediaTypesSelect.forEach(checkbox => {
-                if (checkbox.checked) {
-                    selectedMediaTypes.push(checkbox.value);
-                }
-            });
+            const selectedMediaTypes = getSelectedMediaTypes(page);
             if (selectedMediaTypes.length === 0) {
                 showNotification('At least one media type must be selected.');
                 return;
@@ -5440,11 +5436,11 @@
                 // Update button visibility after editing form is populated
                 updateRuleButtonVisibility(page);
                 
-                // Update Tags, Collections, NextUnwatched options visibility and field selects based on selected media types
+                // Update field selects first, then per-field options visibility based on selected media types
+                updateAllFieldSelects(page);
                 updateAllTagsOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
-                updateAllFieldSelects(page);
             
             showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
                 
@@ -5580,11 +5576,11 @@
                 // Update button visibility
                 updateRuleButtonVisibility(page);
                 
-                // Update Tags, Collections, NextUnwatched options visibility and field selects based on selected media types
+                // Update field selects first, then per-field options visibility based on selected media types
+                updateAllFieldSelects(page);
                 updateAllTagsOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
-                updateAllFieldSelects(page);
                 
                 // Show success message
                 showNotification(`Playlist "${playlistName}" cloned successfully! You can now modify and create the new playlist.`, 'success');
