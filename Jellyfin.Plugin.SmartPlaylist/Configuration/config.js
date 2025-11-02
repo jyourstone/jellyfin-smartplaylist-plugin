@@ -25,13 +25,6 @@
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
-    // Default values for optional rule field settings
-    const DEFAULT_VALUES = {
-        NEXT_UNWATCHED: 'true',      // Default to including unwatched series
-        COLLECTIONS_INCLUDE: 'false', // Default to not including episodes within series
-        TAGS_INCLUDE: 'false'         // Default to not including parent series tags
-    };
-    
     // Debounce delay for media type change updates (milliseconds)
     const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;
     
@@ -787,11 +780,16 @@
         let mediaTypeUpdateTimer = null;
         
         // Batch update function for all media type changes
+        // Order matters: repopulate fields first (may invalidate), then sync dependent UI
         const batchUpdateMediaTypeChanges = () => {
-            updateAllTagsOptionsVisibility(page);
-            updateAllCollectionsOptionsVisibility(page);
-            updateAllNextUnwatchedOptionsVisibility(page);
+            // 1) Re-populate fields (may invalidate current selections)
             updateAllFieldSelects(page);
+            
+            // 2) Re-sync dependent UI for all rules
+            updateAllUserSelectorVisibility(page);
+            updateAllNextUnwatchedOptionsVisibility(page);
+            updateAllCollectionsOptionsVisibility(page);
+            updateAllTagsOptionsVisibility(page);
         };
         
         // Generate checkboxes for each media type
@@ -1143,9 +1141,27 @@
                     if (operatorSelect) {
                         operatorSelect.innerHTML = '';
                     }
+                    
+                    // Re-sync field-specific UI after invalidation
+                    updateUserSelectorVisibility(ruleRow, '');
+                    if (page) {
+                        updateNextUnwatchedOptionsVisibility(ruleRow, '', page);
+                        updateCollectionsOptionsVisibility(ruleRow, '', page);
+                        updateTagsOptionsVisibility(ruleRow, '', page);
+                    }
+                    updateSimilarityOptionsVisibility(ruleRow, '');
                 } else if (currentValue) {
                     // Field is still valid, restore the value
                     fieldSelect.value = currentValue;
+                    
+                    // Also ensure field-specific UI is aligned with the restored value
+                    updateUserSelectorVisibility(ruleRow, currentValue);
+                    if (page) {
+                        updateNextUnwatchedOptionsVisibility(ruleRow, currentValue, page);
+                        updateCollectionsOptionsVisibility(ruleRow, currentValue, page);
+                        updateTagsOptionsVisibility(ruleRow, currentValue, page);
+                    }
+                    updateSimilarityOptionsVisibility(ruleRow, currentValue);
                 }
             }
         });
@@ -2733,6 +2749,20 @@
                 return;
             }
 
+            // Get selected media types early to gate series-only flags
+            const selectedMediaTypes = [];
+            const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
+            mediaTypesSelect.forEach(checkbox => {
+                if (checkbox.checked) {
+                    selectedMediaTypes.push(checkbox.value);
+                }
+            });
+            if (selectedMediaTypes.length === 0) {
+                showNotification('At least one media type must be selected.');
+                return;
+            }
+            const hasEpisode = selectedMediaTypes.includes('Episode');
+            
             const expressionSets = [];
             page.querySelectorAll('.logic-group').forEach(logicGroup => {
                 const expressions = [];
@@ -2761,9 +2791,9 @@
                         // If no user is selected or default is selected, the expression works as before
                         // (for the playlist owner - backwards compatibility)
                         
-                        // Check for NextUnwatched specific options
+                        // Check for NextUnwatched specific options (only if Episode is selected)
                         const nextUnwatchedSelect = rule.querySelector('.rule-nextunwatched-select');
-                        if (nextUnwatchedSelect && memberName === 'NextUnwatched') {
+                        if (nextUnwatchedSelect && memberName === 'NextUnwatched' && hasEpisode) {
                             // Convert string to boolean and only include if it's explicitly false
                             const includeUnwatchedSeries = nextUnwatchedSelect.value === 'true';
                             if (!includeUnwatchedSeries) {
@@ -2772,9 +2802,9 @@
                             // If true (default), don't include the parameter to save space
                         }
                         
-                        // Check for Collections specific options
+                        // Check for Collections specific options (only if Episode is selected)
                         const collectionsSelect = rule.querySelector('.rule-collections-select');
-                        if (collectionsSelect && memberName === 'Collections') {
+                        if (collectionsSelect && memberName === 'Collections' && hasEpisode) {
                             // Convert string to boolean and only include if it's explicitly true
                             const includeEpisodesWithinSeries = collectionsSelect.value === 'true';
                             if (includeEpisodesWithinSeries) {
@@ -2783,9 +2813,9 @@
                             // If false (default), don't include the parameter to save space
                         }
                         
-                        // Handle Tags-specific options
+                        // Handle Tags-specific options (only if Episode is selected)
                         const tagsSelect = rule.querySelector('.rule-tags-select');
-                        if (tagsSelect && memberName === 'Tags') {
+                        if (tagsSelect && memberName === 'Tags' && hasEpisode) {
                             // Convert string to boolean and only include if it's explicitly true
                             const includeParentSeriesTags = tagsSelect.value === 'true';
                             if (includeParentSeriesTags) {
@@ -2801,18 +2831,6 @@
                     expressionSets.push({ Expressions: expressions });
                 }
             });
-
-            const selectedMediaTypes = [];
-            const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
-            mediaTypesSelect.forEach(checkbox => {
-                if (checkbox.checked) {
-                    selectedMediaTypes.push(checkbox.value);
-                }
-            });
-            if (selectedMediaTypes.length === 0) {
-                showNotification('At least one media type must be selected.');
-                return;
-            }
 
             // Use helper functions for cleaner form data collection
             const sortByValue = getElementValue(page, '#sortBy', 'Name');
@@ -3041,6 +3059,11 @@
             }
         }
     }
+    
+    // Update user selector visibility for all rules
+    const updateAllUserSelectorVisibility = (page) => {
+        updateAllRules(page, (ruleRow, fieldValue) => updateUserSelectorVisibility(ruleRow, fieldValue));
+    };
     
     // Update visibility of NextUnwatched options for all rules when media types change
     const updateAllNextUnwatchedOptionsVisibility = (page) => {
