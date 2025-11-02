@@ -789,6 +789,14 @@
             checkbox.className = 'emby-checkbox media-type-checkbox';
             checkbox.value = mediaType.Value;
             
+            // Add event listener to update field visibility when media types change
+            checkbox.addEventListener('change', function() {
+                updateAllTagsOptionsVisibility(page);
+                updateAllCollectionsOptionsVisibility(page);
+                updateAllNextUnwatchedOptionsVisibility(page);
+                updateAllFieldSelects(page);
+            });
+            
             const span = document.createElement('span');
             span.className = 'checkboxLabel';
             span.textContent = mediaType.Label;
@@ -1036,8 +1044,15 @@
         });
     }
 
-    function populateFieldSelect(selectElement, fieldGroups, defaultValue = null) {
+    function populateFieldSelect(selectElement, fieldGroups, defaultValue = null, page = null) {
         if (!selectElement || !fieldGroups) return;
+        
+        // Get selected media types for filtering
+        const selectedMediaTypes = page ? getSelectedMediaTypes(page) : [];
+        const filteredFieldGroups = filterFieldsByMediaType(fieldGroups, selectedMediaTypes);
+        
+        // Get the current selected value before clearing
+        const currentValue = selectElement.value;
         
         // Clear existing options
         selectElement.innerHTML = '<option value="">-- Select Field --</option>';
@@ -1053,7 +1068,7 @@
         ];
         
         groupConfig.forEach(group => {
-            const fields = fieldGroups[group.key];
+            const fields = filteredFieldGroups[group.key];
             if (fields && fields.length > 0) {
                 const optgroup = document.createElement('optgroup');
                 optgroup.label = group.label;
@@ -1063,7 +1078,9 @@
                     option.value = field.Value;
                     option.textContent = field.Label;
                     
-                    if (defaultValue && field.Value === defaultValue) {
+                    // Use defaultValue if provided, otherwise try to restore currentValue
+                    const valueToSelect = defaultValue || currentValue;
+                    if (valueToSelect && field.Value === valueToSelect) {
                         option.selected = true;
                     }
                     
@@ -1071,6 +1088,38 @@
                 });
                 
                 selectElement.appendChild(optgroup);
+            }
+        });
+    }
+    
+    // Update all field selects across all rules when media types change
+    function updateAllFieldSelects(page) {
+        if (!page || !availableFields || Object.keys(availableFields).length === 0) {
+            return;
+        }
+        
+        const allRuleRows = page.querySelectorAll('.rule-row');
+        allRuleRows.forEach(ruleRow => {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect) {
+                const currentValue = fieldSelect.value;
+                populateFieldSelect(fieldSelect, availableFields, currentValue, page);
+                
+                // If the current field is no longer valid, clear it and reset the rule
+                if (currentValue && !shouldShowField(currentValue, getSelectedMediaTypes(page))) {
+                    fieldSelect.value = '';
+                    const valueContainer = ruleRow.querySelector('.rule-value-container');
+                    if (valueContainer) {
+                        valueContainer.innerHTML = '';
+                    }
+                    const operatorSelect = ruleRow.querySelector('.rule-operator-select');
+                    if (operatorSelect) {
+                        operatorSelect.innerHTML = '';
+                    }
+                } else if (currentValue) {
+                    // Field is still valid, restore the value
+                    fieldSelect.value = currentValue;
+                }
             }
         });
     }
@@ -2354,7 +2403,7 @@
         const valueContainer = newRuleRow.querySelector('.rule-value-container');
 
         if (availableFields.ContentFields) {
-            populateFieldSelect(fieldSelect, availableFields, null);
+            populateFieldSelect(fieldSelect, availableFields, null, page);
         }
         if (availableFields.Operators) {
             populateSelect(operatorSelect, availableFields.Operators, null, false);
@@ -2371,13 +2420,13 @@
         }
         
         // Initialize NextUnwatched options visibility
-        updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
+        updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value, page);
         
         // Initialize Collections options visibility
-        updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
+        updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value, page);
         
         // Initialize Tags options visibility
-        updateTagsOptionsVisibility(newRuleRow, fieldSelect.value);
+        updateTagsOptionsVisibility(newRuleRow, fieldSelect.value, page);
         
         // Initialize Similarity options visibility
         updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
@@ -2388,9 +2437,9 @@
             setValueInput(fieldSelect.value, valueContainer, operatorSelect.value);
             updateOperatorOptions(fieldSelect.value, operatorSelect);
             updateUserSelectorVisibility(newRuleRow, fieldSelect.value);
-            updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value);
-            updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value);
-            updateTagsOptionsVisibility(newRuleRow, fieldSelect.value);
+            updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value, page);
+            updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value, page);
+            updateTagsOptionsVisibility(newRuleRow, fieldSelect.value, page);
             updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
@@ -2560,7 +2609,7 @@
                 
                 // Re-populate field options if needed
                 if (availableFields.ContentFields && fieldSelect.children.length <= 1) {
-                    populateFieldSelect(fieldSelect, availableFields, fieldSelect.value);
+                    populateFieldSelect(fieldSelect, availableFields, fieldSelect.value, page);
                 }
                 
                 // Re-populate operator options if needed
@@ -2574,9 +2623,9 @@
                     setValueInput(currentFieldValue, valueContainer, operatorSelect.value);
                     updateOperatorOptions(currentFieldValue, operatorSelect);
                     updateUserSelectorVisibility(ruleRow, currentFieldValue);
-                    updateNextUnwatchedOptionsVisibility(ruleRow, currentFieldValue);
-                    updateCollectionsOptionsVisibility(ruleRow, currentFieldValue);
-                    updateTagsOptionsVisibility(ruleRow, currentFieldValue);
+                    updateNextUnwatchedOptionsVisibility(ruleRow, currentFieldValue, page);
+                    updateCollectionsOptionsVisibility(ruleRow, currentFieldValue, page);
+                    updateTagsOptionsVisibility(ruleRow, currentFieldValue, page);
                     updateSimilarityOptionsVisibility(ruleRow, currentFieldValue);
                 }
                 
@@ -2586,9 +2635,9 @@
                     setValueInput(fieldSelect.value, valueContainer, operatorSelect.value);
                     updateOperatorOptions(fieldSelect.value, operatorSelect);
                     updateUserSelectorVisibility(ruleRow, fieldSelect.value);
-                    updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value);
-                    updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value);
-                    updateTagsOptionsVisibility(ruleRow, fieldSelect.value);
+                    updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value, page);
+                    updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value, page);
+                    updateTagsOptionsVisibility(ruleRow, fieldSelect.value, page);
                     updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
                 }, listenerOptions);
@@ -2943,13 +2992,26 @@
         }
     }
     
-    function updateNextUnwatchedOptionsVisibility(ruleRow, fieldValue) {
+    function updateNextUnwatchedOptionsVisibility(ruleRow, fieldValue, page) {
         const isNextUnwatchedField = fieldValue === 'NextUnwatched';
         const nextUnwatchedOptionsDiv = ruleRow.querySelector('.rule-nextunwatched-options');
         
         if (nextUnwatchedOptionsDiv) {
-            if (isNextUnwatchedField) {
-                nextUnwatchedOptionsDiv.style.display = 'block';
+            // Show only if NextUnwatched field is selected AND Episode media type is selected
+            if (isNextUnwatchedField && page) {
+                const selectedMediaTypes = getSelectedMediaTypes(page);
+                const hasEpisode = selectedMediaTypes.includes('Episode');
+                
+                if (hasEpisode) {
+                    nextUnwatchedOptionsDiv.style.display = 'block';
+                } else {
+                    nextUnwatchedOptionsDiv.style.display = 'none';
+                    // Reset to default when hiding
+                    const nextUnwatchedSelect = nextUnwatchedOptionsDiv.querySelector('.rule-nextunwatched-select');
+                    if (nextUnwatchedSelect) {
+                        nextUnwatchedSelect.value = 'true'; // Default to including unwatched series
+                    }
+                }
             } else {
                 nextUnwatchedOptionsDiv.style.display = 'none';
                 // Reset to default when hiding
@@ -2961,13 +3023,37 @@
         }
     }
     
-    function updateCollectionsOptionsVisibility(ruleRow, fieldValue) {
+    // Update visibility of NextUnwatched options for all rules when media types change
+    function updateAllNextUnwatchedOptionsVisibility(page) {
+        const allRuleRows = page.querySelectorAll('.rule-row');
+        allRuleRows.forEach(ruleRow => {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect) {
+                updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value, page);
+            }
+        });
+    }
+    
+    function updateCollectionsOptionsVisibility(ruleRow, fieldValue, page) {
         const isCollectionsField = fieldValue === 'Collections';
         const collectionsOptionsDiv = ruleRow.querySelector('.rule-collections-options');
         
         if (collectionsOptionsDiv) {
-            if (isCollectionsField) {
-                collectionsOptionsDiv.style.display = 'block';
+            // Show only if Collections field is selected AND Episode media type is selected
+            if (isCollectionsField && page) {
+                const selectedMediaTypes = getSelectedMediaTypes(page);
+                const hasEpisode = selectedMediaTypes.includes('Episode');
+                
+                if (hasEpisode) {
+                    collectionsOptionsDiv.style.display = 'block';
+                } else {
+                    collectionsOptionsDiv.style.display = 'none';
+                    // Reset to default when hiding
+                    const collectionsSelect = collectionsOptionsDiv.querySelector('.rule-collections-select');
+                    if (collectionsSelect) {
+                        collectionsSelect.value = 'false'; // Default to not including episodes within series
+                    }
+                }
             } else {
                 collectionsOptionsDiv.style.display = 'none';
                 // Reset to default when hiding
@@ -2979,13 +3065,118 @@
         }
     }
     
-    function updateTagsOptionsVisibility(ruleRow, fieldValue) {
+    // Update visibility of Collections options for all rules when media types change
+    function updateAllCollectionsOptionsVisibility(page) {
+        const allRuleRows = page.querySelectorAll('.rule-row');
+        allRuleRows.forEach(ruleRow => {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect) {
+                updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value, page);
+            }
+        });
+    }
+    
+    // Helper function to get selected media types from the page
+    function getSelectedMediaTypes(page) {
+        const selectedMediaTypes = [];
+        const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
+        mediaTypesSelect.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedMediaTypes.push(checkbox.value);
+            }
+        });
+        return selectedMediaTypes;
+    }
+    
+    // Field visibility definitions based on media types
+    function shouldShowField(fieldValue, selectedMediaTypes) {
+        // If no media types selected, show all fields
+        if (!selectedMediaTypes || selectedMediaTypes.length === 0) {
+            return true;
+        }
+        
+        const hasEpisode = selectedMediaTypes.includes('Episode');
+        const hasMovie = selectedMediaTypes.includes('Movie');
+        const hasAudio = selectedMediaTypes.includes('Audio');
+        const hasAudioBook = selectedMediaTypes.includes('AudioBook');
+        const hasMusicVideo = selectedMediaTypes.includes('MusicVideo');
+        const hasVideo = selectedMediaTypes.includes('Video');
+        const hasPhoto = selectedMediaTypes.includes('Photo');
+        const hasBook = selectedMediaTypes.includes('Book');
+        
+        // Episode-only fields
+        if (['SeriesName', 'GuestStars', 'NextUnwatched'].includes(fieldValue)) {
+            return hasEpisode;
+        }
+        
+        // Movie + Episode fields (People roles)
+        if (['Actors', 'Directors', 'Writers', 'Producers'].includes(fieldValue)) {
+            return hasMovie || hasEpisode;
+        }
+        
+        // Audio fields (all except Photo and Book)
+        if (['AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioCodec', 'AudioChannels', 'AudioLanguages'].includes(fieldValue)) {
+            return !hasPhoto && !hasBook; // Show for all except Photo and Book
+        }
+        
+        // Music-specific fields
+        if (['Album', 'Artists', 'AlbumArtists'].includes(fieldValue)) {
+            return hasAudio || hasAudioBook || hasMusicVideo;
+        }
+        
+        // Video-specific fields (Resolution, Framerate)
+        if (['Resolution', 'Framerate'].includes(fieldValue)) {
+            return hasMovie || hasEpisode || hasMusicVideo || hasVideo;
+        }
+        
+        // All other fields are universal (Name, ProductionYear, ReleaseDate, etc.)
+        return true;
+    }
+    
+    // Filter fields based on selected media types
+    function filterFieldsByMediaType(fieldGroups, selectedMediaTypes) {
+        if (!selectedMediaTypes || selectedMediaTypes.length === 0) {
+            // No filtering when no media types selected - show all fields
+            return fieldGroups;
+        }
+        
+        const filteredGroups = {};
+        
+        // Process each field group
+        Object.keys(fieldGroups).forEach(groupKey => {
+            const fields = fieldGroups[groupKey];
+            if (fields && Array.isArray(fields)) {
+                filteredGroups[groupKey] = fields.filter(field => 
+                    shouldShowField(field.Value, selectedMediaTypes)
+                );
+            } else {
+                filteredGroups[groupKey] = fields;
+            }
+        });
+        
+        return filteredGroups;
+    }
+    
+    function updateTagsOptionsVisibility(ruleRow, fieldValue, page) {
         const isTagsField = fieldValue === 'Tags';
         const tagsOptionsDiv = ruleRow.querySelector('.rule-tags-options');
         
         if (tagsOptionsDiv) {
-            if (isTagsField) {
-                tagsOptionsDiv.style.display = 'block';
+            // Show only if Tags field is selected AND Episode media type is selected
+            if (isTagsField && page) {
+                const selectedMediaTypes = getSelectedMediaTypes(page);
+                const hasEpisode = selectedMediaTypes.includes('Episode');
+                
+                if (hasEpisode) {
+                    tagsOptionsDiv.style.display = 'block';
+                } else {
+                    tagsOptionsDiv.style.display = 'none';
+                    // Reset to default when hiding
+                    const tagsSelect = tagsOptionsDiv.querySelector('.rule-tags-select');
+                    if (tagsSelect) {
+                        tagsSelect.value = 'false'; // Default to not including parent series tags
+                    }
+                }
             } else {
                 tagsOptionsDiv.style.display = 'none';
                 // Reset to default when hiding
@@ -2995,6 +3186,17 @@
                 }
             }
         }
+    }
+    
+    // Update visibility of Tags options for all rules when media types change
+    function updateAllTagsOptionsVisibility(page) {
+        const allRuleRows = page.querySelectorAll('.rule-row');
+        allRuleRows.forEach(ruleRow => {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect) {
+                updateTagsOptionsVisibility(ruleRow, fieldSelect.value, page);
+            }
+        });
     }
 
     function updateSimilarityOptionsVisibility(ruleRow, fieldValue, savedFields) {
@@ -5053,6 +5255,8 @@
                 const rulesContainer = page.querySelector('#rules-container');
                 rulesContainer.innerHTML = '';
                 
+                // Note: updateAllTagsOptionsVisibility will be called after rules are populated
+                
                 // Populate logic groups and rules
                 if (playlist.ExpressionSets && playlist.ExpressionSets.length > 0) {
                     playlist.ExpressionSets.forEach((expressionSet, groupIndex) => {
@@ -5095,9 +5299,9 @@
                                 // Pass the operator and current value to ensure correct input type is created
                                 setValueInput(expression.MemberName, valueContainer, expression.Operator, expression.TargetValue);
                                 updateUserSelectorVisibility(currentRule, expression.MemberName);
-                                updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName);
-                                updateCollectionsOptionsVisibility(currentRule, expression.MemberName);
-                                updateTagsOptionsVisibility(currentRule, expression.MemberName);
+                                updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName, page);
+                                updateCollectionsOptionsVisibility(currentRule, expression.MemberName, page);
+                                updateTagsOptionsVisibility(currentRule, expression.MemberName, page);
                                 // Pass the playlist's saved similarity fields (if any) so they're loaded correctly
                                 updateSimilarityOptionsVisibility(currentRule, expression.MemberName, playlist.SimilarityComparisonFields);
                                 
@@ -5208,6 +5412,12 @@
                 
                 // Update button visibility after editing form is populated
                 updateRuleButtonVisibility(page);
+                
+                // Update Tags, Collections, NextUnwatched options visibility and field selects based on selected media types
+                updateAllTagsOptionsVisibility(page);
+                updateAllCollectionsOptionsVisibility(page);
+                updateAllNextUnwatchedOptionsVisibility(page);
+                updateAllFieldSelects(page);
             
             showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
                 
@@ -5314,7 +5524,7 @@
                                     // Use the first rule row that's already in the group
                                     const firstRuleRow = logicGroup.querySelector('.rule-row');
                                     if (firstRuleRow) {
-                                        populateRuleRow(firstRuleRow, expression);
+                                        populateRuleRow(firstRuleRow, expression, page);
                                         // Restore similarity field selections when cloning
                                         if (expression.MemberName === 'SimilarTo') {
                                             updateSimilarityOptionsVisibility(firstRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
@@ -5325,7 +5535,7 @@
                                     addRuleToGroup(page, logicGroup);
                                     const newRuleRow = logicGroup.querySelector('.rule-row:last-child');
                                     if (newRuleRow) {
-                                        populateRuleRow(newRuleRow, expression);
+                                        populateRuleRow(newRuleRow, expression, page);
                                         // Restore similarity field selections when cloning
                                         if (expression.MemberName === 'SimilarTo') {
                                             updateSimilarityOptionsVisibility(newRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
@@ -5343,6 +5553,12 @@
                 // Update button visibility
                 updateRuleButtonVisibility(page);
                 
+                // Update Tags, Collections, NextUnwatched options visibility and field selects based on selected media types
+                updateAllTagsOptionsVisibility(page);
+                updateAllCollectionsOptionsVisibility(page);
+                updateAllNextUnwatchedOptionsVisibility(page);
+                updateAllFieldSelects(page);
+                
                 // Show success message
                 showNotification(`Playlist "${playlistName}" cloned successfully! You can now modify and create the new playlist.`, 'success');
                 
@@ -5358,7 +5574,7 @@
     }
 
     // Helper function to populate a rule row with expression data
-    function populateRuleRow(ruleRow, expression) {
+    function populateRuleRow(ruleRow, expression, page) {
         try {
             const fieldSelect = ruleRow.querySelector('.rule-field-select');
             const operatorSelect = ruleRow.querySelector('.rule-operator-select');
@@ -5368,9 +5584,9 @@
                 fieldSelect.value = expression.MemberName;
                 updateOperatorOptions(expression.MemberName, operatorSelect);
                 updateUserSelectorVisibility(ruleRow, expression.MemberName);
-                updateNextUnwatchedOptionsVisibility(ruleRow, expression.MemberName);
-                updateCollectionsOptionsVisibility(ruleRow, expression.MemberName);
-                updateTagsOptionsVisibility(ruleRow, expression.MemberName);
+                updateNextUnwatchedOptionsVisibility(ruleRow, expression.MemberName, page);
+                updateCollectionsOptionsVisibility(ruleRow, expression.MemberName, page);
+                updateTagsOptionsVisibility(ruleRow, expression.MemberName, page);
             }
             
             if (operatorSelect && expression.Operator) {
@@ -5396,6 +5612,8 @@
             }
             
             // Restore per-field option selects for clone/edit flows
+            // Note: These must be set AFTER updateCollectionsOptionsVisibility/updateTagsOptionsVisibility
+            // to ensure the options divs are visible
             if (expression.MemberName === 'NextUnwatched') {
                 const nextUnwatchedSelect = ruleRow.querySelector('.rule-nextunwatched-select');
                 if (nextUnwatchedSelect) {
