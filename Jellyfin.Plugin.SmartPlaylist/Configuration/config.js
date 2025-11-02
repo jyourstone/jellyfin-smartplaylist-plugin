@@ -776,8 +776,8 @@
         mainContainer.className = 'checkboxList paperList';
         mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
         
-        // Debounce timer for media type updates (shared across all checkboxes)
-        let mediaTypeUpdateTimer = null;
+        // Debounce timer for media type updates (shared per page, stored on page object)
+        page._mediaTypeUpdateTimer = page._mediaTypeUpdateTimer || null;
         
         // Batch update function for all media type changes
         // Order matters: repopulate fields first (may invalidate), then sync dependent UI
@@ -811,14 +811,14 @@
             // Add debounced event listener to batch updates when media types change
             checkbox.addEventListener('change', function() {
                 // Clear any pending update
-                if (mediaTypeUpdateTimer) {
-                    clearTimeout(mediaTypeUpdateTimer);
+                if (page._mediaTypeUpdateTimer) {
+                    clearTimeout(page._mediaTypeUpdateTimer);
                 }
                 
                 // Schedule batched update after debounce delay
-                mediaTypeUpdateTimer = setTimeout(() => {
+                page._mediaTypeUpdateTimer = setTimeout(() => {
                     batchUpdateMediaTypeChanges();
-                    mediaTypeUpdateTimer = null;
+                    page._mediaTypeUpdateTimer = null;
                 }, MEDIA_TYPE_UPDATE_DEBOUNCE_MS);
             });
             
@@ -1123,6 +1123,9 @@
             return;
         }
         
+        // Compute selected media types once before the loop for better performance
+        const selectedMediaTypes = getSelectedMediaTypes(page);
+        
         const allRuleRows = page.querySelectorAll('.rule-row');
         allRuleRows.forEach(ruleRow => {
             const fieldSelect = ruleRow.querySelector('.rule-field-select');
@@ -1131,7 +1134,7 @@
                 populateFieldSelect(fieldSelect, availableFields, currentValue, page);
                 
                 // If the current field is no longer valid, clear it and reset the rule
-                if (currentValue && !shouldShowField(currentValue, getSelectedMediaTypes(page))) {
+                if (currentValue && !shouldShowField(currentValue, selectedMediaTypes)) {
                     fieldSelect.value = '';
                     const valueContainer = ruleRow.querySelector('.rule-value-container');
                     if (valueContainer) {
@@ -6393,6 +6396,12 @@
         if (page._searchTimeout) {
             clearTimeout(page._searchTimeout);
             page._searchTimeout = null;
+        }
+        
+        // Clean up media type debounce timer
+        if (page._mediaTypeUpdateTimer) {
+            clearTimeout(page._mediaTypeUpdateTimer);
+            page._mediaTypeUpdateTimer = null;
         }
         
         // Clean up notification timer
