@@ -776,8 +776,15 @@
         mainContainer.className = 'checkboxList paperList';
         mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
         
-        // Debounce timer for media type updates (shared per page, stored on page object)
+        // Debounce timer and AbortController for media type updates (shared per page)
         page._mediaTypeUpdateTimer = page._mediaTypeUpdateTimer || null;
+        
+        // Create AbortController for media type checkbox listeners
+        if (page._mediaTypeAbortController) {
+            page._mediaTypeAbortController.abort();
+        }
+        page._mediaTypeAbortController = createAbortController();
+        const mediaTypeSignal = page._mediaTypeAbortController.signal;
         
         // Batch update function for all media type changes
         // Order matters: repopulate fields first (may invalidate), then sync dependent UI
@@ -820,7 +827,7 @@
                     batchUpdateMediaTypeChanges();
                     page._mediaTypeUpdateTimer = null;
                 }, MEDIA_TYPE_UPDATE_DEBOUNCE_MS);
-            });
+            }, getEventListenerOptions(mediaTypeSignal));
             
             const span = document.createElement('span');
             span.className = 'checkboxLabel';
@@ -6402,6 +6409,12 @@
         if (page._mediaTypeUpdateTimer) {
             clearTimeout(page._mediaTypeUpdateTimer);
             page._mediaTypeUpdateTimer = null;
+        }
+        
+        // Abort media type checkbox listeners
+        if (page._mediaTypeAbortController) {
+            page._mediaTypeAbortController.abort();
+            page._mediaTypeAbortController = null;
         }
         
         // Clean up notification timer
