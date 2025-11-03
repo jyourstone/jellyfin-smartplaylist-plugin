@@ -616,11 +616,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             _logger.LogDebug("Updating playlist {PlaylistName} public status to {PublicStatus} and items to {ItemCount}",
                     playlist.Name, isPublic ? "public" : "private", linkedChildren.Length);
             
-            // Update the playlist items
-            playlist.LinkedChildren = linkedChildren;
-            
-            // Note: Jellyfin defaults playlist MediaType to "Audio" regardless of content - this is a known Jellyfin limitation
-            
             // Update the public status by setting the OpenAccess property
             var openAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             if (openAccessProperty != null && openAccessProperty.CanWrite)
@@ -656,6 +651,23 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // Save the changes after updating PlaylistMediaType
             await playlist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             
+            // Update the playlist items using the proper Jellyfin API
+            // Remove all existing items first, then add new items
+            var existingItems = playlist.GetLinkedChildren().Select(c => c.Id.ToString()).ToArray();
+            if (existingItems.Length > 0)
+            {
+                await _playlistManager.RemoveItemFromPlaylistAsync(playlist.Id.ToString(), existingItems);
+                _logger.LogDebug("Removed {ItemCount} existing items from playlist {PlaylistName}", existingItems.Length, playlist.Name);
+            }
+            
+            // Add all new items using the proper API
+            if (linkedChildren.Length > 0)
+            {
+                var itemIds = linkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId.Value).ToArray();
+                await _playlistManager.AddItemToPlaylistAsync(playlist.Id, itemIds, playlist.OwnerUserId);
+                _logger.LogDebug("Added {ItemCount} items to playlist {PlaylistName} using PlaylistManager API", itemIds.Length, playlist.Name);
+            }
+            
             // Log the final state using OpenAccess property
             var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
             bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : (playlist.Shares?.Any() ?? false);
@@ -685,14 +697,20 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Retrieved new playlist: Name = {Name}, Shares count = {SharesCount}, Public = {Public}", 
                     newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, (newPlaylist.Shares?.Any() ?? false));
                 
-                newPlaylist.LinkedChildren = linkedChildren;
-
-                // Set MediaType before persisting to avoid a second write
+                // Set MediaType before adding items
                 var mediaType = DeterminePlaylistMediaType(dto);
                 SetPlaylistMediaType(newPlaylist, mediaType);
 
-                // Persist once with items + media type
+                // Persist metadata changes
                 await newPlaylist.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                
+                // Add items using the proper Jellyfin API
+                if (linkedChildren.Length > 0)
+                {
+                    var itemIds = linkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId.Value).ToArray();
+                    await _playlistManager.AddItemToPlaylistAsync(newPlaylist.Id, itemIds, userId);
+                    _logger.LogDebug("Added {ItemCount} items to new playlist {PlaylistName} using PlaylistManager API", itemIds.Length, newPlaylist.Name);
+                }
                 
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
