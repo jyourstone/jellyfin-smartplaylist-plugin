@@ -1147,7 +1147,7 @@
                     
                     // Re-sync field-specific UI after invalidation
                     updateUserSelectorVisibility(ruleRow, '');
-                    updateRegexHelp(ruleRow, '');
+                    updateRegexHelp(ruleRow);
                     if (page) {
                         updateNextUnwatchedOptionsVisibility(ruleRow, '', page);
                         updateCollectionsOptionsVisibility(ruleRow, '', page);
@@ -1160,7 +1160,7 @@
                     
                     // Also ensure field-specific UI is aligned with the restored value
                     updateUserSelectorVisibility(ruleRow, currentValue);
-                    updateRegexHelp(ruleRow, currentValue);
+                    updateRegexHelp(ruleRow);
                     if (page) {
                         updateNextUnwatchedOptionsVisibility(ruleRow, currentValue, page);
                         updateCollectionsOptionsVisibility(ruleRow, currentValue, page);
@@ -3151,9 +3151,13 @@
             return hasMovie || hasEpisode;
         }
         
-        // Audio fields (all except Photo and Book)
+        // Audio fields - show when any audio-capable type is selected
+        // Audio-capable types: Movie, Episode, Audio, AudioBook, MusicVideo, Video
+        // Books don't have audio metadata, Photos don't have audio metadata
         if (['AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioCodec', 'AudioChannels', 'AudioLanguages'].includes(fieldValue)) {
-            return !hasPhoto && !hasBook; // Show for all except Photo and Book
+            const audioSupportedTypes = ['Movie', 'Episode', 'Audio', 'AudioBook', 'MusicVideo', 'Video'];
+            const hasAudioType = selectedMediaTypes.some(type => audioSupportedTypes.includes(type));
+            return hasAudioType;
         }
         
         // Music-specific fields
