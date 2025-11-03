@@ -75,9 +75,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public List<string> AllPeople { get; set; } = [];
             public List<string> Actors { get; set; } = [];
             public List<string> Directors { get; set; } = [];
+            public List<string> Composers { get; set; } = [];
             public List<string> Writers { get; set; } = [];
-            public List<string> Producers { get; set; } = [];
             public List<string> GuestStars { get; set; } = [];
+            public List<string> Producers { get; set; } = [];
+            public List<string> Conductors { get; set; } = [];
+            public List<string> Lyricists { get; set; } = [];
+            public List<string> Arrangers { get; set; } = [];
+            public List<string> SoundEngineers { get; set; } = [];
+            public List<string> Mixers { get; set; } = [];
+            public List<string> Remixers { get; set; } = [];
+            public List<string> Creators { get; set; } = [];
+            public List<string> PersonArtists { get; set; } = []; // Person role "Artist" (different from music Artists field)
+            public List<string> PersonAlbumArtists { get; set; } = []; // Person role "Album Artist" (different from music AlbumArtists field)
+            public List<string> Authors { get; set; } = [];
+            public List<string> Illustrators { get; set; } = [];
+            public List<string> Pencilers { get; set; } = [];
+            public List<string> Inkers { get; set; } = [];
+            public List<string> Colorists { get; set; } = [];
+            public List<string> Letterers { get; set; } = [];
+            public List<string> CoverArtists { get; set; } = [];
+            public List<string> Editors { get; set; } = [];
+            public List<string> Translators { get; set; } = [];
         }
 
         /// <summary>
@@ -146,10 +165,22 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                         categorized.Directors.Add(name);
                                     }
                                     break;
+                                case "Composer":
+                                    if (!categorized.Composers.Contains(name))
+                                    {
+                                        categorized.Composers.Add(name);
+                                    }
+                                    break;
                                 case "Writer":
                                     if (!categorized.Writers.Contains(name))
                                     {
                                         categorized.Writers.Add(name);
+                                    }
+                                    break;
+                                case "GuestStar":
+                                    if (!categorized.GuestStars.Contains(name))
+                                    {
+                                        categorized.GuestStars.Add(name);
                                     }
                                     break;
                                 case "Producer":
@@ -158,10 +189,112 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                         categorized.Producers.Add(name);
                                     }
                                     break;
-                                case "GuestStar":
-                                    if (!categorized.GuestStars.Contains(name))
+                                case "Conductor":
+                                    if (!categorized.Conductors.Contains(name))
                                     {
-                                        categorized.GuestStars.Add(name);
+                                        categorized.Conductors.Add(name);
+                                    }
+                                    break;
+                                case "Lyricist":
+                                    if (!categorized.Lyricists.Contains(name))
+                                    {
+                                        categorized.Lyricists.Add(name);
+                                    }
+                                    break;
+                                case "Arranger":
+                                    if (!categorized.Arrangers.Contains(name))
+                                    {
+                                        categorized.Arrangers.Add(name);
+                                    }
+                                    break;
+                                case "SoundEngineer":
+                                    if (!categorized.SoundEngineers.Contains(name))
+                                    {
+                                        categorized.SoundEngineers.Add(name);
+                                    }
+                                    break;
+                                case "Mixer":
+                                    if (!categorized.Mixers.Contains(name))
+                                    {
+                                        categorized.Mixers.Add(name);
+                                    }
+                                    break;
+                                case "Remixer":
+                                    if (!categorized.Remixers.Contains(name))
+                                    {
+                                        categorized.Remixers.Add(name);
+                                    }
+                                    break;
+                                case "Creator":
+                                    if (!categorized.Creators.Contains(name))
+                                    {
+                                        categorized.Creators.Add(name);
+                                    }
+                                    break;
+                                case "Artist":
+                                    if (!categorized.PersonArtists.Contains(name))
+                                    {
+                                        categorized.PersonArtists.Add(name);
+                                    }
+                                    break;
+                                case "AlbumArtist":
+                                    if (!categorized.PersonAlbumArtists.Contains(name))
+                                    {
+                                        categorized.PersonAlbumArtists.Add(name);
+                                    }
+                                    break;
+                                case "Author":
+                                    if (!categorized.Authors.Contains(name))
+                                    {
+                                        categorized.Authors.Add(name);
+                                    }
+                                    break;
+                                case "Illustrator":
+                                    if (!categorized.Illustrators.Contains(name))
+                                    {
+                                        categorized.Illustrators.Add(name);
+                                    }
+                                    break;
+                                case "Penciler":
+                                    if (!categorized.Pencilers.Contains(name))
+                                    {
+                                        categorized.Pencilers.Add(name);
+                                    }
+                                    break;
+                                case "Inker":
+                                    if (!categorized.Inkers.Contains(name))
+                                    {
+                                        categorized.Inkers.Add(name);
+                                    }
+                                    break;
+                                case "Colorist":
+                                    if (!categorized.Colorists.Contains(name))
+                                    {
+                                        categorized.Colorists.Add(name);
+                                    }
+                                    break;
+                                case "Letterer":
+                                    if (!categorized.Letterers.Contains(name))
+                                    {
+                                        categorized.Letterers.Add(name);
+                                    }
+                                    break;
+                                case "CoverArtist":
+                                    if (!categorized.CoverArtists.Contains(name))
+                                    {
+                                        categorized.CoverArtists.Add(name);
+                                    }
+                                    break;
+                                case "Editor":
+                                    if (!categorized.Editors.Contains(name))
+                                    {
+                                        categorized.Editors.Add(name);
+                                    }
+                                    break;
+                                case "Translator":
+                                    if (!categorized.Translators.Contains(name))
+                                    {
+                                        categorized.Translators.Add(name);
                                     }
                                     break;
                                 // Add other types as needed, but they won't be categorized
@@ -974,9 +1107,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.People = [];
             operand.Actors = [];
             operand.Directors = [];
+            operand.Composers = [];
             operand.Writers = [];
-            operand.Producers = [];
             operand.GuestStars = [];
+            operand.Producers = [];
+            operand.Conductors = [];
+            operand.Lyricists = [];
+            operand.Arrangers = [];
+            operand.SoundEngineers = [];
+            operand.Mixers = [];
+            operand.Remixers = [];
+            operand.Creators = [];
+            operand.PersonArtists = [];
+            operand.PersonAlbumArtists = [];
+            operand.Authors = [];
+            operand.Illustrators = [];
+            operand.Pencilers = [];
+            operand.Inkers = [];
+            operand.Colorists = [];
+            operand.Letterers = [];
+            operand.CoverArtists = [];
+            operand.Editors = [];
+            operand.Translators = [];
             
             // Check cache first if available
             if (cache != null && cache.ItemPeople.TryGetValue(baseItem.Id, out var cachedPeople))
@@ -984,9 +1136,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.People = new List<string>(cachedPeople.AllPeople);
                 operand.Actors = new List<string>(cachedPeople.Actors);
                 operand.Directors = new List<string>(cachedPeople.Directors);
+                operand.Composers = new List<string>(cachedPeople.Composers);
                 operand.Writers = new List<string>(cachedPeople.Writers);
-                operand.Producers = new List<string>(cachedPeople.Producers);
                 operand.GuestStars = new List<string>(cachedPeople.GuestStars);
+                operand.Producers = new List<string>(cachedPeople.Producers);
+                operand.Conductors = new List<string>(cachedPeople.Conductors);
+                operand.Lyricists = new List<string>(cachedPeople.Lyricists);
+                operand.Arrangers = new List<string>(cachedPeople.Arrangers);
+                operand.SoundEngineers = new List<string>(cachedPeople.SoundEngineers);
+                operand.Mixers = new List<string>(cachedPeople.Mixers);
+                operand.Remixers = new List<string>(cachedPeople.Remixers);
+                operand.Creators = new List<string>(cachedPeople.Creators);
+                operand.PersonArtists = new List<string>(cachedPeople.PersonArtists);
+                operand.PersonAlbumArtists = new List<string>(cachedPeople.PersonAlbumArtists);
+                operand.Authors = new List<string>(cachedPeople.Authors);
+                operand.Illustrators = new List<string>(cachedPeople.Illustrators);
+                operand.Pencilers = new List<string>(cachedPeople.Pencilers);
+                operand.Inkers = new List<string>(cachedPeople.Inkers);
+                operand.Colorists = new List<string>(cachedPeople.Colorists);
+                operand.Letterers = new List<string>(cachedPeople.Letterers);
+                operand.CoverArtists = new List<string>(cachedPeople.CoverArtists);
+                operand.Editors = new List<string>(cachedPeople.Editors);
+                operand.Translators = new List<string>(cachedPeople.Translators);
                 return;
             }
             
@@ -1027,9 +1198,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                         operand.People = categorized.AllPeople;
                         operand.Actors = categorized.Actors;
                         operand.Directors = categorized.Directors;
+                        operand.Composers = categorized.Composers;
                         operand.Writers = categorized.Writers;
-                        operand.Producers = categorized.Producers;
                         operand.GuestStars = categorized.GuestStars;
+                        operand.Producers = categorized.Producers;
+                        operand.Conductors = categorized.Conductors;
+                        operand.Lyricists = categorized.Lyricists;
+                        operand.Arrangers = categorized.Arrangers;
+                        operand.SoundEngineers = categorized.SoundEngineers;
+                        operand.Mixers = categorized.Mixers;
+                        operand.Remixers = categorized.Remixers;
+                        operand.Creators = categorized.Creators;
+                        operand.PersonArtists = categorized.PersonArtists;
+                        operand.PersonAlbumArtists = categorized.PersonAlbumArtists;
+                        operand.Authors = categorized.Authors;
+                        operand.Illustrators = categorized.Illustrators;
+                        operand.Pencilers = categorized.Pencilers;
+                        operand.Inkers = categorized.Inkers;
+                        operand.Colorists = categorized.Colorists;
+                        operand.Letterers = categorized.Letterers;
+                        operand.CoverArtists = categorized.CoverArtists;
+                        operand.Editors = categorized.Editors;
+                        operand.Translators = categorized.Translators;
                     }
                     
                     stopwatch.Stop();
@@ -1044,9 +1234,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             AllPeople = new List<string>(operand.People),
                             Actors = new List<string>(operand.Actors),
                             Directors = new List<string>(operand.Directors),
+                            Composers = new List<string>(operand.Composers),
                             Writers = new List<string>(operand.Writers),
+                            GuestStars = new List<string>(operand.GuestStars),
                             Producers = new List<string>(operand.Producers),
-                            GuestStars = new List<string>(operand.GuestStars)
+                            Conductors = new List<string>(operand.Conductors),
+                            Lyricists = new List<string>(operand.Lyricists),
+                            Arrangers = new List<string>(operand.Arrangers),
+                            SoundEngineers = new List<string>(operand.SoundEngineers),
+                            Mixers = new List<string>(operand.Mixers),
+                            Remixers = new List<string>(operand.Remixers),
+                            Creators = new List<string>(operand.Creators),
+                            PersonArtists = new List<string>(operand.PersonArtists),
+                            PersonAlbumArtists = new List<string>(operand.PersonAlbumArtists),
+                            Authors = new List<string>(operand.Authors),
+                            Illustrators = new List<string>(operand.Illustrators),
+                            Pencilers = new List<string>(operand.Pencilers),
+                            Inkers = new List<string>(operand.Inkers),
+                            Colorists = new List<string>(operand.Colorists),
+                            Letterers = new List<string>(operand.Letterers),
+                            CoverArtists = new List<string>(operand.CoverArtists),
+                            Editors = new List<string>(operand.Editors),
+                            Translators = new List<string>(operand.Translators)
                         };
                     }
                 }
@@ -1462,9 +1671,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.People = [];
                 operand.Actors = [];
                 operand.Directors = [];
+                operand.Composers = [];
                 operand.Writers = [];
-                operand.Producers = [];
                 operand.GuestStars = [];
+                operand.Producers = [];
+                operand.Conductors = [];
+                operand.Lyricists = [];
+                operand.Arrangers = [];
+                operand.SoundEngineers = [];
+                operand.Mixers = [];
+                operand.Remixers = [];
+                operand.Creators = [];
+                operand.PersonArtists = [];
+                operand.PersonAlbumArtists = [];
+                operand.Authors = [];
+                operand.Illustrators = [];
+                operand.Pencilers = [];
+                operand.Inkers = [];
+                operand.Colorists = [];
+                operand.Letterers = [];
+                operand.CoverArtists = [];
+                operand.Editors = [];
+                operand.Translators = [];
                 logger?.LogDebug("People extraction skipped for item {Name} - not needed by rules", baseItem.Name);
             }
 
@@ -1999,9 +2227,29 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public List<string> Genres { get; set; } = [];
             public List<string> Tags { get; set; } = [];
             public List<string> Actors { get; set; } = [];
-            public List<string> Writers { get; set; } = [];
-            public List<string> Producers { get; set; } = [];
             public List<string> Directors { get; set; } = [];
+            public List<string> Composers { get; set; } = [];
+            public List<string> Writers { get; set; } = [];
+            public List<string> GuestStars { get; set; } = [];
+            public List<string> Producers { get; set; } = [];
+            public List<string> Conductors { get; set; } = [];
+            public List<string> Lyricists { get; set; } = [];
+            public List<string> Arrangers { get; set; } = [];
+            public List<string> SoundEngineers { get; set; } = [];
+            public List<string> Mixers { get; set; } = [];
+            public List<string> Remixers { get; set; } = [];
+            public List<string> Creators { get; set; } = [];
+            public List<string> PersonArtists { get; set; } = [];
+            public List<string> PersonAlbumArtists { get; set; } = [];
+            public List<string> Authors { get; set; } = [];
+            public List<string> Illustrators { get; set; } = [];
+            public List<string> Pencilers { get; set; } = [];
+            public List<string> Inkers { get; set; } = [];
+            public List<string> Colorists { get; set; } = [];
+            public List<string> Letterers { get; set; } = [];
+            public List<string> CoverArtists { get; set; } = [];
+            public List<string> Editors { get; set; } = [];
+            public List<string> Translators { get; set; } = [];
             public List<string> Studios { get; set; } = [];
             public List<string> AudioLanguages { get; set; } = [];
             public List<string> Names { get; set; } = [];
@@ -2013,9 +2261,9 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public IReadOnlyDictionary<string, int> GenreFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public IReadOnlyDictionary<string, int> TagFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public IReadOnlyDictionary<string, int> ActorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, int> DirectorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public IReadOnlyDictionary<string, int> WriterFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public IReadOnlyDictionary<string, int> ProducerFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            public IReadOnlyDictionary<string, int> DirectorFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public IReadOnlyDictionary<string, int> StudioFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public IReadOnlyDictionary<string, int> AudioLangFreq { get; set; } = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
@@ -2121,11 +2369,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 // Pre-fetch people data once per item if any people fields are needed (performance optimization)
                 CategorizedPeople categorizedPeople = null;
-                bool needsPeople = comparisonFields.Any(f =>
-                    f.Equals("Actors", StringComparison.OrdinalIgnoreCase) ||
-                    f.Equals("Writers", StringComparison.OrdinalIgnoreCase) ||
-                    f.Equals("Producers", StringComparison.OrdinalIgnoreCase) ||
-                    f.Equals("Directors", StringComparison.OrdinalIgnoreCase));
+                bool needsPeople = comparisonFields.Any(f => FieldDefinitions.IsPeopleField(f));
                 
                 if (needsPeople && libraryManager != null)
                 {
@@ -2195,28 +2439,91 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
                             break;
                             
+                        case "people":
                         case "actors":
-                        case "writers":
-                        case "producers":
                         case "directors":
+                        case "composers":
+                        case "writers":
+                        case "gueststars":
+                        case "producers":
+                        case "conductors":
+                        case "lyricists":
+                        case "arrangers":
+                        case "soundengineers":
+                        case "mixers":
+                        case "remixers":
+                        case "creators":
+                        case "personartists":
+                        case "personalbumartists":
+                        case "authors":
+                        case "illustrators":
+                        case "pencilers":
+                        case "inkers":
+                        case "colorists":
+                        case "letterers":
+                        case "coverartists":
+                        case "editors":
+                        case "translators":
                             // Use pre-fetched categorized people data (queried once per item for all roles)
                             if (categorizedPeople != null)
                             {
                                 var sourceList = fieldKey switch
                                 {
+                                    "people" => categorizedPeople.AllPeople,
                                     "actors" => categorizedPeople.Actors,
                                     "directors" => categorizedPeople.Directors,
+                                    "composers" => categorizedPeople.Composers,
                                     "writers" => categorizedPeople.Writers,
+                                    "gueststars" => categorizedPeople.GuestStars,
                                     "producers" => categorizedPeople.Producers,
+                                    "conductors" => categorizedPeople.Conductors,
+                                    "lyricists" => categorizedPeople.Lyricists,
+                                    "arrangers" => categorizedPeople.Arrangers,
+                                    "soundengineers" => categorizedPeople.SoundEngineers,
+                                    "mixers" => categorizedPeople.Mixers,
+                                    "remixers" => categorizedPeople.Remixers,
+                                    "creators" => categorizedPeople.Creators,
+                                    "personartists" => categorizedPeople.PersonArtists,
+                                    "personalbumartists" => categorizedPeople.PersonAlbumArtists,
+                                    "authors" => categorizedPeople.Authors,
+                                    "illustrators" => categorizedPeople.Illustrators,
+                                    "pencilers" => categorizedPeople.Pencilers,
+                                    "inkers" => categorizedPeople.Inkers,
+                                    "colorists" => categorizedPeople.Colorists,
+                                    "letterers" => categorizedPeople.Letterers,
+                                    "coverartists" => categorizedPeople.CoverArtists,
+                                    "editors" => categorizedPeople.Editors,
+                                    "translators" => categorizedPeople.Translators,
                                     _ => null
                                 };
                                 
                                 var targetList = fieldKey switch
                                 {
+                                    "people" => referenceMetadata.Actors, // Note: "People (All)" aggregates all person types, using Actors as proxy for SimilarTo
                                     "actors" => referenceMetadata.Actors,
                                     "directors" => referenceMetadata.Directors,
+                                    "composers" => referenceMetadata.Composers,
                                     "writers" => referenceMetadata.Writers,
+                                    "gueststars" => referenceMetadata.GuestStars,
                                     "producers" => referenceMetadata.Producers,
+                                    "conductors" => referenceMetadata.Conductors,
+                                    "lyricists" => referenceMetadata.Lyricists,
+                                    "arrangers" => referenceMetadata.Arrangers,
+                                    "soundengineers" => referenceMetadata.SoundEngineers,
+                                    "mixers" => referenceMetadata.Mixers,
+                                    "remixers" => referenceMetadata.Remixers,
+                                    "creators" => referenceMetadata.Creators,
+                                    "personartists" => referenceMetadata.PersonArtists,
+                                    "personalbumartists" => referenceMetadata.PersonAlbumArtists,
+                                    "authors" => referenceMetadata.Authors,
+                                    "illustrators" => referenceMetadata.Illustrators,
+                                    "pencilers" => referenceMetadata.Pencilers,
+                                    "inkers" => referenceMetadata.Inkers,
+                                    "colorists" => referenceMetadata.Colorists,
+                                    "letterers" => referenceMetadata.Letterers,
+                                    "coverartists" => referenceMetadata.CoverArtists,
+                                    "editors" => referenceMetadata.Editors,
+                                    "translators" => referenceMetadata.Translators,
                                     _ => null
                                 };
                                 

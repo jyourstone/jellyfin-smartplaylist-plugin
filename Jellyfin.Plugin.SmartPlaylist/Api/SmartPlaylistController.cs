@@ -665,12 +665,35 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 },
                 PeopleFields = new[]
                 {
+                    new { Value = "People", Label = "People" }
+                },
+                PeopleSubFields = new[]
+                {
                     new { Value = "People", Label = "People (All)" },
                     new { Value = "Actors", Label = "Actors" },
                     new { Value = "Directors", Label = "Directors" },
+                    new { Value = "Composers", Label = "Composers" },
                     new { Value = "Writers", Label = "Writers" },
+                    new { Value = "GuestStars", Label = "Guest Stars" },
                     new { Value = "Producers", Label = "Producers" },
-                    new { Value = "GuestStars", Label = "Guest Stars" }
+                    new { Value = "Conductors", Label = "Conductors" },
+                    new { Value = "Lyricists", Label = "Lyricists" },
+                    new { Value = "Arrangers", Label = "Arrangers" },
+                    new { Value = "SoundEngineers", Label = "Sound Engineers" },
+                    new { Value = "Mixers", Label = "Mixers" },
+                    new { Value = "Remixers", Label = "Remixers" },
+                    new { Value = "Creators", Label = "Creators" },
+                    new { Value = "PersonArtists", Label = "Artists (Person Role)" },
+                    new { Value = "PersonAlbumArtists", Label = "Album Artists (Person Role)" },
+                    new { Value = "Authors", Label = "Authors" },
+                    new { Value = "Illustrators", Label = "Illustrators" },
+                    new { Value = "Pencilers", Label = "Pencilers" },
+                    new { Value = "Inkers", Label = "Inkers" },
+                    new { Value = "Colorists", Label = "Colorists" },
+                    new { Value = "Letterers", Label = "Letterers" },
+                    new { Value = "CoverArtists", Label = "Cover Artists" },
+                    new { Value = "Editors", Label = "Editors" },
+                    new { Value = "Translators", Label = "Translators" }
                 },
                 CollectionFields = new[]
                 {
