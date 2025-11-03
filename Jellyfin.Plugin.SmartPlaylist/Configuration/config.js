@@ -1161,6 +1161,7 @@
                         updateTagsOptionsVisibility(ruleRow, '', page);
                     }
                     updateSimilarityOptionsVisibility(ruleRow, '');
+                    updatePeopleOptionsVisibility(ruleRow, '');
                 } else if (currentValue) {
                     // Field is still valid, restore the value
                     fieldSelect.value = currentValue;
@@ -1174,6 +1175,7 @@
                         updateTagsOptionsVisibility(ruleRow, currentValue, page);
                     }
                     updateSimilarityOptionsVisibility(ruleRow, currentValue);
+                    updatePeopleOptionsVisibility(ruleRow, currentValue);
                 }
             }
         });
@@ -2447,6 +2449,14 @@
                 <div class="similarity-fields-container" style="display: flex; flex-wrap: wrap; gap: 0.5em;">
                     <!-- Options will be populated dynamically -->
                 </div>
+            </div>
+            <div class="rule-people-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Select person type:
+                </label>
+                <select is="emby-select" class="emby-select rule-people-select" style="width: 100%;">
+                    <!-- Options will be populated dynamically -->
+                </select>
             </div>`;
         
         ruleDiv.innerHTML = fieldsHtml;
@@ -2496,6 +2506,7 @@
             updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value, page);
             updateTagsOptionsVisibility(newRuleRow, fieldSelect.value, page);
             updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
+            updatePeopleOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
         }, listenerOptions);
         
@@ -2694,6 +2705,7 @@
                     updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value, page);
                     updateTagsOptionsVisibility(ruleRow, fieldSelect.value, page);
                     updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
+                    updatePeopleOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
                 }, listenerOptions);
                 
@@ -2773,7 +2785,16 @@
             page.querySelectorAll('.logic-group').forEach(logicGroup => {
                 const expressions = [];
                 logicGroup.querySelectorAll('.rule-row').forEach(rule => {
-                    const memberName = rule.querySelector('.rule-field-select').value;
+                    let memberName = rule.querySelector('.rule-field-select').value;
+                    
+                    // If People field is selected, use the value from the people submenu
+                    if (memberName === 'People') {
+                        const peopleSelect = rule.querySelector('.rule-people-select');
+                        if (peopleSelect && peopleSelect.value) {
+                            memberName = peopleSelect.value;
+                        }
+                        // If no value in submenu, default to 'People' (All)
+                    }
                     const operator = rule.querySelector('.rule-operator-select').value;
                     let targetValue;
                     if ((operator === 'NewerThan' || operator === 'OlderThan') && rule.querySelector('.rule-value-unit')) {
@@ -3104,6 +3125,87 @@
         updateAllRules(page, updateCollectionsOptionsVisibility);
     };
     
+    function updatePeopleOptionsVisibility(ruleRow, fieldValue) {
+        const isPeopleField = fieldValue === 'People';
+        const peopleOptionsDiv = ruleRow.querySelector('.rule-people-options');
+        const peopleSelect = peopleOptionsDiv ? peopleOptionsDiv.querySelector('.rule-people-select') : null;
+        
+        if (peopleOptionsDiv) {
+            if (isPeopleField) {
+                peopleOptionsDiv.style.display = 'block';
+                // Populate the people submenu if not already populated
+                if (peopleSelect && availableFields && availableFields.PeopleSubFields && peopleSelect.options.length === 0) {
+                    peopleSelect.innerHTML = '';
+                    availableFields.PeopleSubFields.forEach(field => {
+                        const option = document.createElement('option');
+                        option.value = field.Value;
+                        option.textContent = field.Label;
+                        peopleSelect.appendChild(option);
+                    });
+                    // Set "People (All)" as default if no value is currently selected
+                    if (!peopleSelect.value) {
+                        peopleSelect.value = 'People';
+                    }
+                }
+            } else {
+                peopleOptionsDiv.style.display = 'none';
+                // Don't reset value - preserve user's selection in case they switch back
+            }
+        }
+    }
+    
+    // Centralized people field mapping - DRY principle
+    // Returns a map where keys are people field names and values are 'People' (indicating they're people fields)
+    function getPeopleFieldMap() {
+        return {
+            'People': 'People', 'Actors': 'People', 'Directors': 'People', 'Composers': 'People',
+            'Writers': 'People', 'GuestStars': 'People', 'Producers': 'People', 'Conductors': 'People',
+            'Lyricists': 'People', 'Arrangers': 'People', 'SoundEngineers': 'People', 'Mixers': 'People',
+            'Remixers': 'People', 'Creators': 'People', 'PersonArtists': 'People', 'PersonAlbumArtists': 'People',
+            'Authors': 'People', 'Illustrators': 'People', 'Pencilers': 'People', 'Inkers': 'People',
+            'Colorists': 'People', 'Letterers': 'People', 'CoverArtists': 'People', 'Editors': 'People',
+            'Translators': 'People'
+        };
+    }
+    
+    // Check if a field is a people sub-field (not "People" itself)
+    function isPeopleSubField(fieldName) {
+        const peopleFieldMap = getPeopleFieldMap();
+        return peopleFieldMap[fieldName] === 'People' && fieldName !== 'People';
+    }
+    
+    // Get friendly display name for people fields
+    function getPeopleFieldDisplayName(fieldName) {
+        const displayNames = {
+            'People': 'People (All)',
+            'Actors': 'People (Actors)',
+            'Directors': 'People (Directors)',
+            'Composers': 'People (Composers)',
+            'Writers': 'People (Writers)',
+            'GuestStars': 'People (Guest Stars)',
+            'Producers': 'People (Producers)',
+            'Conductors': 'People (Conductors)',
+            'Lyricists': 'People (Lyricists)',
+            'Arrangers': 'People (Arrangers)',
+            'SoundEngineers': 'People (Sound Engineers)',
+            'Mixers': 'People (Mixers)',
+            'Remixers': 'People (Remixers)',
+            'Creators': 'People (Creators)',
+            'PersonArtists': 'People (Artists)',
+            'PersonAlbumArtists': 'People (Album Artists)',
+            'Authors': 'People (Authors)',
+            'Illustrators': 'People (Illustrators)',
+            'Pencilers': 'People (Pencilers)',
+            'Inkers': 'People (Inkers)',
+            'Colorists': 'People (Colorists)',
+            'Letterers': 'People (Letterers)',
+            'CoverArtists': 'People (Cover Artists)',
+            'Editors': 'People (Editors)',
+            'Translators': 'People (Translators)'
+        };
+        return displayNames[fieldName] || fieldName;
+    }
+    
     // Helper function to get selected media types from the page
     function getSelectedMediaTypes(page) {
         const selectedMediaTypes = [];
@@ -3145,17 +3247,10 @@
         const hasAudioBook = selectedMediaTypes.includes('AudioBook');
         const hasMusicVideo = selectedMediaTypes.includes('MusicVideo');
         const hasVideo = selectedMediaTypes.includes('Video');
-        const hasPhoto = selectedMediaTypes.includes('Photo');
-        const hasBook = selectedMediaTypes.includes('Book');
         
         // Episode-only fields
-        if (['SeriesName', 'GuestStars', 'NextUnwatched'].includes(fieldValue)) {
+        if (['SeriesName', 'NextUnwatched'].includes(fieldValue)) {
             return hasEpisode;
-        }
-        
-        // Movie + Episode fields (People roles)
-        if (['Actors', 'Directors', 'Writers', 'Producers'].includes(fieldValue)) {
-            return hasMovie || hasEpisode;
         }
         
         // Audio fields - show when any audio-capable type is selected
@@ -3759,6 +3854,12 @@
                         
                         let fieldName = rule.MemberName;
                         if (fieldName === 'ItemType') fieldName = 'Media Type';
+                        
+                        // Map people field names to friendly display names
+                        const displayName = getPeopleFieldDisplayName(fieldName);
+                        if (displayName !== fieldName) {
+                            fieldName = displayName;
+                        }
                         let operator = rule.Operator;
                         switch(operator) {
                             case 'Equal': operator = 'equals'; break;
@@ -5321,23 +5422,47 @@
                                 const operatorSelect = currentRule.querySelector('.rule-operator-select');
                                 const valueContainer = currentRule.querySelector('.rule-value-container');
                                 
-                                fieldSelect.value = expression.MemberName;
+                                // Check if this is a people field (but not "People" itself)
+                                const isPeopleSubFieldValue = isPeopleSubField(expression.MemberName);
+                                const actualMemberName = expression.MemberName;
                                 
-                                // Update operator options first
-                                updateOperatorOptions(expression.MemberName, operatorSelect);
+                                if (isPeopleSubFieldValue) {
+                                    // Set field select to "People" and submenu to the actual field
+                                    fieldSelect.value = 'People';
+                                    // Update operator options using the actual member name
+                                    updateOperatorOptions(actualMemberName, operatorSelect);
+                                } else {
+                                    fieldSelect.value = expression.MemberName;
+                                    // Update operator options first
+                                    updateOperatorOptions(expression.MemberName, operatorSelect);
+                                }
                                 
                                 // Set operator so setValueInput knows what type of input to create
                                 operatorSelect.value = expression.Operator;
                                 
                                 // Update UI elements based on the loaded rule data
                                 // Pass the operator and current value to ensure correct input type is created
-                                setValueInput(expression.MemberName, valueContainer, expression.Operator, expression.TargetValue);
-                                updateUserSelectorVisibility(currentRule, expression.MemberName);
-                                updateNextUnwatchedOptionsVisibility(currentRule, expression.MemberName, page);
-                                updateCollectionsOptionsVisibility(currentRule, expression.MemberName, page);
-                                updateTagsOptionsVisibility(currentRule, expression.MemberName, page);
+                                setValueInput(actualMemberName, valueContainer, expression.Operator, expression.TargetValue);
+                                updateUserSelectorVisibility(currentRule, actualMemberName);
+                                updateNextUnwatchedOptionsVisibility(currentRule, actualMemberName, page);
+                                updateCollectionsOptionsVisibility(currentRule, actualMemberName, page);
+                                updateTagsOptionsVisibility(currentRule, actualMemberName, page);
                                 // Pass the playlist's saved similarity fields (if any) so they're loaded correctly
-                                updateSimilarityOptionsVisibility(currentRule, expression.MemberName, playlist.SimilarityComparisonFields);
+                                updateSimilarityOptionsVisibility(currentRule, actualMemberName, playlist.SimilarityComparisonFields);
+                                
+                                // Handle people submenu if this is a people field
+                                if (isPeopleSubFieldValue) {
+                                    updatePeopleOptionsVisibility(currentRule, 'People');
+                                    const peopleSelect = currentRule.querySelector('.rule-people-select');
+                                    if (peopleSelect) {
+                                        // Wait for options to be populated, then set the value
+                                        setTimeout(() => {
+                                            peopleSelect.value = actualMemberName;
+                                        }, 0);
+                                    }
+                                } else {
+                                    updatePeopleOptionsVisibility(currentRule, fieldSelect.value);
+                                }
                                 
                                 // Set value AFTER the correct input type is created
                                 const valueInput = currentRule.querySelector('.rule-value-input');
@@ -5614,13 +5739,34 @@
             const operatorSelect = ruleRow.querySelector('.rule-operator-select');
             const valueContainer = ruleRow.querySelector('.rule-value-container');
             
+            // Determine the actual member name to use (for people sub-fields, this stays as the original)
+            let actualMemberName = expression.MemberName;
+            
             if (fieldSelect && expression.MemberName) {
-                fieldSelect.value = expression.MemberName;
-                updateOperatorOptions(expression.MemberName, operatorSelect);
-                updateUserSelectorVisibility(ruleRow, expression.MemberName);
-                updateNextUnwatchedOptionsVisibility(ruleRow, expression.MemberName, page);
-                updateCollectionsOptionsVisibility(ruleRow, expression.MemberName, page);
-                updateTagsOptionsVisibility(ruleRow, expression.MemberName, page);
+                // Check if this is a people sub-field
+                const isPeopleSubFieldValue = isPeopleSubField(expression.MemberName);
+                
+                if (isPeopleSubFieldValue) {
+                    // Set field select to "People" and submenu to the actual field
+                    fieldSelect.value = 'People';
+                    updatePeopleOptionsVisibility(ruleRow, 'People');
+                    const peopleSelect = ruleRow.querySelector('.rule-people-select');
+                    if (peopleSelect) {
+                        // Wait for options to be populated, then set the value
+                        setTimeout(() => {
+                            peopleSelect.value = actualMemberName;
+                        }, 0);
+                    }
+                } else {
+                    fieldSelect.value = expression.MemberName;
+                    updatePeopleOptionsVisibility(ruleRow, expression.MemberName);
+                }
+                
+                updateOperatorOptions(actualMemberName, operatorSelect);
+                updateUserSelectorVisibility(ruleRow, actualMemberName);
+                updateNextUnwatchedOptionsVisibility(ruleRow, actualMemberName, page);
+                updateCollectionsOptionsVisibility(ruleRow, actualMemberName, page);
+                updateTagsOptionsVisibility(ruleRow, actualMemberName, page);
             }
             
             if (operatorSelect && expression.Operator) {
@@ -5628,7 +5774,7 @@
             }
             
             if (valueContainer && expression.TargetValue !== undefined) {
-                setValueInput(expression.MemberName, valueContainer, expression.Operator, expression.TargetValue);
+                setValueInput(actualMemberName, valueContainer, expression.Operator, expression.TargetValue);
             }
             
             // Handle user-specific rules

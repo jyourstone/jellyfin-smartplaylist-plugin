@@ -46,7 +46,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
         private static readonly HashSet<string> ExpensiveFields = new(StringComparer.OrdinalIgnoreCase)
         {
             "AudioLanguages", "AudioBitrate", "AudioSampleRate", "AudioBitDepth", "AudioCodec", "AudioChannels",
-            "People", "Actors", "Directors", "Writers", "Producers", "GuestStars",
+            "People", "Actors", "Directors", "Composers", "Writers", "GuestStars", "Producers", "Conductors",
+            "Lyricists", "Arrangers", "SoundEngineers", "Mixers", "Remixers", "Creators", "PersonArtists",
+            "PersonAlbumArtists", "Authors", "Illustrators", "Pencilers", "Inkers", "Colorists", "Letterers",
+            "CoverArtists", "Editors", "Translators",
             "Collections", "NextUnwatched", "SeriesName"
         };
 
@@ -599,7 +602,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     if (needsSimilarTo && similarityComparisonFields is { Count: > 0 })
                     {
                         var simFields = new HashSet<string>(similarityComparisonFields, StringComparer.OrdinalIgnoreCase);
-                        if (simFields.Overlaps(new[] { "Actors", "Writers", "Producers", "Directors" }))
+                        if (simFields.Any(f => FieldDefinitions.IsPeopleField(f)))
                         {
                             needsPeople = true;
                             logger?.LogDebug("Enabled People extraction for SimilarTo comparison fields");

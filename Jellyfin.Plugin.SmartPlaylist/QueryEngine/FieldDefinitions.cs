@@ -29,9 +29,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             "People",
             "Actors",
             "Directors",
+            "Composers",
             "Writers",
-            "Producers",
             "GuestStars",
+            "Producers",
+            "Conductors",
+            "Lyricists",
+            "Arrangers",
+            "SoundEngineers",
+            "Mixers",
+            "Remixers",
+            "Creators",
+            "PersonArtists",
+            "PersonAlbumArtists",
+            "Authors",
+            "Illustrators",
+            "Pencilers",
+            "Inkers",
+            "Colorists",
+            "Letterers",
+            "CoverArtists",
+            "Editors",
+            "Translators",
             "Genres", 
             "Studios",
             "Tags",
@@ -42,16 +61,36 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         /// <summary>
         /// People role fields for movies and TV shows (subset of ListFields).
         /// These fields allow filtering by specific cast and crew roles.
+        /// Uses case-insensitive comparison to handle legacy playlists with lowercase field names.
         /// </summary>
-        public static readonly HashSet<string> PeopleRoleFields =
-        [
+        public static readonly HashSet<string> PeopleRoleFields = new(System.StringComparer.OrdinalIgnoreCase)
+        {
             "People",
             "Actors",
             "Directors",
+            "Composers",
             "Writers",
+            "GuestStars",
             "Producers",
-            "GuestStars"
-        ];
+            "Conductors",
+            "Lyricists",
+            "Arrangers",
+            "SoundEngineers",
+            "Mixers",
+            "Remixers",
+            "Creators",
+            "PersonArtists",
+            "PersonAlbumArtists",
+            "Authors",
+            "Illustrators",
+            "Pencilers",
+            "Inkers",
+            "Colorists",
+            "Letterers",
+            "CoverArtists",
+            "Editors",
+            "Translators"
+        };
 
         /// <summary>
         /// Numeric fields that support numeric comparisons.

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 
 namespace Jellyfin.Plugin.SmartPlaylist.Constants
 {
@@ -89,10 +90,15 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// <returns>Array of operator values for the field</returns>
         public static string[] GetOperatorsForField(string fieldName)
         {
+            // Check if it's a people field using centralized logic
+            if (FieldDefinitions.IsPeopleField(fieldName))
+            {
+                return MultiValuedFieldOperators;
+            }
+            
             return fieldName switch
             {
-                // Multi-valued fields with full operator support
-                "People" or "Actors" or "Directors" or "Writers" or "Producers" or "GuestStars" or 
+                // Other multi-valued fields with full operator support
                 "Genres" or "Studios" or "Tags" or "Artists" or "AlbumArtists" or "AudioLanguages" 
                     => MultiValuedFieldOperators,
                 
@@ -139,17 +145,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
         /// <returns>Dictionary mapping field names to their allowed operators</returns>
         public static Dictionary<string, string[]> GetFieldOperatorsDictionary()
         {
-            return new Dictionary<string, string[]>
+            var dictionary = new Dictionary<string, string[]>
             {
                 // List fields - multi-valued fields
                 // Note: IsNotIn and NotContains excluded from Collections to avoid confusion with series expansion logic
                 ["Collections"] = LimitedMultiValuedFieldOperators,
-                ["People"] = MultiValuedFieldOperators,
-                ["Actors"] = MultiValuedFieldOperators,
-                ["Directors"] = MultiValuedFieldOperators,
-                ["Writers"] = MultiValuedFieldOperators,
-                ["Producers"] = MultiValuedFieldOperators,
-                ["GuestStars"] = MultiValuedFieldOperators,
                 ["Genres"] = MultiValuedFieldOperators,
                 ["Studios"] = MultiValuedFieldOperators,
                 ["Tags"] = MultiValuedFieldOperators,
@@ -196,6 +196,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["FileName"] = StringFieldOperators,
                 ["FolderPath"] = StringFieldOperators
             };
+            
+            // Add all people role fields dynamically using centralized logic
+            foreach (var peopleField in FieldDefinitions.PeopleRoleFields)
+            {
+                dictionary[peopleField] = MultiValuedFieldOperators;
+            }
+            
+            return dictionary;
         }
 
         /// <summary>
