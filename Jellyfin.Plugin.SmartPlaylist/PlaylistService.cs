@@ -668,14 +668,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 _logger.LogDebug("Added {ItemCount} items to playlist {PlaylistName} using PlaylistManager API", itemIds.Length, playlist.Name);
             }
             
-            // Log the final state using OpenAccess property
-            var finalOpenAccessProperty = playlist.GetType().GetProperty("OpenAccess");
-            bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(playlist) ?? false) : (playlist.Shares?.Any() ?? false);
-            _logger.LogDebug("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
-                playlist.Name, isFinallyPublic, playlist.Shares?.Count ?? 0);
+            // Reload the playlist from library manager to get fresh LinkedChildren after API updates
+            var refreshedPlaylist = _libraryManager.GetItemById(playlist.Id) as Playlist;
+            if (refreshedPlaylist == null)
+            {
+                _logger.LogWarning("Failed to reload playlist {PlaylistName} after updating items", playlist.Name);
+                refreshedPlaylist = playlist; // Fallback to original
+            }
+            else
+            {
+                _logger.LogDebug("Reloaded playlist {PlaylistName} - now has {ItemCount} linked children", 
+                    refreshedPlaylist.Name, refreshedPlaylist.GetLinkedChildren().Count());
+            }
             
-            // Refresh metadata to generate cover images
-            await RefreshPlaylistMetadataAsync(playlist, cancellationToken).ConfigureAwait(false);
+            // Log the final state using OpenAccess property
+            var finalOpenAccessProperty = refreshedPlaylist.GetType().GetProperty("OpenAccess");
+            bool isFinallyPublic = finalOpenAccessProperty != null ? (bool)(finalOpenAccessProperty.GetValue(refreshedPlaylist) ?? false) : (refreshedPlaylist.Shares?.Any() ?? false);
+            _logger.LogDebug("Playlist {PlaylistName} updated: OpenAccess = {OpenAccess}, Shares count = {SharesCount}", 
+                refreshedPlaylist.Name, isFinallyPublic, refreshedPlaylist.Shares?.Count ?? 0);
+            
+            // Refresh metadata to generate cover images using the reloaded playlist
+            await RefreshPlaylistMetadataAsync(refreshedPlaylist, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<string> CreateNewPlaylistAsync(string playlistName, Guid userId, bool isPublic, LinkedChild[] linkedChildren, SmartPlaylistDto dto, CancellationToken cancellationToken)
@@ -712,12 +725,25 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     _logger.LogDebug("Added {ItemCount} items to new playlist {PlaylistName} using PlaylistManager API", itemIds.Length, newPlaylist.Name);
                 }
                 
+                // Reload the playlist from library manager to get fresh LinkedChildren after API updates
+                var refreshedPlaylist = _libraryManager.GetItemById(newPlaylist.Id) as Playlist;
+                if (refreshedPlaylist == null)
+                {
+                    _logger.LogWarning("Failed to reload newly created playlist {PlaylistName} after adding items", newPlaylist.Name);
+                    refreshedPlaylist = newPlaylist; // Fallback to original
+                }
+                else
+                {
+                    _logger.LogDebug("Reloaded new playlist {PlaylistName} - now has {ItemCount} linked children", 
+                        refreshedPlaylist.Name, refreshedPlaylist.GetLinkedChildren().Count());
+                }
+                
                 // Log the final state after update
                 _logger.LogDebug("After update - Playlist {PlaylistName}: Shares count = {SharesCount}, Public = {Public}", 
-                    newPlaylist.Name, newPlaylist.Shares?.Count ?? 0, (newPlaylist.Shares?.Any() ?? false));
+                    refreshedPlaylist.Name, refreshedPlaylist.Shares?.Count ?? 0, (refreshedPlaylist.Shares?.Any() ?? false));
                 
-                // Refresh metadata to generate cover images
-                await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
+                // Refresh metadata to generate cover images using the reloaded playlist
+                await RefreshPlaylistMetadataAsync(refreshedPlaylist, cancellationToken).ConfigureAwait(false);
                 
                 return result.Id.ToString();
             }
