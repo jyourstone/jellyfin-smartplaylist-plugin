@@ -2455,7 +2455,7 @@
                     Select person type:
                 </label>
                 <select is="emby-select" class="emby-select rule-people-select" style="width: 100%;">
-                    <option value="">-- Select Person Type --</option>
+                    <!-- Options will be populated dynamically -->
                 </select>
             </div>`;
         
@@ -2792,10 +2792,8 @@
                         const peopleSelect = rule.querySelector('.rule-people-select');
                         if (peopleSelect && peopleSelect.value) {
                             memberName = peopleSelect.value;
-                        } else {
-                            // If People is selected but no submenu value, skip this rule
-                            return;
                         }
+                        // If no value in submenu, default to 'People' (All)
                     }
                     const operator = rule.querySelector('.rule-operator-select').value;
                     let targetValue;
@@ -3136,8 +3134,8 @@
             if (isPeopleField) {
                 peopleOptionsDiv.style.display = 'block';
                 // Populate the people submenu if not already populated
-                if (peopleSelect && availableFields && availableFields.PeopleSubFields && peopleSelect.options.length <= 1) {
-                    peopleSelect.innerHTML = '<option value="">-- Select Person Type --</option>';
+                if (peopleSelect && availableFields && availableFields.PeopleSubFields && peopleSelect.options.length === 0) {
+                    peopleSelect.innerHTML = '';
                     availableFields.PeopleSubFields.forEach(field => {
                         const option = document.createElement('option');
                         option.value = field.Value;
