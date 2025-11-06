@@ -2072,7 +2072,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             {
                                 try
                                 {
-                                    var getLinkedChildrenMethod = collection.GetType().GetMethod("GetLinkedChildren");
+                                    var getLinkedChildrenMethod = collection.GetType().GetMethod("GetLinkedChildren", Type.EmptyTypes);
                                     if (getLinkedChildrenMethod != null)
                                     {
                                         var linkedChildren = getLinkedChildrenMethod.Invoke(collection, null);
