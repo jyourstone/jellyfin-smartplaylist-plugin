@@ -1775,13 +1775,13 @@
         
         // Sort By field
         const sortByField = createSortField('Sort By', 'sort-by-' + sortId, 'select');
-        const sortByOptions = [
-            { value: '', label: 'Select...' },
-            ...SORT_OPTIONS
-        ];
-        // Mark the selected option
-        sortByOptions.forEach(function(opt) {
-            opt.selected = (sortData && opt.value === sortData.SortBy);
+        // Mark the selected option (default to 'Name' if no sortData provided)
+        const sortByOptions = SORT_OPTIONS.map(function(opt) {
+            return {
+                value: opt.value,
+                label: opt.label,
+                selected: sortData ? (opt.value === sortData.SortBy) : (opt.value === 'Name')
+            };
         });
         populateSelectElement(sortByField.input, sortByOptions);
         fieldsContainer.appendChild(sortByField.container);

@@ -1194,14 +1194,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogDebug("  Sort #{Index}: {OrderName}", i + 1, Orders[i].Name);
             }
 
-            // Apply first order
-            var sortedItems = Orders[0].OrderBy(items, user, userDataManager, logger);
-            
-            // If there's only one order, return the result
+            // If there's only one order, use the original Order.OrderBy() method
             if (Orders.Count == 1)
             {
                 logger?.LogDebug("Single sort detected, returning result from Order.OrderBy()");
-                return sortedItems;
+                return Orders[0].OrderBy(items, user, userDataManager, logger);
             }
 
             // For multiple orders, we need to group by the sort key and apply secondary sorts within groups
