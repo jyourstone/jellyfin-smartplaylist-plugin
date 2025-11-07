@@ -587,21 +587,33 @@ The plugin uses **.NET regex syntax** (not JavaScript, Perl, or other flavors):
 
 ### Sorting Options
 
+#### Multiple Sorting Levels
+
+You can add up to **3 sorting options** to create cascading sorts. Items are first sorted by the first option, then items with equal values are sorted by the second option, and so on.
+
+**Example Use Cases:**
+- **Best Movies by Year**: Sort by "Production Year" descending, then "Community Rating" descending - Groups movies by year, with highest-rated movies first within each year
+- **Least Played Mix**: Sort by "Play Count (owner)" ascending, then "Random" - Prioritizes less-played items, while shuffling tracks with the same play count to prevent album grouping
+
+#### Available Sort Fields
+
 - **No Order** - Items appear in library order
 - **Name** - Sort by title
 - **Name (Ignore 'The')** - Sort by name while ignoring leading article 'The' - so "The Movie" sorts under M instead of T.
 - **Release Date** - Sort by release date
 - **Production Year** - Sort by production year
+- **Season Number** - Sort by TV season number, then episode number (for TV episodes)
+- **Episode Number** - Sort by TV episode number, then season number (for TV episodes)
 - **Community Rating** - Sort by user ratings
 - **Date Created** - Sort by when added to library
 - **Play Count (owner)** - Sort by how many times the playlist owner has played each item
 - **Similarity** - Sort by similarity score (highest first) - **only available when using the "Similar To" field**
 - **Track Number** - Sort by album name, disc number, then track number (designed for music)
 - **Random** - Randomize the order of items
-- **Ascending** - Oldest first
-- **Descending** - Newest first
+- **Ascending** - Sort from lowest to highest (or oldest to newest)
+- **Descending** - Sort from highest to lowest (or newest to oldest)
 
-> **Note**: The **Similarity Descending** sort order is specifically designed to work with the **Similar To** field. It ranks items by their similarity score (based on shared metadata) with the most similar items appearing first. This sort order has no effect if no "Similar To" rules are used.
+> **Note**: The **Similarity** sort order is specifically designed to work with the **Similar To** field. It ranks items by their similarity score (based on shared metadata) with the most similar items appearing first. This sort order has no effect if no "Similar To" rules are used.
 
 ### Max Items
 
