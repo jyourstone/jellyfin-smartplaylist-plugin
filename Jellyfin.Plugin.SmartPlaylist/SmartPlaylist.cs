@@ -65,7 +65,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             {
                 // New format: multiple sort options
                 Orders = dto.Order.SortOptions
-                    .Select(so => OrderFactory.CreateOrder($"{so.SortBy} {so.SortOrder}"))
+                    .Select(so =>
+                    {
+                        // Special handling for Random and NoOrder which don't have Ascending/Descending variants
+                        if (so.SortBy == "Random" || so.SortBy == "NoOrder")
+                        {
+                            return OrderFactory.CreateOrder(so.SortBy);
+                        }
+                        // For all other sorts, append the sort order
+                        return OrderFactory.CreateOrder($"{so.SortBy} {so.SortOrder}");
+                    })
                     .Where(o => o != null)
                     .ToList();
             }
@@ -1179,12 +1188,19 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 return items;
             }
 
+            logger?.LogDebug("ApplyMultipleOrders: Processing {OrderCount} sort options", Orders.Count);
+            for (int i = 0; i < Orders.Count; i++)
+            {
+                logger?.LogDebug("  Sort #{Index}: {OrderName}", i + 1, Orders[i].Name);
+            }
+
             // Apply first order
             var sortedItems = Orders[0].OrderBy(items, user, userDataManager, logger);
             
             // If there's only one order, return the result
             if (Orders.Count == 1)
             {
+                logger?.LogDebug("Single sort detected, returning result from Order.OrderBy()");
                 return sortedItems;
             }
 
@@ -1197,11 +1213,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 return itemsList;
             }
 
+            // Create a random seed for this sort operation (different each refresh, but stable within this sort)
+            var randomSeed = (int)(DateTime.Now.Ticks & 0x7FFFFFFF);
+            var itemRandomKeys = new Dictionary<Guid, int>();
+            
+            // Pre-generate random keys for items if any RandomOrder is present
+            if (Orders.Any(o => o is RandomOrder))
+            {
+                logger?.LogDebug("RandomOrder detected in multi-sort, pre-generating random keys with seed: {Seed}", randomSeed);
+                var random = new Random(randomSeed);
+                foreach (var item in itemsList)
+                {
+                    itemRandomKeys[item.Id] = random.Next();
+                }
+                logger?.LogDebug("Pre-generated {Count} random keys for items", itemRandomKeys.Count);
+            }
+
             // Create sort keys for each item based on all orders
             var itemsWithKeys = itemsList.Select(item => new 
             { 
                 Item = item,
-                SortKeys = Orders.Select(order => CreateSortKey(order, item, user, userDataManager, logger)).ToList()
+                SortKeys = Orders.Select(order => CreateSortKey(order, item, user, userDataManager, logger, itemRandomKeys)).ToList()
             }).ToList();
 
             // Sort using the composite keys
@@ -1243,12 +1275,38 @@ namespace Jellyfin.Plugin.SmartPlaylist
         /// <summary>
         /// Creates a comparable sort key for an item based on the order type.
         /// </summary>
-        private IComparable CreateSortKey(Order order, BaseItem item, User user, IUserDataManager userDataManager, ILogger logger)
+        private IComparable CreateSortKey(Order order, BaseItem item, User user, IUserDataManager userDataManager, ILogger logger, Dictionary<Guid, int> itemRandomKeys)
         {
-            // For random order, return a random value
+            // For random order, use pre-generated random key that's different each refresh
+            // but stable within this sort operation
             if (order is RandomOrder)
             {
-                return Guid.NewGuid().ToString();
+                if (itemRandomKeys != null && itemRandomKeys.TryGetValue(item.Id, out var randomKey))
+                {
+                    return randomKey;
+                }
+                // Fallback to hash if not pre-generated (shouldn't happen)
+                return item.Id.GetHashCode();
+            }
+
+            // For TrackNumberOrder - complex multi-level sort: Album -> Disc -> Track -> Name
+            if (order is TrackNumberOrder || order is TrackNumberOrderDesc)
+            {
+                var album = item.Album ?? "";
+                var discNumber = GetDiscNumber(item);
+                var trackNumber = GetTrackNumber(item);
+                var name = item.Name ?? "";
+                return new ComparableTuple4<string, int, int, string>(album, discNumber, trackNumber, name, OrderUtilities.SharedNaturalComparer);
+            }
+
+            // For ReleaseDateOrder - complex multi-level sort: ReleaseDate -> IsEpisode -> Season -> Episode
+            if (order is ReleaseDateOrder || order is ReleaseDateOrderDesc)
+            {
+                var releaseDate = OrderUtilities.GetReleaseDate(item).Date.Ticks;
+                var isEpisode = OrderUtilities.IsEpisode(item) ? 0 : 1; // Episodes first within same date
+                var seasonNumber = OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0;
+                var episodeNumber = OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0;
+                return new ComparableTuple4<long, int, int, int>(releaseDate, isEpisode, seasonNumber, episodeNumber);
             }
 
             // For name-based orders
@@ -1272,12 +1330,6 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (order is DateCreatedOrder || order is DateCreatedOrderDesc)
             {
                 return item.DateCreated.Ticks;
-            }
-
-            // For release date
-            if (order is ReleaseDateOrder || order is ReleaseDateOrderDesc)
-            {
-                return OrderUtilities.GetReleaseDate(item).Ticks;
             }
 
             // For community rating
@@ -1333,6 +1385,50 @@ namespace Jellyfin.Plugin.SmartPlaylist
 
             // Default: return name
             return item.Name ?? "";
+        }
+
+        /// <summary>
+        /// Helper method to get disc number from an item (for TrackNumberOrder).
+        /// </summary>
+        private static int GetDiscNumber(BaseItem item)
+        {
+            try
+            {
+                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
+                if (parentIndexProperty != null)
+                {
+                    var value = parentIndexProperty.GetValue(item);
+                    if (value is int discNum)
+                        return discNum;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Helper method to get track number from an item (for TrackNumberOrder).
+        /// </summary>
+        private static int GetTrackNumber(BaseItem item)
+        {
+            try
+            {
+                var indexProperty = item.GetType().GetProperty("IndexNumber");
+                if (indexProperty != null)
+                {
+                    var value = indexProperty.GetValue(item);
+                    if (value is int trackNum)
+                        return trackNum;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
         }
 
         /// <summary>
@@ -2749,6 +2845,60 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 .OrderByDescending(item => OrderUtilities.GetEpisodeNumber(item))
                 .ThenByDescending(item => OrderUtilities.GetSeasonNumber(item))
                 .ThenByDescending(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    /// <summary>
+    /// A comparable tuple for composite sort keys with 4 elements.
+    /// Used for complex multi-level sorting in CreateSortKey.
+    /// </summary>
+    internal class ComparableTuple4<T1, T2, T3, T4> : IComparable
+        where T1 : IComparable
+        where T2 : IComparable
+        where T3 : IComparable
+        where T4 : IComparable
+    {
+        private readonly T1 _item1;
+        private readonly T2 _item2;
+        private readonly T3 _item3;
+        private readonly T4 _item4;
+        private readonly IComparer<T1> _comparer1;
+        private readonly IComparer<T2> _comparer2;
+        private readonly IComparer<T3> _comparer3;
+        private readonly IComparer<T4> _comparer4;
+
+        public ComparableTuple4(T1 item1, T2 item2, T3 item3, T4 item4, 
+            IComparer<T1> comparer1 = null, 
+            IComparer<T2> comparer2 = null,
+            IComparer<T3> comparer3 = null,
+            IComparer<T4> comparer4 = null)
+        {
+            _item1 = item1;
+            _item2 = item2;
+            _item3 = item3;
+            _item4 = item4;
+            _comparer1 = comparer1 ?? Comparer<T1>.Default;
+            _comparer2 = comparer2 ?? Comparer<T2>.Default;
+            _comparer3 = comparer3 ?? Comparer<T3>.Default;
+            _comparer4 = comparer4 ?? Comparer<T4>.Default;
+        }
+
+        public int CompareTo(object obj)
+        {
+            if (obj is not ComparableTuple4<T1, T2, T3, T4> other)
+                return 1;
+
+            // Compare each level in order, returning if there's a difference
+            var cmp1 = _comparer1.Compare(_item1, other._item1);
+            if (cmp1 != 0) return cmp1;
+
+            var cmp2 = _comparer2.Compare(_item2, other._item2);
+            if (cmp2 != 0) return cmp2;
+
+            var cmp3 = _comparer3.Compare(_item3, other._item3);
+            if (cmp3 != 0) return cmp3;
+
+            return _comparer4.Compare(_item4, other._item4);
         }
     }
 }

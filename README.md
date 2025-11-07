@@ -600,7 +600,7 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 - **No Order** - Items appear in library order
 - **Name** - Sort by title
 - **Name (Ignore 'The')** - Sort by name while ignoring leading article 'The' - so "The Movie" sorts under M instead of T.
-- **Release Date** - Sort by release date
+- **Release Date** - Sort by release date (day precision), with TV episodes appearing first and sorted by season/episode number when multiple items share the same release date
 - **Production Year** - Sort by production year
 - **Season Number** - Sort by TV season number, then episode number (for TV episodes)
 - **Episode Number** - Sort by TV episode number, then season number (for TV episodes)

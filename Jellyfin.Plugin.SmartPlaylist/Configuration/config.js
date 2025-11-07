@@ -1827,7 +1827,7 @@
         // Check if we already have 3 sort boxes (max limit)
         const existingBoxes = sortsContainer.querySelectorAll('.sort-box');
         if (existingBoxes.length >= 3) {
-            showNotification('You can add a maximum of 3 sorting options.', 'warn');
+            showNotification('You can add a maximum of 3 sorting options.', 'warning');
             return;
         }
         
@@ -1879,7 +1879,7 @@
         
         // Don't allow removing the last/only sort box
         if (boxes.length <= 1) {
-            showNotification('You must have at least one sort option.', 'warn');
+            showNotification('You must have at least one sort option.', 'warning');
             return;
         }
         
