@@ -28,6 +28,37 @@
     // Debounce delay for media type change updates (milliseconds)
     const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;
     
+    // Unsaved changes tracking
+    let hasUnsavedChanges = false;
+    
+    // Mark form as having unsaved changes
+    function markFormDirty() {
+        hasUnsavedChanges = true;
+    }
+    
+    // Clear unsaved changes flag (called after successful save)
+    function clearFormDirty() {
+        hasUnsavedChanges = false;
+    }
+    
+    // Check if user really wants to leave with unsaved changes
+    function confirmLeavePage(message) {
+        if (!hasUnsavedChanges) {
+            return true;
+        }
+        return confirm(message || 'You have unsaved changes. Are you sure you want to leave?');
+    }
+    
+    // Browser beforeunload event handler
+    function handleBeforeUnload(e) {
+        if (hasUnsavedChanges) {
+            // Standard way to show browser's default confirmation dialog
+            e.preventDefault();
+            e.returnValue = ''; // Chrome requires returnValue to be set
+            return ''; // Some browsers use return value
+        }
+    }
+    
     // Helper functions to generate common option sets (DRY principle)
     function generateTimeOptions(defaultValue) {
         var options = [];
@@ -3219,6 +3250,9 @@
                     'Playlist "' + playlistName + '" created. The playlist has been generated.';
                 showNotification(message, 'success');
                 
+                // Clear unsaved changes flag after successful save
+                clearFormDirty();
+                
                 // Exit edit mode and clear form
                 if (editState.editMode) {
                     // Exit edit mode silently without showing cancellation message
@@ -3254,6 +3288,9 @@
     
     function clearForm(page) {
         // Only handle form clearing - edit mode management should be done by caller
+        
+        // Clear unsaved changes flag when form is cleared
+        clearFormDirty();
         
         setElementValue(page, '#playlistName', '');
         
@@ -5662,6 +5699,11 @@
     }
 
     async function editPlaylist(page, playlistId) {
+        // Confirm before loading new playlist if there are unsaved changes
+        if (!confirmLeavePage('You have unsaved changes. Are you sure you want to edit a different playlist?')) {
+            return;
+        }
+        
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
@@ -5931,6 +5973,9 @@
                 updateAllNextUnwatchedOptionsVisibility(page);
             
             showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
+            
+            // Clear unsaved changes flag after loading playlist for editing
+            clearFormDirty();
                 
             } catch (formError) {
                 console.error('Error populating form:', formError);
@@ -6073,6 +6118,9 @@
                 // Show success message
                 showNotification(`Playlist "${playlistName}" cloned successfully! You can now modify and create the new playlist.`, 'success');
                 
+                // Mark form as dirty since the cloned playlist hasn't been saved yet
+                markFormDirty();
+                
             } catch (formError) {
                 console.error('Error populating form for clone:', formError);
                 showNotification('Error loading playlist data for cloning: ' + formError.message);
@@ -6176,6 +6224,11 @@
     }
 
     function cancelEdit(page) {
+        // Confirm before canceling if there are unsaved changes
+        if (!confirmLeavePage('You have unsaved changes. Are you sure you want to cancel editing?')) {
+            return;
+        }
+        
         setPageEditState(page, false, null);
         
         // Update UI to show create mode
@@ -6657,6 +6710,34 @@
         
         // Store controller on the page for cleanup
         page._pageAbortController = pageAbortController;
+        
+        // Setup beforeunload handler to warn about unsaved changes
+        window.addEventListener('beforeunload', handleBeforeUnload, getEventListenerOptions(pageSignal));
+        
+        // Track form changes to mark as dirty
+        // Use event delegation for better performance and to capture dynamically added inputs
+        page.addEventListener('input', function(e) {
+            const target = e.target;
+            // Mark form as dirty when any input in the form changes
+            if (target.closest('#playlistForm') || 
+                target.closest('.rule-row') || 
+                target.closest('.sort-box') ||
+                target.closest('.schedule-box')) {
+                markFormDirty();
+            }
+        }, getEventListenerOptions(pageSignal));
+        
+        page.addEventListener('change', function(e) {
+            const target = e.target;
+            // Mark form as dirty when any select/checkbox in the form changes
+            if (target.closest('#playlistForm') || 
+                target.closest('.rule-row') || 
+                target.closest('.sort-box') ||
+                target.closest('.schedule-box') ||
+                target.classList.contains('media-type-checkbox')) {
+                markFormDirty();
+            }
+        }, getEventListenerOptions(pageSignal));
         
         // Setup playlist naming event listeners
         setupPlaylistNamingListeners(page, pageSignal);
