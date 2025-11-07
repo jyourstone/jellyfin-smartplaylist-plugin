@@ -16,8 +16,8 @@ jobs:
     steps:
       - uses: actions/stale@v9
         with:
-          # Consider only issues labeled "question"
-          only-labels: question
+          # Consider only issues labeled "insufficient data"
+          only-labels: insufficient data
 
           # Timing
           days-before-issue-stale: 14          # mark as stale after 14 days of no activity
@@ -26,7 +26,7 @@ jobs:
           # What to do when marking as stale
           stale-issue-label: stale
           stale-issue-message: >
-            This question has been inactive for 14 days. We mark issues like this
+            This issue has been unanswered for 14 days. We mark issues like this
             as stale to help keep the tracker tidy. If this is still relevant,
             please add a comment and it will be kept open.
 
