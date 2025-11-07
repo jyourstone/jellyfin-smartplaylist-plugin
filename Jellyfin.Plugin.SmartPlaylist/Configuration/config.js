@@ -26,8 +26,8 @@
     };
     
     // Debounce delay for media type change updates (milliseconds)
-    const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;
-    
+    const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;        
+
     // Helper functions to generate common option sets (DRY principle)
     function generateTimeOptions(defaultValue) {
         var options = [];
@@ -872,6 +872,9 @@
             updateAllNextUnwatchedOptionsVisibility(page);
             updateAllCollectionsOptionsVisibility(page);
             updateAllTagsOptionsVisibility(page);
+            
+            // 3) Update sort options visibility based on media types
+            updateAllSortOptionsVisibility(page);
         };
         
         // Generate checkboxes for each media type
@@ -1775,8 +1778,13 @@
         
         // Sort By field
         const sortByField = createSortField('Sort By', 'sort-by-' + sortId, 'select');
+        // Set a fixed width to prevent resizing when options change
+        sortByField.container.style.minWidth = '280px';
+        sortByField.container.style.maxWidth = '280px';
+        // Get filtered options based on current context
+        const filteredOptions = getFilteredSortOptions(page);
         // Mark the selected option (default to 'Name' if no sortData provided)
-        const sortByOptions = SORT_OPTIONS.map(function(opt) {
+        const sortByOptions = filteredOptions.map(function(opt) {
             return {
                 value: opt.value,
                 label: opt.label,
@@ -1811,9 +1819,18 @@
         box.appendChild(fieldsContainer);
         
         // Add event listener to hide Sort Order when Random or NoOrder is selected
+        // and to auto-set to Descending when Similarity is selected
         sortByField.input.addEventListener('change', function() {
             const sortOrderContainer = sortOrderField.container;
+            const sortOrderSelect = sortOrderField.input;
+            
+            // Hide Sort Order for Random and NoOrder
             sortOrderContainer.style.display = (this.value === 'Random' || this.value === 'NoOrder') ? 'none' : '';
+            
+            // Auto-set to Descending when Similarity is selected (most similar first)
+            if (this.value === 'Similarity' && sortOrderSelect) {
+                sortOrderSelect.value = 'Descending';
+            }
         });
         
         // Initial hide/show of Sort Order
@@ -1933,6 +1950,44 @@
         });
         
         return sorts;
+    }
+    
+    // Update all sort dropdowns based on current context (media types and rules)
+    function updateAllSortOptionsVisibility(page) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return;
+        
+        const sortBoxes = sortsContainer.querySelectorAll('.sort-box');
+        const filteredOptions = getFilteredSortOptions(page);
+        
+        sortBoxes.forEach(function(box) {
+            const sortBySelect = box.querySelector('select[id^="sort-by-"]');
+            if (!sortBySelect) return;
+            
+            const currentValue = sortBySelect.value;
+            
+            // Rebuild the options
+            const sortByOptions = filteredOptions.map(function(opt) {
+                return {
+                    value: opt.value,
+                    label: opt.label,
+                    selected: opt.value === currentValue
+                };
+            });
+            
+            // Check if current value is still valid
+            const isCurrentValueValid = filteredOptions.some(opt => opt.value === currentValue);
+            
+            // Repopulate the dropdown
+            populateSelectElement(sortBySelect, sortByOptions);
+            
+            // If current value is no longer valid, clear it and select first option
+            if (!isCurrentValueValid && currentValue) {
+                if (sortByOptions.length > 0) {
+                    sortBySelect.value = sortByOptions[0].value;
+                }
+            }
+        });
     }
 
     function populateStaticSelects(page) {
@@ -2774,6 +2829,8 @@
             updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
             updatePeopleOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
+            // Update sort options when Similar To rule is added/removed
+            updateAllSortOptionsVisibility(page);
         }, listenerOptions);
         
                         operatorSelect.addEventListener('change', function() {
@@ -2855,6 +2912,9 @@
             ruleElement.remove();
             updateRuleButtonVisibility(page);
         }
+        
+        // Update sort options in case a Similar To rule was removed
+        updateAllSortOptionsVisibility(page);
     }
 
     function cleanupRuleEventListeners(ruleElement) {
@@ -2891,6 +2951,9 @@
             logicGroup.remove();
             updateRuleButtonVisibility(page);
         }
+        
+        // Update sort options in case a Similar To rule was removed
+        updateAllSortOptionsVisibility(page);
     }
 
     function updateRuleButtonVisibility(page) {
@@ -2973,6 +3036,8 @@
                     updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
                     updatePeopleOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
+                    // Update sort options when Similar To rule is added/removed
+                    updateAllSortOptionsVisibility(page);
                 }, listenerOptions);
                 
                 operatorSelect.addEventListener('change', function() {
@@ -3539,6 +3604,67 @@
         
         // All other fields are universal (Name, ProductionYear, ReleaseDate, etc.)
         return true;
+    }
+    
+    // Sort option visibility definitions based on media types and rules
+    function shouldShowSortOption(sortValue, selectedMediaTypes, hasSimilarToRule) {
+        // If no media types selected, show all options
+        if (!selectedMediaTypes || selectedMediaTypes.length === 0) {
+            return true;
+        }
+        
+        const hasEpisode = selectedMediaTypes.includes('Episode');
+        const hasMovie = selectedMediaTypes.includes('Movie');
+        const hasAudio = selectedMediaTypes.includes('Audio');
+        const hasAudioBook = selectedMediaTypes.includes('AudioBook');
+        const hasMusicVideo = selectedMediaTypes.includes('MusicVideo');
+        const hasVideo = selectedMediaTypes.includes('Video');
+        
+        // Episode-only sort options
+        if (['SeasonNumber', 'EpisodeNumber'].includes(sortValue)) {
+            return hasEpisode;
+        }
+        
+        // Audio/MusicVideo/AudioBook sort options
+        if (sortValue === 'TrackNumber') {
+            return hasAudio || hasMusicVideo || hasAudioBook;
+        }
+        
+        // Video-capable sort options (Resolution)
+        if (sortValue === 'Resolution') {
+            return hasMovie || hasEpisode || hasMusicVideo || hasVideo;
+        }
+        
+        // Similarity - only show if there's a "Similar To" rule
+        if (sortValue === 'Similarity') {
+            return hasSimilarToRule === true;
+        }
+        
+        // Always show: Name, Name (Ignore Articles), ProductionYear, CommunityRating, 
+        // DateCreated, ReleaseDate, PlayCount (owner), Random, NoOrder
+        return true;
+    }
+    
+    // Check if any rule has "Similar To" field selected
+    function hasSimilarToRuleInForm(page) {
+        const allRules = page.querySelectorAll('.rule-row');
+        for (const ruleRow of allRules) {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect && fieldSelect.value === 'SimilarTo') {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Filter sort options based on current context
+    function getFilteredSortOptions(page) {
+        const selectedMediaTypes = getSelectedMediaTypes(page);
+        const hasSimilarTo = hasSimilarToRuleInForm(page);
+        
+        return SORT_OPTIONS.filter(function(opt) {
+            return shouldShowSortOption(opt.value, selectedMediaTypes, hasSimilarTo);
+        });
     }
     
     // Filter fields based on selected media types
@@ -5661,7 +5787,7 @@
         schedulesContainer.appendChild(addBtn);
     }
 
-    async function editPlaylist(page, playlistId) {
+    async function editPlaylist(page, playlistId) {    
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
@@ -5943,7 +6069,7 @@
         });
     }
 
-    async function clonePlaylist(page, playlistId, playlistName) {
+    async function clonePlaylist(page, playlistId, playlistName) {  
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
@@ -6175,7 +6301,7 @@
         }
     }
 
-    function cancelEdit(page) {
+    function cancelEdit(page) {    
         setPageEditState(page, false, null);
         
         // Update UI to show create mode
