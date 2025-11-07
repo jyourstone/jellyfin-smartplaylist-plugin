@@ -680,12 +680,87 @@
             minWidth: 'auto',
             alignSelf: 'center',
             marginLeft: 'auto'
+        },
+        
+        // Sort box styles (similar to schedule boxes)
+        sortBox: {
+            border: '1px solid #666',
+            borderRadius: '2px',
+            padding: '1em 1.5em',
+            marginBottom: '1em',
+            background: 'rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            position: 'relative'
+        },
+        
+        sortFields: {
+            display: 'flex',
+            gap: '0.75em',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+        },
+        
+        sortField: {
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '180px',
+            flex: '0 1 auto'
+        },
+        
+        sortFieldLabel: {
+            marginBottom: '0.3em',
+            fontSize: '0.85em',
+            color: '#ccc',
+            fontWeight: '500'
+        },
+        
+        sortRemoveBtn: {
+            padding: '0.3em 0.6em',
+            fontSize: '1.3em',
+            border: '1px solid #666',
+            background: 'rgba(255, 255, 255, 0.07)',
+            color: '#aaa',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: '500',
+            lineHeight: '1',
+            width: 'auto',
+            minWidth: 'auto',
+            alignSelf: 'center',
+            marginLeft: 'auto'
         }
     };
     
     // Constants for operators
     const RELATIVE_DATE_OPERATORS = ['NewerThan', 'OlderThan'];
     const MULTI_VALUE_OPERATORS = ['IsIn', 'IsNotIn'];
+    
+    // Constants for sort options (used throughout the application)
+    const SORT_OPTIONS = [
+        { value: 'Name', label: 'Name' },
+        { value: 'Name (Ignore Articles)', label: 'Name (Ignore Article \'The\')' },
+        { value: 'ProductionYear', label: 'Production Year' },
+        { value: 'CommunityRating', label: 'Community Rating' },
+        { value: 'DateCreated', label: 'Date Created' },
+        { value: 'ReleaseDate', label: 'Release Date' },
+        { value: 'SeasonNumber', label: 'Season Number' },
+        { value: 'EpisodeNumber', label: 'Episode Number' },
+        { value: 'PlayCount (owner)', label: 'Play Count (owner)' },
+        { value: 'Similarity', label: 'Similarity (requires Similar To rule)' },
+        { value: 'TrackNumber', label: 'Track Number' },
+        { value: 'Resolution', label: 'Resolution' },
+        { value: 'Random', label: 'Random' },
+        { value: 'NoOrder', label: 'No Order' }
+    ];
+    
+    const SORT_ORDER_OPTIONS = [
+        { value: 'Ascending', label: 'Ascending' },
+        { value: 'Descending', label: 'Descending' }
+    ];
+    
+    // Uppercase versions for populateSelect (legacy compatibility)
+    const SORT_OPTIONS_LEGACY = SORT_OPTIONS.map(opt => ({ Value: opt.value, Label: opt.label }));
+    const SORT_ORDER_OPTIONS_LEGACY = SORT_ORDER_OPTIONS.map(opt => ({ Value: opt.value, Label: opt.label }));
 
     // Utility functions for applying styles
     function applyStyles(element, styles) {
@@ -935,6 +1010,8 @@
             prefixedMessage = '⚠ ' + message;
         } else if (type === 'error') {
             prefixedMessage = '✗ ' + message;
+        } else if (type === 'info') {
+            prefixedMessage = 'ℹ ' + message;
         }
 
         // Set the message
@@ -950,7 +1027,8 @@
             padding: '16px 20px',
             color: type === 'success' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.95)',
             backgroundColor: type === 'success' ? 'rgba(40, 40, 40, 0.95)' : 
-                            type === 'warning' ? '#ff9800' : '#f44336',
+                            type === 'warning' ? '#ff9800' :
+                            type === 'info' ? '#2196f3' : '#f44336',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
             fontSize: '16px',
             fontWeight: 'normal',
@@ -1188,6 +1266,9 @@
         
         // Initialize schedule system
         initializeScheduleSystem(page);
+        
+        // Initialize sort system
+        initializeSortSystem(page);
     };
 
     // ===== SCHEDULE BOX MANAGEMENT SYSTEM =====
@@ -1475,6 +1556,27 @@
         return formatLegacySchedule(playlist);
     }
     
+    // Helper function to format sort display text
+    function formatSortDisplay(playlist) {
+        if (!playlist.Order) {
+            return 'Default';
+        }
+        
+        // New format: SortOptions array
+        if (playlist.Order.SortOptions && playlist.Order.SortOptions.length > 0) {
+            return playlist.Order.SortOptions.map(function(opt) {
+                return opt.SortBy + ' ' + opt.SortOrder;
+            }).join(' → ');
+        }
+        
+        // Legacy format: Order.Name string
+        if (playlist.Order.Name) {
+            return playlist.Order.Name;
+        }
+        
+        return 'Default';
+    }
+    
     function formatSingleSchedule(schedule) {
         if (schedule.Trigger === 'Daily') {
             var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
@@ -1603,10 +1705,234 @@
     }
 
     // Helper function to toggle Sort Order visibility based on Sort By value
-    function toggleSortOrderVisibility(sortOrderContainer, sortByValue) {
-        const container = sortOrderContainer ? sortOrderContainer.closest('.inputContainer') : null;
-        if (!container) return;
-        container.style.display = (sortByValue === 'Random' || sortByValue === 'NoOrder') ? 'none' : '';
+    // ===== SORT BOX MANAGEMENT SYSTEM =====
+    
+    function initializeSortSystem(page) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return;
+        
+        // Clear any existing content
+        sortsContainer.innerHTML = '';
+        
+        // Don't add any sort boxes by default - start empty (will be added with defaults)
+        // Just add the "Add Sort" button
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'emby-button raised add-sort-btn';
+        addBtn.textContent = '+ Add Sort';
+        addBtn.addEventListener('click', function() {
+            addSortBox(page, null);
+        });
+        sortsContainer.appendChild(addBtn);
+    }
+    
+    function createSortField(labelText, fieldId, fieldType, options) {
+        const container = createStyledElement('div', 'sort-field-container', STYLES.sortField);
+        
+        const label = createStyledElement('label', '', STYLES.sortFieldLabel);
+        label.textContent = labelText;
+        label.setAttribute('for', fieldId);
+        container.appendChild(label);
+        
+        let input;
+        if (fieldType === 'select') {
+            input = document.createElement('select');
+            input.setAttribute('is', 'emby-select');
+            input.className = 'emby-select-withcolor emby-select';
+            input.style.backgroundColor = '#2A2A2A';
+            if (options) {
+                populateSelectElement(input, options);
+            }
+        }
+        
+        input.id = fieldId;
+        container.appendChild(input);
+        
+        return { container: container, input: input };
+    }
+    
+    function createSortSeparator() {
+        const separator = document.createElement('div');
+        separator.className = 'sort-separator';
+        separator.style.textAlign = 'center';
+        separator.style.margin = '0.75em 0';
+        separator.style.color = '#888';
+        separator.style.fontSize = '0.9em';
+        separator.style.fontWeight = 'bold';
+        separator.textContent = 'AND THEN';
+        return separator;
+    }
+    
+    function createSortBox(page, sortData) {
+        const sortId = 'sort-' + Date.now() + '-' + Math.random();
+        
+        // Create box container
+        const box = createStyledElement('div', 'sort-box', STYLES.sortBox);
+        box.setAttribute('data-sort-id', sortId);
+        
+        // Create fields container
+        const fieldsContainer = createStyledElement('div', 'sort-fields', STYLES.sortFields);
+        
+        // Sort By field
+        const sortByField = createSortField('Sort By', 'sort-by-' + sortId, 'select');
+        // Mark the selected option (default to 'Name' if no sortData provided)
+        const sortByOptions = SORT_OPTIONS.map(function(opt) {
+            return {
+                value: opt.value,
+                label: opt.label,
+                selected: sortData ? (opt.value === sortData.SortBy) : (opt.value === 'Name')
+            };
+        });
+        populateSelectElement(sortByField.input, sortByOptions);
+        fieldsContainer.appendChild(sortByField.container);
+        
+        // Sort Order field
+        const sortOrderField = createSortField('Sort Order', 'sort-order-' + sortId, 'select');
+        const sortOrderOptions = SORT_ORDER_OPTIONS.map(function(opt) {
+            return {
+                value: opt.value,
+                label: opt.label,
+                selected: (sortData ? opt.value === sortData.SortOrder : opt.value === 'Ascending')
+            };
+        });
+        populateSelectElement(sortOrderField.input, sortOrderOptions);
+        fieldsContainer.appendChild(sortOrderField.container);
+        
+        // Remove button
+        const removeBtn = createStyledElement('button', 'sort-remove-btn', STYLES.sortRemoveBtn);
+        removeBtn.type = 'button';
+        removeBtn.textContent = '\u00D7'; // × symbol
+        removeBtn.title = 'Remove this sort';
+        removeBtn.addEventListener('click', function() {
+            removeSortBox(page, box);
+        });
+        fieldsContainer.appendChild(removeBtn);
+        
+        box.appendChild(fieldsContainer);
+        
+        // Add event listener to hide Sort Order when Random or NoOrder is selected
+        sortByField.input.addEventListener('change', function() {
+            const sortOrderContainer = sortOrderField.container;
+            sortOrderContainer.style.display = (this.value === 'Random' || this.value === 'NoOrder') ? 'none' : '';
+        });
+        
+        // Initial hide/show of Sort Order
+        const sortOrderContainer = sortOrderField.container;
+        sortOrderContainer.style.display = (sortData && (sortData.SortBy === 'Random' || sortData.SortBy === 'NoOrder')) ? 'none' : '';
+        
+        return box;
+    }
+    
+    function addSortBox(page, sortData) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return;
+        
+        // Check if we already have 3 sort boxes (max limit)
+        const existingBoxes = sortsContainer.querySelectorAll('.sort-box');
+        if (existingBoxes.length >= 3) {
+            showNotification('You can add a maximum of 3 sorting options.', 'warning');
+            return;
+        }
+        
+        // Add "AND THEN" separator before new box (if not first box)
+        if (existingBoxes.length > 0) {
+            const separator = createSortSeparator();
+            
+            // Find the add button and insert separator before it
+            const addBtn = sortsContainer.querySelector('.add-sort-btn');
+            if (addBtn) {
+                sortsContainer.insertBefore(separator, addBtn);
+            }
+        }
+        
+        // Find the add button (it's always the last child)
+        const addBtn = sortsContainer.querySelector('.add-sort-btn');
+        
+        // Create and insert the new box before the add button
+        const newBox = createSortBox(page, sortData);
+        
+        // Hide remove button for the first sort box
+        if (existingBoxes.length === 0) {
+            const removeBtn = newBox.querySelector('.sort-remove-btn');
+            if (removeBtn) {
+                removeBtn.style.display = 'none';
+            }
+        }
+        
+        if (addBtn) {
+            sortsContainer.insertBefore(newBox, addBtn);
+            // Update button text
+            if (existingBoxes.length === 0) {
+                addBtn.textContent = '+ Add Another Sort';
+            }
+            // Hide button if we've reached max (3 boxes)
+            if (existingBoxes.length >= 2) {
+                addBtn.style.display = 'none';
+            }
+        } else {
+            sortsContainer.appendChild(newBox);
+        }
+    }
+    
+    function removeSortBox(page, box) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return;
+        
+        const boxes = sortsContainer.querySelectorAll('.sort-box');
+        
+        // Don't allow removing the last/only sort box
+        if (boxes.length <= 1) {
+            showNotification('You must have at least one sort option.', 'warning');
+            return;
+        }
+        
+        // Find and remove the separator before this box (if it exists)
+        let prevSibling = box.previousElementSibling;
+        if (prevSibling && prevSibling.classList.contains('sort-separator')) {
+            prevSibling.remove();
+        }
+        
+        box.remove();
+        
+        // Update button state
+        const remainingBoxes = sortsContainer.querySelectorAll('.sort-box');
+        const addBtn = sortsContainer.querySelector('.add-sort-btn');
+        if (addBtn) {
+            if (remainingBoxes.length === 0) {
+                addBtn.textContent = '+ Add Sort';
+            } else {
+                addBtn.textContent = '+ Add Another Sort';
+            }
+            // Show button if we're below max
+            if (remainingBoxes.length < 3) {
+                addBtn.style.display = '';
+            }
+        }
+    }
+    
+    function collectSortsFromForm(page) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return [];
+        
+        const boxes = sortsContainer.querySelectorAll('.sort-box');
+        const sorts = [];
+        
+        boxes.forEach(function(box) {
+            const sortBySelect = box.querySelector('[id^="sort-by-"]');
+            const sortOrderSelect = box.querySelector('[id^="sort-order-"]');
+            
+            if (!sortBySelect || !sortBySelect.value) return; // Skip if no sort by selected
+            
+            const sortBy = sortBySelect.value;
+            const sortOrder = (sortBy === 'Random' || sortBy === 'NoOrder') ? 'Ascending' : (sortOrderSelect ? sortOrderSelect.value : 'Ascending');
+            
+            sorts.push({
+                SortBy: sortBy,
+                SortOrder: sortOrder
+            });
+        });
+        
+        return sorts;
     }
 
     function populateStaticSelects(page) {
@@ -1679,51 +2005,6 @@
         if (defaultScheduleIntervalElement) {
             populateSelectElement(defaultScheduleIntervalElement, generateIntervalOptions('00:15:00')); // Default 15 minutes
         }
-        
-         const sortOptions = [
-            { Value: 'Name', Label: 'Name' },
-            { Value: 'Name (Ignore Articles)', Label: 'Name (Ignore Article \'The\')' },
-            { Value: 'ProductionYear', Label: 'Production Year' },
-            { Value: 'CommunityRating', Label: 'Community Rating' },
-            { Value: 'DateCreated', Label: 'Date Created' },
-            { Value: 'ReleaseDate', Label: 'Release Date' },
-            { Value: 'PlayCount (owner)', Label: 'Play Count (owner)' },
-            { Value: 'Similarity', Label: 'Similarity (requires Similar To rule)' },
-            { Value: 'TrackNumber', Label: 'Track Number' },
-            { Value: 'Resolution', Label: 'Resolution' },
-            { Value: 'Random', Label: 'Random' },
-            { Value: 'NoOrder', Label: 'No Order' }
-        ];
-        const orderOptions = [
-            { Value: 'Ascending', Label: 'Ascending' },
-            { Value: 'Descending', Label: 'Descending' }
-        ];
-
-        const sortByContainer = page.querySelector('#sortBy-container');
-        const sortOrderContainer = page.querySelector('#sortOrder-container');
-        
-        let sortBySelect = page.querySelector('#sortBy');
-        if (!sortBySelect) {
-            sortBySelect = document.createElement('select');
-            sortBySelect.setAttribute('is', 'emby-select');
-            sortBySelect.className = 'emby-select';
-            sortBySelect.id = 'sortBy';
-            sortByContainer.appendChild(sortBySelect);
-        }
-        
-        // Add event listener to hide/show Sort Order based on Sort By selection
-        sortBySelect.addEventListener('change', function() {
-            toggleSortOrderVisibility(sortOrderContainer, this.value);
-        });
-        
-        let sortOrderSelect = page.querySelector('#sortOrder');
-        if (!sortOrderSelect) {
-            sortOrderSelect = document.createElement('select');
-            sortOrderSelect.setAttribute('is', 'emby-select');
-            sortOrderSelect.className = 'emby-select';
-            sortOrderSelect.id = 'sortOrder';
-            sortOrderContainer.appendChild(sortOrderSelect);
-        }
 
         const apiClient = getApiClient();
         return apiClient.getPluginConfiguration(getPluginId()).then(config => {
@@ -1736,11 +2017,12 @@
             const defaultPlaylistNameSuffix = (config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null) ? config.PlaylistNameSuffix : '[Smart]';
             const defaultAutoRefresh = config.DefaultAutoRefresh || 'OnLibraryChanges';
             
-            if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, defaultSortBy); }
-            if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, defaultSortOrder); }
+            // Add default sort box on create form
+            const sortsContainer = page.querySelector('#sorts-container');
+            if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
+                addSortBox(page, { SortBy: defaultSortBy, SortOrder: defaultSortOrder });
+            }
             
-            // Initial hide/show of Sort Order based on default Sort By value
-            toggleSortOrderVisibility(sortOrderContainer, defaultSortBy);
             page.querySelector('#playlistIsPublic').checked = defaultMakePublic;
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
@@ -1822,18 +2104,10 @@
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
-                populateSelect(defaultSortBySetting, sortOptions, defaultSortBy); 
-                
-                // Add event listener for default settings Sort By dropdown
-                defaultSortBySetting.addEventListener('change', function() {
-                    toggleSortOrderVisibility(defaultSortOrderSetting, this.value);
-                });
-                
-                // Initial hide/show for default settings
-                toggleSortOrderVisibility(defaultSortOrderSetting, defaultSortBy);
+                populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, defaultSortBy); 
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
-                populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
+                populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, defaultSortOrder); 
             }
             
             // Populate playlist naming configuration fields
@@ -1851,8 +2125,7 @@
                 updatePlaylistNamePreview(page);
             }
         }).catch(() => {
-            if (sortBySelect.children.length === 0) { populateSelect(sortBySelect, sortOptions, 'Name'); }
-            if (sortOrderSelect.children.length === 0) { populateSelect(sortOrderSelect, orderOptions, 'Ascending'); }
+            // Fallback defaults if config loading fails
             page.querySelector('#playlistIsPublic').checked = false;
             const maxItemsElement = page.querySelector('#playlistMaxItems');
             if (maxItemsElement) {
@@ -1866,19 +2139,12 @@
             // Populate settings tab dropdowns with defaults even if config fails
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
+            
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
-                populateSelect(defaultSortBySetting, sortOptions, 'Name'); 
-                
-                // Add event listener for default settings Sort By dropdown (fallback case)
-                defaultSortBySetting.addEventListener('change', function() {
-                    toggleSortOrderVisibility(defaultSortOrderSetting, this.value);
-                });
-                
-                // Initial state for fallback (Name doesn't need hiding)
-                toggleSortOrderVisibility(defaultSortOrderSetting, 'Name');
+                populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, 'Name'); 
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
-                populateSelect(defaultSortOrderSetting, orderOptions, 'Ascending'); 
+                populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, 'Ascending'); 
             }
             
             // Populate playlist naming configuration fields with defaults even if config fails
@@ -2859,14 +3125,9 @@
                 }
             });
 
-            // Use helper functions for cleaner form data collection
-            const sortByValue = getElementValue(page, '#sortBy', 'Name');
-            const sortOrderValue = getElementValue(page, '#sortOrder', 'Ascending');
+            // Collect sorting options from the new sort boxes
+            const sortOptions = collectSortsFromForm(page);
             
-            // Special handling for Random and NoOrder - they don't need Ascending/Descending
-            const orderName = (sortByValue === 'Random' || sortByValue === 'NoOrder') 
-                ? sortByValue 
-                : sortByValue + ' ' + sortOrderValue;
             const isPublic = getElementChecked(page, '#playlistIsPublic', false);
             const isEnabled = getElementChecked(page, '#playlistIsEnabled', true); // Default to true
             const autoRefreshMode = getElementValue(page, '#autoRefreshMode', 'Never');
@@ -2918,7 +3179,7 @@
             const playlistDto = {
                 Name: playlistName,
                 ExpressionSets: expressionSets,
-                Order: { Name: orderName },
+                Order: { SortOptions: sortOptions },
                 Public: isPublic,
                 Enabled: isEnabled,
                 UserId: userId,
@@ -3011,11 +3272,6 @@
         
         const apiClient = getApiClient();
         apiClient.getPluginConfiguration(getPluginId()).then(config => {
-            setElementValue(page, '#sortBy', config.DefaultSortBy || 'Name');
-            setElementValue(page, '#sortOrder', config.DefaultSortOrder || 'Ascending');
-            
-            // Ensure Sort Order visibility is synced after setting defaults
-            toggleSortOrderVisibility(page.querySelector('#sortOrder-container'), config.DefaultSortBy || 'Name');
             setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
             setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
@@ -3026,9 +3282,14 @@
             
             // Reinitialize schedule system with defaults
             initializeScheduleSystem(page);
+            
+            // Reinitialize sort system with defaults
+            initializeSortSystem(page);
+            const sortsContainer = page.querySelector('#sorts-container');
+            if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
+                addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
+            }
         }).catch(() => {
-            setElementValue(page, '#sortBy', 'Name');
-            setElementValue(page, '#sortOrder', 'Ascending');
             setElementChecked(page, '#playlistIsPublic', false);
             setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
             setElementValue(page, '#playlistMaxItems', 500);
@@ -3037,6 +3298,10 @@
             
             // Reinitialize schedule system with fallback defaults
             initializeScheduleSystem(page);
+            
+            // Reinitialize sort system with fallback defaults
+            initializeSortSystem(page);
+            addSortBox(page, { SortBy: 'Name', SortOrder: 'Ascending' });
         });
         
         // Create initial logic group with one rule
@@ -3680,9 +3945,17 @@
                 }
             }
             
-            // Search in sort order
+            // Search in sort order (both legacy and new multi-sort formats)
             if (playlist.Order && playlist.Order.Name && playlist.Order.Name.toLowerCase().includes(searchTerm)) {
                 return true;
+            }
+            if (playlist.Order && Array.isArray(playlist.Order.SortOptions)) {
+                const sortText = playlist.Order.SortOptions
+                    .map(o => ((o.SortBy || '') + ' ' + (o.SortOrder || '')).toLowerCase())
+                    .join(' ');
+                if (sortText.includes(searchTerm)) {
+                    return true;
+                }
             }
             
             // Search in public/private status
@@ -3949,7 +4222,7 @@
         // Format last scheduled refresh display
         const lastRefreshDisplay = formatRelativeTimeFromIso(playlist.LastRefreshed, 'Unknown');
         const dateCreatedDisplay = formatRelativeTimeFromIso(playlist.DateCreated, 'Unknown');
-        const sortName = playlist.Order ? playlist.Order.Name : 'Default';
+        const sortName = formatSortDisplay(playlist);
         
         // Use the resolved username passed as parameter
         const userName = resolvedUserName || 'Unknown User';
@@ -5218,10 +5491,22 @@
     }
     
     // Helper function to parse sort order from playlist data
-    function parseSortOrder(playlist) {
-        const orderName = playlist.Order ? playlist.Order.Name : 'Name Ascending';
+    // Parse sort options from playlist, supporting both new SortOptions array and legacy Order.Name format
+    function parseSortOptions(playlist) {
+        if (!playlist.Order) {
+            return [{ SortBy: 'Name', SortOrder: 'Ascending' }];
+        }
         
+        // New format: SortOptions array
+        if (playlist.Order.SortOptions && playlist.Order.SortOptions.length > 0) {
+            return playlist.Order.SortOptions;
+        }
+        
+        // Legacy format: Order.Name string
+        if (playlist.Order.Name) {
+            const orderName = playlist.Order.Name;
         let sortBy, sortOrder;
+            
         if (orderName === 'Random' || orderName === 'NoOrder' || orderName === 'No Order') {
             // Special handling for Random/NoOrder - no Asc/Desc
             sortBy = (orderName === 'No Order') ? 'NoOrder' : orderName;
@@ -5233,27 +5518,94 @@
             sortOrder = parts[parts.length - 1] || 'Ascending';
         }
         
-        return { sortBy, sortOrder };
+            return [{ SortBy: sortBy, SortOrder: sortOrder }];
+        }
+        
+        // Fallback
+        return [{ SortBy: 'Name', SortOrder: 'Ascending' }];
     }
 
-    // Helper function to apply sort order to form elements
-    function applySortOrderToForm(page, playlist) {
-        const { sortBy, sortOrder } = parseSortOrder(playlist);
+    // Helper function to load sort options into the UI
+    function loadSortOptionsIntoUI(page, playlist) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return;
         
-        const sortByElem = page.querySelector('#sortBy');
-        if (sortByElem) {
-            sortByElem.value = sortBy;
+        // Clear existing sort boxes and separators
+        const existingBoxes = sortsContainer.querySelectorAll('.sort-box');
+        existingBoxes.forEach(function(box) {
+            box.remove();
+        });
+        const existingSeparators = sortsContainer.querySelectorAll('.sort-separator');
+        existingSeparators.forEach(function(sep) {
+            sep.remove();
+        });
+        
+        // Parse sort options from playlist
+        const sortOptions = parseSortOptions(playlist);
+        
+        // Add sort boxes for each sort option WITHOUT adding separators
+        // (addSortBox would add separators, but we'll add them manually after)
+        sortOptions.forEach(function(sortOption, index) {
+            const sortBox = createSortBox(page, sortOption);
+            
+            // Hide remove button for the first sort box
+            if (index === 0) {
+                const removeBtn = sortBox.querySelector('.sort-remove-btn');
+                if (removeBtn) {
+                    removeBtn.style.display = 'none';
+                }
+            }
+            
+            // Insert before add button
+            const addBtn = sortsContainer.querySelector('.add-sort-btn');
+            if (addBtn) {
+                sortsContainer.insertBefore(sortBox, addBtn);
+            } else {
+                sortsContainer.appendChild(sortBox);
+            }
+        });
+        
+        // Now add separators between boxes
+        let boxes = sortsContainer.querySelectorAll('.sort-box');
+        boxes.forEach(function(box, index) {
+            if (index > 0) { // Skip first box
+                const separator = document.createElement('div');
+                separator.className = 'sort-separator';
+                separator.style.textAlign = 'center';
+                separator.style.margin = '0.5em 0';
+                separator.style.color = '#888';
+                separator.style.fontSize = '0.9em';
+                separator.style.fontWeight = 'bold';
+                separator.textContent = 'AND THEN';
+                
+                // Insert separator before this box
+                box.parentNode.insertBefore(separator, box);
+            }
+        });
+        
+        // Re-add the "Add Sort" button if it doesn't exist
+        let addBtn = sortsContainer.querySelector('.add-sort-btn');
+        if (!addBtn) {
+            addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'emby-button raised add-sort-btn';
+            addBtn.addEventListener('click', function() {
+                addSortBox(page, null);
+            });
+            sortsContainer.appendChild(addBtn);
         }
         
-        const sortOrderElem = page.querySelector('#sortOrder');
-        if (sortOrderElem) {
-            sortOrderElem.value = sortOrder;
-        }
-        
-        // Hide/show Sort Order based on loaded Sort By value
-        const sortOrderContainer = page.querySelector('#sortOrder-container');
-        if (sortOrderContainer) {
-            toggleSortOrderVisibility(sortOrderContainer, sortBy);
+        // Update button text and visibility (reuse boxes variable)
+        boxes = sortsContainer.querySelectorAll('.sort-box');
+        if (boxes.length === 0) {
+            addBtn.textContent = '+ Add Sort';
+            addBtn.style.display = '';
+        } else if (boxes.length < 3) {
+            addBtn.textContent = '+ Add Another Sort';
+            addBtn.style.display = '';
+        } else {
+            addBtn.textContent = '+ Add Another Sort';
+            addBtn.style.display = 'none';
         }
     }
 
@@ -5384,7 +5736,7 @@
                 }
                 
                 // Set sort options using helper function
-                applySortOrderToForm(page, playlist);
+                loadSortOptionsIntoUI(page, playlist);
                 
                 // Clear existing rules
                 const rulesContainer = page.querySelector('#rules-container');
@@ -5664,7 +6016,7 @@
                 }
                 
                 // Set sort order using helper function
-                applySortOrderToForm(page, playlist);
+                loadSortOptionsIntoUI(page, playlist);
                 
                 // Clear existing rules and populate with cloned rules
                 const rulesContainer = page.querySelector('#rules-container');

@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public string Name { get; set; }
         public string FileName { get; set; }
         public Guid UserId { get; set; }
-        public Order Order { get; set; }
+        public List<Order> Orders { get; set; }
         public List<string> MediaTypes { get; set; }
         public List<ExpressionSet> ExpressionSets { get; set; }
         public int MaxItems { get; set; }
@@ -59,7 +59,36 @@ namespace Jellyfin.Plugin.SmartPlaylist
             Name = dto.Name;
             FileName = dto.FileName;
             UserId = dto.UserId;
-            Order = OrderFactory.CreateOrder(dto.Order?.Name);
+            
+            // Handle both legacy single Order and new multiple Orders formats
+            if (dto.Order?.SortOptions != null && dto.Order.SortOptions.Count > 0)
+            {
+                // New format: multiple sort options
+                Orders = dto.Order.SortOptions
+                    .Select(so =>
+                    {
+                        // Special handling for Random and NoOrder which don't have Ascending/Descending variants
+                        if (so.SortBy == "Random" || so.SortBy == "NoOrder")
+                        {
+                            return OrderFactory.CreateOrder(so.SortBy);
+                        }
+                        // For all other sorts, append the sort order
+                        return OrderFactory.CreateOrder($"{so.SortBy} {so.SortOrder}");
+                    })
+                    .Where(o => o != null)
+                    .ToList();
+            }
+            else if (!string.IsNullOrEmpty(dto.Order?.Name))
+            {
+                // Legacy format: single order by name
+                Orders = [OrderFactory.CreateOrder(dto.Order.Name)];
+            }
+            else
+            {
+                // No order specified, use NoOrder
+                Orders = [new NoOrder()];
+            }
+            
             MediaTypes = dto.MediaTypes != null ? new List<string>(dto.MediaTypes) : null; // Create defensive copy to prevent corruption
             MaxItems = dto.MaxItems ?? 0; // Default to 0 (unlimited) for backwards compatibility
             MaxPlayTimeMinutes = dto.MaxPlayTimeMinutes ?? 0; // Default to 0 (unlimited) for backwards compatibility
@@ -749,23 +778,28 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 try
                 {
                     // If using Similarity order, set the scores before sorting
-                    if (Order is SimilarityOrder similarityOrder)
+                    foreach (var order in Orders)
                     {
-                        similarityOrder.Scores = _similarityScores;
-                    }
-                    else if (Order is SimilarityOrderAsc similarityOrderAsc)
-                    {
-                        similarityOrderAsc.Scores = _similarityScores;
+                        if (order is SimilarityOrder similarityOrder)
+                        {
+                            similarityOrder.Scores = _similarityScores;
+                        }
+                        else if (order is SimilarityOrderAsc similarityOrderAsc)
+                        {
+                            similarityOrderAsc.Scores = _similarityScores;
+                        }
                     }
                     
-                    var orderedResults = Order?.OrderBy(expandedResults, user, userDataManager, logger) ?? expandedResults;
+                    // Apply multiple orders in cascade
+                    var orderedResults = ApplyMultipleOrders(expandedResults, user, userDataManager, logger);
                     
                     // Apply limits (items and/or time)
                     if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
                     {
                         var limitedResults = ApplyLimits(orderedResults, libraryManager, user, userDataManager, logger);
                         
-                        if (Order is RandomOrder)
+                        var hasRandomOrder = Orders.Any(o => o is RandomOrder);
+                        if (hasRandomOrder)
                         {
                             logger?.LogDebug("Applied random order and limited playlist '{PlaylistName}' to {LimitedCount} items from {TotalItems} total items", 
                                 Name, limitedResults.Count, orderedResults.Count());
@@ -781,7 +815,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     else
                     {
                         // No limits - return all ordered results
-                        if (Order is RandomOrder)
+                        var hasRandomOrder = Orders.Any(o => o is RandomOrder);
+                        if (hasRandomOrder)
                         {
                             logger?.LogDebug("Applied random order to playlist '{PlaylistName}' with {TotalItems} items (no limit)", 
                                 Name, orderedResults.Count());
@@ -1136,6 +1171,285 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 logger?.LogError(ex, "Error filtering episodes against rules, returning all episodes");
                 return episodes;
             }
+        }
+
+        /// <summary>
+        /// Applies multiple sorting orders in cascade to a collection of items.
+        /// </summary>
+        /// <param name="items">The items to sort</param>
+        /// <param name="user">User for user-specific sorting</param>
+        /// <param name="userDataManager">User data manager for user-specific sorting</param>
+        /// <param name="logger">Optional logger for debugging</param>
+        /// <returns>The sorted collection of items</returns>
+        private IEnumerable<BaseItem> ApplyMultipleOrders(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger = null)
+        {
+            if (Orders == null || Orders.Count == 0)
+            {
+                return items;
+            }
+
+            logger?.LogDebug("ApplyMultipleOrders: Processing {OrderCount} sort options", Orders.Count);
+            for (int i = 0; i < Orders.Count; i++)
+            {
+                logger?.LogDebug("  Sort #{Index}: {OrderName}", i + 1, Orders[i].Name);
+            }
+
+            // If there's only one order, use the original Order.OrderBy() method
+            if (Orders.Count == 1)
+            {
+                logger?.LogDebug("Single sort detected, returning result from Order.OrderBy()");
+                return Orders[0].OrderBy(items, user, userDataManager, logger);
+            }
+
+            // For multiple orders, we need to group by the sort key and apply secondary sorts within groups
+            // This is complex, so we'll use a different approach: create a composite sort key
+            // We'll convert to list and use OrderBy/ThenBy pattern dynamically
+            var itemsList = items.ToList();
+            if (itemsList.Count == 0)
+            {
+                return itemsList;
+            }
+
+            // Create a random seed for this sort operation (different each refresh, but stable within this sort)
+            var randomSeed = (int)(DateTime.Now.Ticks & 0x7FFFFFFF);
+            var itemRandomKeys = new Dictionary<Guid, int>();
+            
+            // Pre-generate random keys for items if any RandomOrder is present
+            if (Orders.Any(o => o is RandomOrder))
+            {
+                logger?.LogDebug("RandomOrder detected in multi-sort, pre-generating random keys with seed: {Seed}", randomSeed);
+                var random = new Random(randomSeed);
+                foreach (var item in itemsList)
+                {
+                    itemRandomKeys[item.Id] = random.Next();
+                }
+                logger?.LogDebug("Pre-generated {Count} random keys for items", itemRandomKeys.Count);
+            }
+
+            // Create sort keys for each item based on all orders
+            var itemsWithKeys = itemsList.Select(item => new 
+            { 
+                Item = item,
+                SortKeys = Orders.Select(order => CreateSortKey(order, item, user, userDataManager, logger, itemRandomKeys)).ToList()
+            }).ToList();
+
+            // Sort using the composite keys
+            IOrderedEnumerable<dynamic> orderedItems = null;
+            for (int i = 0; i < Orders.Count; i++)
+            {
+                var index = i; // Capture for lambda
+                var order = Orders[i];
+                
+                if (i == 0)
+                {
+                    // First sort
+                    if (IsDescendingOrder(order))
+                    {
+                        orderedItems = itemsWithKeys.OrderByDescending(x => x.SortKeys[index]);
+                    }
+                    else
+                    {
+                        orderedItems = itemsWithKeys.OrderBy(x => x.SortKeys[index]);
+                    }
+                }
+                else
+                {
+                    // Secondary sorts
+                    if (IsDescendingOrder(order))
+                    {
+                        orderedItems = orderedItems.ThenByDescending(x => x.SortKeys[index]);
+                    }
+                    else
+                    {
+                        orderedItems = orderedItems.ThenBy(x => x.SortKeys[index]);
+                    }
+                }
+            }
+
+            return orderedItems.Select(x => (BaseItem)x.Item);
+        }
+
+        /// <summary>
+        /// Creates a comparable sort key for an item based on the order type.
+        /// </summary>
+        private IComparable CreateSortKey(Order order, BaseItem item, User user, IUserDataManager userDataManager, ILogger logger, Dictionary<Guid, int> itemRandomKeys)
+        {
+            // For random order, use pre-generated random key that's different each refresh
+            // but stable within this sort operation
+            if (order is RandomOrder)
+            {
+                if (itemRandomKeys != null && itemRandomKeys.TryGetValue(item.Id, out var randomKey))
+                {
+                    return randomKey;
+                }
+                // Fallback to hash if not pre-generated (shouldn't happen)
+                return item.Id.GetHashCode();
+            }
+
+            // For TrackNumberOrder - complex multi-level sort: Album -> Disc -> Track -> Name
+            if (order is TrackNumberOrder || order is TrackNumberOrderDesc)
+            {
+                var album = item.Album ?? "";
+                var discNumber = GetDiscNumber(item);
+                var trackNumber = GetTrackNumber(item);
+                var name = item.Name ?? "";
+                return new ComparableTuple4<string, int, int, string>(album, discNumber, trackNumber, name, OrderUtilities.SharedNaturalComparer);
+            }
+
+            // For ReleaseDateOrder - complex multi-level sort: ReleaseDate -> IsEpisode -> Season -> Episode
+            if (order is ReleaseDateOrder || order is ReleaseDateOrderDesc)
+            {
+                var releaseDate = OrderUtilities.GetReleaseDate(item).Date.Ticks;
+                // For descending order, flip the episode marker so episodes still come first when sorted descending
+                // Original uses .ThenBy() even for descending, we need to account for that
+                var isEpisode = OrderUtilities.IsEpisode(item) ? 0 : 1; // Episodes first for ascending
+                if (order is ReleaseDateOrderDesc)
+                {
+                    isEpisode = OrderUtilities.IsEpisode(item) ? 1 : 0; // Flip for descending so ThenByDescending still puts episodes first
+                }
+                var seasonNumber = OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0;
+                var episodeNumber = OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0;
+                return new ComparableTuple4<long, int, int, int>(releaseDate, isEpisode, seasonNumber, episodeNumber);
+            }
+
+            // For name-based orders
+            if (order is NameOrder || order is NameOrderDesc)
+            {
+                return item.Name ?? "";
+            }
+            
+            if (order is NameIgnoreArticlesOrder || order is NameIgnoreArticlesOrderDesc)
+            {
+                return OrderUtilities.StripLeadingArticles(item.Name ?? "");
+            }
+
+            // For production year
+            if (order is ProductionYearOrder || order is ProductionYearOrderDesc)
+            {
+                return item.ProductionYear ?? 0;
+            }
+
+            // For date created
+            if (order is DateCreatedOrder || order is DateCreatedOrderDesc)
+            {
+                return item.DateCreated.Ticks;
+            }
+
+            // For community rating
+            if (order is CommunityRatingOrder || order is CommunityRatingOrderDesc)
+            {
+                return item.CommunityRating ?? 0f;
+            }
+
+            // For play count
+            if (order is PlayCountOrder || order is PlayCountOrderDesc)
+            {
+                try
+                {
+                    var userData = userDataManager?.GetUserData(user, item);
+                    return userData?.PlayCount ?? 0;
+                }
+                catch
+                {
+                    return 0;
+                }
+            }
+
+            // For season number
+            if (order is SeasonNumberOrder || order is SeasonNumberOrderDesc)
+            {
+                return OrderUtilities.GetSeasonNumber(item);
+            }
+
+            // For episode number
+            if (order is EpisodeNumberOrder || order is EpisodeNumberOrderDesc)
+            {
+                return OrderUtilities.GetEpisodeNumber(item);
+            }
+
+            // For similarity
+            if (order is SimilarityOrder similarityOrder)
+            {
+                if (similarityOrder.Scores != null && similarityOrder.Scores.TryGetValue(item.Id, out var score))
+                {
+                    return score;
+                }
+                return 0f;
+            }
+            
+            if (order is SimilarityOrderAsc similarityOrderAsc)
+            {
+                if (similarityOrderAsc.Scores != null && similarityOrderAsc.Scores.TryGetValue(item.Id, out var score))
+                {
+                    return score;
+                }
+                return 0f;
+            }
+
+            // Default: return name
+            return item.Name ?? "";
+        }
+
+        /// <summary>
+        /// Helper method to get disc number from an item (for TrackNumberOrder).
+        /// </summary>
+        private static int GetDiscNumber(BaseItem item)
+        {
+            try
+            {
+                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
+                if (parentIndexProperty != null)
+                {
+                    var value = parentIndexProperty.GetValue(item);
+                    if (value is int discNum)
+                        return discNum;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Helper method to get track number from an item (for TrackNumberOrder).
+        /// </summary>
+        private static int GetTrackNumber(BaseItem item)
+        {
+            try
+            {
+                var indexProperty = item.GetType().GetProperty("IndexNumber");
+                if (indexProperty != null)
+                {
+                    var value = indexProperty.GetValue(item);
+                    if (value is int trackNum)
+                        return trackNum;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Determines if an order is descending based on its type.
+        /// </summary>
+        private bool IsDescendingOrder(Order order)
+        {
+            return order is NameOrderDesc ||
+                   order is NameIgnoreArticlesOrderDesc ||
+                   order is ProductionYearOrderDesc ||
+                   order is DateCreatedOrderDesc ||
+                   order is ReleaseDateOrderDesc ||
+                   order is CommunityRatingOrderDesc ||
+                   order is PlayCountOrderDesc ||
+                   order is SeasonNumberOrderDesc ||
+                   order is EpisodeNumberOrderDesc ||
+                   order is TrackNumberOrderDesc ||
+                   order is SimilarityOrder; // Similarity descending is the default
         }
 
         /// <summary>
@@ -1735,6 +2049,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "PlayCount (owner) Descending", () => new PlayCountOrderDesc() },
             { "TrackNumber Ascending", () => new TrackNumberOrder() },
             { "TrackNumber Descending", () => new TrackNumberOrderDesc() },
+            { "SeasonNumber Ascending", () => new SeasonNumberOrder() },
+            { "SeasonNumber Descending", () => new SeasonNumberOrderDesc() },
+            { "EpisodeNumber Ascending", () => new EpisodeNumberOrder() },
+            { "EpisodeNumber Descending", () => new EpisodeNumberOrderDesc() },
             { "Random", () => new RandomOrder() },
             { "NoOrder", () => new NoOrder() }
         };
@@ -2466,6 +2784,124 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Ignore errors and return 0
             }
             return 0;
+        }
+    }
+
+    public class SeasonNumberOrder : Order
+    {
+        public override string Name => "SeasonNumber Ascending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+
+            // Sort by Season Number -> Episode Number -> Name
+            return items
+                .OrderBy(item => OrderUtilities.GetSeasonNumber(item))
+                .ThenBy(item => OrderUtilities.GetEpisodeNumber(item))
+                .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    public class SeasonNumberOrderDesc : Order
+    {
+        public override string Name => "SeasonNumber Descending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+
+            // Sort by Season Number (descending) -> Episode Number (descending) -> Name (descending)
+            return items
+                .OrderByDescending(item => OrderUtilities.GetSeasonNumber(item))
+                .ThenByDescending(item => OrderUtilities.GetEpisodeNumber(item))
+                .ThenByDescending(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    public class EpisodeNumberOrder : Order
+    {
+        public override string Name => "EpisodeNumber Ascending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+
+            // Sort by Episode Number -> Season Number -> Name
+            return items
+                .OrderBy(item => OrderUtilities.GetEpisodeNumber(item))
+                .ThenBy(item => OrderUtilities.GetSeasonNumber(item))
+                .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    public class EpisodeNumberOrderDesc : Order
+    {
+        public override string Name => "EpisodeNumber Descending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
+        {
+            if (items == null) return [];
+
+            // Sort by Episode Number (descending) -> Season Number (descending) -> Name (descending)
+            return items
+                .OrderByDescending(item => OrderUtilities.GetEpisodeNumber(item))
+                .ThenByDescending(item => OrderUtilities.GetSeasonNumber(item))
+                .ThenByDescending(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    /// <summary>
+    /// A comparable tuple for composite sort keys with 4 elements.
+    /// Used for complex multi-level sorting in CreateSortKey.
+    /// </summary>
+    internal class ComparableTuple4<T1, T2, T3, T4> : IComparable
+        where T1 : IComparable
+        where T2 : IComparable
+        where T3 : IComparable
+        where T4 : IComparable
+    {
+        private readonly T1 _item1;
+        private readonly T2 _item2;
+        private readonly T3 _item3;
+        private readonly T4 _item4;
+        private readonly IComparer<T1> _comparer1;
+        private readonly IComparer<T2> _comparer2;
+        private readonly IComparer<T3> _comparer3;
+        private readonly IComparer<T4> _comparer4;
+
+        public ComparableTuple4(T1 item1, T2 item2, T3 item3, T4 item4, 
+            IComparer<T1> comparer1 = null, 
+            IComparer<T2> comparer2 = null,
+            IComparer<T3> comparer3 = null,
+            IComparer<T4> comparer4 = null)
+        {
+            _item1 = item1;
+            _item2 = item2;
+            _item3 = item3;
+            _item4 = item4;
+            _comparer1 = comparer1 ?? Comparer<T1>.Default;
+            _comparer2 = comparer2 ?? Comparer<T2>.Default;
+            _comparer3 = comparer3 ?? Comparer<T3>.Default;
+            _comparer4 = comparer4 ?? Comparer<T4>.Default;
+        }
+
+        public int CompareTo(object obj)
+        {
+            if (obj is not ComparableTuple4<T1, T2, T3, T4> other)
+                return 1;
+
+            // Compare each level in order, returning if there's a difference
+            var cmp1 = _comparer1.Compare(_item1, other._item1);
+            if (cmp1 != 0) return cmp1;
+
+            var cmp2 = _comparer2.Compare(_item2, other._item2);
+            if (cmp2 != 0) return cmp2;
+
+            var cmp3 = _comparer3.Compare(_item3, other._item3);
+            if (cmp3 != 0) return cmp3;
+
+            return _comparer4.Compare(_item4, other._item4);
         }
     }
 }

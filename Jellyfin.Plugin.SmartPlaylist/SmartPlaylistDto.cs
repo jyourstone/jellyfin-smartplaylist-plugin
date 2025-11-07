@@ -222,8 +222,27 @@ namespace Jellyfin.Plugin.SmartPlaylist
         public List<Expression> Expressions { get; set; }
     }
 
+    /// <summary>
+    /// Represents a single sorting option with field and direction
+    /// </summary>
+    public class SortOption
+    {
+        public string SortBy { get; set; }      // e.g., "Name", "ProductionYear", "SeasonNumber"
+        public string SortOrder { get; set; }   // "Ascending" or "Descending"
+    }
+
+    /// <summary>
+    /// Represents the sorting configuration for a playlist
+    /// Supports both legacy single Order format and new multiple SortOptions format
+    /// </summary>
     public class OrderDto
     {
+        // Legacy single order format (for backward compatibility)
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string Name { get; set; }
+        
+        // New multiple sort options format
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<SortOption> SortOptions { get; set; }
     }
 }
