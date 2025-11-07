@@ -1303,7 +1303,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
             if (order is ReleaseDateOrder || order is ReleaseDateOrderDesc)
             {
                 var releaseDate = OrderUtilities.GetReleaseDate(item).Date.Ticks;
-                var isEpisode = OrderUtilities.IsEpisode(item) ? 0 : 1; // Episodes first within same date
+                // For descending order, flip the episode marker so episodes still come first when sorted descending
+                // Original uses .ThenBy() even for descending, we need to account for that
+                var isEpisode = OrderUtilities.IsEpisode(item) ? 0 : 1; // Episodes first for ascending
+                if (order is ReleaseDateOrderDesc)
+                {
+                    isEpisode = OrderUtilities.IsEpisode(item) ? 1 : 0; // Flip for descending so ThenByDescending still puts episodes first
+                }
                 var seasonNumber = OrderUtilities.IsEpisode(item) ? OrderUtilities.GetSeasonNumber(item) : 0;
                 var episodeNumber = OrderUtilities.IsEpisode(item) ? OrderUtilities.GetEpisodeNumber(item) : 0;
                 return new ComparableTuple4<long, int, int, int>(releaseDate, isEpisode, seasonNumber, episodeNumber);

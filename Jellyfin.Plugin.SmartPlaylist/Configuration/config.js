@@ -1010,6 +1010,8 @@
             prefixedMessage = '⚠ ' + message;
         } else if (type === 'error') {
             prefixedMessage = '✗ ' + message;
+        } else if (type === 'info') {
+            prefixedMessage = 'ℹ ' + message;
         }
 
         // Set the message
@@ -1025,7 +1027,8 @@
             padding: '16px 20px',
             color: type === 'success' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.95)',
             backgroundColor: type === 'success' ? 'rgba(40, 40, 40, 0.95)' : 
-                            type === 'warning' ? '#ff9800' : '#f44336',
+                            type === 'warning' ? '#ff9800' :
+                            type === 'info' ? '#2196f3' : '#f44336',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
             fontSize: '16px',
             fontWeight: 'normal',
@@ -2101,18 +2104,10 @@
             const defaultSortBySetting = page.querySelector('#defaultSortBy');
             const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
             if (defaultSortBySetting && defaultSortBySetting.children.length === 0) { 
-                populateSelect(defaultSortBySetting, sortOptions, defaultSortBy); 
-                
-                // Add event listener for default settings Sort By dropdown
-                defaultSortBySetting.addEventListener('change', function() {
-                    toggleSortOrderVisibility(defaultSortOrderSetting, this.value);
-                });
-                
-                // Initial hide/show for default settings
-                toggleSortOrderVisibility(defaultSortOrderSetting, defaultSortBy);
+                populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, defaultSortBy); 
             }
             if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
-                populateSelect(defaultSortOrderSetting, orderOptions, defaultSortOrder); 
+                populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, defaultSortOrder); 
             }
             
             // Populate playlist naming configuration fields
@@ -3288,7 +3283,12 @@
             // Reinitialize schedule system with defaults
             initializeScheduleSystem(page);
             
-            // Reinitialize sort system - note that addSortBox is already called in populateStaticSelects
+            // Reinitialize sort system with defaults
+            initializeSortSystem(page);
+            const sortsContainer = page.querySelector('#sorts-container');
+            if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
+                addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
+            }
         }).catch(() => {
             setElementChecked(page, '#playlistIsPublic', false);
             setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
@@ -3298,6 +3298,10 @@
             
             // Reinitialize schedule system with fallback defaults
             initializeScheduleSystem(page);
+            
+            // Reinitialize sort system with fallback defaults
+            initializeSortSystem(page);
+            addSortBox(page, { SortBy: 'Name', SortOrder: 'Ascending' });
         });
         
         // Create initial logic group with one rule
@@ -3941,9 +3945,17 @@
                 }
             }
             
-            // Search in sort order
+            // Search in sort order (both legacy and new multi-sort formats)
             if (playlist.Order && playlist.Order.Name && playlist.Order.Name.toLowerCase().includes(searchTerm)) {
                 return true;
+            }
+            if (playlist.Order && Array.isArray(playlist.Order.SortOptions)) {
+                const sortText = playlist.Order.SortOptions
+                    .map(o => ((o.SortBy || '') + ' ' + (o.SortOrder || '')).toLowerCase())
+                    .join(' ');
+                if (sortText.includes(searchTerm)) {
+                    return true;
+                }
             }
             
             // Search in public/private status
