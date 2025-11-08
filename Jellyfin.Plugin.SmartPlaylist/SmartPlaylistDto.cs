@@ -1,12 +1,55 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Jellyfin.Plugin.SmartPlaylist.Constants;
 using Jellyfin.Plugin.SmartPlaylist.QueryEngine;
 
 namespace Jellyfin.Plugin.SmartPlaylist
 {
+    /// <summary>
+    /// JSON converter that serializes DayOfWeek enum as integer instead of string
+    /// </summary>
+    public class DayOfWeekAsIntegerConverter : JsonConverter<DayOfWeek?>
+    {
+        public override DayOfWeek? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return null;
+            }
+            
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                return (DayOfWeek)reader.GetInt32();
+            }
+            
+            // Handle string input for backward compatibility (e.g., "Friday" -> 5)
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var value = reader.GetString();
+                if (Enum.TryParse<DayOfWeek>(value, true, out var dayOfWeek))
+                {
+                    return dayOfWeek;
+                }
+            }
+            
+            throw new JsonException($"Unable to convert \"{reader.GetString()}\" to DayOfWeek");
+        }
+
+        public override void Write(Utf8JsonWriter writer, DayOfWeek? value, JsonSerializerOptions options)
+        {
+            if (value.HasValue)
+            {
+                writer.WriteNumberValue((int)value.Value);
+            }
+            else
+            {
+                writer.WriteNullValue();
+            }
+        }
+    }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum RuleLogic
     {
@@ -53,8 +96,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         /// <summary>
         /// Day of week for Weekly schedules (0 = Sunday, 6 = Saturday)
+        /// Serialized as integer for consistency with legacy format and UI expectations
         /// </summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonConverter(typeof(DayOfWeekAsIntegerConverter))]
         public DayOfWeek? DayOfWeek { get; set; }
         
         /// <summary>
