@@ -1355,6 +1355,99 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 }
             }
 
+            // For last played
+            if (order is LastPlayedOrder || order is LastPlayedOrderDesc)
+            {
+                try
+                {
+                    var userData = userDataManager?.GetUserData(user, item);
+                    var lastPlayedProp = userData?.GetType().GetProperty("LastPlayedDate");
+                    if (lastPlayedProp != null)
+                    {
+                        var lastPlayedValue = lastPlayedProp.GetValue(userData);
+                        if (lastPlayedValue is DateTime dt && dt != DateTime.MinValue)
+                        {
+                            return dt.Ticks;
+                        }
+                    }
+                    return DateTime.MinValue.Ticks; // Never played = oldest
+                }
+                catch
+                {
+                    return DateTime.MinValue.Ticks;
+                }
+            }
+
+            // For runtime
+            if (order is RuntimeOrder || order is RuntimeOrderDesc)
+            {
+                try
+                {
+                    var runtimeProperty = item.GetType().GetProperty("RunTimeTicks");
+                    if (runtimeProperty != null)
+                    {
+                        var value = runtimeProperty.GetValue(item);
+                        if (value is long runtime)
+                            return runtime;
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+                return 0L;
+            }
+
+            // For series name
+            if (order is SeriesNameOrder || order is SeriesNameOrderDesc)
+            {
+                try
+                {
+                    var seriesNameProperty = item.GetType().GetProperty("SeriesName");
+                    if (seriesNameProperty != null)
+                    {
+                        var value = seriesNameProperty.GetValue(item);
+                        if (value is string seriesName)
+                            return seriesName ?? "";
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+                return "";
+            }
+
+            // For album name
+            if (order is AlbumNameOrder || order is AlbumNameOrderDesc)
+            {
+                return item.Album ?? "";
+            }
+
+            // For artist
+            if (order is ArtistOrder || order is ArtistOrderDesc)
+            {
+                try
+                {
+                    var artistsProperty = item.GetType().GetProperty("Artists");
+                    if (artistsProperty != null)
+                    {
+                        var value = artistsProperty.GetValue(item);
+                        if (value is IEnumerable<string> artists)
+                        {
+                            var firstArtist = artists.FirstOrDefault();
+                            if (firstArtist != null)
+                                return firstArtist;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+                return "";
+            }
+
             // For season number
             if (order is SeasonNumberOrder || order is SeasonNumberOrderDesc)
             {
@@ -2047,6 +2140,16 @@ namespace Jellyfin.Plugin.SmartPlaylist
             { "CommunityRating Descending", () => new CommunityRatingOrderDesc() },
             { "PlayCount (owner) Ascending", () => new PlayCountOrder() },
             { "PlayCount (owner) Descending", () => new PlayCountOrderDesc() },
+            { "LastPlayed (owner) Ascending", () => new LastPlayedOrder() },
+            { "LastPlayed (owner) Descending", () => new LastPlayedOrderDesc() },
+            { "Runtime Ascending", () => new RuntimeOrder() },
+            { "Runtime Descending", () => new RuntimeOrderDesc() },
+            { "SeriesName Ascending", () => new SeriesNameOrder() },
+            { "SeriesName Descending", () => new SeriesNameOrderDesc() },
+            { "AlbumName Ascending", () => new AlbumNameOrder() },
+            { "AlbumName Descending", () => new AlbumNameOrderDesc() },
+            { "Artist Ascending", () => new ArtistOrder() },
+            { "Artist Descending", () => new ArtistOrderDesc() },
             { "TrackNumber Ascending", () => new TrackNumberOrder() },
             { "TrackNumber Descending", () => new TrackNumberOrderDesc() },
             { "SeasonNumber Ascending", () => new SeasonNumberOrder() },
@@ -2848,6 +2951,320 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 .OrderByDescending(item => OrderUtilities.GetEpisodeNumber(item))
                 .ThenByDescending(item => OrderUtilities.GetSeasonNumber(item))
                 .ThenByDescending(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+        }
+    }
+
+    public class LastPlayedOrder : Order
+    {
+        public override string Name => "LastPlayed (owner) Ascending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            if (items == null) return [];
+            if (userDataManager == null || user == null)
+            {
+                logger?.LogWarning("UserDataManager or User is null for LastPlayed sorting, returning unsorted items");
+                return items;
+            }
+
+            try
+            {
+                // Pre-fetch all user data to avoid repeated database calls during sorting
+                var list = items as IList<BaseItem> ?? items.ToList();
+                var sortValueCache = new Dictionary<BaseItem, DateTime>(list.Count);
+                
+                foreach (var item in list)
+                {
+                    try
+                    {
+                        var userData = userDataManager.GetUserData(user, item);
+                        var lastPlayedProp = userData?.GetType().GetProperty("LastPlayedDate");
+                        if (lastPlayedProp != null)
+                        {
+                            var lastPlayedValue = lastPlayedProp.GetValue(userData);
+                            if (lastPlayedValue is DateTime dt && dt != DateTime.MinValue)
+                            {
+                                sortValueCache[item] = dt;
+                            }
+                            else
+                            {
+                                sortValueCache[item] = DateTime.MinValue; // Never played = oldest
+                            }
+                        }
+                        else
+                        {
+                            sortValueCache[item] = DateTime.MinValue;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error getting user data for item {ItemName} for user {UserId}", item.Name, user.Id);
+                        sortValueCache[item] = DateTime.MinValue; // Default to never played
+                    }
+                }
+
+                // Sort using cached DateTime values directly (no tie-breaker to avoid album grouping)
+                return list.OrderBy(item => sortValueCache[item]);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error in LastPlayed sorting for user {UserId}, returning unsorted items", user.Id);
+                return items;
+            }
+        }
+    }
+
+    public class LastPlayedOrderDesc : Order
+    {
+        public override string Name => "LastPlayed (owner) Descending";
+
+        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items, User user, IUserDataManager userDataManager, ILogger logger)
+        {
+            if (items == null) return [];
+            if (userDataManager == null || user == null)
+            {
+                logger?.LogWarning("UserDataManager or User is null for LastPlayed sorting, returning unsorted items");
+                return items;
+            }
+
+            try
+            {
+                // Pre-fetch all user data to avoid repeated database calls during sorting
+                var list = items as IList<BaseItem> ?? items.ToList();
+                var sortValueCache = new Dictionary<BaseItem, DateTime>(list.Count);
+                
+                foreach (var item in list)
+                {
+                    try
+                    {
+                        var userData = userDataManager.GetUserData(user, item);
+                        var lastPlayedProp = userData?.GetType().GetProperty("LastPlayedDate");
+                        if (lastPlayedProp != null)
+                        {
+                            var lastPlayedValue = lastPlayedProp.GetValue(userData);
+                            if (lastPlayedValue is DateTime dt && dt != DateTime.MinValue)
+                            {
+                                sortValueCache[item] = dt;
+                            }
+                            else
+                            {
+                                sortValueCache[item] = DateTime.MinValue; // Never played = oldest
+                            }
+                        }
+                        else
+                        {
+                            sortValueCache[item] = DateTime.MinValue;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Error getting user data for item {ItemName} for user {UserId}", item.Name, user.Id);
+                        sortValueCache[item] = DateTime.MinValue; // Default to never played
+                    }
+                }
+
+                // Sort using cached DateTime values directly (no tie-breaker to avoid album grouping)
+                return list.OrderByDescending(item => sortValueCache[item]);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error in LastPlayed sorting for user {UserId}, returning unsorted items", user.Id);
+                return items;
+            }
+        }
+    }
+
+    public class RuntimeOrder : PropertyOrder<long>
+    {
+        public override string Name => "Runtime Ascending";
+        protected override bool IsDescending => false;
+        
+        protected override long GetSortValue(BaseItem item)
+        {
+            try
+            {
+                // Runtime is in ticks
+                var runtimeProperty = item.GetType().GetProperty("RunTimeTicks");
+                if (runtimeProperty != null)
+                {
+                    var value = runtimeProperty.GetValue(item);
+                    if (value is long runtime)
+                        return runtime;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+    }
+
+    public class RuntimeOrderDesc : PropertyOrder<long>
+    {
+        public override string Name => "Runtime Descending";
+        protected override bool IsDescending => true;
+        
+        protected override long GetSortValue(BaseItem item)
+        {
+            try
+            {
+                // Runtime is in ticks
+                var runtimeProperty = item.GetType().GetProperty("RunTimeTicks");
+                if (runtimeProperty != null)
+                {
+                    var value = runtimeProperty.GetValue(item);
+                    if (value is long runtime)
+                        return runtime;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+    }
+
+    public class SeriesNameOrder : PropertyOrder<string>
+    {
+        public override string Name => "SeriesName Ascending";
+        protected override bool IsDescending => false;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+        
+        protected override string GetSortValue(BaseItem item)
+        {
+            try
+            {
+                // SeriesName property for episodes
+                var seriesNameProperty = item.GetType().GetProperty("SeriesName");
+                if (seriesNameProperty != null)
+                {
+                    var value = seriesNameProperty.GetValue(item);
+                    if (value is string seriesName)
+                        return seriesName ?? "";
+                }
+            }
+            catch
+            {
+                // Ignore errors and return empty string
+            }
+            return "";
+        }
+    }
+
+    public class SeriesNameOrderDesc : PropertyOrder<string>
+    {
+        public override string Name => "SeriesName Descending";
+        protected override bool IsDescending => true;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+        
+        protected override string GetSortValue(BaseItem item)
+        {
+            try
+            {
+                // SeriesName property for episodes
+                var seriesNameProperty = item.GetType().GetProperty("SeriesName");
+                if (seriesNameProperty != null)
+                {
+                    var value = seriesNameProperty.GetValue(item);
+                    if (value is string seriesName)
+                        return seriesName ?? "";
+                }
+            }
+            catch
+            {
+                // Ignore errors and return empty string
+            }
+            return "";
+        }
+    }
+
+    public class AlbumNameOrder : PropertyOrder<string>
+    {
+        public override string Name => "AlbumName Ascending";
+        protected override bool IsDescending => false;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+        
+        protected override string GetSortValue(BaseItem item)
+        {
+            // Album is already a property on BaseItem
+            return item.Album ?? "";
+        }
+    }
+
+    public class AlbumNameOrderDesc : PropertyOrder<string>
+    {
+        public override string Name => "AlbumName Descending";
+        protected override bool IsDescending => true;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+        
+        protected override string GetSortValue(BaseItem item)
+        {
+            // Album is already a property on BaseItem
+            return item.Album ?? "";
+        }
+    }
+
+    public class ArtistOrder : PropertyOrder<string>
+    {
+        public override string Name => "Artist Ascending";
+        protected override bool IsDescending => false;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+        
+        protected override string GetSortValue(BaseItem item)
+        {
+            try
+            {
+                // Try to get Artists property (it's a list, so we'll use the first one for sorting)
+                var artistsProperty = item.GetType().GetProperty("Artists");
+                if (artistsProperty != null)
+                {
+                    var value = artistsProperty.GetValue(item);
+                    if (value is IEnumerable<string> artists)
+                    {
+                        var firstArtist = artists.FirstOrDefault();
+                        if (firstArtist != null)
+                            return firstArtist;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors and return empty string
+            }
+            return "";
+        }
+    }
+
+    public class ArtistOrderDesc : PropertyOrder<string>
+    {
+        public override string Name => "Artist Descending";
+        protected override bool IsDescending => true;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+        
+        protected override string GetSortValue(BaseItem item)
+        {
+            try
+            {
+                // Try to get Artists property (it's a list, so we'll use the first one for sorting)
+                var artistsProperty = item.GetType().GetProperty("Artists");
+                if (artistsProperty != null)
+                {
+                    var value = artistsProperty.GetValue(item);
+                    if (value is IEnumerable<string> artists)
+                    {
+                        var firstArtist = artists.FirstOrDefault();
+                        if (firstArtist != null)
+                            return firstArtist;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors and return empty string
+            }
+            return "";
         }
     }
 

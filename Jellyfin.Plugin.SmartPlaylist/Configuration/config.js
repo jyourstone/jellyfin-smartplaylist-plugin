@@ -746,6 +746,11 @@
         { value: 'SeasonNumber', label: 'Season Number' },
         { value: 'EpisodeNumber', label: 'Episode Number' },
         { value: 'PlayCount (owner)', label: 'Play Count (owner)' },
+        { value: 'LastPlayed (owner)', label: 'Last Played (owner)' },
+        { value: 'Runtime', label: 'Runtime' },
+        { value: 'SeriesName', label: 'Series Name' },
+        { value: 'AlbumName', label: 'Album Name' },
+        { value: 'Artist', label: 'Artist' },
         { value: 'Similarity', label: 'Similarity (requires Similar To rule)' },
         { value: 'TrackNumber', label: 'Track Number' },
         { value: 'Resolution', label: 'Resolution' },
@@ -3637,7 +3642,7 @@
         const hasVideo = selectedMediaTypes.includes('Video');
         
         // Episode-only sort options
-        if (['SeasonNumber', 'EpisodeNumber'].includes(sortValue)) {
+        if (['SeasonNumber', 'EpisodeNumber', 'SeriesName'].includes(sortValue)) {
             return hasEpisode;
         }
         
@@ -3646,9 +3651,19 @@
             return hasAudio || hasMusicVideo || hasAudioBook;
         }
         
+        // Audio/MusicVideo sort options
+        if (['AlbumName', 'Artist'].includes(sortValue)) {
+            return hasAudio || hasMusicVideo;
+        }
+        
         // Video-capable sort options (Resolution)
         if (sortValue === 'Resolution') {
             return hasMovie || hasEpisode || hasMusicVideo || hasVideo;
+        }
+        
+        // Runtime - shown for Movie, Episode, Audio, Music Video, Home Video (Video), Audiobook
+        if (sortValue === 'Runtime') {
+            return hasMovie || hasEpisode || hasAudio || hasMusicVideo || hasVideo || hasAudioBook;
         }
         
         // Similarity - only show if there's a "Similar To" rule
@@ -3657,7 +3672,7 @@
         }
         
         // Always show: Name, Name (Ignore Articles), ProductionYear, CommunityRating, 
-        // DateCreated, ReleaseDate, PlayCount (owner), Random, NoOrder
+        // DateCreated, ReleaseDate, PlayCount (owner), LastPlayed (owner), Random, NoOrder
         return true;
     }
     
