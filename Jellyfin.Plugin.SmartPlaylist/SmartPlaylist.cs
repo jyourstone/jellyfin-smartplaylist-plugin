@@ -1381,21 +1381,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             // For runtime
             if (order is RuntimeOrder || order is RuntimeOrderDesc)
             {
-                try
-                {
-                    var runtimeProperty = item.GetType().GetProperty("RunTimeTicks");
-                    if (runtimeProperty != null)
-                    {
-                        var value = runtimeProperty.GetValue(item);
-                        if (value is long runtime)
-                            return runtime;
-                    }
-                }
-                catch
-                {
-                    // Ignore errors
-                }
-                return 0L;
+                return item.RunTimeTicks ?? 0L;
             }
 
             // For series name
@@ -1539,6 +1525,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                    order is ReleaseDateOrderDesc ||
                    order is CommunityRatingOrderDesc ||
                    order is PlayCountOrderDesc ||
+                   order is LastPlayedOrderDesc ||
+                   order is RuntimeOrderDesc ||
+                   order is SeriesNameOrderDesc ||
+                   order is AlbumNameOrderDesc ||
+                   order is ArtistOrderDesc ||
                    order is SeasonNumberOrderDesc ||
                    order is EpisodeNumberOrderDesc ||
                    order is TrackNumberOrderDesc ||
@@ -3081,22 +3072,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         protected override long GetSortValue(BaseItem item)
         {
-            try
-            {
-                // Runtime is in ticks
-                var runtimeProperty = item.GetType().GetProperty("RunTimeTicks");
-                if (runtimeProperty != null)
-                {
-                    var value = runtimeProperty.GetValue(item);
-                    if (value is long runtime)
-                        return runtime;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
+            // Runtime is in ticks
+            return item.RunTimeTicks ?? 0L;
         }
     }
 
@@ -3107,22 +3084,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
         
         protected override long GetSortValue(BaseItem item)
         {
-            try
-            {
-                // Runtime is in ticks
-                var runtimeProperty = item.GetType().GetProperty("RunTimeTicks");
-                if (runtimeProperty != null)
-                {
-                    var value = runtimeProperty.GetValue(item);
-                    if (value is long runtime)
-                        return runtime;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
+            // Runtime is in ticks
+            return item.RunTimeTicks ?? 0L;
         }
     }
 
