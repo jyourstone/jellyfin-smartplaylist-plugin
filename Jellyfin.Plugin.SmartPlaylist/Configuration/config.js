@@ -26,8 +26,8 @@
     };
     
     // Debounce delay for media type change updates (milliseconds)
-    const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;
-    
+    const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;        
+
     // Helper functions to generate common option sets (DRY principle)
     function generateTimeOptions(defaultValue) {
         var options = [];
@@ -872,6 +872,9 @@
             updateAllNextUnwatchedOptionsVisibility(page);
             updateAllCollectionsOptionsVisibility(page);
             updateAllTagsOptionsVisibility(page);
+            
+            // 3) Update sort options visibility based on media types
+            updateAllSortOptionsVisibility(page);
         };
         
         // Generate checkboxes for each media type
@@ -1763,6 +1766,24 @@
         return separator;
     }
     
+    // Helper function to sync Sort Order UI based on Sort By value
+    // Centralizes logic for hiding/showing and setting defaults
+    function syncSortOrderUI(sortByValue, sortOrderContainer, sortOrderSelect) {
+        if (!sortOrderContainer || !sortOrderSelect) return;
+        
+        // Hide Sort Order for Random and NoOrder (they don't use ordering)
+        if (sortByValue === 'Random' || sortByValue === 'NoOrder') {
+            sortOrderContainer.style.display = 'none';
+        } else {
+            sortOrderContainer.style.display = '';
+            
+            // Auto-set to Descending when Similarity is selected (most similar first)
+            if (sortByValue === 'Similarity') {
+                sortOrderSelect.value = 'Descending';
+            }
+        }
+    }
+    
     function createSortBox(page, sortData) {
         const sortId = 'sort-' + Date.now() + '-' + Math.random();
         
@@ -1775,8 +1796,13 @@
         
         // Sort By field
         const sortByField = createSortField('Sort By', 'sort-by-' + sortId, 'select');
+        // Set a fixed width to prevent resizing when options change
+        sortByField.container.style.minWidth = '280px';
+        sortByField.container.style.maxWidth = '280px';
+        // Get filtered options based on current context
+        const filteredOptions = getFilteredSortOptions(page);
         // Mark the selected option (default to 'Name' if no sortData provided)
-        const sortByOptions = SORT_OPTIONS.map(function(opt) {
+        const sortByOptions = filteredOptions.map(function(opt) {
             return {
                 value: opt.value,
                 label: opt.label,
@@ -1810,15 +1836,14 @@
         
         box.appendChild(fieldsContainer);
         
-        // Add event listener to hide Sort Order when Random or NoOrder is selected
+        // Add event listener to sync Sort Order UI when Sort By changes
         sortByField.input.addEventListener('change', function() {
-            const sortOrderContainer = sortOrderField.container;
-            sortOrderContainer.style.display = (this.value === 'Random' || this.value === 'NoOrder') ? 'none' : '';
+            syncSortOrderUI(this.value, sortOrderField.container, sortOrderField.input);
         });
         
-        // Initial hide/show of Sort Order
-        const sortOrderContainer = sortOrderField.container;
-        sortOrderContainer.style.display = (sortData && (sortData.SortBy === 'Random' || sortData.SortBy === 'NoOrder')) ? 'none' : '';
+        // Initialize Sort Order UI based on current Sort By value
+        const initialSortBy = sortData ? sortData.SortBy : 'Name';
+        syncSortOrderUI(initialSortBy, sortOrderField.container, sortOrderField.input);
         
         return box;
     }
@@ -1933,6 +1958,52 @@
         });
         
         return sorts;
+    }
+    
+    // Update all sort dropdowns based on current context (media types and rules)
+    function updateAllSortOptionsVisibility(page) {
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (!sortsContainer) return;
+        
+        const sortBoxes = sortsContainer.querySelectorAll('.sort-box');
+        const filteredOptions = getFilteredSortOptions(page);
+        
+        sortBoxes.forEach(function(box) {
+            const sortBySelect = box.querySelector('select[id^="sort-by-"]');
+            const sortOrderSelect = box.querySelector('select[id^="sort-order-"]');
+            const sortOrderContainer = sortOrderSelect ? sortOrderSelect.closest('.sort-field-container') : null;
+            
+            if (!sortBySelect) return;
+            
+            const currentValue = sortBySelect.value;
+            
+            // Rebuild the options
+            const sortByOptions = filteredOptions.map(function(opt) {
+                return {
+                    value: opt.value,
+                    label: opt.label,
+                    selected: opt.value === currentValue
+                };
+            });
+            
+            // Check if current value is still valid
+            const isCurrentValueValid = filteredOptions.some(opt => opt.value === currentValue);
+            
+            // Repopulate the dropdown
+            populateSelectElement(sortBySelect, sortByOptions);
+            
+            // If current value is no longer valid, clear it and select first option
+            if (!isCurrentValueValid && currentValue) {
+                if (sortByOptions.length > 0) {
+                    sortBySelect.value = sortByOptions[0].value;
+                    // Sync Sort Order UI for the new value
+                    syncSortOrderUI(sortByOptions[0].value, sortOrderContainer, sortOrderSelect);
+                }
+            } else {
+                // Sync Sort Order UI for the current value
+                syncSortOrderUI(sortBySelect.value, sortOrderContainer, sortOrderSelect);
+            }
+        });
     }
 
     function populateStaticSelects(page) {
@@ -2774,6 +2845,8 @@
             updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
             updatePeopleOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
+            // Update sort options when Similar To rule is added/removed
+            updateAllSortOptionsVisibility(page);
         }, listenerOptions);
         
                         operatorSelect.addEventListener('change', function() {
@@ -2855,6 +2928,9 @@
             ruleElement.remove();
             updateRuleButtonVisibility(page);
         }
+        
+        // Update sort options in case a Similar To rule was removed
+        updateAllSortOptionsVisibility(page);
     }
 
     function cleanupRuleEventListeners(ruleElement) {
@@ -2891,6 +2967,9 @@
             logicGroup.remove();
             updateRuleButtonVisibility(page);
         }
+        
+        // Update sort options in case a Similar To rule was removed
+        updateAllSortOptionsVisibility(page);
     }
 
     function updateRuleButtonVisibility(page) {
@@ -2973,6 +3052,8 @@
                     updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
                     updatePeopleOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
+                    // Update sort options when Similar To rule is added/removed
+                    updateAllSortOptionsVisibility(page);
                 }, listenerOptions);
                 
                 operatorSelect.addEventListener('change', function() {
@@ -3539,6 +3620,67 @@
         
         // All other fields are universal (Name, ProductionYear, ReleaseDate, etc.)
         return true;
+    }
+    
+    // Sort option visibility definitions based on media types and rules
+    function shouldShowSortOption(sortValue, selectedMediaTypes, hasSimilarToRule) {
+        // If no media types selected, show all options
+        if (!selectedMediaTypes || selectedMediaTypes.length === 0) {
+            return true;
+        }
+        
+        const hasEpisode = selectedMediaTypes.includes('Episode');
+        const hasMovie = selectedMediaTypes.includes('Movie');
+        const hasAudio = selectedMediaTypes.includes('Audio');
+        const hasAudioBook = selectedMediaTypes.includes('AudioBook');
+        const hasMusicVideo = selectedMediaTypes.includes('MusicVideo');
+        const hasVideo = selectedMediaTypes.includes('Video');
+        
+        // Episode-only sort options
+        if (['SeasonNumber', 'EpisodeNumber'].includes(sortValue)) {
+            return hasEpisode;
+        }
+        
+        // Audio/MusicVideo/AudioBook sort options
+        if (sortValue === 'TrackNumber') {
+            return hasAudio || hasMusicVideo || hasAudioBook;
+        }
+        
+        // Video-capable sort options (Resolution)
+        if (sortValue === 'Resolution') {
+            return hasMovie || hasEpisode || hasMusicVideo || hasVideo;
+        }
+        
+        // Similarity - only show if there's a "Similar To" rule
+        if (sortValue === 'Similarity') {
+            return hasSimilarToRule === true;
+        }
+        
+        // Always show: Name, Name (Ignore Articles), ProductionYear, CommunityRating, 
+        // DateCreated, ReleaseDate, PlayCount (owner), Random, NoOrder
+        return true;
+    }
+    
+    // Check if any rule has "Similar To" field selected
+    function hasSimilarToRuleInForm(page) {
+        const allRules = page.querySelectorAll('.rule-row');
+        for (const ruleRow of allRules) {
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect && fieldSelect.value === 'SimilarTo') {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Filter sort options based on current context
+    function getFilteredSortOptions(page) {
+        const selectedMediaTypes = getSelectedMediaTypes(page);
+        const hasSimilarTo = hasSimilarToRuleInForm(page);
+        
+        return SORT_OPTIONS.filter(function(opt) {
+            return shouldShowSortOption(opt.value, selectedMediaTypes, hasSimilarTo);
+        });
     }
     
     // Filter fields based on selected media types
@@ -5661,7 +5803,7 @@
         schedulesContainer.appendChild(addBtn);
     }
 
-    async function editPlaylist(page, playlistId) {
+    async function editPlaylist(page, playlistId) {    
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
@@ -5734,9 +5876,6 @@
                 if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
                     setElementValue(page, '#playlistUser', playlist.UserId);
                 }
-                
-                // Set sort options using helper function
-                loadSortOptionsIntoUI(page, playlist);
                 
                 // Clear existing rules
                 const rulesContainer = page.querySelector('#rules-container');
@@ -5929,8 +6068,13 @@
                 updateAllTagsOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
-            
-            showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
+                
+                // Set sort options AFTER rules are populated so hasSimilarToRuleInForm() can detect them
+                loadSortOptionsIntoUI(page, playlist);
+                // Update sort options visibility based on populated rules
+                updateAllSortOptionsVisibility(page);
+                
+                showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
                 
             } catch (formError) {
                 console.error('Error populating form:', formError);
@@ -5943,7 +6087,7 @@
         });
     }
 
-    async function clonePlaylist(page, playlistId, playlistName) {
+    async function clonePlaylist(page, playlistId, playlistName) {  
         const apiClient = getApiClient();
         Dashboard.showLoadingMsg();
         
@@ -6015,9 +6159,6 @@
                     });
                 }
                 
-                // Set sort order using helper function
-                loadSortOptionsIntoUI(page, playlist);
-                
                 // Clear existing rules and populate with cloned rules
                 const rulesContainer = page.querySelector('#rules-container');
                 if (rulesContainer) {
@@ -6069,6 +6210,11 @@
                 updateAllTagsOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
+                
+                // Set sort options AFTER rules are populated so hasSimilarToRuleInForm() can detect them
+                loadSortOptionsIntoUI(page, playlist);
+                // Update sort options visibility based on populated rules
+                updateAllSortOptionsVisibility(page);
                 
                 // Show success message
                 showNotification(`Playlist "${playlistName}" cloned successfully! You can now modify and create the new playlist.`, 'success');
@@ -6175,7 +6321,7 @@
         }
     }
 
-    function cancelEdit(page) {
+    function cancelEdit(page) {    
         setPageEditState(page, false, null);
         
         // Update UI to show create mode
