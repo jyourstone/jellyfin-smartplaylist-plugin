@@ -22,20 +22,33 @@ namespace Jellyfin.Plugin.SmartPlaylist
             
             if (reader.TokenType == JsonTokenType.Number)
             {
-                return (DayOfWeek)reader.GetInt32();
+                var intValue = reader.GetInt32();
+                
+                // Validate range: DayOfWeek enum is 0 (Sunday) through 6 (Saturday)
+                if (intValue < 0 || intValue > 6)
+                {
+                    throw new JsonException($"Invalid DayOfWeek value '{intValue}'. Must be between 0 (Sunday) and 6 (Saturday).");
+                }
+                
+                return (DayOfWeek)intValue;
             }
             
             // Handle string input for backward compatibility (e.g., "Friday" -> 5)
             if (reader.TokenType == JsonTokenType.String)
             {
                 var value = reader.GetString();
-                if (Enum.TryParse<DayOfWeek>(value, true, out var dayOfWeek))
+                if (!string.IsNullOrEmpty(value) && Enum.TryParse<DayOfWeek>(value, true, out var dayOfWeek))
                 {
                     return dayOfWeek;
                 }
+                
+                throw new JsonException($"Unable to convert string '{value}' to DayOfWeek. Expected a day name (e.g., 'Monday') or numeric value (0-6).");
             }
             
-            throw new JsonException($"Unable to convert \"{reader.GetString()}\" to DayOfWeek");
+            // For unexpected token types, build error message without calling GetString()
+            var tokenType = reader.TokenType;
+            var rawText = reader.HasValueSequence ? "..." : reader.ValueSpan.Length > 0 ? System.Text.Encoding.UTF8.GetString(reader.ValueSpan) : "";
+            throw new JsonException($"Unable to convert token type '{tokenType}' (value: '{rawText}') to DayOfWeek. Expected a number (0-6) or string day name.");
         }
 
         public override void Write(Utf8JsonWriter writer, DayOfWeek? value, JsonSerializerOptions options)
