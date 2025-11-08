@@ -1766,6 +1766,24 @@
         return separator;
     }
     
+    // Helper function to sync Sort Order UI based on Sort By value
+    // Centralizes logic for hiding/showing and setting defaults
+    function syncSortOrderUI(sortByValue, sortOrderContainer, sortOrderSelect) {
+        if (!sortOrderContainer || !sortOrderSelect) return;
+        
+        // Hide Sort Order for Random and NoOrder (they don't use ordering)
+        if (sortByValue === 'Random' || sortByValue === 'NoOrder') {
+            sortOrderContainer.style.display = 'none';
+        } else {
+            sortOrderContainer.style.display = '';
+            
+            // Auto-set to Descending when Similarity is selected (most similar first)
+            if (sortByValue === 'Similarity') {
+                sortOrderSelect.value = 'Descending';
+            }
+        }
+    }
+    
     function createSortBox(page, sortData) {
         const sortId = 'sort-' + Date.now() + '-' + Math.random();
         
@@ -1818,24 +1836,14 @@
         
         box.appendChild(fieldsContainer);
         
-        // Add event listener to hide Sort Order when Random or NoOrder is selected
-        // and to auto-set to Descending when Similarity is selected
+        // Add event listener to sync Sort Order UI when Sort By changes
         sortByField.input.addEventListener('change', function() {
-            const sortOrderContainer = sortOrderField.container;
-            const sortOrderSelect = sortOrderField.input;
-            
-            // Hide Sort Order for Random and NoOrder
-            sortOrderContainer.style.display = (this.value === 'Random' || this.value === 'NoOrder') ? 'none' : '';
-            
-            // Auto-set to Descending when Similarity is selected (most similar first)
-            if (this.value === 'Similarity' && sortOrderSelect) {
-                sortOrderSelect.value = 'Descending';
-            }
+            syncSortOrderUI(this.value, sortOrderField.container, sortOrderField.input);
         });
         
-        // Initial hide/show of Sort Order
-        const sortOrderContainer = sortOrderField.container;
-        sortOrderContainer.style.display = (sortData && (sortData.SortBy === 'Random' || sortData.SortBy === 'NoOrder')) ? 'none' : '';
+        // Initialize Sort Order UI based on current Sort By value
+        const initialSortBy = sortData ? sortData.SortBy : 'Name';
+        syncSortOrderUI(initialSortBy, sortOrderField.container, sortOrderField.input);
         
         return box;
     }
@@ -1962,6 +1970,9 @@
         
         sortBoxes.forEach(function(box) {
             const sortBySelect = box.querySelector('select[id^="sort-by-"]');
+            const sortOrderSelect = box.querySelector('select[id^="sort-order-"]');
+            const sortOrderContainer = sortOrderSelect ? sortOrderSelect.closest('.sort-field-container') : null;
+            
             if (!sortBySelect) return;
             
             const currentValue = sortBySelect.value;
@@ -1985,7 +1996,12 @@
             if (!isCurrentValueValid && currentValue) {
                 if (sortByOptions.length > 0) {
                     sortBySelect.value = sortByOptions[0].value;
+                    // Sync Sort Order UI for the new value
+                    syncSortOrderUI(sortByOptions[0].value, sortOrderContainer, sortOrderSelect);
                 }
+            } else {
+                // Sync Sort Order UI for the current value
+                syncSortOrderUI(sortBySelect.value, sortOrderContainer, sortOrderSelect);
             }
         });
     }
@@ -5861,9 +5877,6 @@
                     setElementValue(page, '#playlistUser', playlist.UserId);
                 }
                 
-                // Set sort options using helper function
-                loadSortOptionsIntoUI(page, playlist);
-                
                 // Clear existing rules
                 const rulesContainer = page.querySelector('#rules-container');
                 rulesContainer.innerHTML = '';
@@ -6055,8 +6068,13 @@
                 updateAllTagsOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
-            
-            showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
+                
+                // Set sort options AFTER rules are populated so hasSimilarToRuleInForm() can detect them
+                loadSortOptionsIntoUI(page, playlist);
+                // Update sort options visibility based on populated rules
+                updateAllSortOptionsVisibility(page);
+                
+                showNotification('Playlist "' + playlist.Name + '" loaded for editing.', 'success');
                 
             } catch (formError) {
                 console.error('Error populating form:', formError);
@@ -6141,9 +6159,6 @@
                     });
                 }
                 
-                // Set sort order using helper function
-                loadSortOptionsIntoUI(page, playlist);
-                
                 // Clear existing rules and populate with cloned rules
                 const rulesContainer = page.querySelector('#rules-container');
                 if (rulesContainer) {
@@ -6195,6 +6210,11 @@
                 updateAllTagsOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
+                
+                // Set sort options AFTER rules are populated so hasSimilarToRuleInForm() can detect them
+                loadSortOptionsIntoUI(page, playlist);
+                // Update sort options visibility based on populated rules
+                updateAllSortOptionsVisibility(page);
                 
                 // Show success message
                 showNotification(`Playlist "${playlistName}" cloned successfully! You can now modify and create the new playlist.`, 'success');
