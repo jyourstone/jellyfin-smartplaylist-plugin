@@ -877,6 +877,8 @@
             updateAllNextUnwatchedOptionsVisibility(page);
             updateAllCollectionsOptionsVisibility(page);
             updateAllTagsOptionsVisibility(page);
+            updateAllStudiosOptionsVisibility(page);
+            updateAllGenresOptionsVisibility(page);
             
             // 3) Update sort options visibility based on media types
             updateAllSortOptionsVisibility(page);
@@ -1245,6 +1247,8 @@
                         updateNextUnwatchedOptionsVisibility(ruleRow, '', page);
                         updateCollectionsOptionsVisibility(ruleRow, '', page);
                         updateTagsOptionsVisibility(ruleRow, '', page);
+                        updateStudiosOptionsVisibility(ruleRow, '', page);
+                        updateGenresOptionsVisibility(ruleRow, '', page);
                     }
                     updateSimilarityOptionsVisibility(ruleRow, '');
                     updatePeopleOptionsVisibility(ruleRow, '');
@@ -1259,6 +1263,8 @@
                         updateNextUnwatchedOptionsVisibility(ruleRow, currentValue, page);
                         updateCollectionsOptionsVisibility(ruleRow, currentValue, page);
                         updateTagsOptionsVisibility(ruleRow, currentValue, page);
+                        updateStudiosOptionsVisibility(ruleRow, currentValue, page);
+                        updateGenresOptionsVisibility(ruleRow, currentValue, page);
                     }
                     updateSimilarityOptionsVisibility(ruleRow, currentValue);
                     updatePeopleOptionsVisibility(ruleRow, currentValue);
@@ -2784,6 +2790,24 @@
                     <option value="true">Yes - Also check tags from parent series</option>
                 </select>
             </div>
+            <div class="rule-studios-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Include parent series studios:
+                </label>
+                <select is="emby-select" class="emby-select rule-studios-select" style="width: 100%;">
+                    <option value="false">No - Only check episode studios</option>
+                    <option value="true">Yes - Also check studios from parent series</option>
+                </select>
+            </div>
+            <div class="rule-genres-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">
+                    Include parent series genres:
+                </label>
+                <select is="emby-select" class="emby-select rule-genres-select" style="width: 100%;">
+                    <option value="false">No - Only check episode genres</option>
+                    <option value="true">Yes - Also check genres from parent series</option>
+                </select>
+            </div>
             <div class="rule-similarity-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">
                 <label style="display: block; margin-bottom: 0.5em; font-size: 0.85em; color: #ccc; font-weight: 500;">
                     Compare using these metadata fields (default: Genre + Tags):
@@ -2835,6 +2859,12 @@
         // Initialize Tags options visibility
         updateTagsOptionsVisibility(newRuleRow, fieldSelect.value, page);
         
+        // Initialize Studios options visibility
+        updateStudiosOptionsVisibility(newRuleRow, fieldSelect.value, page);
+        
+        // Initialize Genres options visibility
+        updateGenresOptionsVisibility(newRuleRow, fieldSelect.value, page);
+        
         // Initialize Similarity options visibility
         updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
         
@@ -2847,6 +2877,8 @@
             updateNextUnwatchedOptionsVisibility(newRuleRow, fieldSelect.value, page);
             updateCollectionsOptionsVisibility(newRuleRow, fieldSelect.value, page);
             updateTagsOptionsVisibility(newRuleRow, fieldSelect.value, page);
+            updateStudiosOptionsVisibility(newRuleRow, fieldSelect.value, page);
+            updateGenresOptionsVisibility(newRuleRow, fieldSelect.value, page);
             updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
             updatePeopleOptionsVisibility(newRuleRow, fieldSelect.value);
             updateRegexHelp(newRuleRow);
@@ -3042,6 +3074,8 @@
                     updateNextUnwatchedOptionsVisibility(ruleRow, currentFieldValue, page);
                     updateCollectionsOptionsVisibility(ruleRow, currentFieldValue, page);
                     updateTagsOptionsVisibility(ruleRow, currentFieldValue, page);
+                    updateStudiosOptionsVisibility(ruleRow, currentFieldValue, page);
+                    updateGenresOptionsVisibility(ruleRow, currentFieldValue, page);
                     updateSimilarityOptionsVisibility(ruleRow, currentFieldValue);
                 }
                 
@@ -3054,6 +3088,8 @@
                     updateNextUnwatchedOptionsVisibility(ruleRow, fieldSelect.value, page);
                     updateCollectionsOptionsVisibility(ruleRow, fieldSelect.value, page);
                     updateTagsOptionsVisibility(ruleRow, fieldSelect.value, page);
+                    updateStudiosOptionsVisibility(ruleRow, fieldSelect.value, page);
+                    updateGenresOptionsVisibility(ruleRow, fieldSelect.value, page);
                     updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
                     updatePeopleOptionsVisibility(ruleRow, fieldSelect.value);
                     updateRegexHelp(ruleRow);
@@ -3199,6 +3235,28 @@
                             const includeParentSeriesTags = tagsSelect.value === 'true';
                             if (includeParentSeriesTags) {
                                 expression.IncludeParentSeriesTags = true;
+                            }
+                            // If false (default), don't include the parameter to save space
+                        }
+                        
+                        // Handle Studios-specific options (only if Episode is selected)
+                        const studiosSelect = rule.querySelector('.rule-studios-select');
+                        if (studiosSelect && memberName === 'Studios' && hasEpisode) {
+                            // Convert string to boolean and only include if it's explicitly true
+                            const includeParentSeriesStudios = studiosSelect.value === 'true';
+                            if (includeParentSeriesStudios) {
+                                expression.IncludeParentSeriesStudios = true;
+                            }
+                            // If false (default), don't include the parameter to save space
+                        }
+                        
+                        // Handle Genres-specific options (only if Episode is selected)
+                        const genresSelect = rule.querySelector('.rule-genres-select');
+                        if (genresSelect && memberName === 'Genres' && hasEpisode) {
+                            // Convert string to boolean and only include if it's explicitly true
+                            const includeParentSeriesGenres = genresSelect.value === 'true';
+                            if (includeParentSeriesGenres) {
+                                expression.IncludeParentSeriesGenres = true;
                             }
                             // If false (default), don't include the parameter to save space
                         }
@@ -3749,6 +3807,62 @@
     const updateAllTagsOptionsVisibility = (page) => {
         updateAllRules(page, updateTagsOptionsVisibility);
     };
+
+    function updateStudiosOptionsVisibility(ruleRow, fieldValue, page) {
+        const isStudiosField = fieldValue === 'Studios';
+        const studiosOptionsDiv = ruleRow.querySelector('.rule-studios-options');
+        
+        if (studiosOptionsDiv) {
+            // Show only if Studios field is selected AND Episode media type is selected
+            if (isStudiosField && page) {
+                const selectedMediaTypes = getSelectedMediaTypes(page);
+                const hasEpisode = selectedMediaTypes.includes('Episode');
+                
+                if (hasEpisode) {
+                    studiosOptionsDiv.style.display = 'block';
+                } else {
+                    // Hide but preserve user's selection - don't reset value
+                    studiosOptionsDiv.style.display = 'none';
+                }
+            } else {
+                // Hide but preserve user's selection - don't reset value
+                studiosOptionsDiv.style.display = 'none';
+            }
+        }
+    }
+    
+    // Update visibility of Studios options for all rules when media types change
+    const updateAllStudiosOptionsVisibility = (page) => {
+        updateAllRules(page, updateStudiosOptionsVisibility);
+    };
+
+    function updateGenresOptionsVisibility(ruleRow, fieldValue, page) {
+        const isGenresField = fieldValue === 'Genres';
+        const genresOptionsDiv = ruleRow.querySelector('.rule-genres-options');
+        
+        if (genresOptionsDiv) {
+            // Show only if Genres field is selected AND Episode media type is selected
+            if (isGenresField && page) {
+                const selectedMediaTypes = getSelectedMediaTypes(page);
+                const hasEpisode = selectedMediaTypes.includes('Episode');
+                
+                if (hasEpisode) {
+                    genresOptionsDiv.style.display = 'block';
+                } else {
+                    // Hide but preserve user's selection - don't reset value
+                    genresOptionsDiv.style.display = 'none';
+                }
+            } else {
+                // Hide but preserve user's selection - don't reset value
+                genresOptionsDiv.style.display = 'none';
+            }
+        }
+    }
+    
+    // Update visibility of Genres options for all rules when media types change
+    const updateAllGenresOptionsVisibility = (page) => {
+        updateAllRules(page, updateGenresOptionsVisibility);
+    }
 
     function updateSimilarityOptionsVisibility(ruleRow, fieldValue, savedFields) {
         const isSimilarToField = fieldValue === 'SimilarTo';
@@ -4340,6 +4454,18 @@
                             tagsInfo = ' (including parent series tags)';
                         }
                         
+                        // Add Studios configuration info
+                        let studiosInfo = '';
+                        if (rule.MemberName === 'Studios' && rule.IncludeParentSeriesStudios === true) {
+                            studiosInfo = ' (including parent series studios)';
+                        }
+                        
+                        // Add Genres configuration info
+                        let genresInfo = '';
+                        if (rule.MemberName === 'Genres' && rule.IncludeParentSeriesGenres === true) {
+                            genresInfo = ' (including parent series genres)';
+                        }
+                        
                         // Add SimilarTo comparison fields info
                         let similarityInfo = '';
                         if (rule.MemberName === 'SimilarTo') {
@@ -4351,7 +4477,7 @@
                         }
                         
                         rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
-                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo) + escapeHtml(tagsInfo) + escapeHtml(similarityInfo);
+                        rulesHtml += escapeHtml(fieldName) + ' ' + escapeHtml(operator) + ' "' + escapeHtml(value) + '"' + escapeHtml(userInfo) + escapeHtml(nextUnwatchedInfo) + escapeHtml(collectionsInfo) + escapeHtml(tagsInfo) + escapeHtml(studiosInfo) + escapeHtml(genresInfo) + escapeHtml(similarityInfo);
                         rulesHtml += '</span>';
                     }
                     rulesHtml += '</div>';
@@ -5953,6 +6079,8 @@
                                 updateNextUnwatchedOptionsVisibility(currentRule, actualMemberName, page);
                                 updateCollectionsOptionsVisibility(currentRule, actualMemberName, page);
                                 updateTagsOptionsVisibility(currentRule, actualMemberName, page);
+                                updateStudiosOptionsVisibility(currentRule, actualMemberName, page);
+                                updateGenresOptionsVisibility(currentRule, actualMemberName, page);
                                 // Pass the playlist's saved similarity fields (if any) so they're loaded correctly
                                 updateSimilarityOptionsVisibility(currentRule, actualMemberName, playlist.SimilarityComparisonFields);
                                 
@@ -6043,6 +6171,26 @@
                                     }
                                 }
                                 
+                                if (expression.MemberName === 'Studios') {
+                                    const studiosSelect = currentRule.querySelector('.rule-studios-select');
+                                    if (studiosSelect) {
+                                        // Set the value based on the IncludeParentSeriesStudios parameter
+                                        // Default to false if not specified (backwards compatibility)
+                                        const includeValue = expression.IncludeParentSeriesStudios === true ? 'true' : 'false';
+                                        studiosSelect.value = includeValue;
+                                    }
+                                }
+                                
+                                if (expression.MemberName === 'Genres') {
+                                    const genresSelect = currentRule.querySelector('.rule-genres-select');
+                                    if (genresSelect) {
+                                        // Set the value based on the IncludeParentSeriesGenres parameter
+                                        // Default to false if not specified (backwards compatibility)
+                                        const includeValue = expression.IncludeParentSeriesGenres === true ? 'true' : 'false';
+                                        genresSelect.value = includeValue;
+                                    }
+                                }
+                                
                                 // Note: Similarity comparison fields are now loaded automatically by updateSimilarityOptionsVisibility above
                                 
                                 updateRegexHelp(currentRule);
@@ -6081,6 +6229,8 @@
                 // Update field selects first, then per-field options visibility based on selected media types
                 updateAllFieldSelects(page);
                 updateAllTagsOptionsVisibility(page);
+                updateAllStudiosOptionsVisibility(page);
+                updateAllGenresOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
                 
@@ -6223,6 +6373,8 @@
                 // Update field selects first, then per-field options visibility based on selected media types
                 updateAllFieldSelects(page);
                 updateAllTagsOptionsVisibility(page);
+                updateAllStudiosOptionsVisibility(page);
+                updateAllGenresOptionsVisibility(page);
                 updateAllCollectionsOptionsVisibility(page);
                 updateAllNextUnwatchedOptionsVisibility(page);
                 
@@ -6280,6 +6432,8 @@
                 updateNextUnwatchedOptionsVisibility(ruleRow, actualMemberName, page);
                 updateCollectionsOptionsVisibility(ruleRow, actualMemberName, page);
                 updateTagsOptionsVisibility(ruleRow, actualMemberName, page);
+                updateStudiosOptionsVisibility(ruleRow, actualMemberName, page);
+                updateGenresOptionsVisibility(ruleRow, actualMemberName, page);
             }
             
             if (operatorSelect && expression.Operator) {
@@ -6326,6 +6480,20 @@
                 if (tagsSelect) {
                     const includeValue = expression.IncludeParentSeriesTags === true ? 'true' : 'false';
                     tagsSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'Studios') {
+                const studiosSelect = ruleRow.querySelector('.rule-studios-select');
+                if (studiosSelect) {
+                    const includeValue = expression.IncludeParentSeriesStudios === true ? 'true' : 'false';
+                    studiosSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'Genres') {
+                const genresSelect = ruleRow.querySelector('.rule-genres-select');
+                if (genresSelect) {
+                    const includeValue = expression.IncludeParentSeriesGenres === true ? 'true' : 'false';
+                    genresSelect.value = includeValue;
                 }
             }
             
