@@ -30,6 +30,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public bool ExtractNextUnwatched { get; set; } = false;
         public bool ExtractSeriesName { get; set; } = false;
         public bool ExtractParentSeriesTags { get; set; } = false;
+        public bool ExtractParentSeriesStudios { get; set; } = false;
+        public bool ExtractParentSeriesGenres { get; set; } = false;
         public bool IncludeUnwatchedSeries { get; set; } = true;
         public List<string> AdditionalUserIds { get; set; } = [];
     }
@@ -63,6 +65,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
             public Dictionary<Guid, string> SeriesNameById { get; } = [];
             public Dictionary<Guid, List<string>> SeriesTagsById { get; } = [];
+            public Dictionary<Guid, List<string>> SeriesStudiosById { get; } = [];
+            public Dictionary<Guid, List<string>> SeriesGenresById { get; } = [];
             public Dictionary<Guid, CategorizedPeople> ItemPeople { get; } = [];
             public bool PeopleCacheInitialized { get; set; } = false;
         }
@@ -1099,6 +1103,130 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
+        /// Extracts the parent series studios for episodes with per-refresh caching.
+        /// This is an expensive operation as it requires a database lookup, so caching is critical for performance.
+        /// </summary>
+        private static void ExtractParentSeriesStudios(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
+        {
+            operand.ParentSeriesStudios = [];
+            try
+            {
+                // Only process episodes - other item types don't have parent series
+                if (baseItem is not Episode)
+                {
+                    logger?.LogDebug("Item '{ItemName}' is not an episode, parent series studios remain empty", baseItem.Name);
+                    return;
+                }
+                
+                // Use helper to extract SeriesId safely
+                if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid))
+                {
+                    // Check cache first to avoid repeated library lookups (expensive!)
+                    if (cache.SeriesStudiosById.TryGetValue(seriesGuid, out var cachedStudios))
+                    {
+                        operand.ParentSeriesStudios = cachedStudios;
+                        logger?.LogDebug("Using cached parent series studios for episode '{EpisodeName}' (series ID: {SeriesId}): [{Studios}]", 
+                            baseItem.Name, seriesGuid, string.Join(", ", cachedStudios));
+                    }
+                    else
+                    {
+                        try
+                        {
+                            // Get the parent series from the library manager (expensive operation!)
+                            var parentSeries = libraryManager.GetItemById(seriesGuid);
+                            var seriesStudios = parentSeries?.Studios?.ToList() ?? [];
+                            
+                            // Cache the result for future episodes from the same series
+                            cache.SeriesStudiosById[seriesGuid] = seriesStudios;
+                            operand.ParentSeriesStudios = seriesStudios;
+                            
+                            logger?.LogDebug("Extracted and cached parent series studios for episode '{EpisodeName}' (series: '{SeriesName}'): [{Studios}]", 
+                                baseItem.Name, parentSeries?.Name ?? "Unknown", string.Join(", ", seriesStudios));
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Failed to get parent series studios for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                baseItem.Name, seriesGuid);
+                            
+                            // Cache empty list to avoid repeated failures
+                            cache.SeriesStudiosById[seriesGuid] = [];
+                        }
+                    }
+                }
+                else
+                {
+                    logger?.LogDebug("Could not extract valid SeriesId from episode '{EpisodeName}'", baseItem.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract parent series studios for item '{ItemName}'", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Extracts the parent series genres for episodes with per-refresh caching.
+        /// This is an expensive operation as it requires a database lookup, so caching is critical for performance.
+        /// </summary>
+        private static void ExtractParentSeriesGenres(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
+        {
+            operand.ParentSeriesGenres = [];
+            try
+            {
+                // Only process episodes - other item types don't have parent series
+                if (baseItem is not Episode)
+                {
+                    logger?.LogDebug("Item '{ItemName}' is not an episode, parent series genres remain empty", baseItem.Name);
+                    return;
+                }
+                
+                // Use helper to extract SeriesId safely
+                if (TryGetEpisodeSeriesGuid(baseItem, out var seriesGuid))
+                {
+                    // Check cache first to avoid repeated library lookups (expensive!)
+                    if (cache.SeriesGenresById.TryGetValue(seriesGuid, out var cachedGenres))
+                    {
+                        operand.ParentSeriesGenres = cachedGenres;
+                        logger?.LogDebug("Using cached parent series genres for episode '{EpisodeName}' (series ID: {SeriesId}): [{Genres}]", 
+                            baseItem.Name, seriesGuid, string.Join(", ", cachedGenres));
+                    }
+                    else
+                    {
+                        try
+                        {
+                            // Get the parent series from the library manager (expensive operation!)
+                            var parentSeries = libraryManager.GetItemById(seriesGuid);
+                            var seriesGenres = parentSeries?.Genres?.ToList() ?? [];
+                            
+                            // Cache the result for future episodes from the same series
+                            cache.SeriesGenresById[seriesGuid] = seriesGenres;
+                            operand.ParentSeriesGenres = seriesGenres;
+                            
+                            logger?.LogDebug("Extracted and cached parent series genres for episode '{EpisodeName}' (series: '{SeriesName}'): [{Genres}]", 
+                                baseItem.Name, parentSeries?.Name ?? "Unknown", string.Join(", ", seriesGenres));
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Failed to get parent series genres for episode '{EpisodeName}' with SeriesId {SeriesId}", 
+                                baseItem.Name, seriesGuid);
+                            
+                            // Cache empty list to avoid repeated failures
+                            cache.SeriesGenresById[seriesGuid] = [];
+                        }
+                    }
+                }
+                else
+                {
+                    logger?.LogDebug("Could not extract valid SeriesId from episode '{EpisodeName}'", baseItem.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract parent series genres for item '{ItemName}'", baseItem.Name);
+            }
+        }
+
+        /// <summary>
         /// Extracts people (actors, directors, producers, etc.) associated with the item.
         /// </summary>
         private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger logger)
@@ -1465,6 +1593,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var extractNextUnwatched = options.ExtractNextUnwatched;
             var extractSeriesName = options.ExtractSeriesName;
             var extractParentSeriesTags = options.ExtractParentSeriesTags;
+            var extractParentSeriesStudios = options.ExtractParentSeriesStudios;
+            var extractParentSeriesGenres = options.ExtractParentSeriesGenres;
             var includeUnwatchedSeries = options.IncludeUnwatchedSeries;
             var additionalUserIds = options.AdditionalUserIds;
             
@@ -1722,6 +1852,28 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             else
             {
                 operand.ParentSeriesTags = [];
+            }
+            
+            // Extract parent series studios for episodes - only when needed for performance
+            // This is an expensive operation (database lookup), so we use caching
+            if (extractParentSeriesStudios)
+            {
+                ExtractParentSeriesStudios(operand, baseItem, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.ParentSeriesStudios = [];
+            }
+            
+            // Extract parent series genres for episodes - only when needed for performance
+            // This is an expensive operation (database lookup), so we use caching
+            if (extractParentSeriesGenres)
+            {
+                ExtractParentSeriesGenres(operand, baseItem, libraryManager, cache, logger);
+            }
+            else
+            {
+                operand.ParentSeriesGenres = [];
             }
             
             // Extract artists and album artists only for music-related items (cheap operations when applicable)
