@@ -478,7 +478,9 @@ The web interface provides access to all available fields for creating playlist 
 #### **Collections**
 - **Collections** - All Jellyfin collections that contain the media item
 - **Genres** - Content genres
+  - **Include parent series genres**: Optional setting to also check genres from the parent series when filtering episodes
 - **Studios** - Production studios
+  - **Include parent series studios**: Optional setting to also check studios from the parent series when filtering episodes
 - **Tags** - Custom tags assigned to media items
   - **Include parent series tags**: Optional setting to also check tags from the parent series when filtering episodes
 - **Artists** - Track-level artists *for music*
@@ -604,11 +606,16 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 - **Production Year** - Sort by production year
 - **Season Number** - Sort by TV season number, then episode number (for TV episodes)
 - **Episode Number** - Sort by TV episode number, then season number (for TV episodes)
+- **Series Name** - Sort by series name (for TV episodes)
 - **Community Rating** - Sort by user ratings
 - **Date Created** - Sort by when added to library
 - **Play Count (owner)** - Sort by how many times the playlist owner has played each item
-- **Similarity** - Sort by similarity score (highest first) - **only available when using the "Similar To" field**
+- **Last Played (owner)** - Sort by when the playlist owner last played each item
+- **Runtime** - Sort by duration/runtime in minutes
+- **Album Name** - Sort by album name (for music and music videos)
+- **Artist** - Sort by artist name (for music and music videos)
 - **Track Number** - Sort by album name, disc number, then track number (designed for music)
+- **Similarity** - Sort by similarity score (highest first) - **only available when using the "Similar To" field**
 - **Random** - Randomize the order of items
 - **Ascending** - Sort from lowest to highest (or oldest to newest)
 - **Descending** - Sort from highest to lowest (or newest to oldest)
