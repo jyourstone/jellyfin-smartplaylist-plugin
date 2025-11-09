@@ -32,7 +32,7 @@ This will create a playlist of up to 100 unwatched action movies, sorted by prod
 
 ## Next Steps
 
-- Learn about [Configuration](user-guide/configuration.md) options
-- Explore [Fields and Operators](user-guide/fields-and-operators.md) for more complex rules
-- Check out [Common Use Cases](examples/common-use-cases.md) for inspiration
+- Learn about [Configuration](../user-guide/configuration.md) options
+- Explore [Fields and Operators](../user-guide/fields-and-operators.md) for more complex rules
+- Check out [Common Use Cases](../examples/common-use-cases.md) for inspiration
 
