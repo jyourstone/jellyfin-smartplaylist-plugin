@@ -67,21 +67,21 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (r.MemberName == "Tags" && r.IncludeParentSeriesTags == true)
             {
                 logger?.LogDebug("SmartPlaylist building Tags expression with parent series tags inclusion");
-                return BuildTagsWithParentSeriesExpression(r, param, logger);
+                return BuildCombinedStringEnumerableExpression(r, param, "Tags", "ParentSeriesTags", logger);
             }
 
             // Special handling for Studios field with IncludeParentSeriesStudios option
             if (r.MemberName == "Studios" && r.IncludeParentSeriesStudios == true)
             {
                 logger?.LogDebug("SmartPlaylist building Studios expression with parent series studios inclusion");
-                return BuildStudiosWithParentSeriesExpression(r, param, logger);
+                return BuildCombinedStringEnumerableExpression(r, param, "Studios", "ParentSeriesStudios", logger);
             }
 
             // Special handling for Genres field with IncludeParentSeriesGenres option
             if (r.MemberName == "Genres" && r.IncludeParentSeriesGenres == true)
             {
                 logger?.LogDebug("SmartPlaylist building Genres expression with parent series genres inclusion");
-                return BuildGenresWithParentSeriesExpression(r, param, logger);
+                return BuildCombinedStringEnumerableExpression(r, param, "Genres", "ParentSeriesGenres", logger);
             }
 
             // Get the property/field expression for non-user-specific fields
@@ -128,19 +128,24 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         }
 
         /// <summary>
-        /// Builds expressions for Tags field that also checks ParentSeriesTags.
-        /// For positive operators (Contains, IsIn, MatchRegex): Uses OR logic - item passes if EITHER Tags OR ParentSeriesTags match
-        /// For negative operators (NotContains, IsNotIn): Uses AND logic - item passes only if BOTH Tags AND ParentSeriesTags don't match
+        /// Builds combined expressions for a field that also checks its parent series equivalent.
+        /// For positive operators (Contains, IsIn, MatchRegex): Uses OR logic - item passes if EITHER field OR parent series field match
+        /// For negative operators (NotContains, IsNotIn): Uses AND logic - item passes only if BOTH field AND parent series field don't match
         /// </summary>
-        private static System.Linq.Expressions.Expression BuildTagsWithParentSeriesExpression(Expression r, ParameterExpression param, ILogger logger)
+        /// <param name="r">The expression rule</param>
+        /// <param name="param">The parameter expression</param>
+        /// <param name="fieldName">The name of the field (e.g., "Tags", "Studios", "Genres")</param>
+        /// <param name="parentSeriesFieldName">The name of the parent series field (e.g., "ParentSeriesTags", "ParentSeriesStudios", "ParentSeriesGenres")</param>
+        /// <param name="logger">Logger instance</param>
+        private static System.Linq.Expressions.Expression BuildCombinedStringEnumerableExpression(Expression r, ParameterExpression param, string fieldName, string parentSeriesFieldName, ILogger logger)
         {
-            // Get the Tags property expression
-            var tagsProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "Tags");
-            var tagsExpression = BuildStringEnumerableExpression(r, tagsProperty, logger);
+            // Get the field property expression
+            var fieldProperty = System.Linq.Expressions.Expression.PropertyOrField(param, fieldName);
+            var fieldExpression = BuildStringEnumerableExpression(r, fieldProperty, logger);
             
-            // Get the ParentSeriesTags property expression
-            var parentSeriesTagsProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "ParentSeriesTags");
-            var parentSeriesTagsExpression = BuildStringEnumerableExpression(r, parentSeriesTagsProperty, logger);
+            // Get the parent series field property expression
+            var parentSeriesFieldProperty = System.Linq.Expressions.Expression.PropertyOrField(param, parentSeriesFieldName);
+            var parentSeriesFieldExpression = BuildStringEnumerableExpression(r, parentSeriesFieldProperty, logger);
             
             // Determine if this is a negative operator
             bool isNegativeOperator = r.Operator == "NotContains" || r.Operator == "IsNotIn";
@@ -148,90 +153,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             if (isNegativeOperator)
             {
                 // For negative operators: Use AND logic
-                // Item passes only if BOTH Tags don't match AND ParentSeriesTags don't match
-                // Example: "NotContains Horror" means neither episode tags nor series tags should contain Horror
-                logger?.LogDebug("SmartPlaylist building combined Tags expression with AND logic for negative operator {Operator}", r.Operator);
-                return System.Linq.Expressions.Expression.AndAlso(tagsExpression, parentSeriesTagsExpression);
+                // Item passes only if BOTH field don't match AND parent series field don't match
+                logger?.LogDebug("SmartPlaylist building combined {Field} expression with AND logic for negative operator {Operator}", fieldName, r.Operator);
+                return System.Linq.Expressions.Expression.AndAlso(fieldExpression, parentSeriesFieldExpression);
             }
             else
             {
                 // For positive operators: Use OR logic
-                // Item passes if EITHER Tags match OR ParentSeriesTags match
-                // Example: "Contains Sitcom" means either episode tags or series tags contain Sitcom
-                logger?.LogDebug("SmartPlaylist building combined Tags expression with OR logic for positive operator {Operator}", r.Operator);
-                return System.Linq.Expressions.Expression.OrElse(tagsExpression, parentSeriesTagsExpression);
-            }
-        }
-
-        /// <summary>
-        /// Builds expressions for Studios field that also checks ParentSeriesStudios.
-        /// For positive operators (Contains, IsIn, MatchRegex): Uses OR logic - item passes if EITHER Studios OR ParentSeriesStudios match
-        /// For negative operators (NotContains, IsNotIn): Uses AND logic - item passes only if BOTH Studios AND ParentSeriesStudios don't match
-        /// </summary>
-        private static System.Linq.Expressions.Expression BuildStudiosWithParentSeriesExpression(Expression r, ParameterExpression param, ILogger logger)
-        {
-            // Get the Studios property expression
-            var studiosProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "Studios");
-            var studiosExpression = BuildStringEnumerableExpression(r, studiosProperty, logger);
-            
-            // Get the ParentSeriesStudios property expression
-            var parentSeriesStudiosProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "ParentSeriesStudios");
-            var parentSeriesStudiosExpression = BuildStringEnumerableExpression(r, parentSeriesStudiosProperty, logger);
-            
-            // Determine if this is a negative operator
-            bool isNegativeOperator = r.Operator == "NotContains" || r.Operator == "IsNotIn";
-            
-            if (isNegativeOperator)
-            {
-                // For negative operators: Use AND logic
-                // Item passes only if BOTH Studios don't match AND ParentSeriesStudios don't match
-                // Example: "NotContains BBC" means neither episode studios nor series studios should contain BBC
-                logger?.LogDebug("SmartPlaylist building combined Studios expression with AND logic for negative operator {Operator}", r.Operator);
-                return System.Linq.Expressions.Expression.AndAlso(studiosExpression, parentSeriesStudiosExpression);
-            }
-            else
-            {
-                // For positive operators: Use OR logic
-                // Item passes if EITHER Studios match OR ParentSeriesStudios match
-                // Example: "Contains HBO" means either episode studios or series studios contain HBO
-                logger?.LogDebug("SmartPlaylist building combined Studios expression with OR logic for positive operator {Operator}", r.Operator);
-                return System.Linq.Expressions.Expression.OrElse(studiosExpression, parentSeriesStudiosExpression);
-            }
-        }
-
-        /// <summary>
-        /// Builds expressions for Genres field that also checks ParentSeriesGenres.
-        /// For positive operators (Contains, IsIn, MatchRegex): Uses OR logic - item passes if EITHER Genres OR ParentSeriesGenres match
-        /// For negative operators (NotContains, IsNotIn): Uses AND logic - item passes only if BOTH Genres AND ParentSeriesGenres don't match
-        /// </summary>
-        private static System.Linq.Expressions.Expression BuildGenresWithParentSeriesExpression(Expression r, ParameterExpression param, ILogger logger)
-        {
-            // Get the Genres property expression
-            var genresProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "Genres");
-            var genresExpression = BuildStringEnumerableExpression(r, genresProperty, logger);
-            
-            // Get the ParentSeriesGenres property expression
-            var parentSeriesGenresProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "ParentSeriesGenres");
-            var parentSeriesGenresExpression = BuildStringEnumerableExpression(r, parentSeriesGenresProperty, logger);
-            
-            // Determine if this is a negative operator
-            bool isNegativeOperator = r.Operator == "NotContains" || r.Operator == "IsNotIn";
-            
-            if (isNegativeOperator)
-            {
-                // For negative operators: Use AND logic
-                // Item passes only if BOTH Genres don't match AND ParentSeriesGenres don't match
-                // Example: "NotContains Horror" means neither episode genres nor series genres should contain Horror
-                logger?.LogDebug("SmartPlaylist building combined Genres expression with AND logic for negative operator {Operator}", r.Operator);
-                return System.Linq.Expressions.Expression.AndAlso(genresExpression, parentSeriesGenresExpression);
-            }
-            else
-            {
-                // For positive operators: Use OR logic
-                // Item passes if EITHER Genres match OR ParentSeriesGenres match
-                // Example: "Contains Comedy" means either episode genres or series genres contain Comedy
-                logger?.LogDebug("SmartPlaylist building combined Genres expression with OR logic for positive operator {Operator}", r.Operator);
-                return System.Linq.Expressions.Expression.OrElse(genresExpression, parentSeriesGenresExpression);
+                // Item passes if EITHER field match OR parent series field match
+                logger?.LogDebug("SmartPlaylist building combined {Field} expression with OR logic for positive operator {Operator}", fieldName, r.Operator);
+                return System.Linq.Expressions.Expression.OrElse(fieldExpression, parentSeriesFieldExpression);
             }
         }
 

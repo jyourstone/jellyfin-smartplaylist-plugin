@@ -704,11 +704,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 {
                     if (ExpressionSets != null)
                     {
-                        hasNonExpensiveRules = ExpressionSets
-                            .SelectMany(set => set?.Expressions ?? [])
-                            .Any(expr => expr != null
-                                && !ExpensiveFields.Contains(expr.MemberName)
-                                && !(expr.MemberName == "Tags" && expr.IncludeParentSeriesTags == true));
+                    hasNonExpensiveRules = ExpressionSets
+                        .SelectMany(set => set?.Expressions ?? [])
+                        .Any(expr => expr != null
+                            && !ExpensiveFields.Contains(expr.MemberName)
+                            && !(expr.MemberName == "Tags" && expr.IncludeParentSeriesTags == true)
+                            && !(expr.MemberName == "Studios" && expr.IncludeParentSeriesStudios == true)
+                            && !(expr.MemberName == "Genres" && expr.IncludeParentSeriesGenres == true));
                     }
                 }
                 catch (Exception ex)
