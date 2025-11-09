@@ -6,6 +6,8 @@ repo_name: jyourstone/jellyfin-smartplaylist-plugin
 repo_url: https://github.com/jyourstone/jellyfin-smartplaylist-plugin
 edit_uri: edit/main/docs/
 
+docs_dir: .
+
 theme:
   name: material
   palette:
