@@ -11,16 +11,16 @@ docs_dir: content
 theme:
   name: material
   palette:
-    - scheme: default
-      primary: blue
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
     - scheme: slate
       primary: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+    - scheme: default
+      primary: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
   features:
     - navigation.tabs
     - navigation.sections

@@ -69,11 +69,5 @@ This plugin creates smart playlists that automatically update based on rules you
 
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
 
-## Credits
-
-This project is a fork of the original SmartPlaylist plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
-
-## Disclaimer
-
-The vast majority of the recent features, including the entire web interface and the underlying API changes in this plugin, were developed by an AI assistant. While I do have some basic experience with C# from a long time ago, I'm essentially the project manager, guiding the AI, fixing its occasional goofs, and trying to keep it from becoming self-aware.
+For complete documentation, see the navigation menu on the left.
 
