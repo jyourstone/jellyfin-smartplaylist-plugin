@@ -36,6 +36,9 @@ Configure individual playlists with their own refresh schedules:
 - **Interval**: Refresh at regular intervals (e.g., every 2 hours, every 30 minutes)
 - **No schedule**: Disable all scheduled refreshes (auto-refresh and manual only)
 
+!!! tip "Multiple Schedules"
+    You can add multiple schedules to a single playlist. For example, you could set both a Daily schedule at 6:00 AM and an Interval schedule every 4 hours to refresh the playlist both at a specific time and at regular intervals throughout the day.
+
 ## Legacy Scheduled Tasks
 
 For old playlists where custom schedules do not exist, the original Jellyfin scheduled tasks are still used:
@@ -67,12 +70,6 @@ Combine both systems for optimal performance:
 
 ## Scheduled Refresh Control
 
-Each playlist has a **"Refresh on scheduled tasks"** setting that controls whether it participates in the scheduled refresh tasks:
-
-- **Per-Playlist Setting**: Enable/disable scheduled refresh for individual playlists
-- **Global Default**: Set the default behavior for new playlists in Settings (defaults to `false`)
-- **Backward Compatibility**: Existing playlists default to `true` (continue participating in scheduled tasks)
-
 Perfect for randomized playlists:
 
 - Enable scheduled refresh for randomized playlists to get fresh random order daily/hourly
@@ -81,9 +78,11 @@ Perfect for randomized playlists:
 
 ## Manual Refresh
 
-- Use the **"Refresh All Playlists"** button in the Settings tab to trigger both tasks immediately
+- Use the **"Refresh All Playlists"** button in the Settings tab to trigger a refresh of all playlists
 - Use the **"Refresh"** button next to each playlist in the Manage Playlists tab to refresh individual playlists
-- Individual tasks can also be triggered separately from the Jellyfin admin dashboard
+
+!!! note "Refresh Time"
+    A full refresh of all playlists can take some time depending on how many media items and playlists you have. Large libraries with many playlists may take several minutes or even hours to complete, depending on the hardware. Individual playlist refreshes are typically faster.
 
 ## Performance Considerations
 

@@ -18,11 +18,10 @@ Here are some more complex playlist examples:
 - **Audio Codec** = "FLAC" AND **Audio Bit Depth** >= 24 AND **Audio Sample Rate** >= 96000
 
 ## Lossless Audio Collection
-- **Audio Codec** is in "FLAC;ALAC" (all lossless formats)
+- **Audio Codec** is in "FLAC;ALAC" (lossless formats)
 
 ## High Bitrate Music
 - **Audio Bitrate** >= 320 (high-quality MP3 or lossless)
 
 ## Surround Sound Movies
 - **Audio Channels** >= 6 (5.1 or higher)
-

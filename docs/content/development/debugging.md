@@ -1,0 +1,83 @@
+# Debugging
+
+Enable debug logging for the SmartPlaylist plugin to troubleshoot issues or get detailed information about playlist operations.
+
+## Enable Debug Logging
+
+To enable debug logging specifically for the SmartPlaylist plugin:
+
+1. **Create a logging configuration file** in your Jellyfin config directory:
+   ```
+   {JellyfinConfigPath}/config/logging.json
+   ```
+   
+   Where `{JellyfinConfigPath}` is typically:
+   - **Linux**: `/config/config/` (Docker) or `/var/lib/jellyfin/config/` (system install)
+   - **Windows**: `C:\ProgramData\Jellyfin\Server\config\`
+   - **macOS**: `~/Library/Application Support/Jellyfin/Server/config/`
+
+2. **Add the following content** to `logging.json`:
+   ```json
+   {
+     "Serilog": {
+       "MinimumLevel": {
+         "Override": {
+           "Jellyfin.Plugin.SmartPlaylist": "Debug"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Restart Jellyfin** for the changes to take effect
+
+## Viewing Logs
+
+After enabling debug logging, you can view the detailed logs:
+
+- **Log location**: `{JellyfinConfigPath}/log/`
+- **Log files**: Look for files named `log_YYYYMMDD.log` (e.g., `log_20251109.log`)
+
+The debug logs will include detailed information about:
+- Playlist refresh operations
+- Rule evaluation
+- Item filtering and matching
+- Performance metrics
+- Error details and stack traces
+
+## Sharing Logs for Troubleshooting
+
+When seeking help with issues, you may need to share log files. The easiest way to access logs is through the Jellyfin admin dashboard:
+
+1. **Access Logs via Admin Dashboard**:
+   - Go to **Dashboard** → **Logs**
+   - Select the log file you want to view (e.g., `log_20251109.log`)
+   - Copy the relevant log entries or download the whole log
+
+2. **Upload to GitHub Gists**:
+   - Go to [gist.github.com](https://gist.github.com/)
+   - Sign in with your GitHub account (or create one if needed)
+   - Paste the log content
+   - Optionally add a description (e.g., "SmartPlaylist debug log - playlist refresh issue")
+   - Click "Create secret gist"
+   - Share the gist URL when reporting issues
+
+3. **For very large logs**:
+   - Focus on the time period when the issue occurred
+   - Copy only the relevant sections containing SmartPlaylist entries
+
+!!! tip "Privacy Note"
+    Logs may contain sensitive information. Review logs before sharing and consider redacting any personal information if needed.
+
+## Disable Debug Logging
+
+To disable debug logging:
+
+1. **Delete or rename** the `logging.json` file
+2. **Restart Jellyfin**
+
+Or modify the file to remove the SmartPlaylist override section.
+
+!!! tip "Performance Note"
+    Debug logging generates significantly more log output and may impact performance. Only enable it when troubleshooting issues or during development.
+

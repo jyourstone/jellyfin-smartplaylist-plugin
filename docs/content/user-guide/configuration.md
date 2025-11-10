@@ -1,6 +1,6 @@
 # Configuration
 
-SmartPlaylist features a modern web-based configuration interface through the plugin settings page! No more manual JSON editing required.
+SmartPlaylist features a modern web-based configuration interface through the plugin settings page!
 
 <div align="center">
     <p>
@@ -21,8 +21,8 @@ This is where you build new playlists:
 - Define the rules for including items
 - Choose the sort order
 - Select which user should own the playlist
-- Set the maximum number of items (defaults to 500)
-- Set the maximum play time for the playlist (defaults to unlimited)
+- Set the maximum number of items
+- Set the maximum play time for the playlist
 - Decide if the playlist should be public or private
 - Choose whether or not to enable the playlist
 - Configure auto-refresh behavior (Never, On Library Changes, On All Changes)
@@ -97,4 +97,3 @@ The Export/Import feature allows you to backup your smart playlist configuration
 ## Manual Configuration (Advanced Users)
 
 For advanced users who prefer JSON configuration, see the [Advanced Configuration](advanced-configuration.md) guide for details about manual file editing.
-

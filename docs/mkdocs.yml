@@ -45,6 +45,7 @@ nav:
     - Advanced Examples: examples/advanced-examples.md
   - Development:
     - Building Locally: development/building-locally.md
+    - Debugging: development/debugging.md
     - Contributing: development/contributing.md
 
 markdown_extensions:

@@ -52,4 +52,3 @@ You can optionally set a maximum play time in minutes for your smart playlist. T
 **How it works**: The plugin calculates the total runtime of items in the playlist and stops adding items when the time limit is reached. The last item that would exceed the limit is not included, ensuring the playlist stays within your specified duration.
 
 This feature works with all media types (movies, TV shows, music) and uses the actual runtime of each item.
-
