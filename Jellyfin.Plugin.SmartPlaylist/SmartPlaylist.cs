@@ -1815,8 +1815,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     // User-specific rule references a user that no longer exists
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
                                     System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
-                                    userNotFoundException = ex; // Store original exception to preserve message
                                     loopState.Stop(); // Stop all parallel processing
                                 }
                                 catch (Exception ex)
@@ -1932,8 +1932,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                                 {
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
                                     System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
-                                    userNotFoundException = ex;
                                     loopState.Stop();
                                 }
                                 catch (Exception ex)
@@ -2068,8 +2068,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     // User-specific rule references a user that no longer exists
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
                                     System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
-                                    userNotFoundException = ex; // Store original exception to preserve message
                                     loopState.Stop(); // Stop all parallel processing
                                 }
                                 catch (Exception ex)
@@ -2212,8 +2212,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             // User-specific rule references a user that no longer exists
                             logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                            userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
                             System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
-                            userNotFoundException = ex; // Store original exception to preserve message
                             loopState.Stop(); // Stop all parallel processing
                         }
                         catch (Exception ex)
