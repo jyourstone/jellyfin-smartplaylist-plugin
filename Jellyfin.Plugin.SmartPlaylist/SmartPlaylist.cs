@@ -1751,6 +1751,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var config = Plugin.Instance?.Configuration;
                         var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
                         var userNotFoundOccurred = false;
+                        InvalidOperationException userNotFoundException = null;
                         
                         logger?.LogDebug("Processing {Count} items in parallel (expensive-only path) with max concurrency {Concurrency}", 
                             itemList.Count, maxConcurrency);
@@ -1815,6 +1816,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     // User-specific rule references a user that no longer exists
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
                                     userNotFoundOccurred = true;
+                                    userNotFoundException = ex; // Store original exception to preserve message
                                     loopState.Stop(); // Stop all parallel processing
                                 }
                                 catch (Exception ex)
@@ -1824,10 +1826,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 }
                             });
                         
-                        // Check if we need to throw user not found exception
+                        // Re-throw original user not found exception to preserve message for catch filters
                         if (userNotFoundOccurred)
                         {
-                            throw new InvalidOperationException($"User referenced in playlist '{Name}' not found");
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID not found - playlist '{Name}' references a user that no longer exists");
                         }
                         
                         // Transfer results from ConcurrentBag to List
@@ -1949,6 +1951,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var config = Plugin.Instance?.Configuration;
                         var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
                         var userNotFoundOccurred = false;
+                        InvalidOperationException userNotFoundException = null;
                         var debugItemCount = 0;
                         var debugItemLock = new object();
                         
@@ -2050,6 +2053,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                     // User-specific rule references a user that no longer exists
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
                                     userNotFoundOccurred = true;
+                                    userNotFoundException = ex; // Store original exception to preserve message
                                     loopState.Stop(); // Stop all parallel processing
                                 }
                                 catch (Exception ex)
@@ -2059,10 +2063,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 }
                             });
                         
-                        // Check if we need to throw user not found exception
+                        // Re-throw original user not found exception to preserve message for catch filters
                         if (userNotFoundOccurred)
                         {
-                            throw new InvalidOperationException($"User referenced in playlist '{Name}' not found");
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID not found - playlist '{Name}' references a user that no longer exists");
                         }
                         
                         // Transfer results from ConcurrentBag to List
@@ -2120,6 +2124,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var config = Plugin.Instance?.Configuration;
             var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
             var userNotFoundOccurred = false;
+            InvalidOperationException userNotFoundException = null;
             
             logger?.LogDebug("Processing {Count} items in parallel (simple path) with max concurrency {Concurrency}", 
                 itemList.Count, maxConcurrency);
@@ -2192,6 +2197,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             // User-specific rule references a user that no longer exists
                             logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
                             userNotFoundOccurred = true;
+                            userNotFoundException = ex; // Store original exception to preserve message
                             loopState.Stop(); // Stop all parallel processing
                         }
                         catch (Exception ex)
@@ -2201,10 +2207,10 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         }
                     });
                 
-                // Check if we need to throw user not found exception
+                // Re-throw original user not found exception to preserve message for catch filters
                 if (userNotFoundOccurred)
                 {
-                    throw new InvalidOperationException($"User referenced in playlist '{Name}' not found");
+                    throw userNotFoundException ?? new InvalidOperationException($"User with ID not found - playlist '{Name}' references a user that no longer exists");
                 }
                 
                 // Transfer results from ConcurrentBag to List

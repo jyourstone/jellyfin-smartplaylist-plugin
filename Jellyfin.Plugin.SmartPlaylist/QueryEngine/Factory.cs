@@ -56,18 +56,19 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _seriesIdPropertyCache = new();
         
         // Per-refresh cache classes for better performance within single playlist processing
+        // Uses ConcurrentDictionary for thread-safety during parallel processing
         public class RefreshCache
         {
-            public Dictionary<(Guid SeriesId, Guid UserId), BaseItem[]> SeriesEpisodes { get; } = [];
-            public Dictionary<(Guid SeriesId, Guid UserId, bool IncludeUnwatchedSeries), (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = [];
-            public Dictionary<Guid, List<string>> ItemCollections { get; } = [];
+            public ConcurrentDictionary<(Guid SeriesId, Guid UserId), BaseItem[]> SeriesEpisodes { get; } = new();
+            public ConcurrentDictionary<(Guid SeriesId, Guid UserId, bool IncludeUnwatchedSeries), (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> ItemCollections { get; } = new();
             public BaseItem[] AllCollections { get; set; } = null;
-            public Dictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = [];
-            public Dictionary<Guid, string> SeriesNameById { get; } = [];
-            public Dictionary<Guid, List<string>> SeriesTagsById { get; } = [];
-            public Dictionary<Guid, List<string>> SeriesStudiosById { get; } = [];
-            public Dictionary<Guid, List<string>> SeriesGenresById { get; } = [];
-            public Dictionary<Guid, CategorizedPeople> ItemPeople { get; } = [];
+            public ConcurrentDictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = new();
+            public ConcurrentDictionary<Guid, string> SeriesNameById { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> SeriesTagsById { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> SeriesStudiosById { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> SeriesGenresById { get; } = new();
+            public ConcurrentDictionary<Guid, CategorizedPeople> ItemPeople { get; } = new();
             public bool PeopleCacheInitialized { get; set; } = false;
         }
         
