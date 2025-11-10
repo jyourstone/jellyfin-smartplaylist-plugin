@@ -2015,11 +2015,14 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var key = (seriesId, user.Id);
             if (cache.SeriesEpisodes.TryGetValue(key, out var cachedEpisodes))
             {
-                logger?.LogDebug("Using cached episodes for series {SeriesId} user {UserId} ({EpisodeCount} episodes)", seriesId, user.Id, cachedEpisodes.Length);
+                // Get series name for better logging
+                var seriesName = cache.SeriesNameById.TryGetValue(seriesId, out var name) ? name : "Unknown";
+                logger?.LogDebug("[NextUnwatched] Using cached episodes for series '{SeriesName}' ({SeriesId}), user {UserId}: {EpisodeCount} episodes", 
+                    seriesName, seriesId, user.Id, cachedEpisodes.Length);
                 return cachedEpisodes;
             }
 
-            logger?.LogDebug("Fetching episodes for series {SeriesId} user {UserId} from database (cache miss)", seriesId, user.Id);
+            logger?.LogDebug("[NextUnwatched] Fetching episodes for series {SeriesId}, user {UserId} from database (cache miss)", seriesId, user.Id);
             
             // Note: Using SeriesId as ParentId - this works for standard episodes but may need
             // adjustment for special cases like virtual or merged series
@@ -2031,7 +2034,12 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             };
             
             var episodes = libraryManager.GetItemsResult(episodeQuery).Items.ToArray();
-            logger?.LogDebug("Cached {EpisodeCount} episodes for series {SeriesId} user {UserId}", episodes.Length, seriesId, user.Id);
+            
+            // Get series name for better logging
+            var series = libraryManager.GetItemById(seriesId);
+            var seriesNameForLog = series?.Name ?? "Unknown";
+            logger?.LogDebug("[NextUnwatched] Fetched {EpisodeCount} episodes for series '{SeriesName}' ({SeriesId}), user {UserId}", 
+                episodes.Length, seriesNameForLog, seriesId, user.Id);
             
             cache.SeriesEpisodes[key] = episodes;
             return episodes;
@@ -2061,16 +2069,27 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             var cacheKey = (seriesId, user.Id, includeUnwatchedSeries);
             if (!cache.NextUnwatched.TryGetValue(cacheKey, out var result))
             {
-                logger?.LogDebug("Calculating next unwatched episode for series {SeriesId}, user {UserId}", seriesId, user.Id);
+                logger?.LogDebug("[NextUnwatched] Calculating next unwatched episode for series {SeriesId}, user {UserId}", seriesId, user.Id);
                 result = CalculateNextUnwatchedEpisodeInfo(allEpisodes, user, includeUnwatchedSeries, userDataManager, logger);
                 cache.NextUnwatched[cacheKey] = result;
             }
+            else
+            {
+                logger?.LogDebug("[NextUnwatched] Using cached result for series {SeriesId}, user {UserId}: S{Season}:E{Episode}", 
+                    seriesId, user.Id, result.Season, result.Episode);
+            }
             
             // Check if the current episode matches the calculated next unwatched episode
-            return result.NextEpisodeId.HasValue && 
+            var isMatch = result.NextEpisodeId.HasValue && 
                    result.NextEpisodeId.Value == currentEpisode.Id &&
                    result.Season == currentSeason && 
                    result.Episode == currentEpisodeNumber;
+            
+            logger?.LogDebug("[NextUnwatched] Checking episode '{EpisodeName}' S{CurrentSeason}:E{CurrentEpisode} (ID: {CurrentId}) against calculated next unwatched S{CalcSeason}:E{CalcEpisode} (ID: {CalcId}) - Match: {IsMatch}", 
+                currentEpisode.Name, currentSeason, currentEpisodeNumber, currentEpisode.Id, 
+                result.Season, result.Episode, result.NextEpisodeId, isMatch);
+            
+            return isMatch;
         }
 
         /// <summary>
@@ -2083,9 +2102,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             {
                 // Use the original logic to find the next unwatched episode
                 var episodeList = allEpisodes.ToList();
+                logger?.LogDebug("[NextUnwatched] Processing {TotalEpisodes} episodes for user {UserId}, includeUnwatchedSeries={IncludeUnwatched}", 
+                    episodeList.Count, user.Id, includeUnwatchedSeries);
                 
                 // Create a list of episode info with season/episode numbers (excluding season 0 specials)
                 var episodeInfos = new List<(BaseItem Episode, int Season, int EpisodeNum, bool IsWatched)>();
+                var skippedEpisodes = 0;
+                var season0Episodes = 0;
                 
                 foreach (var episode in episodeList)
                 {
@@ -2109,9 +2132,33 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                             var episodeUserData = userDataManager?.GetUserData(user, episode);
                             var isWatched = episodeUserData != null ? episode.IsPlayed(user, episodeUserData) : false;
                             episodeInfos.Add((episode, seasonNum.Value, episodeNum.Value, isWatched));
+                            logger?.LogDebug("[NextUnwatched] Episode '{EpisodeName}' S{Season}:E{Episode} - Watched: {IsWatched}", 
+                                episode.Name, seasonNum.Value, episodeNum.Value, isWatched);
+                        }
+                        else
+                        {
+                            if (seasonNum.HasValue && seasonNum.Value == 0)
+                            {
+                                season0Episodes++;
+                                logger?.LogDebug("[NextUnwatched] Skipping Season 0 special: '{EpisodeName}'", episode.Name);
+                            }
+                            else
+                            {
+                                skippedEpisodes++;
+                                logger?.LogDebug("[NextUnwatched] Skipping episode '{EpisodeName}' - Missing metadata (Season: {Season}, Episode: {Episode})", 
+                                    episode.Name, seasonNum, episodeNum);
+                            }
                         }
                     }
+                    else
+                    {
+                        skippedEpisodes++;
+                        logger?.LogDebug("[NextUnwatched] Skipping episode '{EpisodeName}' - Unable to access ParentIndexNumber/IndexNumber properties", episode.Name);
+                    }
                 }
+                
+                logger?.LogDebug("[NextUnwatched] Episode summary: {ValidEpisodes} valid episodes, {Season0} specials skipped, {Skipped} episodes skipped due to missing metadata", 
+                    episodeInfos.Count, season0Episodes, skippedEpisodes);
                 
                 // Sort episodes by season, then episode number
                 var sortedEpisodes = episodeInfos.OrderBy(e => e.Season).ThenBy(e => e.EpisodeNum).ToList();
@@ -2121,25 +2168,32 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 
                 if (Episode != null)
                 {
+                    logger?.LogDebug("[NextUnwatched] First unwatched episode found: '{EpisodeName}' S{Season}:E{Episode}", 
+                        Episode.Name, Season, EpisodeNum);
+                    
                     // If includeUnwatchedSeries is false, check if this is a completely unwatched series
                     if (!includeUnwatchedSeries)
                     {
                         // If ALL episodes are unwatched, this is a completely unwatched series - exclude it
                         if (sortedEpisodes.All(e => !e.IsWatched))
                         {
+                            logger?.LogDebug("[NextUnwatched] Series is completely unwatched and includeUnwatchedSeries=false - excluding all episodes");
                             return (null, 0, 0); // No next unwatched episode
                         }
                     }
                     
+                    logger?.LogDebug("[NextUnwatched] Calculated next unwatched: S{Season}:E{Episode} (ID: {EpisodeId})", 
+                        Season, EpisodeNum, Episode.Id);
                     return (Episode.Id, Season, EpisodeNum);
                 }
                 
                 // If all episodes are watched, no episode is "next unwatched"
+                logger?.LogDebug("[NextUnwatched] All episodes are watched - no next unwatched episode");
                 return (null, 0, 0);
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, "Failed to calculate next unwatched episode info");
+                logger?.LogWarning(ex, "[NextUnwatched] Failed to calculate next unwatched episode info");
                 return (null, 0, 0);
             }
         }
