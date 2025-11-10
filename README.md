@@ -33,6 +33,18 @@ This plugin allows you to create dynamic playlists based on a set of rules, whic
    - Genre contains "Action"
    - Is Played = False
 
+## ⚙️ Configuration Interface
+
+SmartPlaylist features a modern web-based configuration interface with three main tabs:
+
+<div align="center">
+    <p>
+        <img alt="Create playlist page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create.png" width="270" style="margin-right: 10px;"/>
+        <img alt="Manage playlists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" width="270" style="margin-right: 10px;"/>
+        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" width="270"/>
+    </p>
+</div>
+
 ## 📚 Documentation
 
 <div align="center">
