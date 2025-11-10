@@ -1750,7 +1750,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var threadSafeResults = new ConcurrentBag<BaseItem>();
                         var config = Plugin.Instance?.Configuration;
                         var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
-                        var userNotFoundOccurred = false;
+                        var userNotFoundOccurred = 0; // 0 = false, 1 = true (use Interlocked for thread-safe visibility)
                         InvalidOperationException userNotFoundException = null;
                         
                         logger?.LogDebug("Processing {Count} items in parallel (expensive-only path) with max concurrency {Concurrency}", 
@@ -1762,7 +1762,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
                             (item, loopState) =>
                             {
-                                if (item == null || userNotFoundOccurred) return;
+                                if (item == null || System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
                                 
                                 try
                                 {
@@ -1815,7 +1815,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     // User-specific rule references a user that no longer exists
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                                    userNotFoundOccurred = true;
+                                    System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
                                     userNotFoundException = ex; // Store original exception to preserve message
                                     loopState.Stop(); // Stop all parallel processing
                                 }
@@ -1827,7 +1827,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             });
                         
                         // Re-throw original user not found exception to preserve message for catch filters
-                        if (userNotFoundOccurred)
+                        if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
                         {
                             throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
@@ -1850,7 +1850,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var phase1SeriesMatches = new ConcurrentBag<BaseItem>(); // Thread-safe collection for series that match Collections rules
                         var phase1Config = Plugin.Instance?.Configuration;
                         var phase1MaxConcurrency = ParallelismHelper.CalculateParallelConcurrency(phase1Config);
-                        var userNotFoundOccurred = false;
+                        var userNotFoundOccurred = 0; // 0 = false, 1 = true (use Interlocked for thread-safe visibility)
                         InvalidOperationException userNotFoundException = null;
                         
                         logger?.LogDebug("Processing {Count} items in parallel (Phase 1 cheap filtering) with max concurrency {Concurrency}", 
@@ -1861,7 +1861,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = phase1MaxConcurrency },
                             (item, loopState) =>
                             {
-                                if (item == null || userNotFoundOccurred) return;
+                                if (item == null || System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
                                 
                                 try
                                 {
@@ -1932,7 +1932,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                                 {
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                                    userNotFoundOccurred = true;
+                                    System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
                                     userNotFoundException = ex;
                                     loopState.Stop();
                                 }
@@ -1946,7 +1946,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         results.AddRange(phase1SeriesMatches);
                         
                         // Check and re-throw user not found exception before Phase 2
-                        if (userNotFoundOccurred)
+                        if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
                         {
                             throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
@@ -1966,7 +1966,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var config = Plugin.Instance?.Configuration;
                         var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
                         // Reset exception tracking for Phase 2 (reusing variables from Phase 1 scope)
-                        userNotFoundOccurred = false;
+                        System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 0);
                         userNotFoundException = null;
                         var debugItemCount = 0;
                         var debugItemLock = new object();
@@ -1980,7 +1980,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
                             (item, loopState) =>
                             {
-                                if (userNotFoundOccurred) return;
+                                if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
                                 
                                 try
                                 {
@@ -2068,7 +2068,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 {
                                     // User-specific rule references a user that no longer exists
                                     logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                                    userNotFoundOccurred = true;
+                                    System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
                                     userNotFoundException = ex; // Store original exception to preserve message
                                     loopState.Stop(); // Stop all parallel processing
                                 }
@@ -2080,7 +2080,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             });
                         
                         // Re-throw original user not found exception to preserve message for catch filters
-                        if (userNotFoundOccurred)
+                        if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
                         {
                             throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
@@ -2139,7 +2139,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
             var threadSafeResults = new ConcurrentBag<BaseItem>();
             var config = Plugin.Instance?.Configuration;
             var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
-            var userNotFoundOccurred = false;
+            var userNotFoundOccurred = 0; // 0 = false, 1 = true (use Interlocked for thread-safe visibility)
             InvalidOperationException userNotFoundException = null;
             
             logger?.LogDebug("Processing {Count} items in parallel (simple path) with max concurrency {Concurrency}", 
@@ -2152,7 +2152,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
                     (item, loopState) =>
                     {
-                        if (item == null || userNotFoundOccurred) return;
+                        if (item == null || System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
                         
                         try
                         {
@@ -2212,7 +2212,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         {
                             // User-specific rule references a user that no longer exists
                             logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                            userNotFoundOccurred = true;
+                            System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
                             userNotFoundException = ex; // Store original exception to preserve message
                             loopState.Stop(); // Stop all parallel processing
                         }
@@ -2224,7 +2224,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     });
                 
                 // Re-throw original user not found exception to preserve message for catch filters
-                if (userNotFoundOccurred)
+                if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
                 {
                     throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                 }
