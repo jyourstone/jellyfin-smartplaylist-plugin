@@ -1829,7 +1829,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // Re-throw original user not found exception to preserve message for catch filters
                         if (userNotFoundOccurred)
                         {
-                            throw userNotFoundException ?? new InvalidOperationException($"User with ID not found - playlist '{Name}' references a user that no longer exists");
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
                         
                         // Transfer results from ConcurrentBag to List
@@ -1850,6 +1850,8 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var phase1SeriesMatches = new ConcurrentBag<BaseItem>(); // Thread-safe collection for series that match Collections rules
                         var phase1Config = Plugin.Instance?.Configuration;
                         var phase1MaxConcurrency = ParallelismHelper.CalculateParallelConcurrency(phase1Config);
+                        var userNotFoundOccurred = false;
+                        InvalidOperationException userNotFoundException = null;
                         
                         logger?.LogDebug("Processing {Count} items in parallel (Phase 1 cheap filtering) with max concurrency {Concurrency}", 
                             itemList.Count, phase1MaxConcurrency);
@@ -1857,9 +1859,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         System.Threading.Tasks.Parallel.ForEach(
                             itemList,
                             new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = phase1MaxConcurrency },
-                            item =>
+                            (item, loopState) =>
                             {
-                                if (item == null) return;
+                                if (item == null || userNotFoundOccurred) return;
                                 
                                 try
                                 {
@@ -1927,6 +1929,13 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                         phase1Survivors.Add(item);
                                     }
                                 }
+                                catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                                {
+                                    logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundOccurred = true;
+                                    userNotFoundException = ex;
+                                    loopState.Stop();
+                                }
                                 catch (Exception ex)
                                 {
                                     logger?.LogDebug(ex, "Error in Phase 1 filtering for item '{ItemName}'. Skipping item.", item.Name);
@@ -1935,6 +1944,12 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         
                         // Merge series matches that bypass Phase 2 into results
                         results.AddRange(phase1SeriesMatches);
+                        
+                        // Check and re-throw user not found exception before Phase 2
+                        if (userNotFoundOccurred)
+                        {
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
+                        }
                         
                         logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering ({SeriesMatches} series matches bypass Phase 2)", 
                             phase1Survivors.Count, itemList.Count, phase1SeriesMatches.Count);
@@ -1950,8 +1965,9 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         var threadSafeResults = new ConcurrentBag<BaseItem>();
                         var config = Plugin.Instance?.Configuration;
                         var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
-                        var userNotFoundOccurred = false;
-                        InvalidOperationException userNotFoundException = null;
+                        // Reset exception tracking for Phase 2 (reusing variables from Phase 1 scope)
+                        userNotFoundOccurred = false;
+                        userNotFoundException = null;
                         var debugItemCount = 0;
                         var debugItemLock = new object();
                         
@@ -2066,7 +2082,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // Re-throw original user not found exception to preserve message for catch filters
                         if (userNotFoundOccurred)
                         {
-                            throw userNotFoundException ?? new InvalidOperationException($"User with ID not found - playlist '{Name}' references a user that no longer exists");
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
                         
                         // Transfer results from ConcurrentBag to List
@@ -2210,7 +2226,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 // Re-throw original user not found exception to preserve message for catch filters
                 if (userNotFoundOccurred)
                 {
-                    throw userNotFoundException ?? new InvalidOperationException($"User with ID not found - playlist '{Name}' references a user that no longer exists");
+                    throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                 }
                 
                 // Transfer results from ConcurrentBag to List
