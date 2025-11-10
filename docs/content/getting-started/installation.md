@@ -2,15 +2,24 @@
 
 ## From Repository
 
-Add this repository URL to your Jellyfin plugin catalog:
+1. **Add the Repository**:
+   - Go to **Dashboard** → **Plugins** → **Repositories** (or **Plugins** → **Manage Repositories** → **New Repository**)
+   - Click **New Repository** (or the **+** button)
+   - Enter the repository URL:
+     ```
+     https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/main/manifest.json
+     ```
+   - Click **Save**
 
-```
-https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/main/manifest.json
-```
+2. **Install the Plugin**:
+   - Go to **Dashboard** → **Plugins** → **All/Available**
+   - Click **SmartPlaylist** in the list of available plugins
+   - Click **Install**
+   - Restart Jellyfin
 
 ## Manual Installation
 
-Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartPlaylist`).
+Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartPlaylist`) and restart Jellyfin.
 
 ## Try RC Releases (Unstable)
 
@@ -22,4 +31,3 @@ https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/unstable/m
 
 !!! warning "RC Releases"
     RC releases are pre-release versions that may contain bugs or incomplete features. Use at your own risk and consider backing up your smart playlist configurations before upgrading.
-
