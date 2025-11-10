@@ -1845,6 +1845,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                     
                         // First pass: Filter items using cheap rules only (in parallel for large libraries)
                         var phase1Survivors = new ConcurrentBag<BaseItem>();
+                        var phase1SeriesMatches = new ConcurrentBag<BaseItem>(); // Thread-safe collection for series that match Collections rules
                         var phase1Config = Plugin.Instance?.Configuration;
                         var phase1MaxConcurrency = ParallelismHelper.CalculateParallelConcurrency(phase1Config);
                         
@@ -1870,7 +1871,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                         if (DoesSeriesMatchCollectionsRules(series, libraryManager, user, userDataManager, logger, refreshCache))
                                         {
                                             logger?.LogDebug("Series '{SeriesName}' matches Collections rules - adding for expansion", series.Name);
-                                            results.Add(item);
+                                            phase1SeriesMatches.Add(item); // Use thread-safe collection
                                         }
                                         return;
                                     }
@@ -1930,8 +1931,11 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                 }
                             });
                         
-                        logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering", 
-                            phase1Survivors.Count, itemList.Count);
+                        // Merge series matches that bypass Phase 2 into results
+                        results.AddRange(phase1SeriesMatches);
+                        
+                        logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering ({SeriesMatches} series matches bypass Phase 2)", 
+                            phase1Survivors.Count, itemList.Count, phase1SeriesMatches.Count);
                         
                         // Preload People cache for Phase 1 survivors if needed
                         if (needsPeople && phase1Survivors.Count > 0)
