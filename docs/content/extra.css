@@ -1,0 +1,30 @@
+/* Custom header and navigation color to match logo */
+.md-header,
+.md-tabs {
+  background-color: #322D42 !important;
+}
+
+/* Change link hover color to white */
+a:hover {
+  color: #ffffff !important;
+}
+
+.md-nav__link:hover,
+.md-nav__link:focus,
+.md-nav__link--active {
+  color: #ffffff !important;
+}
+
+.md-header__button:hover,
+.md-header__button:focus {
+  color: #ffffff !important;
+}
+
+/* Hide dark/light mode toggle */
+.md-header__button[title*="Switch"],
+.md-header__button[aria-label*="Switch"],
+button[title*="mode"],
+button[aria-label*="mode"] {
+  display: none !important;
+}
+
