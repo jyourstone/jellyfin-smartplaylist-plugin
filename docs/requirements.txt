@@ -1,0 +1,5 @@
+mkdocs==1.*
+mkdocs-material==9.*
+mkdocs-git-revision-date-localized-plugin==1.*
+mkdocs-literate-nav==0.6.*
+
