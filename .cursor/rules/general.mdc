@@ -108,7 +108,21 @@ if (result != null)
 }
 ```
 
-Always check README.md when adding or changing features and update it to reflect the changes if needed.
+## Documentation
+The project uses **MkDocs** for documentation, located in the `/docs` folder. When adding new features or making functionality changes that affect users, **always update the documentation** to reflect these changes.
+
+- Documentation structure: `/docs/content/` contains markdown files organized by category
+- Configuration: `/docs/mkdocs.yml` defines the documentation structure
+- Build and serve locally: Use `mkdocs serve` from the `/docs` directory
+
+## Threading and Thread Safety
+Individual playlists are processed using threading for performance. However, multiple playlists are **not** processed simultaneously in parallel.
+
+**Critical:** All code must be **thread-safe**. When working with shared resources, collections, or state:
+- Use thread-safe collections (`ConcurrentDictionary`, `ConcurrentBag`, etc.) when needed
+- Use proper locking mechanisms (`lock`, `SemaphoreSlim`, etc.) for shared mutable state
+- Be aware of race conditions when accessing or modifying shared data
+- Consider immutability where possible to avoid threading issues
 
 ## Performance Optimization
 Two-phase filtering for expensive fields (AudioLanguages, People):
@@ -136,7 +150,7 @@ Adding new expensive fields:
 - Audio/Subtitle streams: Access via MediaSources property or GetMediaStreams() method
 - Related items: Use appropriate query objects
 
-### User Data (Requires UserDataManager)
+### User Data examples (Requires UserDataManager)
 - PlayCount, IsFavorite, LastPlayedDate
 
 ## Music Fields
