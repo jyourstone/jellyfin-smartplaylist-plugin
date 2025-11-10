@@ -1746,69 +1746,96 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             OperandFactory.PreloadPeopleCache(libraryManager, itemList, refreshCache, logger);
                         }
                         
-                        foreach (var item in itemList)
-                        {
-                            if (item == null) continue;
-                            
-                            try
-                            {
-                                var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
-                                {
-                                    ExtractAudioLanguages = needsAudioLanguages,
-                                    ExtractAudioQuality = needsAudioQuality,
-                                    ExtractPeople = needsPeople,
-                                    ExtractCollections = needsCollections,
-                                    ExtractNextUnwatched = needsNextUnwatched,
-                                    ExtractSeriesName = needsSeriesName,
-                                    ExtractParentSeriesTags = needsParentSeriesTags,
-                                    ExtractParentSeriesStudios = needsParentSeriesStudios,
-                                    ExtractParentSeriesGenres = needsParentSeriesGenres,
-                                    IncludeUnwatchedSeries = includeUnwatchedSeries,
-                                    AdditionalUserIds = additionalUserIds
-                                }, refreshCache);
-                                
-                                // Calculate similarity score if SimilarTo is active
-                                bool passesSimilarity = true;
-                                if (needsSimilarTo && referenceMetadata != null)
-                                {
-                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
-                                    
-                                    // Store similarity score for potential sorting
-                                    if (operand.SimilarityScore.HasValue)
-                                    {
-                                        _similarityScores[item.Id] = operand.SimilarityScore.Value;
-                                    }
-                                }
-                                
-                                bool matches = false;
-                                if (!hasAnyRules) {
-                                    matches = true;
-                                } 
-                                else {
-                                    matches = EvaluateLogicGroups(compiledRules, operand);
-                                }
-                                
-                                // Apply similarity filter
-                                matches = matches && passesSimilarity;
+                        // Use thread-safe collection for parallel processing
+                        var threadSafeResults = new ConcurrentBag<BaseItem>();
+                        var config = Plugin.Instance?.Configuration;
+                        var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
+                        var userNotFoundOccurred = 0; // 0 = false, 1 = true (use Interlocked for thread-safe visibility)
+                        InvalidOperationException userNotFoundException = null;
                         
-                        if (matches)
+                        logger?.LogDebug("Processing {Count} items in parallel (expensive-only path) with max concurrency {Concurrency}", 
+                            itemList.Count, maxConcurrency);
+                        
+                        // Process items in parallel for expensive field extraction and evaluation
+                        System.Threading.Tasks.Parallel.ForEach(
+                            itemList,
+                            new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
+                            (item, loopState) =>
+                            {
+                                if (item == null || System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
+                                
+                                try
+                                {
+                                    var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
+                                    {
+                                        ExtractAudioLanguages = needsAudioLanguages,
+                                        ExtractAudioQuality = needsAudioQuality,
+                                        ExtractPeople = needsPeople,
+                                        ExtractCollections = needsCollections,
+                                        ExtractNextUnwatched = needsNextUnwatched,
+                                        ExtractSeriesName = needsSeriesName,
+                                        ExtractParentSeriesTags = needsParentSeriesTags,
+                                        ExtractParentSeriesStudios = needsParentSeriesStudios,
+                                        ExtractParentSeriesGenres = needsParentSeriesGenres,
+                                        IncludeUnwatchedSeries = includeUnwatchedSeries,
+                                        AdditionalUserIds = additionalUserIds
+                                    }, refreshCache);
+                                    
+                                    // Calculate similarity score if SimilarTo is active
+                                    bool passesSimilarity = true;
+                                    if (needsSimilarTo && referenceMetadata != null)
+                                    {
+                                        passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
+                                        
+                                        // Store similarity score for potential sorting (ConcurrentDictionary is thread-safe)
+                                        if (operand.SimilarityScore.HasValue)
+                                        {
+                                            _similarityScores[item.Id] = operand.SimilarityScore.Value;
+                                        }
+                                    }
+                                    
+                                    bool matches = false;
+                                    if (!hasAnyRules) {
+                                        matches = true;
+                                    } 
+                                    else {
+                                        matches = EvaluateLogicGroups(compiledRules, operand);
+                                    }
+                                    
+                                    // Apply similarity filter
+                                    matches = matches && passesSimilarity;
+                            
+                                    if (matches)
+                                    {
+                                        threadSafeResults.Add(item);
+                                    }
+                                    // Note: Series expansion logic is now handled in ExpandCollectionsBasedOnMediaType based on media type selection
+                                }
+                                catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                                {
+                                    // User-specific rule references a user that no longer exists
+                                    logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
+                                    System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
+                                    loopState.Stop(); // Stop all parallel processing
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger?.LogDebug(ex, "Error processing item '{ItemName}' in expensive-only path. Skipping item.", item.Name);
+                                    // Skip this item and continue with others
+                                }
+                            });
+                        
+                        // Re-throw original user not found exception to preserve message for catch filters
+                        if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
                         {
-                            results.Add(item);
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
-                        // Note: Series expansion logic is now handled in ExpandCollectionsBasedOnMediaType based on media type selection
-                    }
-                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
-                            {
-                                // User-specific rule references a user that no longer exists
-                                logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                                throw; // Re-throw to stop playlist processing entirely
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Error processing item '{ItemName}' in expensive-only path. Skipping item.", item.Name);
-                                // Skip this item and continue with others
-                            }
-                        }
+                        
+                        // Transfer results from ConcurrentBag to List
+                        results.AddRange(threadSafeResults);
+                        
+                        logger?.LogDebug("Parallel processing complete (expensive-only path): {Count} items matched", results.Count);
                     }
                     else
                     {
@@ -1818,87 +1845,114 @@ namespace Jellyfin.Plugin.SmartPlaylist
                         // Materialize items to prevent multiple enumerations
                         var itemList = items as IList<BaseItem> ?? items.ToList();
                     
-                        // First pass: Filter items using cheap rules only
-                        var phase1Survivors = new List<BaseItem>();
+                        // First pass: Filter items using cheap rules only (in parallel for large libraries)
+                        var phase1Survivors = new ConcurrentBag<BaseItem>();
+                        var phase1SeriesMatches = new ConcurrentBag<BaseItem>(); // Thread-safe collection for series that match Collections rules
+                        var phase1Config = Plugin.Instance?.Configuration;
+                        var phase1MaxConcurrency = ParallelismHelper.CalculateParallelConcurrency(phase1Config);
+                        var userNotFoundOccurred = 0; // 0 = false, 1 = true (use Interlocked for thread-safe visibility)
+                        InvalidOperationException userNotFoundException = null;
                         
-                        foreach (var item in itemList)
-                        {
-                            if (item == null) continue;
-                            
-                            try
+                        logger?.LogDebug("Processing {Count} items in parallel (Phase 1 cheap filtering) with max concurrency {Concurrency}", 
+                            itemList.Count, phase1MaxConcurrency);
+                        
+                        System.Threading.Tasks.Parallel.ForEach(
+                            itemList,
+                            new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = phase1MaxConcurrency },
+                            (item, loopState) =>
                             {
-                                // Special handling: For series when Collections expansion is enabled, check Collections rules first
-                                bool shouldCheckCollectionsForSeries = item is Series && ShouldExpandEpisodesForCollections();
+                                if (item == null || System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
                                 
-                                if (shouldCheckCollectionsForSeries)
+                                try
                                 {
-                                    var series = (Series)item;
+                                    // Special handling: For series when Collections expansion is enabled, check Collections rules first
+                                    bool shouldCheckCollectionsForSeries = item is Series && ShouldExpandEpisodesForCollections();
                                     
-                                    if (DoesSeriesMatchCollectionsRules(series, libraryManager, user, userDataManager, logger, refreshCache))
+                                    if (shouldCheckCollectionsForSeries)
                                     {
-                                        logger?.LogDebug("Series '{SeriesName}' matches Collections rules - adding for expansion", series.Name);
-                                        results.Add(item);
-                                    }
-                                    continue;
-                                }
-                                
-                                // Phase 1: Extract non-expensive properties and check non-expensive rules
-                                var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
-                                {
-                                    ExtractAudioLanguages = false,
-                                    ExtractPeople = false,
-                                    ExtractCollections = false,
-                                    ExtractNextUnwatched = false,
-                                    ExtractSeriesName = false,
-                                    IncludeUnwatchedSeries = true,
-                                    AdditionalUserIds = []
-                                }, refreshCache);
-                                
-                                // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
-                                bool passesNonExpensiveRules = false;
-                                bool hasExpensiveOnlyRuleSets = false;
-                                
-                                for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
-                                {
-                                    try
-                                    {
-                                        // Check if this rule set has only expensive rules (no non-expensive rules)
-                                        if (cheapCompiledRules[setIndex].Count == 0)
-                                        {
-                                            hasExpensiveOnlyRuleSets = true;
-                                            continue; // Can't evaluate expensive-only rule sets in non-expensive phase
-                                        }
+                                        var series = (Series)item;
                                         
-                                        // Evaluate non-expensive rules for this rule set
-                                        if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
+                                        if (DoesSeriesMatchCollectionsRules(series, libraryManager, user, userDataManager, logger, refreshCache))
                                         {
-                                            passesNonExpensiveRules = true;
-                                            break;
+                                            logger?.LogDebug("Series '{SeriesName}' matches Collections rules - adding for expansion", series.Name);
+                                            phase1SeriesMatches.Add(item); // Use thread-safe collection
+                                        }
+                                        return;
+                                    }
+                                    
+                                    // Phase 1: Extract non-expensive properties and check non-expensive rules
+                                    var cheapOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
+                                    {
+                                        ExtractAudioLanguages = false,
+                                        ExtractPeople = false,
+                                        ExtractCollections = false,
+                                        ExtractNextUnwatched = false,
+                                        ExtractSeriesName = false,
+                                        IncludeUnwatchedSeries = true,
+                                        AdditionalUserIds = additionalUserIds
+                                    }, refreshCache);
+                                    
+                                    // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
+                                    bool passesNonExpensiveRules = false;
+                                    bool hasExpensiveOnlyRuleSets = false;
+                                    
+                                    for (int setIndex = 0; setIndex < cheapCompiledRules.Count; setIndex++)
+                                    {
+                                        try
+                                        {
+                                            // Check if this rule set has only expensive rules (no non-expensive rules)
+                                            if (cheapCompiledRules[setIndex].Count == 0)
+                                            {
+                                                hasExpensiveOnlyRuleSets = true;
+                                                continue; // Can't evaluate expensive-only rule sets in non-expensive phase
+                                            }
+                                            
+                                            // Evaluate non-expensive rules for this rule set
+                                            if (cheapCompiledRules[setIndex].All(rule => rule(cheapOperand)))
+                                            {
+                                                passesNonExpensiveRules = true;
+                                                break;
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            logger?.LogDebug(ex, "Error evaluating non-expensive rules for item '{ItemName}' in set {SetIndex}. Assuming rules don't match.", item.Name, setIndex);
+                                            // Continue to next rule set
                                         }
                                     }
-                                    catch (Exception ex)
+                                    
+                                    // Only proceed to Phase 2 if:
+                                    // 1. Passed non-expensive evaluation OR
+                                    // 2. There are expensive-only rule sets that still need to be checked
+                                    if (passesNonExpensiveRules || hasExpensiveOnlyRuleSets)
                                     {
-                                        logger?.LogDebug(ex, "Error evaluating non-expensive rules for item '{ItemName}' in set {SetIndex}. Assuming rules don't match.", item.Name, setIndex);
-                                        // Continue to next rule set
+                                        phase1Survivors.Add(item);
                                     }
                                 }
-                                
-                                // Only proceed to Phase 2 if:
-                                // 1. Passed non-expensive evaluation OR
-                                // 2. There are expensive-only rule sets that still need to be checked
-                                if (passesNonExpensiveRules || hasExpensiveOnlyRuleSets)
+                                catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
                                 {
-                                    phase1Survivors.Add(item);
+                                    logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
+                                    System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
+                                    loopState.Stop();
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Error in Phase 1 filtering for item '{ItemName}'. Skipping item.", item.Name);
-                            }
+                                catch (Exception ex)
+                                {
+                                    logger?.LogDebug(ex, "Error in Phase 1 filtering for item '{ItemName}'. Skipping item.", item.Name);
+                                }
+                            });
+                        
+                        // Merge series matches that bypass Phase 2 into results
+                        results.AddRange(phase1SeriesMatches);
+                        
+                        // Check and re-throw user not found exception before Phase 2
+                        if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
+                        {
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
                         
-                        logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering", 
-                            phase1Survivors.Count, itemList.Count);
+                        logger?.LogDebug("Phase 1 complete: {Survivors}/{Total} items passed cheap filtering ({SeriesMatches} series matches bypass Phase 2)", 
+                            phase1Survivors.Count, itemList.Count, phase1SeriesMatches.Count);
                         
                         // Preload People cache for Phase 1 survivors if needed
                         if (needsPeople && phase1Survivors.Count > 0)
@@ -1907,93 +1961,134 @@ namespace Jellyfin.Plugin.SmartPlaylist
                             OperandFactory.PreloadPeopleCache(libraryManager, phase1Survivors, refreshCache, logger);
                         }
                         
-                        // Second pass: Process Phase 1 survivors with expensive data
-                        foreach (var item in phase1Survivors)
-                        {
-                            try
-                            {
-                                // Phase 2: Extract expensive data and check complete rules
-                                var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
-                                {
-                                    ExtractAudioLanguages = needsAudioLanguages,
-                                    ExtractAudioQuality = needsAudioQuality,
-                                    ExtractPeople = needsPeople,
-                                    ExtractCollections = needsCollections,
-                                    ExtractNextUnwatched = needsNextUnwatched,
-                                    ExtractSeriesName = needsSeriesName,
-                                    ExtractParentSeriesTags = needsParentSeriesTags,
-                                    ExtractParentSeriesStudios = needsParentSeriesStudios,
-                                    ExtractParentSeriesGenres = needsParentSeriesGenres,
-                                    IncludeUnwatchedSeries = includeUnwatchedSeries,
-                                    AdditionalUserIds = additionalUserIds
-                                }, refreshCache);
-                                
-                                // Debug: Log expensive data found for first few items
-                                if (results.Count < 5)
-                                {
-                                    if (needsAudioLanguages)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
-                                            item.Name, fullOperand.AudioLanguages?.Count ?? 0, fullOperand.AudioLanguages != null ? string.Join(", ", fullOperand.AudioLanguages) : "none");
-                                    }
-                                    if (needsPeople)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
-                                            item.Name, fullOperand.People?.Count ?? 0, fullOperand.People != null ? string.Join(", ", fullOperand.People.Take(5)) : "none");
-                                    }
-                                    if (needsCollections)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': Found {Count} collections: [{Collections}]", 
-                                            item.Name, fullOperand.Collections?.Count ?? 0, fullOperand.Collections != null ? string.Join(", ", fullOperand.Collections) : "none");
-                                    }
-                                    if (needsNextUnwatched)
-                                    {
-                                        logger?.LogDebug("Item '{Name}': NextUnwatched status: {NextUnwatchedUsers}", 
-                                            item.Name, fullOperand.NextUnwatchedByUser?.Count > 0 ? string.Join(", ", fullOperand.NextUnwatchedByUser.Select(x => $"{x.Key}={x.Value}")) : "none");
-                                    }
-                                }
-                                
-                                // Calculate similarity score if SimilarTo is active
-                                bool passesSimilarity = true;
-                                if (needsSimilarTo && referenceMetadata != null)
-                                {
-                                    passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, similarityComparisonFields, logger);
-                                    
-                                    // Store similarity score for potential sorting
-                                    if (fullOperand.SimilarityScore.HasValue)
-                                    {
-                                        _similarityScores[item.Id] = fullOperand.SimilarityScore.Value;
-                                    }
-                                }
-                                
-                                bool matches = false;
-                                if (!hasAnyRules) {
-                                    matches = true;
-                                } else {
-                                    matches = EvaluateLogicGroups(compiledRules, fullOperand);
-                                }
-                                
-                                // Apply similarity filter
-                                matches = matches && passesSimilarity;
+                        // Use thread-safe collection for parallel processing in Phase 2
+                        var threadSafeResults = new ConcurrentBag<BaseItem>();
+                        var config = Plugin.Instance?.Configuration;
+                        var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
+                        // Reset exception tracking for Phase 2 (reusing variables from Phase 1 scope)
+                        System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 0);
+                        userNotFoundException = null;
+                        var debugItemCount = 0;
+                        var debugItemLock = new object();
                         
-                        if (matches)
+                        logger?.LogDebug("Processing {Count} Phase 1 survivors in parallel (Phase 2) with max concurrency {Concurrency}", 
+                            phase1Survivors.Count, maxConcurrency);
+                        
+                        // Second pass: Process Phase 1 survivors with expensive data in parallel
+                        System.Threading.Tasks.Parallel.ForEach(
+                            phase1Survivors,
+                            new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
+                            (item, loopState) =>
+                            {
+                                if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
+                                
+                                try
+                                {
+                                    // Phase 2: Extract expensive data and check complete rules
+                                    var fullOperand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
+                                    {
+                                        ExtractAudioLanguages = needsAudioLanguages,
+                                        ExtractAudioQuality = needsAudioQuality,
+                                        ExtractPeople = needsPeople,
+                                        ExtractCollections = needsCollections,
+                                        ExtractNextUnwatched = needsNextUnwatched,
+                                        ExtractSeriesName = needsSeriesName,
+                                        ExtractParentSeriesTags = needsParentSeriesTags,
+                                        ExtractParentSeriesStudios = needsParentSeriesStudios,
+                                        ExtractParentSeriesGenres = needsParentSeriesGenres,
+                                        IncludeUnwatchedSeries = includeUnwatchedSeries,
+                                        AdditionalUserIds = additionalUserIds
+                                    }, refreshCache);
+                                    
+                                    // Debug: Log expensive data found for first few items (thread-safe counter)
+                                    bool shouldLog = false;
+                                    lock (debugItemLock)
+                                    {
+                                        if (debugItemCount < 5)
+                                        {
+                                            shouldLog = true;
+                                            debugItemCount++;
+                                        }
+                                    }
+                                    
+                                    if (shouldLog)
+                                    {
+                                        if (needsAudioLanguages)
+                                        {
+                                            logger?.LogDebug("Item '{Name}': Found {Count} audio languages: [{Languages}]", 
+                                                item.Name, fullOperand.AudioLanguages?.Count ?? 0, fullOperand.AudioLanguages != null ? string.Join(", ", fullOperand.AudioLanguages) : "none");
+                                        }
+                                        if (needsPeople)
+                                        {
+                                            logger?.LogDebug("Item '{Name}': Found {Count} people: [{People}]", 
+                                                item.Name, fullOperand.People?.Count ?? 0, fullOperand.People != null ? string.Join(", ", fullOperand.People.Take(5)) : "none");
+                                        }
+                                        if (needsCollections)
+                                        {
+                                            logger?.LogDebug("Item '{Name}': Found {Count} collections: [{Collections}]", 
+                                                item.Name, fullOperand.Collections?.Count ?? 0, fullOperand.Collections != null ? string.Join(", ", fullOperand.Collections) : "none");
+                                        }
+                                        if (needsNextUnwatched)
+                                        {
+                                            logger?.LogDebug("Item '{Name}': NextUnwatched status: {NextUnwatchedUsers}", 
+                                                item.Name, fullOperand.NextUnwatchedByUser?.Count > 0 ? string.Join(", ", fullOperand.NextUnwatchedByUser.Select(x => $"{x.Key}={x.Value}")) : "none");
+                                        }
+                                    }
+                                    
+                                    // Calculate similarity score if SimilarTo is active
+                                    bool passesSimilarity = true;
+                                    if (needsSimilarTo && referenceMetadata != null)
+                                    {
+                                        passesSimilarity = OperandFactory.CalculateSimilarityScore(fullOperand, referenceMetadata, similarityComparisonFields, logger);
+                                        
+                                        // Store similarity score for potential sorting (ConcurrentDictionary is thread-safe)
+                                        if (fullOperand.SimilarityScore.HasValue)
+                                        {
+                                            _similarityScores[item.Id] = fullOperand.SimilarityScore.Value;
+                                        }
+                                    }
+                                    
+                                    bool matches = false;
+                                    if (!hasAnyRules) {
+                                        matches = true;
+                                    } else {
+                                        matches = EvaluateLogicGroups(compiledRules, fullOperand);
+                                    }
+                                    
+                                    // Apply similarity filter
+                                    matches = matches && passesSimilarity;
+                            
+                                    if (matches)
+                                    {
+                                        threadSafeResults.Add(item);
+                                    }
+                                    // Note: Series expansion logic is now handled in ExpandCollectionsBasedOnMediaType based on media type selection
+                                }
+                                catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                                {
+                                    // User-specific rule references a user that no longer exists
+                                    logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                                    userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
+                                    System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
+                                    loopState.Stop(); // Stop all parallel processing
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger?.LogDebug(ex, "Error processing item '{ItemName}' in two-phase path. Skipping item.", item.Name);
+                                    // Skip this item and continue with others
+                                }
+                            });
+                        
+                        // Re-throw original user not found exception to preserve message for catch filters
+                        if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
                         {
-                            results.Add(item);
+                            throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                         }
-                        // Note: Series expansion logic is now handled in ExpandCollectionsBasedOnMediaType based on media type selection
-                    }
-                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
-                            {
-                                // User-specific rule references a user that no longer exists
-                                logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                                throw; // Re-throw to stop playlist processing entirely
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Error processing item '{ItemName}' in two-phase path. Skipping item.", item.Name);
-                                // Skip this item and continue with others
-                            }
-                        }
+                        
+                        // Transfer results from ConcurrentBag to List
+                        results.AddRange(threadSafeResults);
+                        
+                        logger?.LogDebug("Parallel processing complete (Phase 2): {Count} items matched", results.Count);
                     }
                 }
                 else
@@ -2040,78 +2135,104 @@ namespace Jellyfin.Plugin.SmartPlaylist
                 OperandFactory.PreloadPeopleCache(libraryManager, itemList, refreshCache, logger);
             }
             
+            // Use thread-safe collection for parallel processing
+            var threadSafeResults = new ConcurrentBag<BaseItem>();
+            var config = Plugin.Instance?.Configuration;
+            var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
+            var userNotFoundOccurred = 0; // 0 = false, 1 = true (use Interlocked for thread-safe visibility)
+            InvalidOperationException userNotFoundException = null;
+            
+            logger?.LogDebug("Processing {Count} items in parallel (simple path) with max concurrency {Concurrency}", 
+                itemList.Count, maxConcurrency);
+            
             try
             {
-                foreach (var item in itemList)
-                {
-                    if (item == null) continue;
-                    
-                    try
+                System.Threading.Tasks.Parallel.ForEach(
+                    itemList,
+                    new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
+                    (item, loopState) =>
                     {
-                        var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
-                        {
-                            ExtractAudioLanguages = needsAudioLanguages,
-                            ExtractAudioQuality = needsAudioQuality,
-                            ExtractPeople = needsPeople,
-                            ExtractCollections = needsCollections,
-                            ExtractNextUnwatched = needsNextUnwatched,
-                            ExtractSeriesName = needsSeriesName,
-                            ExtractParentSeriesTags = needsParentSeriesTags,
-                            ExtractParentSeriesStudios = needsParentSeriesStudios,
-                            ExtractParentSeriesGenres = needsParentSeriesGenres,
-                            IncludeUnwatchedSeries = includeUnwatchedSeries,
-                            AdditionalUserIds = additionalUserIds
-                        }, refreshCache);
+                        if (item == null || System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1) return;
                         
-                        // Check similarity first if SimilarTo is active
-                        bool passesSimilarity = true;
-                        if (needsSimilarTo && referenceMetadata != null)
+                        try
                         {
-                            passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
-                            if (operand.SimilarityScore.HasValue)
+                            var operand = OperandFactory.GetMediaType(libraryManager, item, user, userDataManager, UserManager, logger, new MediaTypeExtractionOptions
                             {
-                                _similarityScores[item.Id] = operand.SimilarityScore.Value;
-                            }
-                        }
-                        
-                        bool matches = false;
-                        if (!hasAnyRules) {
-                            matches = true;
-                        } else {
-                            matches = EvaluateLogicGroups(compiledRules, operand);
-                        }
-                        
-                        // Apply similarity filter
-                        matches = matches && passesSimilarity;
-                        
-                        if (matches)
-                        {
-                            results.Add(item);
-                        }
-                        else if (item is Series series && ShouldExpandEpisodesForCollections())
-                        {
-                            logger?.LogDebug("Series '{SeriesName}' failed other rules but checking Collections rules for expansion", series.Name);
-                            // For series that don't match other rules, check if they match Collections rules for expansion
+                                ExtractAudioLanguages = needsAudioLanguages,
+                                ExtractAudioQuality = needsAudioQuality,
+                                ExtractPeople = needsPeople,
+                                ExtractCollections = needsCollections,
+                                ExtractNextUnwatched = needsNextUnwatched,
+                                ExtractSeriesName = needsSeriesName,
+                                ExtractParentSeriesTags = needsParentSeriesTags,
+                                ExtractParentSeriesStudios = needsParentSeriesStudios,
+                                ExtractParentSeriesGenres = needsParentSeriesGenres,
+                                IncludeUnwatchedSeries = includeUnwatchedSeries,
+                                AdditionalUserIds = additionalUserIds
+                            }, refreshCache);
                             
-                            if (DoesSeriesMatchCollectionsRules(series, operand, logger))
+                            // Check similarity first if SimilarTo is active
+                            bool passesSimilarity = true;
+                            if (needsSimilarTo && referenceMetadata != null)
                             {
-                                logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes", series.Name);
-                                results.Add(item);
+                                passesSimilarity = OperandFactory.CalculateSimilarityScore(operand, referenceMetadata, similarityComparisonFields, logger);
+                                if (operand.SimilarityScore.HasValue)
+                                {
+                                    _similarityScores[item.Id] = operand.SimilarityScore.Value;
+                                }
+                            }
+                            
+                            bool matches = false;
+                            if (!hasAnyRules) {
+                                matches = true;
+                            } else {
+                                matches = EvaluateLogicGroups(compiledRules, operand);
+                            }
+                            
+                            // Apply similarity filter
+                            matches = matches && passesSimilarity;
+                            
+                            if (matches)
+                            {
+                                threadSafeResults.Add(item);
+                            }
+                            else if (item is Series series && ShouldExpandEpisodesForCollections())
+                            {
+                                logger?.LogDebug("Series '{SeriesName}' failed other rules but checking Collections rules for expansion", series.Name);
+                                // For series that don't match other rules, check if they match Collections rules for expansion
+                                
+                                if (DoesSeriesMatchCollectionsRules(series, operand, logger))
+                                {
+                                    logger?.LogDebug("Series '{SeriesName}' matches Collections rules for expansion - will expand and filter episodes", series.Name);
+                                    threadSafeResults.Add(item);
+                                }
                             }
                         }
-                    }
-                    catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
-                    {
-                        // User-specific rule references a user that no longer exists
-                        logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
-                        throw; // Re-throw to stop playlist processing entirely
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogDebug(ex, "Error processing item '{ItemName}' in simple path. Skipping item.", item.Name);
-                        // Skip this item and continue with others
-                    }
+                        catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
+                        {
+                            // User-specific rule references a user that no longer exists
+                            logger?.LogWarning(ex, "Playlist '{PlaylistName}' references a user that no longer exists. Playlist processing will be skipped.", Name);
+                            userNotFoundException = ex; // Store original exception BEFORE setting flag to avoid race condition
+                            System.Threading.Interlocked.Exchange(ref userNotFoundOccurred, 1);
+                            loopState.Stop(); // Stop all parallel processing
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogDebug(ex, "Error processing item '{ItemName}' in simple path. Skipping item.", item.Name);
+                            // Skip this item and continue with others
+                        }
+                    });
+                
+                // Re-throw original user not found exception to preserve message for catch filters
+                if (System.Threading.Interlocked.CompareExchange(ref userNotFoundOccurred, 0, 0) == 1)
+                {
+                    throw userNotFoundException ?? new InvalidOperationException($"User with ID '<unknown>' not found - playlist '{Name}' references a user that no longer exists");
                 }
+                
+                // Transfer results from ConcurrentBag to List
+                results.AddRange(threadSafeResults);
+                
+                logger?.LogDebug("Parallel processing complete (simple path): {Count} items matched", results.Count);
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("User with ID") && ex.Message.Contains("not found"))
             {
