@@ -70,4 +70,3 @@ This plugin creates smart playlists that automatically update based on rules you
 The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
 
 For complete documentation, see the navigation menu on the left.
-

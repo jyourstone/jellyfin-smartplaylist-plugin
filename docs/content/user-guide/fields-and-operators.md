@@ -69,13 +69,105 @@ The web interface provides access to all available fields for creating playlist 
 - **equals** / **not equals** - Exact matches
 - **contains** / **not contains** - Partial text matching
 - **is in** / **is not in** - Check if value contains any item (partial matching)
+  - **Tip**: Use this instead of creating multiple OR rule groups! For example, instead of creating separate rule groups for "Action", "Comedy", and "Drama", you can use a single rule: `Genre is in "Action;Comedy;Drama"`
 - **greater than** / **less than** - Numeric comparisons
 - **greater than or equal** / **less than or equal** - Numeric comparisons
 - **after** / **before** - Date comparisons
 - **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
 - **matches regex** - Advanced pattern matching using .NET regex syntax
 
+### Using "Is In" to Simplify Playlists
+
+The **"is in"** and **"is not in"** operators are powerful tools that can help you simplify your playlists. Instead of creating multiple OR rule groups, you can combine multiple values in a single rule using semicolons.
+
+**Example: Instead of this (multiple OR rule groups):**
+```
+Rule Group 1:
+  - Genre contains "Action"
+  - Is Played = False
+
+Rule Group 2:
+  - Genre contains "Comedy"
+  - Is Played = False
+
+Rule Group 3:
+  - Genre contains "Drama"
+  - Is Played = False
+```
+
+**You can use this (single rule with "is in"):**
+```
+Rule Group 1:
+  - Genre is in "Action;Comedy;Drama"
+  - Is Played = False
+```
+
+Both approaches produce the same result, but the second is much simpler and easier to maintain! The "is in" operator checks if the field value contains any of the semicolon-separated items.
+
+**Syntax**: Separate multiple values with semicolons: `value1; value2; value3`
+
 ## Rule Logic
 
-- **Within a Rule Group**: All conditions must be true (AND logic)
+Understanding how rule groups work is key to creating effective playlists. The plugin uses two types of logic:
+
+### Within a Rule Group (AND Logic)
+
+**All rules within the same group must be true** for an item to match. This means you're looking for items that meet ALL the conditions in that group.
+
+**Example:**
+```
+Rule Group 1:
+  - Genre contains "Action"
+  - Is Played = False
+  - Production Year > 2010
+```
+
+This matches items that are:
+- **Action** movies **AND**
+- **Unwatched** **AND**
+- **Released after 2010**
+
+All three conditions must be true!
+
+### Between Rule Groups (OR Logic)
+
+**Different rule groups are separated with OR logic**. An item matches if it satisfies ANY of the rule groups.
+
+**Example:**
+```
+Rule Group 1:
+  - Genre contains "Action"
+  - Is Played = False
+
+Rule Group 2:
+  - Genre contains "Comedy"
+  - Is Played = False
+```
+
+This matches items that are:
+- **(Action AND Unwatched)** **OR**
+- **(Comedy AND Unwatched)**
+
+An item matches if it's either an unwatched action movie OR an unwatched comedy.
+
+### Complex Example
+
+Here's a more complex example to illustrate both concepts:
+
+```
+Rule Group 1:
+  - Genre contains "Action"
+  - Production Year > 2010
+  - Community Rating > 7
+
+Rule Group 2:
+  - Genre contains "Sci-Fi"
+  - Is Favorite = True
+```
+
+This playlist will include items that are:
+- **(Action AND After 2010 AND Rating > 7)** **OR**
+- **(Sci-Fi AND Favorite)**
+
+So you'll get highly-rated recent action movies, plus any sci-fi movies you've marked as favorites, regardless of when they were made or their rating.
 

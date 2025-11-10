@@ -39,12 +39,13 @@ nav:
     - Fields and Operators: user-guide/fields-and-operators.md
     - Sorting and Limits: user-guide/sorting-and-limits.md
     - Auto-Refresh: user-guide/auto-refresh.md
+    - Advanced Configuration: user-guide/advanced-configuration.md
   - Examples:
     - Common Use Cases: examples/common-use-cases.md
     - Advanced Examples: examples/advanced-examples.md
   - Development:
     - Building Locally: development/building-locally.md
-    - Adding New Fields: development/adding-new-fields.md
+    - Contributing: development/contributing.md
 
 markdown_extensions:
   - pymdownx.highlight:

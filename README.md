@@ -33,6 +33,16 @@ This plugin allows you to create dynamic playlists based on a set of rules, whic
    - Genre contains "Action"
    - Is Played = False
 
+## 📚 Documentation
+
+<div align="center">
+
+### 📖 **[View Full Documentation →](https://jellyfin-smartplaylist.dinsten.se)**
+
+Complete guide with detailed field descriptions, operators, examples, advanced configuration, and more!
+
+</div>
+
 ## 📦 How to Install
 
 
@@ -79,10 +89,6 @@ SmartPlaylist works with all media types supported by Jellyfin:
 - **📸 Photo (Home Photo)** - Personal photos and images
 - **📚 Book** - eBooks, comics, and other readable content
 - **🎧 Audiobook** - Spoken word audio books
-
-## 📚 Documentation
-
-For complete documentation, including detailed field descriptions, operators, examples, and advanced configuration, please visit the [documentation site](https://jellyfin-smartplaylist.dinsten.se).
 
 ## 🙏 Credits
 

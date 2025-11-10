@@ -88,5 +88,5 @@ The Export/Import feature allows you to backup your smart playlist configuration
 
 ## Manual Configuration (Advanced Users)
 
-For advanced users who prefer JSON configuration, playlist files are stored in the `data/smartplaylists` directory. See `example.playlist.json` for the file format.
+For advanced users who prefer JSON configuration, see the [Advanced Configuration](advanced-configuration.md) guide for details about manual file editing.
 
