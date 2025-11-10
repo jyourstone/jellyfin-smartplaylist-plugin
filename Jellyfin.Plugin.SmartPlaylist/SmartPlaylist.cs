@@ -1889,7 +1889,7 @@ namespace Jellyfin.Plugin.SmartPlaylist
                                         ExtractNextUnwatched = false,
                                         ExtractSeriesName = false,
                                         IncludeUnwatchedSeries = true,
-                                        AdditionalUserIds = []
+                                        AdditionalUserIds = additionalUserIds
                                     }, refreshCache);
                                     
                                     // Check if item passes all non-expensive rules for any rule set that has non-expensive rules
