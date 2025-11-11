@@ -54,8 +54,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public List<string> CoverArtists { get; set; } = [];
         public List<string> Editors { get; set; } = [];
         public List<string> Translators { get; set; } = [];
-        public string Resolution { get; set; } = "";
-        public float? Framerate { get; set; } = null;
         
         // Music-specific fields
         public List<string> Artists { get; set; } = [];
@@ -66,7 +64,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         public int AudioSampleRate { get; set; } = 0;  // In Hz (e.g., 44100, 48000, 96000, 192000)
         public int AudioBitDepth { get; set; } = 0;  // In bits (e.g., 16, 24)
         public string AudioCodec { get; set; } = "";  // e.g., FLAC, MP3, AAC, ALAC
+        public string AudioProfile { get; set; } = "";  // e.g., Dolby TrueHD, Dolby Atmos
         public int AudioChannels { get; set; } = 0;  // e.g., 2 for stereo, 6 for 5.1
+        
+        // Video quality fields (from media streams)
+        public string Resolution { get; set; } = "";  // e.g., 480p, 720p, 1080p, 4K, 8K
+        public float? Framerate { get; set; } = null;  // e.g., 23.976, 29.97, 59.94
+        public string VideoCodec { get; set; } = "";  // e.g., HEVC, H264, AV1, VP9
+        public string VideoProfile { get; set; } = "";  // e.g., Main 10, High
+        public string VideoRange { get; set; } = "";  // e.g., SDR, HDR
+        public string VideoRangeType { get; set; } = "";  // e.g., HDR10, DOVIWithHDR10, HDR10Plus, HLG
         
         // Collections field - indicates which collections this item belongs to  
         public List<string> Collections { get; set; } = [];

@@ -21,7 +21,7 @@
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
         RESOLUTION_FIELDS: ['Resolution'],
-        STRING_FIELDS: ['SimilarTo', 'Name', 'Album', 'SeriesName', 'OfficialRating', 'Overview', 'FileName', 'FolderPath', 'AudioLanguages', 'AudioCodec'],
+        STRING_FIELDS: ['SimilarTo', 'Name', 'Album', 'SeriesName', 'OfficialRating', 'Overview', 'FileName', 'FolderPath', 'AudioLanguages', 'AudioCodec', 'AudioProfile', 'VideoCodec', 'VideoProfile', 'VideoRange', 'VideoRangeType'],
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
     
@@ -3665,20 +3665,24 @@
         // Audio fields - show when any audio-capable type is selected
         // Audio-capable types: Movie, Episode, Audio, AudioBook, MusicVideo, Video
         // Books don't have audio metadata, Photos don't have audio metadata
-        if (['AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioCodec', 'AudioChannels', 'AudioLanguages'].includes(fieldValue)) {
+        if (['AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioCodec', 'AudioProfile', 'AudioChannels', 'AudioLanguages'].includes(fieldValue)) {
             const audioSupportedTypes = ['Movie', 'Episode', 'Audio', 'AudioBook', 'MusicVideo', 'Video'];
             const hasAudioType = selectedMediaTypes.some(type => audioSupportedTypes.includes(type));
             return hasAudioType;
         }
         
+        // Video fields - show when any video-capable type is selected
+        // Video-capable types: Movie, Episode, MusicVideo, Video
+        // Audio/AudioBooks don't have video streams, Books/Photos don't have video metadata
+        if (['Resolution', 'Framerate', 'VideoCodec', 'VideoProfile', 'VideoRange', 'VideoRangeType'].includes(fieldValue)) {
+            const videoSupportedTypes = ['Movie', 'Episode', 'MusicVideo', 'Video'];
+            const hasVideoType = selectedMediaTypes.some(type => videoSupportedTypes.includes(type));
+            return hasVideoType;
+        }
+        
         // Music-specific fields
         if (['Album', 'Artists', 'AlbumArtists'].includes(fieldValue)) {
             return hasAudio || hasAudioBook || hasMusicVideo;
-        }
-        
-        // Video-specific fields (Resolution, Framerate)
-        if (['Resolution', 'Framerate'].includes(fieldValue)) {
-            return hasMovie || hasEpisode || hasMusicVideo || hasVideo;
         }
         
         // All other fields are universal (Name, ProductionYear, ReleaseDate, etc.)

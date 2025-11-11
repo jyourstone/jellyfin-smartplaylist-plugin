@@ -284,6 +284,11 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             allFields.Add("Album");
             allFields.Add("AudioLanguages");
             allFields.Add("AudioCodec");
+            allFields.Add("AudioProfile");
+            allFields.Add("VideoCodec");
+            allFields.Add("VideoProfile");
+            allFields.Add("VideoRange");
+            allFields.Add("VideoRangeType");
             allFields.Add("OfficialRating");
             allFields.Add("Overview");
             allFields.Add("FileName");
