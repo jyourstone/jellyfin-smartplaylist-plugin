@@ -30,7 +30,7 @@ This is where you build new playlists:
 - Decide if the playlist should be public or private
 - Choose whether or not to enable the playlist
 - Configure auto-refresh behavior (Never, On Library Changes, On All Changes)
-- Set custom refresh schedule (Daily, Weekly, Monthly, Interval or No schedule)
+- Set custom refresh schedule (Daily, Weekly, Monthly, Yearly, Interval or No schedule)
 
 ### 2. Manage Playlists
 
@@ -54,6 +54,7 @@ Configure global settings for the plugin:
 - Configure custom prefix and suffix for playlist names
 - Set the default auto-refresh mode for new playlists
 - Set the default custom schedule settings for new playlists
+- Configure performance settings (parallel concurrency limit)
 - Export all playlists to a ZIP file for backup or transfer
 - Import playlists from a ZIP file with duplicate detection
 - Manually trigger a refresh for all smart playlists
@@ -97,6 +98,21 @@ The Export/Import feature allows you to backup your smart playlist configuration
 
 !!! note "User-Specific Rules"
     Rules like "Is Played by [User]" or "Is Favorite for [User]" that reference non-existent users will need to be updated manually.
+
+## Performance Settings
+
+### Parallel Concurrency Limit
+
+Control how many threads are used during individual playlist refreshes:
+
+- **Auto-detect (default)**: Leave empty or set to `0` to automatically detect the optimal number of threads based on your CPU cores
+- **Custom limit**: Set a specific number to limit parallel processing within a playlist refresh (e.g., `4` for 4 threads processing items simultaneously)
+- **Disable parallelism**: Set to `1` to process playlist items sequentially (one at a time, useful for troubleshooting or low-resource systems)
+
+!!! tip "When to Adjust"
+    - **Increase** if you have large playlists and a powerful multi-core CPU
+    - **Decrease** if you experience high CPU usage or system slowdowns during playlist refreshes
+    - **Set to 1** if you need to debug playlist refresh issues or have very limited system resources
 
 ## Manual Configuration (Advanced Users)
 

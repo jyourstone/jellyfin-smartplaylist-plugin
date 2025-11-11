@@ -103,4 +103,3 @@ Perfect for randomized playlists:
 
 - Plugins that sync watched status may trigger many simultaneous updates
 - If you experience performance issues during bulk sync operations, temporarily set playlists to `Never` or `On Library Changes`
-

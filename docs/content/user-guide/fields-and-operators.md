@@ -171,3 +171,28 @@ This playlist will include items that are:
 
 So you'll get highly-rated recent action movies, plus any sci-fi movies you've marked as favorites, regardless of when they were made or their rating.
 
+### Using Regex for Advanced Pattern Matching
+
+The **matches regex** operator allows you to create complex pattern matching rules using .NET regular expression syntax.
+
+!!! important "Important: .NET Syntax Required"
+    SmartPlaylist uses **.NET regex syntax**, not JavaScript-style regex. Do not use JavaScript-style patterns like `/pattern/flags`.
+
+**Common Examples:**
+
+- **Case-insensitive matching**: `(?i)swe` - Matches "swe", "Swe", "SWE", etc.
+- **Multiple options**: `(?i)(eng|en)` - Matches "eng", "EN", "en", etc. (case-insensitive)
+- **Starts with**: `^Action` - Matches items that start with "Action" (e.g., "Action Movie", "Action Hero")
+- **Ends with**: `Movie$` - Matches items that end with "Movie" (e.g., "Action Movie", "Comedy Movie")
+- **Contains word**: `\bAction\b` - Matches the word "Action" as a whole word (not "ActionMovie" or "InAction")
+
+**Testing Your Patterns:**
+
+You can test your regex patterns using [Regex101.com](https://regex101.com/) - make sure to select the **.NET** flavor when testing.
+
+!!! tip "Regex Tips"
+    - Use `(?i)` at the start of your pattern for case-insensitive matching
+    - Use `^` to match the start of a string
+    - Use `$` to match the end of a string
+    - Use `|` for "OR" logic (e.g., `(eng|en|english)`)
+    - Use `\b` to match word boundaries
