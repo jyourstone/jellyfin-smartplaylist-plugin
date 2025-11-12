@@ -64,7 +64,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 var baseItemType = baseItem.GetType();
                 
                 // Approach 1: Try GetMediaStreams method if it exists (with caching)
-                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
+                // Note: Use TryGetValue to avoid caching null values, which would throw in GetOrAdd
+                System.Reflection.MethodInfo getMediaStreamsMethod;
+                if (!_getMediaStreamsMethodCache.TryGetValue(baseItemType, out getMediaStreamsMethod))
+                {
+                    getMediaStreamsMethod = baseItemType.GetMethod("GetMediaStreams");
+                    if (getMediaStreamsMethod != null)
+                    {
+                        _getMediaStreamsMethodCache.TryAdd(baseItemType, getMediaStreamsMethod);
+                    }
+                }
                 
                 if (getMediaStreamsMethod != null)
                 {
@@ -88,7 +97,16 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
                 
                 // Approach 2: Look for MediaSources property (with caching)
-                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
+                // Note: Use TryGetValue to avoid caching null values, which would throw in GetOrAdd
+                System.Reflection.PropertyInfo mediaSourcesProperty;
+                if (!_mediaSourcesPropertyCache.TryGetValue(baseItemType, out mediaSourcesProperty))
+                {
+                    mediaSourcesProperty = baseItemType.GetProperty("MediaSources");
+                    if (mediaSourcesProperty != null)
+                    {
+                        _mediaSourcesPropertyCache.TryAdd(baseItemType, mediaSourcesProperty);
+                    }
+                }
                 
                 if (mediaSourcesProperty != null)
                 {

@@ -15,15 +15,23 @@
     
     // Field type constants to avoid duplication
     const FIELD_TYPES = {
-        LIST_FIELDS: ['Collections', 'People', 'Actors', 'Directors', 'Writers', 'Producers', 'GuestStars', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists'],
+        LIST_FIELDS: ['Collections', 'People', 'Actors', 'Directors', 'Writers', 'Producers', 'GuestStars', 'Genres', 'Studios', 'Tags', 'Artists', 'AlbumArtists', 'AudioLanguages'],
         NUMERIC_FIELDS: ['ProductionYear', 'CommunityRating', 'CriticRating', 'RuntimeMinutes', 'PlayCount', 'Framerate', 'AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioChannels'],
         DATE_FIELDS: ['DateCreated', 'DateLastRefreshed', 'DateLastSaved', 'DateModified', 'ReleaseDate', 'LastPlayedDate'],
         BOOLEAN_FIELDS: ['IsPlayed', 'IsFavorite', 'NextUnwatched'],
         SIMPLE_FIELDS: ['ItemType'],
         RESOLUTION_FIELDS: ['Resolution'],
-        STRING_FIELDS: ['SimilarTo', 'Name', 'Album', 'SeriesName', 'OfficialRating', 'Overview', 'FileName', 'FolderPath', 'AudioLanguages', 'AudioCodec', 'AudioProfile', 'VideoCodec', 'VideoProfile', 'VideoRange', 'VideoRangeType'],
+        STRING_FIELDS: ['SimilarTo', 'Name', 'Album', 'SeriesName', 'OfficialRating', 'Overview', 'FileName', 'FolderPath', 'AudioCodec', 'AudioProfile', 'VideoCodec', 'VideoProfile', 'VideoRange', 'VideoRangeType'],
         USER_DATA_FIELDS: ['IsPlayed', 'IsFavorite', 'PlayCount', 'NextUnwatched', 'LastPlayedDate']
     };
+    
+    // Media type capabilities - which types support audio/video streams
+    const AUDIO_CAPABLE_TYPES = ['Movie', 'Episode', 'Audio', 'AudioBook', 'MusicVideo', 'Video'];
+    const VIDEO_CAPABLE_TYPES = ['Movie', 'Episode', 'MusicVideo', 'Video'];
+    
+    // Audio and video field lists for visibility gating
+    const AUDIO_FIELD_NAMES = ['AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioCodec', 'AudioProfile', 'AudioChannels', 'AudioLanguages'];
+    const VIDEO_FIELD_NAMES = ['Resolution', 'Framerate', 'VideoCodec', 'VideoProfile', 'VideoRange', 'VideoRangeType'];
     
     // Debounce delay for media type change updates (milliseconds)
     const MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;        
@@ -3665,18 +3673,16 @@
         // Audio fields - show when any audio-capable type is selected
         // Audio-capable types: Movie, Episode, Audio, AudioBook, MusicVideo, Video
         // Books don't have audio metadata, Photos don't have audio metadata
-        if (['AudioBitrate', 'AudioSampleRate', 'AudioBitDepth', 'AudioCodec', 'AudioProfile', 'AudioChannels', 'AudioLanguages'].includes(fieldValue)) {
-            const audioSupportedTypes = ['Movie', 'Episode', 'Audio', 'AudioBook', 'MusicVideo', 'Video'];
-            const hasAudioType = selectedMediaTypes.some(type => audioSupportedTypes.includes(type));
+        if (AUDIO_FIELD_NAMES.includes(fieldValue)) {
+            const hasAudioType = selectedMediaTypes.some(type => AUDIO_CAPABLE_TYPES.includes(type));
             return hasAudioType;
         }
         
         // Video fields - show when any video-capable type is selected
         // Video-capable types: Movie, Episode, MusicVideo, Video
         // Audio/AudioBooks don't have video streams, Books/Photos don't have video metadata
-        if (['Resolution', 'Framerate', 'VideoCodec', 'VideoProfile', 'VideoRange', 'VideoRangeType'].includes(fieldValue)) {
-            const videoSupportedTypes = ['Movie', 'Episode', 'MusicVideo', 'Video'];
-            const hasVideoType = selectedMediaTypes.some(type => videoSupportedTypes.includes(type));
+        if (VIDEO_FIELD_NAMES.includes(fieldValue)) {
+            const hasVideoType = selectedMediaTypes.some(type => VIDEO_CAPABLE_TYPES.includes(type));
             return hasVideoType;
         }
         
