@@ -116,6 +116,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 
                 // Numeric fields
                 "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" or "Framerate" 
+                    or "AudioBitrate" or "AudioSampleRate" or "AudioBitDepth" or "AudioChannels"
                     => NumericFieldOperators,
                 
                 // Date fields
@@ -132,6 +133,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 
                 // String fields (text-based fields)
                 "Name" or "Album" or "SeriesName" or "OfficialRating" or "Overview" or "FileName" or "FolderPath"
+                    or "AudioCodec" or "AudioProfile" or "VideoCodec" or "VideoProfile" or "VideoRange" or "VideoRangeType"
                     => StringFieldOperators,
                 
                 // Default: allow all operators for unknown fields
@@ -172,6 +174,10 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["RuntimeMinutes"] = NumericFieldOperators,
                 ["PlayCount"] = NumericFieldOperators,
                 ["Framerate"] = NumericFieldOperators,
+                ["AudioBitrate"] = NumericFieldOperators,
+                ["AudioSampleRate"] = NumericFieldOperators,
+                ["AudioBitDepth"] = NumericFieldOperators,
+                ["AudioChannels"] = NumericFieldOperators,
                 
                 // Date fields - date/time fields
                 ["DateCreated"] = DateFieldOperators,
@@ -194,7 +200,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.Constants
                 ["OfficialRating"] = StringFieldOperators,
                 ["Overview"] = StringFieldOperators,
                 ["FileName"] = StringFieldOperators,
-                ["FolderPath"] = StringFieldOperators
+                ["FolderPath"] = StringFieldOperators,
+                ["AudioCodec"] = StringFieldOperators,
+                ["AudioProfile"] = StringFieldOperators,
+                ["VideoCodec"] = StringFieldOperators,
+                ["VideoProfile"] = StringFieldOperators,
+                ["VideoRange"] = StringFieldOperators,
+                ["VideoRangeType"] = StringFieldOperators
             };
             
             // Add all people role fields dynamically using centralized logic
