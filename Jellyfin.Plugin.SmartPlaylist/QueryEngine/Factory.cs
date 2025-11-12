@@ -25,6 +25,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
     {
         public bool ExtractAudioLanguages { get; set; } = false;
         public bool ExtractAudioQuality { get; set; } = false;
+        public bool ExtractVideoQuality { get; set; } = false;
         public bool ExtractPeople { get; set; } = false;
         public bool ExtractCollections { get; set; } = false;
         public bool ExtractNextUnwatched { get; set; } = false;
@@ -49,6 +50,98 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
         { 
             "CollectionFolder", "UserRootFolder", "AggregateFolder", "Folder" 
         };
+        
+        /// <summary>
+        /// Shared helper to extract media streams from a BaseItem using reflection.
+        /// Reduces code duplication across AudioLanguages/Resolution/Framerate/VideoQuality extraction methods.
+        /// </summary>
+        private static List<object> TryGetAllMediaStreams(BaseItem baseItem, ILogger logger)
+        {
+            var mediaStreams = new List<object>();
+            
+            try
+            {
+                var baseItemType = baseItem.GetType();
+                
+                // Approach 1: Try GetMediaStreams method if it exists (with caching)
+                // Note: Use TryGetValue to avoid caching null values, which would throw in GetOrAdd
+                System.Reflection.MethodInfo getMediaStreamsMethod;
+                if (!_getMediaStreamsMethodCache.TryGetValue(baseItemType, out getMediaStreamsMethod))
+                {
+                    getMediaStreamsMethod = baseItemType.GetMethod("GetMediaStreams");
+                    if (getMediaStreamsMethod != null)
+                    {
+                        _getMediaStreamsMethodCache.TryAdd(baseItemType, getMediaStreamsMethod);
+                    }
+                }
+                
+                if (getMediaStreamsMethod != null)
+                {
+                    try
+                    {
+                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
+                        if (result is IEnumerable<object> streamEnum)
+                        {
+                            mediaStreams.AddRange(streamEnum);
+                        }
+                        else if (result != null)
+                        {
+                            logger?.LogDebug("GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
+                                baseItem.Name, result.GetType().FullName);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                // Approach 2: Look for MediaSources property (with caching)
+                // Note: Use TryGetValue to avoid caching null values, which would throw in GetOrAdd
+                System.Reflection.PropertyInfo mediaSourcesProperty;
+                if (!_mediaSourcesPropertyCache.TryGetValue(baseItemType, out mediaSourcesProperty))
+                {
+                    mediaSourcesProperty = baseItemType.GetProperty("MediaSources");
+                    if (mediaSourcesProperty != null)
+                    {
+                        _mediaSourcesPropertyCache.TryAdd(baseItemType, mediaSourcesProperty);
+                    }
+                }
+                
+                if (mediaSourcesProperty != null)
+                {
+                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
+                    if (mediaSources is IEnumerable<object> sourceEnum)
+                    {
+                        foreach (var source in sourceEnum)
+                        {
+                            try
+                            {
+                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
+                                if (streamsProperty != null)
+                                {
+                                    var streams = streamsProperty.GetValue(source);
+                                    if (streams is IEnumerable<object> streamList)
+                                    {
+                                        mediaStreams.AddRange(streamList);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract media streams for item {Name}", baseItem.Name);
+            }
+            
+            return mediaStreams;
+        }
         
         // Cache episode property lookups for better performance - using ConcurrentDictionary for thread safety
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo> _parentIndexPropertyCache = new();
@@ -444,66 +537,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.AudioLanguages = [];
             try
             {
-                // Try multiple approaches to access media stream information
-                List<object> mediaStreams = [];
-                
-                // Approach 1: Try GetMediaStreams method if it exists (with caching)
-                var baseItemType = baseItem.GetType();
-                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
-                
-                if (getMediaStreamsMethod != null)
-                {
-                    try
-                    {
-                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
-                        if (result is IEnumerable<object> streamEnum)
-                        {
-                            mediaStreams.AddRange(streamEnum);
-                        }
-                        else
-                        {
-                            logger?.LogWarning(
-                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
-                                baseItem.Name,
-                                result?.GetType().FullName ?? "null"
-                            );
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
-                    }
-                }
-                
-                // Approach 2: Look for MediaSources property (with caching)
-                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
-                
-                if (mediaSourcesProperty != null)
-                {
-                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
-                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
-                    {
-                        foreach (var source in sourceEnum)
-                        {
-                            try
-                            {
-                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
-                                if (streamsProperty != null)
-                                {
-                                    var streams = streamsProperty.GetValue(source);
-                                    if (streams is IEnumerable<object> streamList)
-                                    {
-                                        mediaStreams.AddRange(streamList);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
-                            }
-                        }
-                    }
-                }
+                // Use shared helper to extract media streams
+                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
                 
                 // Process found streams
                 foreach (var stream in mediaStreams)
@@ -548,66 +583,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.Resolution = "";
             try
             {
-                // Try multiple approaches to access media stream information
-                List<object> mediaStreams = [];
-                
-                // Approach 1: Try GetMediaStreams method if it exists (with caching)
-                var baseItemType = baseItem.GetType();
-                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
-                
-                if (getMediaStreamsMethod != null)
-                {
-                    try
-                    {
-                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
-                        if (result is IEnumerable<object> streamEnum)
-                        {
-                            mediaStreams.AddRange(streamEnum);
-                        }
-                        else
-                        {
-                            logger?.LogWarning(
-                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
-                                baseItem.Name,
-                                result?.GetType().FullName ?? "null"
-                            );
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
-                    }
-                }
-                
-                // Approach 2: Look for MediaSources property (with caching)
-                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
-                
-                if (mediaSourcesProperty != null)
-                {
-                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
-                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
-                    {
-                        foreach (var source in sourceEnum)
-                        {
-                            try
-                            {
-                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
-                                if (streamsProperty != null)
-                                {
-                                    var streams = streamsProperty.GetValue(source);
-                                    if (streams is IEnumerable<object> streamList)
-                                    {
-                                        mediaStreams.AddRange(streamList);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
-                            }
-                        }
-                    }
-                }
+                // Use shared helper to extract media streams
+                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
                 
                 // Process found streams to find the highest resolution video stream
                 int maxHeight = 0;
@@ -668,66 +645,8 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.Framerate = null;
             try
             {
-                // Try multiple approaches to access media stream information
-                List<object> mediaStreams = [];
-                
-                // Approach 1: Try GetMediaStreams method if it exists (with caching)
-                var baseItemType = baseItem.GetType();
-                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
-                
-                if (getMediaStreamsMethod != null)
-                {
-                    try
-                    {
-                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
-                        if (result is IEnumerable<object> streamEnum)
-                        {
-                            mediaStreams.AddRange(streamEnum);
-                        }
-                        else
-                        {
-                            logger?.LogWarning(
-                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
-                                baseItem.Name,
-                                result?.GetType().FullName ?? "null"
-                            );
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
-                    }
-                }
-                
-                // Approach 2: Look for MediaSources property (with caching)
-                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
-                
-                if (mediaSourcesProperty != null)
-                {
-                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
-                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
-                    {
-                        foreach (var source in sourceEnum)
-                        {
-                            try
-                            {
-                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
-                                if (streamsProperty != null)
-                                {
-                                    var streams = streamsProperty.GetValue(source);
-                                    if (streams is IEnumerable<object> streamList)
-                                    {
-                                        mediaStreams.AddRange(streamList);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
-                            }
-                        }
-                    }
-                }
+                // Use shared helper to extract media streams
+                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
                 
                 // Process found streams to find the first video stream with framerate information
                 foreach (var stream in mediaStreams)
@@ -792,70 +711,13 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             operand.AudioSampleRate = 0;
             operand.AudioBitDepth = 0;
             operand.AudioCodec = "";
+            operand.AudioProfile = "";
             operand.AudioChannels = 0;
             
             try
             {
-                // Try multiple approaches to access media stream information
-                List<object> mediaStreams = [];
-                
-                // Approach 1: Try GetMediaStreams method if it exists (with caching)
-                var baseItemType = baseItem.GetType();
-                var getMediaStreamsMethod = _getMediaStreamsMethodCache.GetOrAdd(baseItemType, type => type.GetMethod("GetMediaStreams"));
-                
-                if (getMediaStreamsMethod != null)
-                {
-                    try
-                    {
-                        var result = getMediaStreamsMethod.Invoke(baseItem, null);
-                        if (result is IEnumerable<object> streamEnum)
-                        {
-                            mediaStreams.AddRange(streamEnum);
-                        }
-                        else
-                        {
-                            logger?.LogWarning(
-                                "GetMediaStreams method for item {Name} returned a non-enumerable type: {Type}",
-                                baseItem.Name,
-                                result?.GetType().FullName ?? "null"
-                            );
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogDebug(ex, "Failed to call GetMediaStreams method for item {Name}", baseItem.Name);
-                    }
-                }
-                
-                // Approach 2: Look for MediaSources property (with caching)
-                var mediaSourcesProperty = _mediaSourcesPropertyCache.GetOrAdd(baseItemType, type => type.GetProperty("MediaSources"));
-                
-                if (mediaSourcesProperty != null)
-                {
-                    var mediaSources = mediaSourcesProperty.GetValue(baseItem);
-                    if (mediaSources != null && mediaSources is IEnumerable<object> sourceEnum)
-                    {
-                        foreach (var source in sourceEnum)
-                        {
-                            try
-                            {
-                                var streamsProperty = source.GetType().GetProperty("MediaStreams");
-                                if (streamsProperty != null)
-                                {
-                                    var streams = streamsProperty.GetValue(source);
-                                    if (streams is IEnumerable<object> streamList)
-                                    {
-                                        mediaStreams.AddRange(streamList);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger?.LogDebug(ex, "Failed to process MediaSource for item {Name}", baseItem.Name);
-                            }
-                        }
-                    }
-                }
+                // Use shared helper to extract media streams
+                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
                 
                 // Process found streams to find the first audio stream with quality information
                 foreach (var stream in mediaStreams)
@@ -915,6 +777,17 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                     }
                                 }
                                 
+                                // Extract profile
+                                var profileProperty = stream.GetType().GetProperty("Profile");
+                                if (profileProperty != null)
+                                {
+                                    var profile = profileProperty.GetValue(stream) as string;
+                                    if (!string.IsNullOrEmpty(profile))
+                                    {
+                                        operand.AudioProfile = profile;
+                                    }
+                                }
+                                
                                 // Extract channels
                                 var channelsProperty = stream.GetType().GetProperty("Channels");
                                 if (channelsProperty != null)
@@ -930,7 +803,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                                 // (use the first audio stream found)
                                 if (operand.AudioBitrate > 0 || operand.AudioSampleRate > 0 || 
                                     operand.AudioBitDepth > 0 || !string.IsNullOrEmpty(operand.AudioCodec) || 
-                                    operand.AudioChannels > 0)
+                                    !string.IsNullOrEmpty(operand.AudioProfile) || operand.AudioChannels > 0)
                                 {
                                     break;
                                 }
@@ -944,13 +817,113 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 }
                 
                 logger?.LogDebug(
-                    "Extracted audio quality for item {Name}: Bitrate={Bitrate}kbps, SampleRate={SampleRate}Hz, BitDepth={BitDepth}bit, Codec={Codec}, Channels={Channels}",
-                    baseItem.Name, operand.AudioBitrate, operand.AudioSampleRate, operand.AudioBitDepth, operand.AudioCodec, operand.AudioChannels
+                    "Extracted audio quality for item {Name}: Bitrate={Bitrate}kbps, SampleRate={SampleRate}Hz, BitDepth={BitDepth}bit, Codec={Codec}, Profile={Profile}, Channels={Channels}",
+                    baseItem.Name, operand.AudioBitrate, operand.AudioSampleRate, operand.AudioBitDepth, operand.AudioCodec, operand.AudioProfile, operand.AudioChannels
                 );
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Failed to extract audio quality for item {Name}", baseItem.Name);
+            }
+        }
+
+        /// <summary>
+        /// Extracts video quality information from media streams (codec, profile, range, range type).
+        /// </summary>
+        private static void ExtractVideoQuality(Operand operand, BaseItem baseItem, ILogger logger)
+        {
+            operand.VideoCodec = "";
+            operand.VideoProfile = "";
+            operand.VideoRange = "";
+            operand.VideoRangeType = "";
+            
+            try
+            {
+                // Use shared helper to extract media streams
+                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                
+                // Process found streams to find the first video stream with quality information
+                foreach (var stream in mediaStreams)
+                {
+                    try
+                    {
+                        var typeProperty = stream.GetType().GetProperty("Type");
+                        
+                        if (typeProperty != null)
+                        {
+                            var streamType = typeProperty.GetValue(stream);
+                            
+                            // Check if it's a video stream
+                            if (streamType != null && streamType.ToString() == "Video")
+                            {
+                                // Extract codec
+                                var codecProperty = stream.GetType().GetProperty("Codec");
+                                if (codecProperty != null)
+                                {
+                                    var codec = codecProperty.GetValue(stream) as string;
+                                    if (!string.IsNullOrEmpty(codec))
+                                    {
+                                        operand.VideoCodec = codec.ToUpperInvariant(); // Normalize to uppercase
+                                    }
+                                }
+                                
+                                // Extract profile
+                                var profileProperty = stream.GetType().GetProperty("Profile");
+                                if (profileProperty != null)
+                                {
+                                    var profile = profileProperty.GetValue(stream) as string;
+                                    if (!string.IsNullOrEmpty(profile))
+                                    {
+                                        operand.VideoProfile = profile;
+                                    }
+                                }
+                                
+                                // Extract video range (HDR/SDR)
+                                var videoRangeProperty = stream.GetType().GetProperty("VideoRange");
+                                if (videoRangeProperty != null)
+                                {
+                                    var videoRange = videoRangeProperty.GetValue(stream);
+                                    if (videoRange != null)
+                                    {
+                                        operand.VideoRange = videoRange.ToString() ?? "";
+                                    }
+                                }
+                                
+                                // Extract video range type (HDR10, DOVIWithHDR10, etc.)
+                                var videoRangeTypeProperty = stream.GetType().GetProperty("VideoRangeType");
+                                if (videoRangeTypeProperty != null)
+                                {
+                                    var videoRangeType = videoRangeTypeProperty.GetValue(stream);
+                                    if (videoRangeType != null)
+                                    {
+                                        operand.VideoRangeType = videoRangeType.ToString() ?? "";
+                                    }
+                                }
+                                
+                                // If we found at least one video property, we're done
+                                // (use the first video stream found)
+                                if (!string.IsNullOrEmpty(operand.VideoCodec) || !string.IsNullOrEmpty(operand.VideoProfile) || 
+                                    !string.IsNullOrEmpty(operand.VideoRange) || !string.IsNullOrEmpty(operand.VideoRangeType))
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogDebug(ex, "Failed to process individual stream for item {Name}", baseItem.Name);
+                    }
+                }
+                
+                logger?.LogDebug(
+                    "Extracted video quality for item {Name}: Codec={Codec}, Profile={Profile}, Range={Range}, RangeType={RangeType}",
+                    baseItem.Name, operand.VideoCodec, operand.VideoProfile, operand.VideoRange, operand.VideoRangeType
+                );
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to extract video quality for item {Name}", baseItem.Name);
             }
         }
 
@@ -1590,6 +1563,7 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Extract options for easier access
             var extractAudioLanguages = options.ExtractAudioLanguages;
             var extractAudioQuality = options.ExtractAudioQuality;
+            var extractVideoQuality = options.ExtractVideoQuality;
             var extractPeople = options.ExtractPeople;  
             var extractNextUnwatched = options.ExtractNextUnwatched;
             var extractSeriesName = options.ExtractSeriesName;
@@ -1789,7 +1763,40 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 operand.AudioSampleRate = 0;
                 operand.AudioBitDepth = 0;
                 operand.AudioCodec = "";
+                operand.AudioProfile = "";
                 operand.AudioChannels = 0;
+            }
+
+            // Extract video quality from media streams - only when needed for performance
+            if (extractVideoQuality)
+            {
+                // Extract resolution/framerate/video quality only for items that can have video streams
+                if (MediaTypes.VideoStreamCapableSet.Contains(operand.ItemType))
+                {
+                    ExtractResolution(operand, baseItem, logger);
+                    ExtractFramerate(operand, baseItem, logger);
+                    ExtractVideoQuality(operand, baseItem, logger);
+                }
+                else
+                {
+                    // Clear video quality fields for non-video items
+                    operand.Resolution = "";
+                    operand.Framerate = null;
+                    operand.VideoCodec = "";
+                    operand.VideoProfile = "";
+                    operand.VideoRange = "";
+                    operand.VideoRangeType = "";
+                    logger?.LogDebug("Video quality extraction skipped for non-video item {Name}", baseItem.Name);
+                }
+            }
+            else
+            {
+                operand.Resolution = "";
+                operand.Framerate = null;
+                operand.VideoCodec = "";
+                operand.VideoProfile = "";
+                operand.VideoRange = "";
+                operand.VideoRangeType = "";
             }
 
             // Extract people - only when needed for performance
@@ -1827,13 +1834,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
                 logger?.LogDebug("People extraction skipped for item {Name} - not needed by rules", baseItem.Name);
             }
 
-            // Extract resolution/framerate only for items that can have video streams
-            if (MediaTypes.VideoStreamCapableSet.Contains(operand.ItemType))
-            {
-                ExtractResolution(operand, baseItem, logger);
-                ExtractFramerate(operand, baseItem, logger);
-            }
-            
             // Extract collections - only when needed for performance
             if (options.ExtractCollections)
             {

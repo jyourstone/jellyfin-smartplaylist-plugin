@@ -12,7 +12,14 @@ The web interface provides access to all available fields for creating playlist 
 - **Audio Sample Rate** - Audio sample rate in Hz (e.g., 44100, 48000, 96000, 192000)
 - **Audio Bit Depth** - Audio bit depth in bits (e.g., 16, 24)
 - **Audio Codec** - Audio codec format (e.g., FLAC, MP3, AAC, ALAC)
+- **Audio Profile** - Audio codec profile (e.g., Dolby TrueHD, Dolby Atmos)
 - **Audio Channels** - Number of audio channels (e.g., 2 for stereo, 6 for 5.1)
+- **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K)
+- **Framerate** - Video framerate in frames per second (e.g., 23.976, 29.97, 59.94)
+- **Video Codec** - Video codec format (e.g., HEVC, H264, AV1, VP9)
+- **Video Profile** - Video codec profile (e.g., Main 10, High)
+- **Video Range** - Video dynamic range (e.g., SDR, HDR)
+- **Video Range Type** - Specific HDR format (e.g., HDR10, DOVIWithHDR10, HDR10Plus, HLG)
 - **Name** - Title of the media item
 - **Series Name** - Name of the parent series (for episodes only)
 - **Similar To** - Find items similar to a reference item based on metadata
@@ -20,8 +27,6 @@ The web interface provides access to all available fields for creating playlist 
 - **Overview** - Description/summary of the content
 - **Production Year** - Original production year
 - **Release Date** - Original release date of the media
-- **Resolution** - Video resolution (480p, 720p, 1080p, 1440p, 4K, 8K)
-- **Framerate** - Video framerate in frames per second (e.g., 23.976, 29.97, 59.94)
 
 ### Ratings & Playback Fields
 
