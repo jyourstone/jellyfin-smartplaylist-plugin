@@ -1180,6 +1180,8 @@
         // Define field group display names and order
         const groupConfig = [
             { key: 'ContentFields', label: 'Content' },
+            { key: 'VideoFields', label: 'Video' },
+            { key: 'AudioFields', label: 'Audio' },
             { key: 'RatingsPlaybackFields', label: 'Ratings & Playback' },
             { key: 'LibraryFields', label: 'Library' },
             { key: 'FileFields', label: 'File Info' },
@@ -3651,11 +3653,9 @@
         }
         
         const hasEpisode = selectedMediaTypes.includes('Episode');
-        const hasMovie = selectedMediaTypes.includes('Movie');
         const hasAudio = selectedMediaTypes.includes('Audio');
         const hasAudioBook = selectedMediaTypes.includes('AudioBook');
         const hasMusicVideo = selectedMediaTypes.includes('MusicVideo');
-        const hasVideo = selectedMediaTypes.includes('Video');
         
         // Episode-only fields
         if (['SeriesName', 'NextUnwatched'].includes(fieldValue)) {

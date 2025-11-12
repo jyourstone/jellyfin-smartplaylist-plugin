@@ -1752,14 +1752,24 @@ namespace Jellyfin.Plugin.SmartPlaylist.QueryEngine
             // Extract video quality from media streams - only when needed for performance
             if (extractVideoQuality)
             {
-                // Extract resolution/framerate only for items that can have video streams
+                // Extract resolution/framerate/video quality only for items that can have video streams
                 if (MediaTypes.VideoStreamCapableSet.Contains(operand.ItemType))
                 {
                     ExtractResolution(operand, baseItem, logger);
                     ExtractFramerate(operand, baseItem, logger);
+                    ExtractVideoQuality(operand, baseItem, logger);
                 }
-                
-                ExtractVideoQuality(operand, baseItem, logger);
+                else
+                {
+                    // Clear video quality fields for non-video items
+                    operand.Resolution = "";
+                    operand.Framerate = null;
+                    operand.VideoCodec = "";
+                    operand.VideoProfile = "";
+                    operand.VideoRange = "";
+                    operand.VideoRangeType = "";
+                    logger?.LogDebug("Video quality extraction skipped for non-video item {Name}", baseItem.Name);
+                }
             }
             else
             {

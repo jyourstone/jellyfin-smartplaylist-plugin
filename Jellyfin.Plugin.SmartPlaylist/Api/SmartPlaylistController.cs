@@ -621,19 +621,6 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                 ContentFields = new[]
                 {
                     new { Value = "Album", Label = "Album" },
-                    new { Value = "AudioLanguages", Label = "Audio Languages" },
-                    new { Value = "AudioBitrate", Label = "Audio Bitrate (kbps)" },
-                    new { Value = "AudioSampleRate", Label = "Audio Sample Rate (Hz)" },
-                    new { Value = "AudioBitDepth", Label = "Audio Bit Depth" },
-                    new { Value = "AudioCodec", Label = "Audio Codec" },
-                    new { Value = "AudioProfile", Label = "Audio Profile" },
-                    new { Value = "AudioChannels", Label = "Audio Channels" },
-                    new { Value = "Resolution", Label = "Resolution" },
-                    new { Value = "Framerate", Label = "Framerate" },
-                    new { Value = "VideoCodec", Label = "Video Codec" },
-                    new { Value = "VideoProfile", Label = "Video Profile" },
-                    new { Value = "VideoRange", Label = "Video Range" },
-                    new { Value = "VideoRangeType", Label = "Video Range Type" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "SeriesName", Label = "Series Name" },
                     new { Value = "SimilarTo", Label = "Similar To" },
@@ -643,6 +630,25 @@ namespace Jellyfin.Plugin.SmartPlaylist.Api
                     new { Value = "ReleaseDate", Label = "Release Date" }
                     // Note: ItemType (Media Type) is intentionally excluded from UI fields
                     // because users select media type (Audio/Video) before creating rules
+                },
+                VideoFields = new[]
+                {
+                    new { Value = "Resolution", Label = "Resolution" },
+                    new { Value = "Framerate", Label = "Framerate" },
+                    new { Value = "VideoCodec", Label = "Video Codec" },
+                    new { Value = "VideoProfile", Label = "Video Profile" },
+                    new { Value = "VideoRange", Label = "Video Range" },
+                    new { Value = "VideoRangeType", Label = "Video Range Type" }
+                },
+                AudioFields = new[]
+                {
+                    new { Value = "AudioLanguages", Label = "Audio Languages" },
+                    new { Value = "AudioBitrate", Label = "Audio Bitrate (kbps)" },
+                    new { Value = "AudioSampleRate", Label = "Audio Sample Rate (Hz)" },
+                    new { Value = "AudioBitDepth", Label = "Audio Bit Depth" },
+                    new { Value = "AudioCodec", Label = "Audio Codec" },
+                    new { Value = "AudioProfile", Label = "Audio Profile" },
+                    new { Value = "AudioChannels", Label = "Audio Channels" }
                 },
                 RatingsPlaybackFields = new[]
                 {
