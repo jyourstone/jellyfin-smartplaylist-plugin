@@ -1,0 +1,259 @@
+# EditorConfig for SmartLists Plugin
+# This file suppresses non-critical analyzer rules while keeping security rules active
+
+root = true
+
+[*.cs]
+
+# Suppress non-critical performance/style rules
+# CA1848: LoggerMessage delegates (performance optimization, negligible impact for this plugin)
+dotnet_diagnostic.CA1848.severity = none
+
+# CA1031: Generic exception catching (common pattern, sometimes necessary)
+dotnet_diagnostic.CA1031.severity = none
+
+# CA2007: ConfigureAwait (less critical in ASP.NET Core context)
+dotnet_diagnostic.CA2007.severity = none
+
+# CA2227: Collection setters (design choice, often intentional)
+dotnet_diagnostic.CA2227.severity = none
+
+# CA1002: Use Collection<T> instead of List<T> (design choice)
+dotnet_diagnostic.CA1002.severity = none
+
+# CA1805: Unnecessary initialization (often needed for nullable reference types)
+dotnet_diagnostic.CA1805.severity = none
+
+# CA1307: Specify StringComparison (can be suppressed for some cases)
+dotnet_diagnostic.CA1307.severity = none
+
+# CA1860: Prefer Count over Any (micro-optimization)
+dotnet_diagnostic.CA1860.severity = none
+
+# CA1305: Specify IFormatProvider (often not needed)
+dotnet_diagnostic.CA1305.severity = none
+
+# CA1721: Property names matching Get methods (naming convention)
+dotnet_diagnostic.CA1721.severity = none
+
+# CA1836: Prefer IsEmpty over Count (micro-optimization)
+dotnet_diagnostic.CA1836.severity = none
+
+# CA1508: Dead conditional code (sometimes false positives)
+dotnet_diagnostic.CA1508.severity = none
+
+# CA1310: Specify StringComparison (similar to CA1307)
+dotnet_diagnostic.CA1310.severity = none
+
+# CA1063: Implement IDisposable correctly (can be suppressed if not applicable)
+dotnet_diagnostic.CA1063.severity = none
+
+# CA1024: Use properties instead of methods (design choice)
+dotnet_diagnostic.CA1024.severity = none
+
+# CA2254: Template should be static expression (sometimes not possible)
+dotnet_diagnostic.CA2254.severity = none
+
+# CA2235: Mark all non-serializable fields (not always applicable)
+dotnet_diagnostic.CA2235.severity = none
+
+# CA1859: Use concrete types instead of interfaces (design choice)
+dotnet_diagnostic.CA1859.severity = none
+
+# CA1825: Avoid zero-length array allocations (micro-optimization)
+dotnet_diagnostic.CA1825.severity = none
+
+# CA1816: Call GC.SuppressFinalize correctly (can be suppressed)
+dotnet_diagnostic.CA1816.severity = none
+
+# CA1716: Identifiers should not match keywords (naming convention)
+dotnet_diagnostic.CA1716.severity = none
+
+# CA1034: Nested types should not be visible (design choice)
+dotnet_diagnostic.CA1034.severity = none
+
+# CA1001: Types that own disposable fields should be disposable (design choice)
+dotnet_diagnostic.CA1001.severity = none
+
+# Suppress StyleCop formatting/style rules (not critical)
+# SA1633: File header (not always needed)
+dotnet_diagnostic.SA1633.severity = none
+
+# SA1200: Using directives inside namespace (preference, can be outside)
+dotnet_diagnostic.SA1200.severity = none
+
+# SA1201: Enum should not follow a class (ordering preference)
+dotnet_diagnostic.SA1201.severity = none
+
+# SA1208: Using directive ordering (alphabetical ordering preference)
+dotnet_diagnostic.SA1208.severity = none
+
+# SA1209: Using alias directives placement (ordering preference)
+dotnet_diagnostic.SA1209.severity = none
+
+# SA1210: Using directives alphabetical ordering (preference)
+dotnet_diagnostic.SA1210.severity = none
+
+# SA1507: Multiple blank lines (formatting preference)
+dotnet_diagnostic.SA1507.severity = none
+
+# SA1508: Closing brace blank line (formatting preference)
+dotnet_diagnostic.SA1508.severity = none
+
+# SA1513: Closing brace followed by blank line (formatting preference)
+dotnet_diagnostic.SA1513.severity = none
+
+# SA1515: Single-line comment preceded by blank line (formatting preference)
+dotnet_diagnostic.SA1515.severity = none
+
+# SA1516: Elements separated by blank line (formatting preference)
+dotnet_diagnostic.SA1516.severity = none
+
+# SA1600: Elements should be documented (documentation, not critical for internal code)
+dotnet_diagnostic.SA1600.severity = none
+
+# Suppress StyleCop formatting rules (non-critical formatting preferences)
+# SA1028: Trailing whitespace (can be fixed with script)
+dotnet_diagnostic.SA1028.severity = none
+
+# SA1101: Prefix local calls with this (style preference)
+dotnet_diagnostic.SA1101.severity = none
+
+# SA1629: Documentation text should end with a period (documentation style)
+dotnet_diagnostic.SA1629.severity = none
+
+# SA1117/SA1116: Parameter formatting (style preference)
+dotnet_diagnostic.SA1117.severity = none
+dotnet_diagnostic.SA1116.severity = none
+
+# SA1503: Braces should not be omitted (style preference)
+dotnet_diagnostic.SA1503.severity = none
+
+# SA1122: Use string.Empty for empty strings (style preference)
+dotnet_diagnostic.SA1122.severity = none
+
+# SA1413: Use trailing comma in multi-line initializers (style preference)
+dotnet_diagnostic.SA1413.severity = none
+
+# SA1309: Field names should not begin with underscore (naming convention)
+dotnet_diagnostic.SA1309.severity = none
+
+# SA1137: Elements should have the same indentation (formatting)
+dotnet_diagnostic.SA1137.severity = none
+
+# SA1402: File may only contain a single type (can be relaxed for some cases)
+dotnet_diagnostic.SA1402.severity = none
+
+# SA1611: Element parameters should be documented (documentation)
+dotnet_diagnostic.SA1611.severity = none
+
+# SA1518: Use line endings correctly at end of file (formatting)
+dotnet_diagnostic.SA1518.severity = none
+
+# SA1615: Element return value should be documented (documentation)
+dotnet_diagnostic.SA1615.severity = none
+
+# SA1602: Enumeration items should be documented (documentation)
+dotnet_diagnostic.SA1602.severity = none
+
+# SA1204: Static elements should appear before instance elements (ordering)
+dotnet_diagnostic.SA1204.severity = none
+
+# SA1202: Elements should be ordered by access (ordering)
+dotnet_diagnostic.SA1202.severity = none
+
+# SA1500: Braces for multi-line statements should not share line (formatting)
+dotnet_diagnostic.SA1500.severity = none
+
+# SA1009: Closing parenthesis should be spaced correctly (formatting)
+dotnet_diagnostic.SA1009.severity = none
+
+# SA1623: Property summary documentation should begin with 'Gets' or 'Sets' (documentation)
+dotnet_diagnostic.SA1623.severity = none
+
+# SA1111: Closing parenthesis should be on line of last parameter (formatting)
+dotnet_diagnostic.SA1111.severity = none
+
+# SA1025: Code should not contain multiple whitespace in a row (formatting)
+dotnet_diagnostic.SA1025.severity = none
+
+# SA1316: Tuple element names should use correct casing (naming)
+dotnet_diagnostic.SA1316.severity = none
+
+# SA1005: Single line comments should begin with single space (formatting)
+dotnet_diagnostic.SA1005.severity = none
+
+# SA1501: Code should not contain empty statements (can be valid in some cases)
+dotnet_diagnostic.SA1501.severity = none
+
+# SA1649: File name should match first type name (naming convention)
+dotnet_diagnostic.SA1649.severity = none
+
+# SA1618: Generic type parameters should be documented (documentation)
+dotnet_diagnostic.SA1618.severity = none
+
+# SA1512: Single-line comments should not be followed by blank line (formatting)
+dotnet_diagnostic.SA1512.severity = none
+
+# SA1505: Opening braces should not be followed by blank line (formatting)
+dotnet_diagnostic.SA1505.severity = none
+
+# SA1312: Variable names should begin with lower-case letter (naming)
+dotnet_diagnostic.SA1312.severity = none
+
+# SA1310: Field names should not contain underscore (naming)
+dotnet_diagnostic.SA1310.severity = none
+
+# SA1214: Readonly fields should appear before non-readonly fields (ordering)
+dotnet_diagnostic.SA1214.severity = none
+
+# SA1407: Arithmetic expressions should declare precedence (readability)
+dotnet_diagnostic.SA1407.severity = none
+
+# SA1203: Constants should appear before fields (ordering)
+dotnet_diagnostic.SA1203.severity = none
+
+# SA1119: Local variables should not shadow other fields (can be valid)
+dotnet_diagnostic.SA1119.severity = none
+
+# SA1625: Element documentation should not be copied and pasted (documentation)
+dotnet_diagnostic.SA1625.severity = none
+
+# SA1514: Element documentation header should be preceded by blank line (formatting)
+dotnet_diagnostic.SA1514.severity = none
+
+# SA1510: Chained statement blocks should not be preceded by blank line (formatting)
+dotnet_diagnostic.SA1510.severity = none
+
+# SA1211: Using alias directives should be ordered alphabetically (ordering)
+dotnet_diagnostic.SA1211.severity = none
+
+# SA1129: Do not use default value type constructor (can be valid)
+dotnet_diagnostic.SA1129.severity = none
+
+# SA1001: Commas should be spaced correctly (formatting)
+dotnet_diagnostic.SA1001.severity = none
+
+# SA1127: Generic constraints should be on their own line (formatting)
+dotnet_diagnostic.SA1127.severity = none
+
+# SA1108: Block statements should not contain embedded comments (formatting)
+dotnet_diagnostic.SA1108.severity = none
+
+# SA1107: Code should not contain multiple statements on one line (readability)
+dotnet_diagnostic.SA1107.severity = none
+
+# Suppress XML documentation warnings (CS1591, CS1573) - these are non-critical
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.CS1573.severity = none
+
+# Keep these SECURITY rules active (must fix):
+# CA3003: File path injection vulnerability
+# CA3012: Regex injection vulnerability
+
+# Keep these EASY WINS active (quick fixes):
+# CA1852: Seal types (good practice, easy fix)
+# CA1822: Mark methods as static (good practice, easy fix)
+# CA1724: Type name conflicts (easy fix)
+# CA1062: Validate arguments (good practice)
+
