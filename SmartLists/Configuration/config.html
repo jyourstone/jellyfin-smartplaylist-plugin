@@ -2,227 +2,7 @@
 <html>
 <head>
     <title>SmartLists</title>
-    <style>
-        .SmartListsConfigurationPage .readOnly, .SmartListsConfigurationPage .readOnly-multiline {
-            background: #101010;
-        }
-
-        .SmartListsConfigurationPage .ui-tabs-nav.emby-tabs {
-            margin-top: 2em;
-        }
-
-        .playlist-card {
-            border: 1px solid #444;
-            padding: 1em;
-            border-radius: 4px;
-            margin-bottom: 2em;
-        }
-
-        .playlist-title {
-            margin-top: 0;
-        }
-
-        .playlist-rule {
-            font-family: monospace;
-            background: rgba(255,255,255,0.1);
-            padding: 2px 4px;
-            border-radius: 2px;
-        }
-
-        .playlist-actions {
-            margin-top: 1em;
-        }
-
-        .error-message {
-            color: #ff6b6b;
-        }
-
-        /* Custom Modal Styles */
-        body .SmartListsConfigurationPage .custom-modal {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            background: rgba(0,0,0,0.75) !important;
-            z-index: 10000 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        body .SmartListsConfigurationPage .custom-modal.hide {
-            display: none !important;
-        }
-        body .SmartListsConfigurationPage .custom-modal .custom-modal-container {
-            background-color: #2a2a2a !important;
-            color: #eee !important;
-            border: 1px solid #555 !important;
-            border-radius: 8px !important;
-            padding: 1.5em !important;
-            width: 90% !important;
-            max-width: 400px !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.8) !important;
-            z-index: 10001 !important;
-            position: relative !important;
-        }
-        .custom-modal-header .custom-modal-title {
-            margin: 0;
-            font-size: 1.25em;
-        }
-        .custom-modal-body {
-            margin: 1em 0;
-        }
-        .custom-modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 1em;
-        }
-        .custom-modal-footer .button-submit,
-        .custom-modal-footer .button-delete,
-        .custom-modal-footer .modal-confirm-btn {
-            background-color: #d9534f;
-        }
-        
-        .logic-separator {
-            text-align: center;
-            margin: 0.75em 0;
-            font-weight: bold;
-            color: #888;
-            font-size: 0.9em;
-            background: rgba(136, 136, 136, 0.1);
-            padding: 0.25em;
-            border-radius: 4px;
-            display: inline-block;
-            min-width: 40px;
-        }
-        
-        /* Rule action buttons layout */
-        .rule-actions {
-            display: flex;
-            gap: 0.5em;
-            align-items: center;
-            margin-left: 0.5em;
-        }
-        
-        .rule-action-btn.hidden {
-            display: none !important;
-        }
-        
-        /* Basic logic group styling - detailed styles are applied via JavaScript */
-        .SmartListsConfigurationPage .logic-group {
-            position: relative !important;
-        }
-        
-        .SmartListsConfigurationPage .logic-group::before {
-            content: 'AND Group' !important;
-            position: absolute !important;
-            top: -0.6em !important;
-            left: 1em !important;
-            background: #1a1a1a !important;
-            color: #888 !important;
-            padding: 0.2em 0.8em !important;
-            border-radius: 4px !important;
-            font-size: 0.75em !important;
-            font-weight: bold !important;
-            border: 1px solid #666 !important;
-        }
-        
-
-
-        .media-type-flex {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1.5em;
-            align-items: flex-start;
-            width: 100%;
-        }
-        
-        /* Styling for sectioncheckbox items within the media types container */
-        .media-type-flex .sectioncheckbox {
-            margin-bottom: 0.5em;
-        }
-        
-        .media-type-flex .sectioncheckbox:last-child {
-            margin-bottom: 0;
-        }
-        
-        /* Search clear button styles */
-        .search-clear-btn {
-            transition: color 0.2s ease, background-color 0.2s ease;
-            border-radius: 50%;
-            width: 1.5em;
-            height: 1.5em;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-        }
-        
-        /* Ensure search input container spans full width */
-        .search-inputContainer {
-            width: 100%;
-        }
-        
-        .search-clear-btn:hover {
-            color: #fff !important;
-            background-color: rgba(255, 255, 255, 0.1) !important;
-        }
-        
-        .search-clear-btn:active {
-            background-color: rgba(255, 255, 255, 0.2) !important;
-        }
-        
-        /* Tag input placeholder color */
-        .tag-input-field::placeholder {
-            color: #757575 !important;
-        }        
-       
-        /* Ensure form elements span full width */
-        .SmartListsConfigurationPage .inputContainer input,
-        .SmartListsConfigurationPage .inputContainer select,
-        .SmartListsConfigurationPage .inputContainer textarea {
-            width: 100%;
-            box-sizing: border-box;
-        }
-        
-        /* Ensure buttons span full width when using .block class */
-        .SmartListsConfigurationPage .emby-button.block {
-            width: 100%;
-            display: block;
-        }
-        
-        /* Better spacing for form sections */
-        .SmartListsConfigurationPage .sectionTitle {
-            margin-top: 2em;
-            margin-bottom: 1em;
-            padding-bottom: 0.5em;
-            border-bottom: 1px solid #444;
-        }
-        
-        /* Consistent spacing for input containers */
-        .SmartListsConfigurationPage .inputContainer {
-            margin-bottom: 1.5em;
-        }
-        
-        /* Better checkbox styling for Jellyfin-style checkboxes */
-        .SmartListsConfigurationPage .checkboxList.paperList {
-            margin-bottom: 1.5em;
-            background-color: #2a2a2a;
-            border-radius: 4px;
-        }
-        
-        .SmartListsConfigurationPage .emby-checkbox-label {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            padding: 0.5em 0;
-        }
-        
-        .SmartListsConfigurationPage .checkboxLabel {
-            margin-left: 0.5em;
-            flex: 1;
-        }
-    </style>
+    <!-- All CSS styling is handled dynamically via JavaScript -->
 </head>
 <body>
     <div data-role="page" class="page type-interior pluginConfigurationPage SmartListsConfigurationPage">
@@ -636,6 +416,27 @@
             </div>
         </div>
         
+        <!-- Core utilities and constants (must load first) -->
+        <script src="configurationpage?name=config-core.js"></script>
+        <!-- Formatters and option generators -->
+        <script src="configurationpage?name=config-formatters.js"></script>
+        <!-- Schedule management -->
+        <script src="configurationpage?name=config-schedules.js"></script>
+        <!-- Sort management -->
+        <script src="configurationpage?name=config-sorts.js"></script>
+        <!-- Rule management -->
+        <script src="configurationpage?name=config-rules.js"></script>
+        <!-- Playlist CRUD operations -->
+        <script src="configurationpage?name=config-playlists.js"></script>
+        <!-- Filtering and search -->
+        <script src="configurationpage?name=config-filters.js"></script>
+        <!-- Bulk actions -->
+        <script src="configurationpage?name=config-bulk-actions.js"></script>
+        <!-- API calls -->
+        <script src="configurationpage?name=config-api.js"></script>
+        <!-- Initialization (must load last) -->
+        <script src="configurationpage?name=config-init.js"></script>
+        <!-- Legacy config.js (kept for backward compatibility, but should be empty or minimal) -->
         <script src="configurationpage?name=config.js"></script>
     </div>
 </body>

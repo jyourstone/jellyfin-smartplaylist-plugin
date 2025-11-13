@@ -13,13 +13,13 @@
 
 2. **Install the Plugin**:
    - Go to **Dashboard** → **Plugins** → **All/Available**
-   - Click **SmartPlaylist** in the list of available plugins
+   - Click **SmartLists** in the list of available plugins
    - Click **Install**
    - Restart Jellyfin
 
 ## Manual Installation
 
-Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartPlaylist`) and restart Jellyfin.
+Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartLists`) and restart Jellyfin.
 
 ## Try RC Releases (Unstable)
 

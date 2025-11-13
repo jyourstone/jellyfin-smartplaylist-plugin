@@ -17,6 +17,27 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\config.html" />
+    <!-- Core utilities and constants (must load first) -->
+    <EmbeddedResource Include="Configuration\config-core.js" />
+    <!-- Formatters and option generators -->
+    <EmbeddedResource Include="Configuration\config-formatters.js" />
+    <!-- Schedule management -->
+    <EmbeddedResource Include="Configuration\config-schedules.js" />
+    <!-- Sort management -->
+    <EmbeddedResource Include="Configuration\config-sorts.js" />
+    <!-- Rule management -->
+    <EmbeddedResource Include="Configuration\config-rules.js" />
+    <!-- Playlist CRUD operations -->
+    <EmbeddedResource Include="Configuration\config-playlists.js" />
+    <!-- Filtering and search -->
+    <EmbeddedResource Include="Configuration\config-filters.js" />
+    <!-- Bulk actions -->
+    <EmbeddedResource Include="Configuration\config-bulk-actions.js" />
+    <!-- API calls -->
+    <EmbeddedResource Include="Configuration\config-api.js" />
+    <!-- Initialization (must load last) -->
+    <EmbeddedResource Include="Configuration\config-init.js" />
+    <!-- Legacy config.js (kept for backward compatibility, but should be empty or minimal) -->
     <EmbeddedResource Include="Configuration\config.js" />
   </ItemGroup>
 

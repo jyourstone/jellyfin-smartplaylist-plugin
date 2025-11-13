@@ -2,7 +2,7 @@
 
 ## Creating Your First Playlist
 
-1. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartPlaylist
+1. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartLists
 2. **Navigate to Create Playlist Tab**: Click on the "Create Playlist" tab
 3. **Configure Your Playlist**:
    - Enter a name for your playlist

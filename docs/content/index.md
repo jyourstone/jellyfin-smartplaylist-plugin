@@ -10,9 +10,9 @@
     </p>        
 </div>
 
-A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin.
+Create smart, rule-based playlists and collections in Jellyfin.
 
-This plugin allows you to create dynamic playlists based on a set of rules, which will automatically update as your library changes.
+This plugin allows you to create dynamic playlists and collections based on a set of rules, which will automatically update as your library changes.
 
 **Requires Jellyfin version `10.10.0` and newer.** New functionality is only developed for Jellyfin `10.11.0` and newer.
 
@@ -46,7 +46,7 @@ SmartPlaylist works with all media types supported by Jellyfin:
 ## Quick Start
 
 1. **Install the Plugin**: See [Installation Guide](getting-started/installation.md)
-2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartPlaylist
+2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartLists
 3. **Create Your First Playlist**: Use the "Create Playlist" tab
 4. **Example**: Create a playlist for "Unwatched Action Movies" with:
    - Media type: "Movie"
@@ -57,7 +57,7 @@ For more detailed instructions, see the [Quick Start Guide](getting-started/quic
 
 ## Overview
 
-This plugin creates smart playlists that automatically update based on rules you define, such as:
+This plugin creates smart playlists and collections that automatically update based on rules you define, such as:
 
 - **Unplayed movies** from specific genres
 - **Recently added** series or episodes

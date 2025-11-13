@@ -38,6 +38,67 @@ namespace Jellyfin.Plugin.SmartLists
                     Name = Name,
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.config.html",
                 },
+                // Core utilities and constants (must load first)
+                new PluginPageInfo
+                {
+                    Name = "config-core.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-core.js",
+                },
+                // Formatters and option generators
+                new PluginPageInfo
+                {
+                    Name = "config-formatters.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-formatters.js",
+                },
+                // Schedule management
+                new PluginPageInfo
+                {
+                    Name = "config-schedules.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-schedules.js",
+                },
+                // Sort management
+                new PluginPageInfo
+                {
+                    Name = "config-sorts.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-sorts.js",
+                },
+                // Rule management
+                new PluginPageInfo
+                {
+                    Name = "config-rules.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-rules.js",
+                },
+                // Playlist CRUD operations
+                new PluginPageInfo
+                {
+                    Name = "config-playlists.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-playlists.js",
+                },
+                // Filtering and search
+                new PluginPageInfo
+                {
+                    Name = "config-filters.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-filters.js",
+                },
+                // Bulk actions
+                new PluginPageInfo
+                {
+                    Name = "config-bulk-actions.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-bulk-actions.js",
+                },
+                // API calls
+                new PluginPageInfo
+                {
+                    Name = "config-api.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-api.js",
+                },
+                // Initialization (must load last)
+                new PluginPageInfo
+                {
+                    Name = "config-init.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-init.js",
+                },
+                // Legacy config.js (kept for backward compatibility, but should be empty or minimal)
                 new PluginPageInfo
                 {
                     Name = "config.js",

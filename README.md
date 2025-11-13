@@ -1,4 +1,4 @@
-# Jellyfin SmartPlaylist Plugin
+# Jellyfin SmartLists Plugin
 <div align="center">
     <p>
         <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" height="350"/><br />
@@ -6,9 +6,9 @@
     </p>        
 </div>
 
-A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin.
+Create smart, rule-based playlists and collections in Jellyfin.
 
-This plugin allows you to create dynamic playlists based on a set of rules, which will automatically update as your library changes.
+This plugin allows you to create dynamic playlists and collections based on a set of rules, which will automatically update as your library changes.
 
 **Requires Jellyfin version `10.10.0` and newer.** New functionality is only developed for Jellyfin `10.11.0` and newer.
 
@@ -26,7 +26,7 @@ This plugin allows you to create dynamic playlists based on a set of rules, whic
 ## 🚀 Quick Start
 
 1. **Install the Plugin**: [See installation instructions](#-how-to-install)
-2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartPlaylist
+2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartLists
 3. **Create Your First Playlist**: Use the "Create Playlist" tab
 4. **Example**: Create a playlist for "Unwatched Action Movies" with:
    - Media type: "Movie"
@@ -35,7 +35,7 @@ This plugin allows you to create dynamic playlists based on a set of rules, whic
 
 ## ⚙️ Configuration Interface
 
-SmartPlaylist features a modern web-based configuration interface with three main tabs:
+SmartLists features a modern web-based configuration interface with three main tabs:
 
 <div align="center">
     <p>
@@ -65,7 +65,7 @@ https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/main/manif
 ```
 
 ### Manual Installation
-Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartPlaylist`).
+Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartLists`).
 
 ### Try RC Releases (Unstable)
 Want to test the latest features before they're officially released? You can try release candidate (RC) versions using the unstable manifest:
@@ -91,7 +91,7 @@ The plugin features a modern web-based interface for easy playlist management - 
 
 ### Supported Media Types
 
-SmartPlaylist works with all media types supported by Jellyfin:
+SmartLists works with all media types supported by Jellyfin:
 
 - **🎬 Movie** - Individual movie files
 - **📺 Episode** - Individual TV show episodes
@@ -104,7 +104,7 @@ SmartPlaylist works with all media types supported by Jellyfin:
 
 ## 🙏 Credits
 
-This project is a fork of the original SmartPlaylist plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
+This project is a fork of the original SmartLists plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
 
 ## ⚠️ Disclaimer
 

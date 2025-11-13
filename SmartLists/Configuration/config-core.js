@@ -42,6 +42,78 @@
     // Debounce delay for media type change updates (milliseconds)
     SmartLists.MEDIA_TYPE_UPDATE_DEBOUNCE_MS = 200;
     
+    // Constants for sort options (used throughout the application)
+    SmartLists.SORT_OPTIONS = [
+        { value: 'Name', label: 'Name' },
+        { value: 'Name (Ignore Articles)', label: 'Name (Ignore Article \'The\')' },
+        { value: 'ProductionYear', label: 'Production Year' },
+        { value: 'CommunityRating', label: 'Community Rating' },
+        { value: 'DateCreated', label: 'Date Created' },
+        { value: 'ReleaseDate', label: 'Release Date' },
+        { value: 'SeasonNumber', label: 'Season Number' },
+        { value: 'EpisodeNumber', label: 'Episode Number' },
+        { value: 'PlayCount (owner)', label: 'Play Count (owner)' },
+        { value: 'LastPlayed (owner)', label: 'Last Played (owner)' },
+        { value: 'Runtime', label: 'Runtime' },
+        { value: 'SeriesName', label: 'Series Name' },
+        { value: 'AlbumName', label: 'Album Name' },
+        { value: 'Artist', label: 'Artist' },
+        { value: 'Similarity', label: 'Similarity (requires Similar To rule)' },
+        { value: 'TrackNumber', label: 'Track Number' },
+        { value: 'Resolution', label: 'Resolution' },
+        { value: 'Random', label: 'Random' },
+        { value: 'NoOrder', label: 'No Order' }
+    ];
+    
+    SmartLists.SORT_ORDER_OPTIONS = [
+        { value: 'Ascending', label: 'Ascending' },
+        { value: 'Descending', label: 'Descending' }
+    ];
+    
+    // Constants for operators
+    SmartLists.RELATIVE_DATE_OPERATORS = ['NewerThan', 'OlderThan'];
+    SmartLists.MULTI_VALUE_OPERATORS = ['IsIn', 'IsNotIn'];
+    
+    // Global state - availableFields is populated by loadAndPopulateFields
+    SmartLists.availableFields = {};
+    
+    // Media types constant
+    SmartLists.mediaTypes = [
+        { Value: "Movie", Label: "Movie" },
+        { Value: "Episode", Label: "Episode (TV Show)" },
+        { Value: "Audio", Label: "Audio (Music)" },
+        { Value: "MusicVideo", Label: "Music Video" },
+        { Value: "Video", Label: "Video (Home Video)" },
+        { Value: "Photo", Label: "Photo (Home Photo)" },
+        { Value: "Book", Label: "Book" },
+        { Value: "AudioBook", Label: "Audiobook" }
+    ];
+    
+    // Utility function to get selected media types from page
+    SmartLists.getSelectedMediaTypes = function(page) {
+        const selectedMediaTypes = [];
+        const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
+        mediaTypesSelect.forEach(function(checkbox) {
+            if (checkbox.checked) {
+                selectedMediaTypes.push(checkbox.value);
+            }
+        });
+        return selectedMediaTypes;
+    };
+    
+    // Check if any rule has "Similar To" field selected
+    SmartLists.hasSimilarToRuleInForm = function(page) {
+        const allRules = page.querySelectorAll('.rule-row');
+        for (var i = 0; i < allRules.length; i++) {
+            const ruleRow = allRules[i];
+            const fieldSelect = ruleRow.querySelector('.rule-field-select');
+            if (fieldSelect && fieldSelect.value === 'SimilarTo') {
+                return true;
+            }
+        }
+        return false;
+    };
+    
     // Enhanced HTML escaping function to prevent XSS vulnerabilities
     SmartLists.escapeHtml = function(text) {
         if (text == null) return ''; // Only treat null/undefined as empty
@@ -176,6 +248,40 @@
         return window.ApiClient;
     };
     
+    SmartLists.loadAndPopulateFields = function() {
+        const apiClient = SmartLists.getApiClient();
+        const url = apiClient.getUrl(SmartLists.ENDPOINTS.fields);
+        
+        return apiClient.get(url).then(function(response) {
+            if (!response.ok) {
+                throw new Error('Network response was not ok: ' + response.statusText);
+            }
+            return response.json();
+        }).then(function(fields) {
+            SmartLists.availableFields = fields;
+            return fields;
+        }).catch(function(err) {
+            console.error('Error loading or parsing fields:', err);
+            throw err;
+        });
+    };
+    
+    SmartLists.populateSelect = function(selectElement, options, defaultValue, forceSelection) {
+        defaultValue = defaultValue !== undefined ? defaultValue : null;
+        forceSelection = forceSelection !== undefined ? forceSelection : true;
+        if (!selectElement) return;
+        options.forEach(function(opt, index) {
+            const option = document.createElement('option');
+            option.value = opt.Value;
+            option.textContent = opt.Label;
+            selectElement.appendChild(option);
+            
+            if ((defaultValue && opt.Value === defaultValue) || (!defaultValue && forceSelection && index === 0)) {
+                option.selected = true;
+            }
+        });
+    };
+    
     // Page state management
     SmartLists.getPageEditState = function(page) {
         return {
@@ -196,6 +302,251 @@
     
     SmartLists.getEventListenerOptions = function(signal) {
         return signal ? { signal: signal } : {};
+    };
+    
+    // Centralized styling configuration
+    SmartLists.STYLES = {
+        scheduleBox: {
+            border: '1px solid #666',
+            borderRadius: '2px',
+            padding: '1em 1.5em',
+            marginBottom: '1em',
+            background: 'rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            position: 'relative'
+        },
+        scheduleFields: {
+            display: 'flex',
+            gap: '0.75em',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap',
+            marginBottom: '0.5em',
+            position: 'relative'
+        },
+        scheduleField: {
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '150px',
+            flex: '0 1 auto'
+        },
+        scheduleFieldLabel: {
+            marginBottom: '0.3em',
+            fontSize: '0.85em',
+            color: '#ccc',
+            fontWeight: '500'
+        },
+        scheduleRemoveBtn: {
+            padding: '0.3em 0.6em',
+            fontSize: '1.3em',
+            border: '1px solid #666',
+            background: 'rgba(255, 255, 255, 0.07)',
+            color: '#aaa',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: '500',
+            lineHeight: '1',
+            width: 'auto',
+            minWidth: 'auto',
+            alignSelf: 'center',
+            marginLeft: 'auto'
+        },
+        sortBox: {
+            border: '1px solid #666',
+            borderRadius: '2px',
+            padding: '1em 1.5em',
+            marginBottom: '1em',
+            background: 'rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            position: 'relative'
+        },
+        sortFields: {
+            display: 'flex',
+            gap: '0.75em',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+        },
+        sortField: {
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '180px',
+            flex: '0 1 auto'
+        },
+        sortFieldLabel: {
+            marginBottom: '0.3em',
+            fontSize: '0.85em',
+            color: '#ccc',
+            fontWeight: '500'
+        },
+        sortRemoveBtn: {
+            padding: '0.3em 0.6em',
+            fontSize: '1.3em',
+            border: '1px solid #666',
+            background: 'rgba(255, 255, 255, 0.07)',
+            color: '#aaa',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: '500',
+            lineHeight: '1',
+            width: 'auto',
+            minWidth: 'auto',
+            alignSelf: 'center',
+            marginLeft: 'auto'
+        },
+        modal: {
+            container: {
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: '10001',
+                backgroundColor: '#101010',
+                padding: '1.5em',
+                width: '90%',
+                maxWidth: '400px'
+            },
+            backdrop: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                zIndex: '10000'
+            }
+        },
+        logicGroup: {
+            border: '1px solid #666',
+            borderRadius: '2px',
+            padding: '1.5em 1.5em 0.5em 1.5em',
+            marginBottom: '1em',
+            background: 'rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            position: 'relative'
+        },
+        buttons: {
+            action: {
+                base: {
+                    padding: '0.3em 0.8em',
+                    fontSize: '0.8em',
+                    border: '1px solid #666',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: '#aaa',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
+                }
+            },
+            delete: {
+                base: {
+                    padding: '0.3em 0.8em',
+                    fontSize: '0.8em',
+                    border: '1px solid #666',
+                    background: 'rgba(255, 255, 255, 0.07)',
+                    color: '#aaa',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
+                }
+            }
+        },
+        separators: {
+            and: {
+                textAlign: 'center',
+                margin: '0.8em 0',
+                color: '#888',
+                fontSize: '0.8em',
+                fontWeight: 'bold',
+                position: 'relative',
+                padding: '0.3em 0'
+            },
+            or: {
+                textAlign: 'center',
+                margin: '1em 0',
+                position: 'relative'
+            },
+            orText: {
+                background: '#1a1a1a',
+                color: '#bbb',
+                padding: '0.4em',
+                borderRadius: '4px',
+                fontWeight: 'bold',
+                fontSize: '0.9em',
+                position: 'relative',
+                zIndex: '2',
+                display: 'inline-block',
+                border: '1px solid #777',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.4)'
+            },
+            orLine: {
+                position: 'absolute',
+                top: '50%',
+                left: '0',
+                right: '0',
+                height: '2px',
+                background: 'linear-gradient(to right, transparent, #777, transparent)',
+                zIndex: '1'
+            },
+            andLine: {
+                position: 'absolute',
+                top: '50%',
+                left: '20%',
+                right: '20%',
+                height: '1px',
+                background: 'rgba(136, 136, 136, 0.3)',
+                zIndex: '1'
+            }
+        }
+    };
+    
+    SmartLists.styleRuleActionButton = function(button, buttonType) {
+        // Map and/or buttons to shared 'action' styling
+        const styleKey = (buttonType === 'and' || buttonType === 'or') ? 'action' : buttonType;
+        const buttonStyles = SmartLists.STYLES.buttons[styleKey];
+        if (!buttonStyles) return;
+        
+        const styles = buttonStyles.base;
+        SmartLists.applyStyles(button, styles);
+    };
+    
+    SmartLists.createAndSeparator = function() {
+        const separator = SmartLists.createStyledElement('div', 'rule-within-group-separator', SmartLists.STYLES.separators.and);
+        separator.textContent = 'AND';
+        
+        const line = SmartLists.createStyledElement('div', '', SmartLists.STYLES.separators.andLine);
+        separator.appendChild(line);
+        
+        return separator;
+    };
+    
+    SmartLists.createOrSeparator = function() {
+        const separator = SmartLists.createStyledElement('div', 'logic-group-separator', SmartLists.STYLES.separators.or);
+        const orText = SmartLists.createStyledElement('div', '', SmartLists.STYLES.separators.orText);
+        orText.textContent = 'OR';
+        separator.appendChild(orText);
+        
+        const line = SmartLists.createStyledElement('div', '', SmartLists.STYLES.separators.orLine);
+        separator.appendChild(line);
+        
+        return separator;
+    };
+    
+    // Utility functions for applying styles
+    SmartLists.applyStyles = function(element, styles) {
+        if (!element || !styles) return;
+        
+        Object.keys(styles).forEach(function(property) {
+            const value = styles[property];
+            // Convert camelCase to kebab-case
+            const cssProperty = property.replace(/([A-Z])/g, '-$1').toLowerCase();
+            element.style.setProperty(cssProperty, value, 'important');
+        });
+    };
+    
+    SmartLists.createStyledElement = function(tagName, className, styles) {
+        const element = document.createElement(tagName);
+        if (className) element.className = className;
+        if (styles) SmartLists.applyStyles(element, styles);
+        return element;
     };
     
     // Notification system
@@ -273,6 +624,25 @@
                 }
             }, 300);
         }, 8000);
+    };
+    
+    SmartLists.cleanupModalListeners = function(modal) {
+        // Remove any existing backdrop listener to prevent accumulation
+        if (modal._modalBackdropHandler) {
+            modal.removeEventListener('click', modal._modalBackdropHandler);
+            modal._modalBackdropHandler = null;
+        }
+        
+        // Abort any AbortController-managed listeners
+        if (modal._modalAbortController) {
+            try {
+                modal._modalAbortController.abort();
+            } catch (err) {
+                console.warn('Error aborting modal listeners:', err);
+            } finally {
+                modal._modalAbortController = null;
+            }
+        }
     };
     
 })(window.SmartLists = window.SmartLists || {});

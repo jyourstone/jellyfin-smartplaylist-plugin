@@ -1,0 +1,1303 @@
+(function (SmartLists) {
+    'use strict';
+
+    // Initialize namespace if it doesn't exist
+    if (!SmartLists) {
+        window.SmartLists = {};
+        SmartLists = window.SmartLists;
+    }
+
+    // ===== PAGE INITIALIZATION =====
+    SmartLists.initPage = function(page) {
+        // Check if this specific page is already initialized
+        if (page._pageInitialized) {
+            return;
+        }
+        page._pageInitialized = true;
+        
+        SmartLists.applyCustomStyles(page);
+
+        // Show loading state
+        const userSelect = page.querySelector('#playlistUser');
+        if (userSelect) {
+            userSelect.innerHTML = '<option value="">Loading users...</option>';
+        }
+        
+        // Disable form submission until initialization is complete
+        const submitBtn = page.querySelector('#submitBtn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Loading...';
+        }
+        
+        // Coordinate all async initialization
+        Promise.all([
+            SmartLists.populateStaticSelects(page), // Make synchronous function async
+            SmartLists.loadUsers(page),
+            SmartLists.loadAndPopulateFields()
+        ]).then(function() {
+            // All async operations completed successfully
+            const rulesContainer = page.querySelector('#rules-container');
+            if (rulesContainer.children.length === 0) {
+                SmartLists.createInitialLogicGroup(page);
+            } else {
+                // Re-initialize existing rules to ensure event listeners are properly attached
+                SmartLists.reinitializeExistingRules(page);
+            }
+            
+            // Enable form submission
+            const editState = SmartLists.getPageEditState(page);
+            const submitBtn = page.querySelector('#submitBtn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = editState.editMode ? 'Update Playlist' : 'Create Playlist';
+            }
+            
+            // Populate form defaults if we're on the create tab and not in edit mode
+            const currentTab = SmartLists.getCurrentTab();
+            if (currentTab === 'create' && !editState.editMode) {
+                SmartLists.populateFormDefaults(page);
+            }
+        }).catch(function(error) {
+            console.error('Error during page initialization:', error);
+            SmartLists.showNotification('Some configuration options failed to load. Please refresh the page.');
+            
+            // Still enable form submission even if some things failed
+            const editState = SmartLists.getPageEditState(page);
+            const submitBtn = page.querySelector('#submitBtn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = editState.editMode ? 'Update Playlist' : 'Create Playlist';
+            }
+        });
+
+        // Set up event listeners (these don't depend on async operations)
+        SmartLists.setupEventListeners(page);
+        
+        // Set up navigation functionality
+        SmartLists.setupNavigation(page);
+        
+        // Load configuration (this can run independently)
+        SmartLists.loadConfiguration(page);
+
+        SmartLists.applyMainContainerLayoutFix(page);
+    };
+
+    // ===== STATIC SELECTS POPULATION =====
+    SmartLists.populateStaticSelects = function(page) {
+        // Initialize page elements (media types, schedules, sorts)
+        SmartLists.initializePageElements(page);
+        
+        // Populate all common selectors dynamically (DRY principle) - using safe DOM manipulation
+        const scheduleTimeElement = page.querySelector('#scheduleTime');
+        if (scheduleTimeElement) {
+            SmartLists.populateSelectElement(scheduleTimeElement, SmartLists.generateTimeOptions('00:00')); // Default to midnight
+        }
+        
+        const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+        if (defaultScheduleTimeElement) {
+            SmartLists.populateSelectElement(defaultScheduleTimeElement, SmartLists.generateTimeOptions('00:00')); // Default to midnight
+        }
+        
+        const autoRefreshElement = page.querySelector('#autoRefreshMode');
+        if (autoRefreshElement) {
+            SmartLists.populateSelectElement(autoRefreshElement, SmartLists.generateAutoRefreshOptions('OnLibraryChanges'));
+        }
+        
+        const defaultAutoRefreshElement = page.querySelector('#defaultAutoRefresh');
+        if (defaultAutoRefreshElement) {
+            SmartLists.populateSelectElement(defaultAutoRefreshElement, SmartLists.generateAutoRefreshOptions('OnLibraryChanges'));
+        }
+        
+        const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
+        if (scheduleTriggerElement) {
+            SmartLists.populateSelectElement(scheduleTriggerElement, SmartLists.generateScheduleTriggerOptions('', true)); // Include "No schedule"
+        }
+        
+        const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+        if (defaultScheduleTriggerElement) {
+            SmartLists.populateSelectElement(defaultScheduleTriggerElement, SmartLists.generateScheduleTriggerOptions('', true)); // Include "No schedule"
+            
+            // Add event listener to update containers when trigger changes
+            defaultScheduleTriggerElement.addEventListener('change', function() {
+                SmartLists.updateDefaultScheduleContainers(page, this.value);
+            });
+        }
+        
+        // Populate default schedule option dropdowns
+        const defaultScheduleDayOfWeekElement = page.querySelector('#defaultScheduleDayOfWeek');
+        if (defaultScheduleDayOfWeekElement) {
+            SmartLists.populateSelectElement(defaultScheduleDayOfWeekElement, SmartLists.generateDayOfWeekOptions('0')); // Default Sunday
+        }
+        
+        const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+        if (defaultScheduleDayOfMonthElement) {
+            SmartLists.populateSelectElement(defaultScheduleDayOfMonthElement, SmartLists.generateDayOfMonthOptions('1')); // Default 1st
+        }
+        
+        const defaultScheduleMonthElement = page.querySelector('#defaultScheduleMonth');
+        if (defaultScheduleMonthElement) {
+            SmartLists.populateSelectElement(defaultScheduleMonthElement, SmartLists.generateMonthOptions('1')); // Default January
+        }
+        
+        const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+        if (defaultScheduleIntervalElement) {
+            SmartLists.populateSelectElement(defaultScheduleIntervalElement, SmartLists.generateIntervalOptions('00:15:00')); // Default 15 minutes
+        }
+        
+        // Populate sort options (legacy format for backward compatibility)
+        const SORT_OPTIONS_LEGACY = SmartLists.SORT_OPTIONS.map(function(opt) { return { Value: opt.value, Label: opt.label }; });
+        const SORT_ORDER_OPTIONS_LEGACY = SmartLists.SORT_ORDER_OPTIONS.map(function(opt) { return { Value: opt.value, Label: opt.label }; });
+        
+        const defaultSortBySetting = page.querySelector('#defaultSortBy');
+        const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
+        
+        if (defaultSortBySetting && defaultSortBySetting.children.length === 0) {
+            SmartLists.populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, 'Name'); 
+        }
+        if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
+            SmartLists.populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, 'Ascending'); 
+        }
+        
+        // Add default sort option when creating a new playlist (not in edit mode)
+        const editState = SmartLists.getPageEditState(page);
+        if (!editState.editMode) {
+            const apiClient = SmartLists.getApiClient();
+            return apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+                const sortsContainer = page.querySelector('#sorts-container');
+                if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
+                    SmartLists.addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
+                }
+            }).catch(function() {
+                // Fallback to default values if config load fails
+                const sortsContainer = page.querySelector('#sorts-container');
+                if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
+                    SmartLists.addSortBox(page, { SortBy: 'Name', SortOrder: 'Ascending' });
+                }
+            });
+        }
+        
+        // Populate playlist naming configuration fields
+        const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
+        const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+        if (playlistNamePrefix && playlistNamePrefix.value === '') {
+            playlistNamePrefix.value = '';
+        }
+        if (playlistNameSuffix && playlistNameSuffix.value === '') {
+            playlistNameSuffix.value = '[Smart]';
+        }
+        
+        // Return resolved promise (synchronous path when not adding default sort)
+        return Promise.resolve();
+    };
+
+    // ===== PAGE ELEMENTS INITIALIZATION =====
+    SmartLists.initializePageElements = function(page) {
+        // Generate media type checkboxes from the mediaTypes array
+        SmartLists.generateMediaTypeCheckboxes(page);
+        
+        // Initialize schedule system
+        if (SmartLists.initializeScheduleSystem) {
+            SmartLists.initializeScheduleSystem(page);
+        }
+        
+        // Initialize sort system
+        if (SmartLists.initializeSortSystem) {
+            SmartLists.initializeSortSystem(page);
+        }
+    };
+
+    // ===== MEDIA TYPE CHECKBOXES GENERATION =====
+    SmartLists.generateMediaTypeCheckboxes = function(page) {
+        const container = page.querySelector('#media-types-container');
+        if (!container) return;
+        
+        // Clear existing content
+        container.innerHTML = '';
+        
+        // Create one big checkboxList paperList container
+        const mainContainer = document.createElement('div');
+        mainContainer.className = 'checkboxList paperList';
+        mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
+        
+        // Debounce timer and AbortController for media type updates (shared per page)
+        page._mediaTypeUpdateTimer = page._mediaTypeUpdateTimer || null;
+        
+        // Create AbortController for media type checkbox listeners
+        if (page._mediaTypeAbortController) {
+            page._mediaTypeAbortController.abort();
+        }
+        page._mediaTypeAbortController = SmartLists.createAbortController();
+        const mediaTypeSignal = page._mediaTypeAbortController.signal;
+        
+        // Batch update function for all media type changes
+        // Order matters: repopulate fields first (may invalidate), then sync dependent UI
+        const batchUpdateMediaTypeChanges = function() {
+            // 1) Re-populate fields (may invalidate current selections)
+            if (SmartLists.updateAllFieldSelects) {
+                SmartLists.updateAllFieldSelects(page);
+            }
+            
+            // 2) Re-sync dependent UI for all rules
+            if (SmartLists.updateAllUserSelectorVisibility) {
+                SmartLists.updateAllUserSelectorVisibility(page);
+            }
+            if (SmartLists.updateAllNextUnwatchedOptionsVisibility) {
+                SmartLists.updateAllNextUnwatchedOptionsVisibility(page);
+            }
+            if (SmartLists.updateAllCollectionsOptionsVisibility) {
+                SmartLists.updateAllCollectionsOptionsVisibility(page);
+            }
+            if (SmartLists.updateAllTagsOptionsVisibility) {
+                SmartLists.updateAllTagsOptionsVisibility(page);
+            }
+            if (SmartLists.updateAllStudiosOptionsVisibility) {
+                SmartLists.updateAllStudiosOptionsVisibility(page);
+            }
+            if (SmartLists.updateAllGenresOptionsVisibility) {
+                SmartLists.updateAllGenresOptionsVisibility(page);
+            }
+            
+            // 3) Update sort options visibility based on media types
+            if (SmartLists.updateAllSortOptionsVisibility) {
+                SmartLists.updateAllSortOptionsVisibility(page);
+            }
+        };
+        
+        // Generate checkboxes for each media type
+        if (!SmartLists.mediaTypes || !Array.isArray(SmartLists.mediaTypes)) {
+            console.error('SmartLists.mediaTypes is not available');
+            return;
+        }
+        
+        SmartLists.mediaTypes.forEach(function(mediaType) {
+            const sectionCheckbox = document.createElement('div');
+            sectionCheckbox.className = 'sectioncheckbox';
+            
+            const label = document.createElement('label');
+            label.className = 'emby-checkbox-label';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.setAttribute('data-embycheckbox', 'true');
+            checkbox.id = 'mediaType' + mediaType.Value;
+            checkbox.className = 'emby-checkbox media-type-checkbox';
+            checkbox.value = mediaType.Value;
+            
+            // Add debounced event listener to batch updates when media types change
+            checkbox.addEventListener('change', function() {
+                // Clear any pending update
+                if (page._mediaTypeUpdateTimer) {
+                    clearTimeout(page._mediaTypeUpdateTimer);
+                }
+                
+                // Schedule batched update after debounce delay
+                page._mediaTypeUpdateTimer = setTimeout(function() {
+                    batchUpdateMediaTypeChanges();
+                    page._mediaTypeUpdateTimer = null;
+                }, SmartLists.MEDIA_TYPE_UPDATE_DEBOUNCE_MS || 200);
+            }, SmartLists.getEventListenerOptions(mediaTypeSignal));
+            
+            const span = document.createElement('span');
+            span.className = 'checkboxLabel';
+            span.textContent = mediaType.Label;
+            
+            const checkboxOutline = document.createElement('span');
+            checkboxOutline.className = 'checkboxOutline';
+            
+            const checkedIcon = document.createElement('span');
+            checkedIcon.className = 'material-icons checkboxIcon checkboxIcon-checked check';
+            checkedIcon.setAttribute('aria-hidden', 'true');
+            
+            const uncheckedIcon = document.createElement('span');
+            uncheckedIcon.className = 'material-icons checkboxIcon checkboxIcon-unchecked';
+            uncheckedIcon.setAttribute('aria-hidden', 'true');
+            
+            checkboxOutline.appendChild(checkedIcon);
+            checkboxOutline.appendChild(uncheckedIcon);
+            
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            label.appendChild(checkboxOutline);
+            sectionCheckbox.appendChild(label);
+            mainContainer.appendChild(sectionCheckbox);
+        });
+        
+        container.appendChild(mainContainer);
+    };
+
+    // ===== FORM DEFAULTS POPULATION =====
+    SmartLists.populateFormDefaults = function(page) {
+        const apiClient = SmartLists.getApiClient();
+        apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+            // Set default values for Max Items and Max Play Time
+            const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            SmartLists.setElementValue(page, '#playlistMaxItems', defaultMaxItems);
+            
+            const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
+            
+            // Set default auto refresh mode
+            SmartLists.setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
+            
+            // Set default public/enabled checkboxes
+            SmartLists.setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
+            SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
+        }).catch(function() {
+            // Fallback defaults if config fails to load
+            SmartLists.setElementValue(page, '#playlistMaxItems', 500);
+            SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
+            SmartLists.setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
+            SmartLists.setElementChecked(page, '#playlistIsPublic', false);
+            SmartLists.setElementChecked(page, '#playlistIsEnabled', true);
+        });
+    };
+
+    // ===== USER LOADING =====
+    SmartLists.loadUsers = async function(page) {
+        const apiClient = SmartLists.getApiClient();
+        const userSelect = page.querySelector('#playlistUser');
+        
+        try {
+            const response = await apiClient.ajax({
+                type: "GET",
+                url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
+                contentType: 'application/json'
+            });
+            
+            const users = await response.json();
+            
+            // Clear existing options
+            userSelect.innerHTML = '';
+            
+            // Add user options
+            users.forEach(function(user) {
+                const option = document.createElement('option');
+                option.value = user.Id;
+                option.textContent = user.Name;
+                userSelect.appendChild(option);
+            });
+            
+            // Set current user as default if no user is selected
+            SmartLists.setCurrentUserAsDefault(page);
+        } catch (err) {
+            console.error('Error loading users:', err);
+            if (userSelect) {
+                userSelect.innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+    };
+
+    // ===== NAVIGATION =====
+    SmartLists.getCurrentTab = function() {
+        const hash = window.location.hash;
+        const match = hash.match(/[?&]tab=([^&]*)/);
+        return match ? decodeURIComponent(match[1]) : 'create';
+    };
+    
+    SmartLists.updateUrl = function(tabId) {
+        let hash = window.location.hash;
+        let newHash;
+
+        // Ensure hash starts with # for proper parsing by getCurrentTab
+        if (!hash) {
+            hash = '#';
+        }
+
+        if (hash.includes('tab=')) {
+            // Replace existing tab parameter
+            newHash = hash.replace(/([?&])tab=[^&]*/, '$1tab=' + encodeURIComponent(tabId));
+        } else {
+            // Add tab parameter
+            const separator = hash.includes('?') ? '&' : '?';
+            newHash = hash + separator + 'tab=' + encodeURIComponent(tabId);
+        }
+        
+        window.history.replaceState({}, '', window.location.pathname + window.location.search + newHash);
+    };
+    
+    SmartLists.switchToTab = function(page, tabId) {
+        var navContainer = page.querySelector('.localnav');
+        var navButtons = navContainer ? navContainer.querySelectorAll('a[data-tab]') : [];
+        var tabContents = page.querySelectorAll('[data-tab-content]');
+
+        // Update navigation buttons
+        navButtons.forEach(function(btn) {
+            if (btn.getAttribute('data-tab') === tabId) {
+                btn.classList.add('ui-btn-active');
+            } else {
+                btn.classList.remove('ui-btn-active');
+            }
+        });
+
+        // Update tab content visibility
+        tabContents.forEach(function(content) {
+            var contentTabId = content.getAttribute('data-tab-content');
+            if (contentTabId === tabId) {
+                content.classList.remove('hide');
+            } else {
+                content.classList.add('hide');
+            }
+        });
+
+        // Load playlist list when switching to manage tab
+        if (tabId === 'manage') {
+            // Load saved filter preferences first
+            if (SmartLists.loadPlaylistFilterPreferences) {
+                SmartLists.loadPlaylistFilterPreferences(page);
+            }
+            if (SmartLists.loadPlaylistList) {
+                SmartLists.loadPlaylistList(page);
+            }
+        }
+        
+        // Populate defaults when switching to create tab
+        if (tabId === 'create') {
+            // Check if form is empty (not in edit mode) and populate defaults
+            const editState = SmartLists.getPageEditState(page);
+            if (!editState.editMode) {
+                // Only populate defaults if form fields are empty
+                const playlistName = page.querySelector('#playlistName');
+                if (playlistName && !playlistName.value) {
+                    SmartLists.populateFormDefaults(page);
+                }
+            }
+        }
+
+        // Update URL
+        SmartLists.updateUrl(tabId);
+    };
+
+    SmartLists.setupNavigation = function(page) {
+        var navContainer = page.querySelector('.localnav');
+        if (!navContainer) {
+            return;
+        }
+        
+        // Prevent multiple setups on the same navigation
+        if (navContainer._navInitialized) return;
+        navContainer._navInitialized = true;
+
+        // Apply Jellyfin's native styling to the navigation container
+        SmartLists.applyStyles(navContainer, {
+            marginBottom: '0.5em'
+        });
+
+        // Set initial active tab immediately to prevent flash
+        var initialTab = SmartLists.getCurrentTab();
+        SmartLists.switchToTab(page, initialTab);
+
+        // Use shared tab switching helper
+        function setActiveTab(tabId) {
+            SmartLists.switchToTab(page, tabId);
+        }
+
+        // Create AbortController for navigation click listeners
+        var navAbortController = SmartLists.createAbortController();
+        var navSignal = navAbortController.signal;
+        
+        // Store controller for cleanup
+        navContainer._navAbortController = navAbortController;
+
+        // Handle navigation clicks
+        var navButtons = navContainer.querySelectorAll('a[data-tab]');
+        navButtons.forEach(function(button) {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                var tabId = button.getAttribute('data-tab');
+                
+                // Hide any open modals when switching tabs
+                var deleteModal = page.querySelector('#delete-confirm-modal');
+                if (deleteModal && !deleteModal.classList.contains('hide')) {
+                    deleteModal.classList.add('hide');
+                    SmartLists.cleanupModalListeners(deleteModal);
+                }
+                var refreshModal = page.querySelector('#refresh-confirm-modal');
+                if (refreshModal && !refreshModal.classList.contains('hide')) {
+                    refreshModal.classList.add('hide');
+                    SmartLists.cleanupModalListeners(refreshModal);
+                }
+                
+                // Use shared tab switching helper (includes URL update)
+                setActiveTab(tabId);
+            }, SmartLists.getEventListenerOptions(navSignal));
+        });
+        
+        // Note: No popstate handler - tab navigation uses replaceState for URL bookmarking only
+        
+        // Initial tab already set above to prevent flash
+    };
+
+    // ===== EVENT LISTENERS SETUP =====
+    SmartLists.setupEventListeners = function(page) {
+        // Create AbortController for page event listeners
+        const pageAbortController = SmartLists.createAbortController();
+        const pageSignal = pageAbortController.signal;
+        
+        // Store controller on the page for cleanup
+        page._pageAbortController = pageAbortController;
+        
+        // Setup playlist naming event listeners
+        SmartLists.setupPlaylistNamingListeners(page, pageSignal);
+        
+        page.addEventListener('click', function (e) {
+            const target = e.target;
+            
+            // Handle rule action buttons
+            if (target.classList.contains('and-btn')) {
+                const ruleRow = target.closest('.rule-row');
+                const logicGroup = ruleRow.closest('.logic-group');
+                if (SmartLists.addRuleToGroup) {
+                    SmartLists.addRuleToGroup(page, logicGroup);
+                }
+            }
+            if (target.classList.contains('or-btn')) {
+                if (SmartLists.addNewLogicGroup) {
+                    SmartLists.addNewLogicGroup(page);
+                }
+            }
+            if (target.classList.contains('delete-btn')) {
+                const ruleRow = target.closest('.rule-row');
+                if (ruleRow && SmartLists.removeRule) {
+                    SmartLists.removeRule(page, ruleRow);
+                }
+            }
+            
+            // Handle other buttons
+            if (target.closest('#clearFormBtn')) {
+                if (SmartLists.clearForm) {
+                    SmartLists.clearForm(page);
+                }
+            }
+            if (target.closest('#saveSettingsBtn')) {
+                SmartLists.saveConfiguration(page);
+            }
+            if (target.closest('#refreshPlaylistsBtn')) {
+                if (SmartLists.showRefreshConfirmModal) {
+                    SmartLists.showRefreshConfirmModal(page, SmartLists.refreshAllPlaylists);
+                }
+            }
+            if (target.closest('#refreshPlaylistListBtn')) {
+                if (SmartLists.loadPlaylistList) {
+                    SmartLists.loadPlaylistList(page);
+                }
+            }
+            if (target.closest('#exportPlaylistsBtn')) {
+                if (SmartLists.exportPlaylists) {
+                    SmartLists.exportPlaylists();
+                }
+            }
+            if (target.closest('#importPlaylistsBtn')) {
+                if (SmartLists.importPlaylists) {
+                    SmartLists.importPlaylists(page);
+                }
+            }
+            if (target.closest('.delete-playlist-btn')) {
+                const button = target.closest('.delete-playlist-btn');
+                if (SmartLists.showDeleteConfirm) {
+                    SmartLists.showDeleteConfirm(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                }
+            }
+            if (target.closest('.edit-playlist-btn')) {
+                const button = target.closest('.edit-playlist-btn');
+                if (SmartLists.editPlaylist) {
+                    SmartLists.editPlaylist(page, button.getAttribute('data-playlist-id'));
+                }
+            }
+            if (target.closest('.clone-playlist-btn')) {
+                const button = target.closest('.clone-playlist-btn');
+                if (SmartLists.clonePlaylist) {
+                    SmartLists.clonePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                }
+            }
+            if (target.closest('.refresh-playlist-btn')) {
+                const button = target.closest('.refresh-playlist-btn');
+                if (SmartLists.refreshPlaylist) {
+                    SmartLists.refreshPlaylist(button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                }
+            }
+            if (target.closest('.enable-playlist-btn')) {
+                const button = target.closest('.enable-playlist-btn');
+                if (SmartLists.enablePlaylist) {
+                    SmartLists.enablePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                }
+            }
+            if (target.closest('.disable-playlist-btn')) {
+                const button = target.closest('.disable-playlist-btn');
+                if (SmartLists.disablePlaylist) {
+                    SmartLists.disablePlaylist(page, button.getAttribute('data-playlist-id'), button.getAttribute('data-playlist-name'));
+                }
+            }
+            if (target.closest('#cancelEditBtn')) {
+                if (SmartLists.cancelEdit) {
+                    SmartLists.cancelEdit(page);
+                }
+            }
+            if (target.closest('#expandAllBtn')) {
+                if (SmartLists.toggleAllPlaylists) {
+                    SmartLists.toggleAllPlaylists(page);
+                }
+            }
+            if (target.closest('.playlist-header')) {
+                const playlistCard = target.closest('.playlist-card');
+                if (playlistCard && SmartLists.togglePlaylistCard) {
+                    SmartLists.togglePlaylistCard(playlistCard);
+                }
+            }
+            
+            // Bulk operations
+            if (target.closest('#selectAllCheckbox')) {
+                if (SmartLists.toggleSelectAll) {
+                    SmartLists.toggleSelectAll(page);
+                }
+            }
+            if (target.closest('#bulkEnableBtn')) {
+                if (SmartLists.bulkEnablePlaylists) {
+                    SmartLists.bulkEnablePlaylists(page);
+                }
+            }
+            if (target.closest('#bulkDisableBtn')) {
+                if (SmartLists.bulkDisablePlaylists) {
+                    SmartLists.bulkDisablePlaylists(page);
+                }
+            }
+            if (target.closest('#bulkDeleteBtn')) {
+                if (SmartLists.bulkDeletePlaylists) {
+                    SmartLists.bulkDeletePlaylists(page);
+                }
+            }
+            if (target.classList.contains('playlist-checkbox')) {
+                e.stopPropagation(); // Prevent triggering playlist header click
+                if (SmartLists.updateSelectedCount) {
+                    SmartLists.updateSelectedCount(page);
+                }
+            }
+            if (target.closest('.emby-checkbox-label') && target.closest('.playlist-header')) {
+                const label = target.closest('.emby-checkbox-label');
+                const checkbox = label.querySelector('.playlist-checkbox');
+                if (checkbox && target !== checkbox) {
+                    e.stopPropagation(); // Prevent triggering playlist header click
+                    // Let the label's default behavior handle the checkbox toggle
+                }
+            }
+        }, SmartLists.getEventListenerOptions(pageSignal));
+        
+        const playlistForm = page.querySelector('#playlistForm');
+        if (playlistForm) {
+            playlistForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                if (SmartLists.createPlaylist) {
+                    SmartLists.createPlaylist(page);
+                }
+            }, SmartLists.getEventListenerOptions(pageSignal));
+        }
+        
+        // Add search input event listener
+        const searchInput = page.querySelector('#playlistSearchInput');
+        const clearSearchBtn = page.querySelector('#clearSearchBtn');
+        if (searchInput) {
+            // Store search timeout on the page for cleanup
+            page._searchTimeout = null;
+            
+            // Function to update clear button visibility
+            const updateClearButtonVisibility = function() {
+                if (clearSearchBtn) {
+                    clearSearchBtn.style.display = searchInput.value.trim() ? 'flex' : 'none';
+                }
+            };
+            
+            // Use debounced search to avoid too many re-renders
+            searchInput.addEventListener('input', function() {
+                updateClearButtonVisibility();
+                clearTimeout(page._searchTimeout);
+                page._searchTimeout = setTimeout(async function() {
+                    try {
+                        if (SmartLists.applySearchFilter) {
+                            await SmartLists.applySearchFilter(page);
+                        }
+                    } catch (err) {
+                        console.error('Error during search:', err);
+                        SmartLists.showNotification('Search error: ' + err.message);
+                    }
+                }, 300); // 300ms delay
+            }, SmartLists.getEventListenerOptions(pageSignal));
+            
+            // Also search on Enter key
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    clearTimeout(page._searchTimeout);
+                    if (SmartLists.applySearchFilter) {
+                        SmartLists.applySearchFilter(page).catch(function(err) {
+                            console.error('Error during search:', err);
+                            SmartLists.showNotification('Search error: ' + err.message);
+                        });
+                    }
+                }
+            }, SmartLists.getEventListenerOptions(pageSignal));
+            
+            // Handle clear button click
+            if (clearSearchBtn) {
+                clearSearchBtn.addEventListener('click', function() {
+                    searchInput.value = '';
+                    updateClearButtonVisibility();
+                    clearTimeout(page._searchTimeout);
+                    if (SmartLists.applySearchFilter) {
+                        SmartLists.applySearchFilter(page).catch(function(err) {
+                            console.error('Error during search:', err);
+                            SmartLists.showNotification('Search error: ' + err.message);
+                        });
+                    }
+                    searchInput.focus(); // Return focus to search input
+                }, SmartLists.getEventListenerOptions(pageSignal));
+            }
+            
+            // Initialize clear button visibility
+            updateClearButtonVisibility();
+        }
+        
+        // Generic event listener setup - eliminates DRY violations
+        if (SmartLists.setupFilterEventListeners) {
+            SmartLists.setupFilterEventListeners(page, pageSignal);
+        }
+        
+        const clearFiltersBtn = page.querySelector('#clearFiltersBtn');
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', function() {
+                if (SmartLists.clearAllFilters) {
+                    SmartLists.clearAllFilters(page);
+                }
+            }, SmartLists.getEventListenerOptions(pageSignal));
+        }
+        
+        // Add import file input event listener
+        const importFileInput = page.querySelector('#importPlaylistsFile');
+        const importBtn = page.querySelector('#importPlaylistsBtn');
+        const selectedFileName = page.querySelector('#selectedFileName');
+        if (importFileInput && importBtn) {
+            importFileInput.addEventListener('change', function() {
+                const hasFile = this.files && this.files.length > 0;
+                
+                // Show/hide and enable/disable import button based on file selection
+                if (hasFile) {
+                    importBtn.style.display = 'inline-block';
+                    importBtn.disabled = false;
+                } else {
+                    importBtn.style.display = 'none';
+                    importBtn.disabled = true;
+                }
+                
+                // Update filename display
+                if (selectedFileName) {
+                    if (hasFile) {
+                        selectedFileName.textContent = 'Selected: ' + this.files[0].name;
+                        selectedFileName.style.fontStyle = 'italic';
+                    } else {
+                        selectedFileName.textContent = '';
+                    }
+                }
+            }, SmartLists.getEventListenerOptions(pageSignal));
+        }
+    };
+
+    // ===== PLAYLIST NAMING =====
+    SmartLists.updatePlaylistNamePreview = function(page) {
+        const prefix = page.querySelector('#playlistNamePrefix').value;
+        const suffix = page.querySelector('#playlistNameSuffix').value;
+        const previewText = page.querySelector('#previewText');
+        
+        const exampleName = 'My Awesome Playlist';
+        let finalName = '';
+        
+        if (prefix) {
+            finalName += prefix + ' ';
+        }
+        finalName += exampleName;
+        if (suffix) {
+            finalName += ' ' + suffix;
+        }
+        
+        previewText.textContent = finalName;
+    };
+
+    SmartLists.setupPlaylistNamingListeners = function(page, signal) {
+        const prefixInput = page.querySelector('#playlistNamePrefix');
+        const suffixInput = page.querySelector('#playlistNameSuffix');
+        
+        if (prefixInput) {
+            prefixInput.addEventListener('input', function() {
+                SmartLists.updatePlaylistNamePreview(page);
+            }, SmartLists.getEventListenerOptions(signal));
+        }
+        
+        if (suffixInput) {
+            suffixInput.addEventListener('input', function() {
+                SmartLists.updatePlaylistNamePreview(page);
+            }, SmartLists.getEventListenerOptions(signal));
+        }
+    };
+
+    // ===== CONFIGURATION MANAGEMENT =====
+    SmartLists.loadConfiguration = function(page) {
+        Dashboard.showLoadingMsg();
+        SmartLists.getApiClient().getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+            const defaultSortByEl = page.querySelector('#defaultSortBy');
+            const defaultSortOrderEl = page.querySelector('#defaultSortOrder');
+            const defaultMakePublicEl = page.querySelector('#defaultMakePublic');
+            const defaultMaxItemsEl = page.querySelector('#defaultMaxItems');
+            const defaultMaxPlayTimeMinutesEl = page.querySelector('#defaultMaxPlayTimeMinutes');
+            const defaultAutoRefreshEl = page.querySelector('#defaultAutoRefresh');
+            const playlistNamePrefixEl = page.querySelector('#playlistNamePrefix');
+            const playlistNameSuffixEl = page.querySelector('#playlistNameSuffix');
+            
+            if (defaultSortByEl) defaultSortByEl.value = config.DefaultSortBy || 'Name';
+            if (defaultSortOrderEl) defaultSortOrderEl.value = config.DefaultSortOrder || 'Ascending';
+            if (defaultMakePublicEl) defaultMakePublicEl.checked = config.DefaultMakePublic || false;
+            if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+            if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+            if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
+            
+            if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
+            if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
+            
+            // Load parallel concurrency setting
+            const parallelConcurrencyEl = page.querySelector('#parallelConcurrencyLimit');
+            if (parallelConcurrencyEl) {
+                parallelConcurrencyEl.value = config.ParallelConcurrencyLimit !== undefined && config.ParallelConcurrencyLimit !== null ? config.ParallelConcurrencyLimit : 0;
+            }
+            
+            // Load schedule configuration values
+            const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
+            if (defaultScheduleTriggerElement) {
+                // DefaultScheduleTrigger is nullable enum - null means no schedule
+                defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
+                
+                // Add event listener to update containers when trigger changes
+                defaultScheduleTriggerElement.addEventListener('change', function() {
+                    SmartLists.updateDefaultScheduleContainers(page, this.value);
+                });
+                
+                // Update containers based on current value
+                SmartLists.updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
+            }
+            
+            const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
+            if (defaultScheduleTimeElement && config.DefaultScheduleTime) {
+                // Parse time from "HH:mm:ss" format and convert to "HH:mm" for the select
+                const timeParts = config.DefaultScheduleTime.split(':');
+                if (timeParts.length >= 2) {
+                    const timeValue = timeParts[0] + ':' + timeParts[1];
+                    defaultScheduleTimeElement.value = timeValue;
+                }
+            }
+            
+            const defaultScheduleDayOfWeekElement = page.querySelector('#defaultScheduleDayOfWeek');
+            if (defaultScheduleDayOfWeekElement && config.DefaultScheduleDayOfWeek !== undefined) {
+                defaultScheduleDayOfWeekElement.value = SmartLists.convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
+            }
+            
+            const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
+            if (defaultScheduleDayOfMonthElement && config.DefaultScheduleDayOfMonth !== undefined) {
+                defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth.toString();
+            }
+            
+            const defaultScheduleMonthElement = page.querySelector('#defaultScheduleMonth');
+            if (defaultScheduleMonthElement && config.DefaultScheduleMonth !== undefined) {
+                defaultScheduleMonthElement.value = config.DefaultScheduleMonth.toString();
+            }
+            
+            const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
+            if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
+                defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
+            }
+            
+            // Update preview after loading configuration
+            SmartLists.updatePlaylistNamePreview(page);
+            
+            Dashboard.hideLoadingMsg();
+        }).catch(function(err) {
+            console.error('Error loading configuration:', err);
+            Dashboard.hideLoadingMsg();
+        });
+    };
+
+    SmartLists.saveConfiguration = function(page) {
+        Dashboard.showLoadingMsg();
+        const apiClient = SmartLists.getApiClient();
+        apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+            config.DefaultSortBy = page.querySelector('#defaultSortBy').value;
+            config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
+            config.DefaultMakePublic = page.querySelector('#defaultMakePublic').checked;
+            const defaultMaxItemsInput = page.querySelector('#defaultMaxItems').value;
+            if (defaultMaxItemsInput === '') {
+                config.DefaultMaxItems = 500;
+            } else {
+                const parsedValue = parseInt(defaultMaxItemsInput);
+                config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
+            }
+            
+            const defaultMaxPlayTimeMinutesInput = page.querySelector('#defaultMaxPlayTimeMinutes').value;
+            if (defaultMaxPlayTimeMinutesInput === '') {
+                config.DefaultMaxPlayTimeMinutes = 0;
+            } else {
+                const parsedValue = parseInt(defaultMaxPlayTimeMinutesInput);
+                config.DefaultMaxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
+            }
+            
+            config.DefaultAutoRefresh = page.querySelector('#defaultAutoRefresh').value || 'OnLibraryChanges';
+            
+            // Save default schedule settings
+            // DefaultScheduleTrigger is nullable ScheduleTrigger enum - send null for empty, otherwise the enum value
+            const defaultScheduleTriggerValue = page.querySelector('#defaultScheduleTrigger').value;
+            config.DefaultScheduleTrigger = defaultScheduleTriggerValue === '' ? null : (defaultScheduleTriggerValue || null);
+            
+            // DefaultScheduleTime is TimeSpan - send in format "HH:mm:ss" or "HH:mm:ss.fffffff"
+            const defaultScheduleTimeValue = page.querySelector('#defaultScheduleTime').value;
+            if (defaultScheduleTimeValue) {
+                // Parse HH:mm format and convert to HH:mm:ss
+                const timeParts = defaultScheduleTimeValue.split(':');
+                const hours = parseInt(timeParts[0] || '0', 10);
+                const minutes = parseInt(timeParts[1] || '0', 10);
+                // Manual padding for ES5 compatibility
+                const hoursStr = hours < 10 ? '0' + hours : hours.toString();
+                const minutesStr = minutes < 10 ? '0' + minutes : minutes.toString();
+                config.DefaultScheduleTime = hoursStr + ':' + minutesStr + ':00';
+            } else {
+                config.DefaultScheduleTime = '00:00:00';
+            }
+            
+            // DefaultScheduleDayOfWeek is DayOfWeek enum (not nullable) - default to 0 (Sunday) if empty
+            const defaultScheduleDayOfWeekValue = page.querySelector('#defaultScheduleDayOfWeek').value;
+            config.DefaultScheduleDayOfWeek = defaultScheduleDayOfWeekValue ? parseInt(defaultScheduleDayOfWeekValue, 10) : 0;
+            
+            // DefaultScheduleDayOfMonth is int (not nullable) - default to 1 if empty
+            const defaultScheduleDayOfMonthValue = page.querySelector('#defaultScheduleDayOfMonth').value;
+            config.DefaultScheduleDayOfMonth = defaultScheduleDayOfMonthValue ? parseInt(defaultScheduleDayOfMonthValue, 10) : 1;
+            
+            // DefaultScheduleMonth is int (not nullable) - default to 1 (January) if empty
+            const defaultScheduleMonthValue = page.querySelector('#defaultScheduleMonth').value;
+            config.DefaultScheduleMonth = defaultScheduleMonthValue ? parseInt(defaultScheduleMonthValue, 10) : 1;
+            
+            // DefaultScheduleInterval is TimeSpan - send in format "HH:mm:ss" or "d.HH:mm:ss"
+            const defaultScheduleIntervalValue = page.querySelector('#defaultScheduleInterval').value;
+            if (defaultScheduleIntervalValue) {
+                // Parse interval format (e.g., "15" = minutes, "1:00" = hours:minutes)
+                // Convert to TimeSpan format "HH:mm:ss"
+                const intervalParts = defaultScheduleIntervalValue.split(':');
+                if (intervalParts.length === 1) {
+                    // Just minutes (e.g., "15")
+                    const minutes = parseInt(intervalParts[0], 10);
+                    const hours = Math.floor(minutes / 60);
+                    const remainingMinutes = minutes % 60;
+                    // Manual padding for ES5 compatibility
+                    const hoursStr = hours < 10 ? '0' + hours : hours.toString();
+                    const minutesStr = remainingMinutes < 10 ? '0' + remainingMinutes : remainingMinutes.toString();
+                    config.DefaultScheduleInterval = hoursStr + ':' + minutesStr + ':00';
+                } else if (intervalParts.length === 2) {
+                    // Hours:minutes format (e.g., "1:00")
+                    const hours = parseInt(intervalParts[0], 10);
+                    const minutes = parseInt(intervalParts[1], 10);
+                    // Manual padding for ES5 compatibility
+                    const hoursStr = hours < 10 ? '0' + hours : hours.toString();
+                    const minutesStr = minutes < 10 ? '0' + minutes : minutes.toString();
+                    config.DefaultScheduleInterval = hoursStr + ':' + minutesStr + ':00';
+                } else {
+                    // Already in correct format or invalid - use as-is
+                    config.DefaultScheduleInterval = defaultScheduleIntervalValue;
+                }
+            } else {
+                // Default to 15 minutes if empty
+                config.DefaultScheduleInterval = '00:15:00';
+            }
+            
+            config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value || '';
+            config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value || '[Smart]';
+            
+            // Save parallel concurrency setting
+            const parallelConcurrencyInput = page.querySelector('#parallelConcurrencyLimit').value;
+            if (parallelConcurrencyInput === '') {
+                config.ParallelConcurrencyLimit = 0;
+            } else {
+                const parsedValue = parseInt(parallelConcurrencyInput, 10);
+                config.ParallelConcurrencyLimit = isNaN(parsedValue) ? 0 : parsedValue;
+            }
+            
+            apiClient.updatePluginConfiguration(SmartLists.getPluginId(), config).then(function() {
+                Dashboard.hideLoadingMsg();
+                SmartLists.showNotification('Configuration saved successfully.', 'success');
+            }).catch(function(err) {
+                console.error('Error saving configuration:', err);
+                Dashboard.hideLoadingMsg();
+                SmartLists.showNotification('Failed to save configuration: ' + err.message, 'error');
+            });
+        }).catch(function(err) {
+            console.error('Error loading configuration for save:', err);
+            Dashboard.hideLoadingMsg();
+            SmartLists.showNotification('Failed to load configuration: ' + err.message, 'error');
+        });
+    };
+
+    SmartLists.refreshAllPlaylists = function() {
+        Dashboard.showLoadingMsg();
+        
+        SmartLists.getApiClient().ajax({
+            type: "POST",
+            url: SmartLists.getApiClient().getUrl(SmartLists.ENDPOINTS.refreshDirect),
+            contentType: 'application/json'
+        }).then(function() {
+            Dashboard.hideLoadingMsg();
+            SmartLists.showNotification('All playlists have been refreshed successfully.', 'success');
+            
+            // Auto-refresh the playlist list to show updated LastRefreshed timestamps
+            const page = document.querySelector('.SmartListsConfigurationPage');
+            if (page && SmartLists.loadPlaylistList) {
+                SmartLists.loadPlaylistList(page);
+            }
+        }).catch(async function(err) {
+            Dashboard.hideLoadingMsg();
+            
+            // Enhanced error handling for API responses
+            let errorMessage = 'An unexpected error occurred, check the logs for more details.';
+            
+            try {
+                // Check if this is a Response object (from fetch API)
+                if (err && typeof err.json === 'function') {
+                    try {
+                        const errorData = await err.json();
+                        if (errorData.message) {
+                            errorMessage = errorData.message;
+                        } else if (typeof errorData === 'string') {
+                            errorMessage = errorData;
+                        }
+                    } catch (parseError) {
+                        // If JSON parsing fails, try to get text
+                        try {
+                            const textContent = await err.text();
+                            if (textContent) {
+                                errorMessage = textContent;
+                            }
+                        } catch (textError) {
+                            console.log('Could not extract error text:', textError);
+                        }
+                    }
+                }
+                // Check if the error has response text (legacy error format)
+                else if (err.responseText) {
+                    try {
+                        const errorData = JSON.parse(err.responseText);
+                        if (errorData.message) {
+                            errorMessage = errorData.message;
+                        } else if (typeof errorData === 'string') {
+                            errorMessage = errorData;
+                        }
+                    } catch (parseError) {
+                        // If JSON parsing fails, use the raw response text
+                        errorMessage = err.responseText;
+                    }
+                }
+                // Check if the error has a message property
+                else if (err.message) {
+                    errorMessage = err.message;
+                }
+            } catch (extractError) {
+                console.error('Error extracting error message:', extractError);
+            }
+            
+            SmartLists.showNotification('Failed to refresh all playlists: ' + errorMessage, 'error');
+        });
+    };
+
+    // ===== STYLING =====
+    SmartLists.applyCustomStyles = function(page) {
+        // Check if styles are already added
+        if (document.getElementById('smartlists-custom-styles')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'smartlists-custom-styles';
+        style.textContent = `
+            select.emby-select, select[is="emby-select"] {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='%23e0e0e0' viewBox='0 0 24 24'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+                background-repeat: no-repeat;
+                background-position: right 0.7em top 50%;
+                background-size: 1.2em auto;
+                padding-right: 1em !important;
+            }
+            
+            /* Field group styling */
+            optgroup {
+                font-weight: bold;
+                font-size: 0.9em;
+                color: #00a4dc;
+                background: rgba(255, 255, 255, 0.05);
+                padding: 0.2em 0;
+                margin-top: 0.3em;
+            }
+            
+            optgroup option {
+                font-weight: normal;
+                font-size: 1em;
+                color: #e0e0e0;
+                background: inherit;
+                padding-left: 1em;
+            }
+            
+            /* Hide native search input clear button to avoid double X with our custom clear button */
+            #playlistSearchInput::-webkit-search-cancel-button,
+            #playlistSearchInput::-webkit-search-cancel-decoration,
+            #playlistSearchInput::-webkit-search-results-button,
+            #playlistSearchInput::-webkit-search-results-decoration {
+                -webkit-appearance: none !important;
+                appearance: none !important;
+                display: none !important;
+            }
+            
+            /* Reduce spacing between navigation and content */
+            .SmartListsConfigurationPage .page-content form {
+                margin-top: 0em !important;
+            }
+            
+            /* Also target forms with inline margin-top styles */
+            .SmartListsConfigurationPage #playlistForm[style*="margin-top"],
+            .SmartListsConfigurationPage #settings-tab form[style*="margin-top"],
+            .SmartListsConfigurationPage #manage-tab form[style*="margin-top"] {
+                margin-top: 0em !important;
+            }
+            
+            /* Reduce margin-top on first section title in forms */
+            .SmartListsConfigurationPage .page-content form > .sectionTitle:first-child {
+                margin-top: 0em !important;
+            }
+            
+            /* Style danger/delete buttons to be red */
+            .SmartListsConfigurationPage .emby-button.danger,
+            .SmartListsConfigurationPage .emby-button.button-delete {
+                background-color: #d9534f !important;
+                border-color: #d43f3a !important;
+            }
+            .SmartListsConfigurationPage .emby-button.danger:hover,
+            .SmartListsConfigurationPage .emby-button.button-delete:hover {
+                background-color: #c9302c !important;
+                border-color: #ac2925 !important;
+            }
+        `;
+        document.head.appendChild(style);
+    };
+
+    SmartLists.applyMainContainerLayoutFix = function(page) {
+        // Apply to all tab content containers
+        var tabContents = page.querySelectorAll('.page-content');
+        for (var i = 0; i < tabContents.length; i++) {
+            SmartLists.applyStyles(tabContents[i], {
+                padding: '1.5em',
+                maxWidth: '1200px',
+                margin: '0 auto'
+            });
+        }
+    };
+
+    // ===== CLEANUP =====
+    SmartLists.cleanupAllEventListeners = function(page) {
+        // Clean up rule event listeners
+        const allRules = page.querySelectorAll('.rule-row');
+        allRules.forEach(function(rule) {
+            if (SmartLists.cleanupRuleEventListeners) {
+                SmartLists.cleanupRuleEventListeners(rule);
+            }
+        });
+        
+        // Clean up modal listeners
+        const deleteModal = page.querySelector('#delete-confirm-modal');
+        if (deleteModal) {
+            SmartLists.cleanupModalListeners(deleteModal);
+        }
+        const refreshModal = page.querySelector('#refresh-confirm-modal');
+        if (refreshModal) {
+            SmartLists.cleanupModalListeners(refreshModal);
+        }
+        
+        // Clean up page event listeners
+        if (page._pageAbortController) {
+            page._pageAbortController.abort();
+            page._pageAbortController = null;
+        }
+        
+        // Clean up tab listeners
+        if (page._tabAbortController) {
+            page._tabAbortController.abort();
+            page._tabAbortController = null;
+        }
+        
+        // Clean up search timeout
+        if (page._searchTimeout) {
+            clearTimeout(page._searchTimeout);
+            page._searchTimeout = null;
+        }
+        
+        // Clean up media type debounce timer
+        if (page._mediaTypeUpdateTimer) {
+            clearTimeout(page._mediaTypeUpdateTimer);
+            page._mediaTypeUpdateTimer = null;
+        }
+        
+        // Abort media type checkbox listeners
+        if (page._mediaTypeAbortController) {
+            page._mediaTypeAbortController.abort();
+            page._mediaTypeAbortController = null;
+        }
+        
+        // Clean up notification timer
+        if (typeof notificationTimeout !== 'undefined' && notificationTimeout) {
+            clearTimeout(notificationTimeout);
+            notificationTimeout = null;
+        }
+        
+        // Clean up navigation listeners
+        const navContainer = page.querySelector('.localnav');
+        if (navContainer) {
+            // Clean up navigation click listeners via AbortController
+            if (navContainer._navAbortController) {
+                try {
+                    navContainer._navAbortController.abort();
+                } catch (e) {
+                    console.warn('Failed to abort navigation listeners:', e);
+                }
+                navContainer._navAbortController = null;
+            }
+            
+            // Note: No popstate listener to clean up
+            
+            navContainer._navInitialized = false;
+        }
+        
+        // Reset page-specific initialization flags and edit state
+        page._pageInitialized = false;
+        page._tabListenersInitialized = false;
+        page._editMode = false;
+        page._editingPlaylistId = null;
+        page._loadingPlaylists = false;
+        page._allPlaylists = null; // Clear stored playlist data
+    };
+
+    // ===== PAGE EVENT LISTENERS =====
+    document.addEventListener('pageshow', function (e) {
+        const page = e.target;
+        if (page.classList.contains('SmartListsConfigurationPage')) {
+            SmartLists.initPage(page);
+        }
+    });
+    
+    // Clean up all event listeners when page is hidden/unloaded
+    document.addEventListener('pagehide', function (e) {
+        const page = e.target;
+        if (page.classList.contains('SmartListsConfigurationPage')) {
+            SmartLists.cleanupAllEventListeners(page);
+        }
+    });
+
+})(window.SmartLists = window.SmartLists || {});
+
