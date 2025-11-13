@@ -16,7 +16,7 @@ rm -rf $OUTPUT_DIR
 mkdir -p $OUTPUT_DIR
 
 # Build the project
-dotnet build ../SmartLists/Jellyfin.Plugin.SmartLists.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
+dotnet build ../Jellyfin.Plugin.SmartLists/Jellyfin.Plugin.SmartLists.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
 # Copy the dev meta.json file, as it's required by Jellyfin to load the plugin
 cp meta-dev.json $OUTPUT_DIR/meta.json

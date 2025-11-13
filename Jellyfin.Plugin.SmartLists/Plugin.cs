@@ -97,12 +97,6 @@ namespace Jellyfin.Plugin.SmartLists
                 {
                     Name = "config-init.js",
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-init.js",
-                },
-                // Legacy config.js (kept for backward compatibility, but should be empty or minimal)
-                new PluginPageInfo
-                {
-                    Name = "config.js",
-                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config.js",
                 }
             ];
         }

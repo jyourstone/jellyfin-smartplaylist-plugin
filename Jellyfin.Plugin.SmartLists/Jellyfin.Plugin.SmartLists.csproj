@@ -37,8 +37,6 @@
     <EmbeddedResource Include="Configuration\config-api.js" />
     <!-- Initialization (must load last) -->
     <EmbeddedResource Include="Configuration\config-init.js" />
-    <!-- Legacy config.js (kept for backward compatibility, but should be empty or minimal) -->
-    <EmbeddedResource Include="Configuration\config.js" />
   </ItemGroup>
 
   <ItemGroup>

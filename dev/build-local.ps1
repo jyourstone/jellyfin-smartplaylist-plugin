@@ -18,7 +18,7 @@ if (Test-Path $OUTPUT_DIR) {
 New-Item -ItemType Directory -Path $OUTPUT_DIR -Force | Out-Null
 
 # Build the project
-dotnet build ..\SmartLists\Jellyfin.Plugin.SmartLists.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
+dotnet build ..\Jellyfin.Plugin.SmartLists\Jellyfin.Plugin.SmartLists.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
 # Copy the dev meta.json file, as it's required by Jellyfin to load the plugin
 Copy-Item -Path "meta-dev.json" -Destination "$OUTPUT_DIR\meta.json"
