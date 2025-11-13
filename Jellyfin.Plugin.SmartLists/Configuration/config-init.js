@@ -1156,23 +1156,6 @@
                 display: none !important;
             }
             
-            /* Reduce spacing between navigation and content */
-            .SmartListsConfigurationPage .page-content form {
-                margin-top: 0em !important;
-            }
-            
-            /* Also target forms with inline margin-top styles */
-            .SmartListsConfigurationPage #playlistForm[style*="margin-top"],
-            .SmartListsConfigurationPage #settings-tab form[style*="margin-top"],
-            .SmartListsConfigurationPage #manage-tab form[style*="margin-top"] {
-                margin-top: 0em !important;
-            }
-            
-            /* Reduce margin-top on first section title in forms */
-            .SmartListsConfigurationPage .page-content form > .sectionTitle:first-child {
-                margin-top: 0em !important;
-            }
-            
             /* Style danger/delete buttons to be red */
             .SmartListsConfigurationPage .emby-button.danger,
             .SmartListsConfigurationPage .emby-button.button-delete {
@@ -1189,13 +1172,14 @@
     };
 
     SmartLists.applyMainContainerLayoutFix = function(page) {
-        // Apply to all tab content containers
+        // Let Jellyfin's native layout handle padding/margins
+        // Only apply maxWidth if needed for content width constraint
         var tabContents = page.querySelectorAll('.page-content');
         for (var i = 0; i < tabContents.length; i++) {
             SmartLists.applyStyles(tabContents[i], {
-                padding: '1.5em',
                 maxWidth: '1200px',
-                margin: '0 auto'
+                marginLeft: 'auto',
+                marginRight: 'auto'
             });
         }
     };
