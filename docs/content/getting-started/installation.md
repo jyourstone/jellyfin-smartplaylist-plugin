@@ -30,4 +30,4 @@ https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/unstable/m
 ```
 
 !!! warning "RC Releases"
-    RC releases are pre-release versions that may contain bugs or incomplete features. Use at your own risk and consider backing up your smart playlist configurations before upgrading.
+    RC releases are pre-release versions that may contain bugs or incomplete features. Use at your own risk and consider backing up your smart list configurations before upgrading.

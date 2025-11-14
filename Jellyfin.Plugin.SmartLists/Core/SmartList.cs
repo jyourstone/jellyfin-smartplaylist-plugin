@@ -615,7 +615,9 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 var includeUnwatchedSeries = true; // Default to true for backwards compatibility
                 var similarToExpressions = new List<Expression>();
                 var additionalUserIds = new List<string>();
-                var similarityComparisonFields = SimilarityComparisonFields ?? OperandFactory.DefaultSimilarityComparisonFields.ToList(); // Default to Genre and Tags for backwards compatibility
+                var similarityComparisonFields = (SimilarityComparisonFields == null || SimilarityComparisonFields.Count == 0) 
+                    ? OperandFactory.DefaultSimilarityComparisonFields.ToList() 
+                    : SimilarityComparisonFields; // Default to Genre and Tags for backwards compatibility
 
                 try
                 {

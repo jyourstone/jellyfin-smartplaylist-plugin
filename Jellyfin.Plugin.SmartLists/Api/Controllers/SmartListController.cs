@@ -622,15 +622,40 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             // Set default owner user if not specified
             if (string.IsNullOrEmpty(collection.User) || !Guid.TryParse(collection.User, out var userId) || userId == Guid.Empty)
             {
-                // Default to first user (typically the admin)
-                var defaultUser = _userManager.Users.FirstOrDefault();
+                // Default to currently logged-in user
+                var currentUserId = GetCurrentUserId();
                 
-                if (defaultUser != null)
+                if (currentUserId != Guid.Empty)
                 {
-                    collection.User = defaultUser.Id.ToString();
-                    logger.LogDebug("Set default collection owner to {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
+                    var currentUser = _userManager.GetUserById(currentUserId);
+                    if (currentUser != null)
+                    {
+                        collection.User = currentUser.Id.ToString();
+                        logger.LogDebug("Set default collection owner to currently logged-in user: {Username} ({UserId})", currentUser.Username, currentUser.Id);
+                    }
+                    else
+                    {
+                        logger.LogWarning("Current user ID {UserId} not found, falling back to first user", currentUserId);
+                        var defaultUser = _userManager.Users.FirstOrDefault();
+                        if (defaultUser != null)
+                        {
+                            collection.User = defaultUser.Id.ToString();
+                            logger.LogDebug("Set default collection owner to first user: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
+                        }
+                    }
                 }
                 else
+                {
+                    logger.LogWarning("Could not determine current user, falling back to first user");
+                    var defaultUser = _userManager.Users.FirstOrDefault();
+                    if (defaultUser != null)
+                    {
+                        collection.User = defaultUser.Id.ToString();
+                        logger.LogDebug("Set default collection owner to first user: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
+                    }
+                }
+                
+                if (string.IsNullOrEmpty(collection.User))
                 {
                     logger.LogError("No users found to set as collection owner");
                     return BadRequest(new ProblemDetails
@@ -679,6 +704,24 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
 
                 var collectionStore = GetCollectionStore();
+
+                // Check for duplicate collection names (Jellyfin doesn't allow collections with the same name)
+                var formattedName = NameFormatter.FormatPlaylistName(collection.Name);
+                var allCollections = await collectionStore.GetAllAsync();
+                var duplicateCollection = allCollections.FirstOrDefault(c => 
+                    c.Id != collection.Id && 
+                    string.Equals(NameFormatter.FormatPlaylistName(c.Name), formattedName, StringComparison.OrdinalIgnoreCase));
+                
+                if (duplicateCollection != null)
+                {
+                    logger.LogWarning("Cannot create collection '{CollectionName}' - a collection with this name already exists", collection.Name);
+                    return BadRequest(new ProblemDetails
+                    {
+                        Title = "Validation Error",
+                        Detail = $"A collection named '{formattedName}' already exists. Jellyfin does not allow multiple collections with the same name.",
+                        Status = StatusCodes.Status400BadRequest
+                    });
+                }
 
                 // Validate regex patterns before saving
                 if (collection.ExpressionSets != null)
@@ -797,11 +840,44 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var existingPlaylist = await playlistStore.GetByIdAsync(guidId);
                 if (existingPlaylist != null)
                 {
-                    // Ensure type matches
+                    // Handle type conversion: playlist → collection
                     if (list.Type == Core.Enums.SmartListType.Collection)
                     {
-                        return BadRequest("Cannot update playlist as collection - type mismatch");
+                        logger.LogInformation("Converting playlist '{Name}' to collection", existingPlaylist.Name);
+                        
+                        // Delete the old Jellyfin playlist
+                        var playlistService = GetPlaylistService();
+                        await playlistService.DeleteAsync(existingPlaylist);
+                        
+                        // Delete from playlist store
+                        await playlistStore.DeleteAsync(guidId);
+                        
+                        // Convert to collection DTO and create as new collection
+                        var collectionDto = list as SmartCollectionDto ?? JsonSerializer.Deserialize<SmartCollectionDto>(JsonSerializer.Serialize(list))!;
+                        collectionDto.Id = id; // Keep the same ID
+                        collectionDto.FileName = existingPlaylist.FileName; // Keep the same filename
+                        collectionDto.JellyfinCollectionId = null; // Clear old Jellyfin ID
+                        
+                        // Create the new Jellyfin collection (this populates JellyfinCollectionId)
+                        var collectionService = GetCollectionService();
+                        var refreshResult = await collectionService.RefreshAsync(collectionDto);
+                        
+                        if (!refreshResult.Success)
+                        {
+                            logger.LogError("Failed to create collection during conversion: {Message}", refreshResult.Message);
+                            return StatusCode(StatusCodes.Status500InternalServerError, $"Failed to create collection: {refreshResult.Message}");
+                        }
+                        
+                        // Save to collection store with the populated JellyfinCollectionId
+                        var newCollectionStore = GetCollectionStore();
+                        await newCollectionStore.SaveAsync(collectionDto);
+                        
+                        logger.LogInformation("Successfully converted playlist to collection '{Name}' (JellyfinCollectionId: {Id})", 
+                            collectionDto.Name, collectionDto.JellyfinCollectionId);
+                        return Ok(collectionDto);
                     }
+                    
+                    // Normal playlist update
                     return await UpdatePlaylistInternal(id, guidId, list as SmartPlaylistDto ?? JsonSerializer.Deserialize<SmartPlaylistDto>(JsonSerializer.Serialize(list))!);
                 }
 
@@ -809,11 +885,50 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var existingCollection = await collectionStore.GetByIdAsync(guidId);
                 if (existingCollection != null)
                 {
-                    // Ensure type matches
+                    // Handle type conversion: collection → playlist
                     if (list.Type == Core.Enums.SmartListType.Playlist)
                     {
-                        return BadRequest("Cannot update collection as playlist - type mismatch");
+                        logger.LogInformation("Converting collection '{Name}' to playlist", existingCollection.Name);
+                        
+                        // Delete the old Jellyfin collection
+                        var collectionService = GetCollectionService();
+                        await collectionService.DeleteAsync(existingCollection);
+                        
+                        // Delete from collection store
+                        await collectionStore.DeleteAsync(guidId);
+                        
+                        // Convert to playlist DTO and create as new playlist
+                        var playlistDto = list as SmartPlaylistDto ?? JsonSerializer.Deserialize<SmartPlaylistDto>(JsonSerializer.Serialize(list))!;
+                        playlistDto.Id = id; // Keep the same ID
+                        playlistDto.FileName = existingCollection.FileName; // Keep the same filename
+                        playlistDto.JellyfinPlaylistId = null; // Clear old Jellyfin ID
+                        
+                        // Ensure User field is set (required for playlists)
+                        if (string.IsNullOrEmpty(playlistDto.User))
+                        {
+                            playlistDto.User = existingCollection.User; // Carry over from collection
+                        }
+                        
+                        // Create the new Jellyfin playlist (this populates JellyfinPlaylistId)
+                        var playlistService = GetPlaylistService();
+                        var refreshResult = await playlistService.RefreshAsync(playlistDto);
+                        
+                        if (!refreshResult.Success)
+                        {
+                            logger.LogError("Failed to create playlist during conversion: {Message}", refreshResult.Message);
+                            return StatusCode(StatusCodes.Status500InternalServerError, $"Failed to create playlist: {refreshResult.Message}");
+                        }
+                        
+                        // Save to playlist store with the populated JellyfinPlaylistId
+                        var newPlaylistStore = GetPlaylistStore();
+                        await newPlaylistStore.SaveAsync(playlistDto);
+                        
+                        logger.LogInformation("Successfully converted collection to playlist '{Name}' (JellyfinPlaylistId: {Id})", 
+                            playlistDto.Name, playlistDto.JellyfinPlaylistId);
+                        return Ok(playlistDto);
                     }
+                    
+                    // Normal collection update
                     return await UpdateCollectionInternal(id, guidId, list as SmartCollectionDto ?? JsonSerializer.Deserialize<SmartCollectionDto>(JsonSerializer.Serialize(list))!);
                 }
 
@@ -998,6 +1113,78 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 if (existingCollection == null)
                 {
                     return NotFound("Smart collection not found");
+                }
+
+                // Set default owner user if not specified (same as CreateCollectionInternal)
+                if (string.IsNullOrEmpty(collection.User) || !Guid.TryParse(collection.User, out var userId) || userId == Guid.Empty)
+                {
+                    // Default to currently logged-in user
+                    var currentUserId = GetCurrentUserId();
+                    
+                    if (currentUserId != Guid.Empty)
+                    {
+                        var currentUser = _userManager.GetUserById(currentUserId);
+                        if (currentUser != null)
+                        {
+                            collection.User = currentUser.Id.ToString();
+                            logger.LogDebug("Set default collection owner to currently logged-in user during update: {Username} ({UserId})", currentUser.Username, currentUser.Id);
+                        }
+                        else
+                        {
+                            logger.LogWarning("Current user ID {UserId} not found during update, falling back to first user", currentUserId);
+                            var defaultUser = _userManager.Users.FirstOrDefault();
+                            if (defaultUser != null)
+                            {
+                                collection.User = defaultUser.Id.ToString();
+                                logger.LogDebug("Set default collection owner to first user during update: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        logger.LogWarning("Could not determine current user during update, falling back to first user");
+                        var defaultUser = _userManager.Users.FirstOrDefault();
+                        if (defaultUser != null)
+                        {
+                            collection.User = defaultUser.Id.ToString();
+                            logger.LogDebug("Set default collection owner to first user during update: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
+                        }
+                    }
+                    
+                    if (string.IsNullOrEmpty(collection.User))
+                    {
+                        logger.LogError("No users found to set as collection owner during update");
+                        return BadRequest(new ProblemDetails
+                        {
+                            Title = "Configuration Error",
+                            Detail = "No users found. At least one user must exist to update collections.",
+                            Status = StatusCodes.Status400BadRequest
+                        });
+                    }
+                }
+
+                // Check for duplicate collection names (Jellyfin doesn't allow collections with the same name)
+                // Only check if the name is changing
+                bool nameChanging = !string.Equals(existingCollection.Name, collection.Name, StringComparison.OrdinalIgnoreCase);
+                if (nameChanging)
+                {
+                    var formattedName = NameFormatter.FormatPlaylistName(collection.Name);
+                    var allCollections = await collectionStore.GetAllAsync();
+                    var duplicateCollection = allCollections.FirstOrDefault(c => 
+                        c.Id != guidId.ToString() && 
+                        string.Equals(NameFormatter.FormatPlaylistName(c.Name), formattedName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (duplicateCollection != null)
+                    {
+                        logger.LogWarning("Cannot update collection '{OldName}' to '{NewName}' - a collection with this name already exists", 
+                            existingCollection.Name, collection.Name);
+                        return BadRequest(new ProblemDetails
+                        {
+                            Title = "Validation Error",
+                            Detail = $"A collection named '{formattedName}' already exists. Jellyfin does not allow multiple collections with the same name.",
+                            Status = StatusCodes.Status400BadRequest
+                        });
+                    }
                 }
 
                 // Validate regex patterns before saving

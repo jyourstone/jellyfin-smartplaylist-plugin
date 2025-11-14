@@ -2620,7 +2620,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 foreach (var field in comparisonFields)
                 {
                     // Normalize field name to lowercase for truly case-insensitive switch
-                    var fieldKey = (field ?? string.Empty).Trim().ToUpperInvariant();
+                    // CA1308 suppressed: Using lowercase for internal field name comparison, not security-sensitive
+#pragma warning disable CA1308
+                    var fieldKey = (field ?? string.Empty).Trim().ToLowerInvariant();
+#pragma warning restore CA1308
 
                     switch (fieldKey)
                     {
@@ -2892,8 +2895,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             {
                 int fieldMatchCount = 0;
 
-                // Normalize field name to uppercase for truly case-insensitive switch
-                var fieldKey = (field ?? string.Empty).Trim().ToUpperInvariant();
+                // Normalize field name to lowercase for truly case-insensitive switch
+                // CA1308 suppressed: Using lowercase for internal field name comparison, not security-sensitive
+#pragma warning disable CA1308
+                var fieldKey = (field ?? string.Empty).Trim().ToLowerInvariant();
+#pragma warning restore CA1308
 
                 switch (fieldKey)
                 {

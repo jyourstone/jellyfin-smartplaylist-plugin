@@ -21,8 +21,8 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 - **Series Name** - Sort by series name (for TV episodes)
 - **Community Rating** - Sort by user ratings
 - **Date Created** - Sort by when added to library
-- **Play Count (owner)** - Sort by how many times the playlist owner has played each item
-- **Last Played (owner)** - Sort by when the playlist owner last played each item
+- **Play Count (owner)** - Sort by how many times the list owner has played each item
+- **Last Played (owner)** - Sort by when the list owner last played each item
 - **Runtime** - Sort by duration/runtime in minutes
 - **Album Name** - Sort by album name (for music and music videos)
 - **Artist** - Sort by artist name (for music and music videos)
@@ -32,18 +32,18 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 
 ## Max Items
 
-You can optionally set a maximum number of items for your smart playlist. This is useful for:
+You can optionally set a maximum number of items for your smart list. This is useful for:
 
-- Limiting large playlists to a manageable size
-- Creating "Top 10" or "Best of" style playlists
+- Limiting large lists to a manageable size
+- Creating "Top 10" or "Best of" style playlists or collections
 - Improving performance for very large libraries
 
 !!! warning "Performance"
-    Setting this to unlimited (0) might cause performance issues or even crashes for very large playlists.
+    Setting this to unlimited (0) might cause performance issues or even crashes for very large lists.
 
 ## Max Playtime
 
-You can optionally set a maximum playtime in minutes for your smart playlist. This is useful for:
+You can optionally set a maximum playtime in minutes for your smart playlist (this option is only available for playlists, not collections). This is useful for:
 
 - Creating workout playlists that match your exercise duration
 - Setting up Pomodoro-style work sessions with music

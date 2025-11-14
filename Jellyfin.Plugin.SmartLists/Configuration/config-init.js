@@ -305,6 +305,11 @@
             
             // Add debounced event listener to batch updates when media types change
             checkbox.addEventListener('change', function() {
+                // Skip processing if we're programmatically setting media types (e.g., during clone/edit)
+                if (page._skipMediaTypeChangeHandlers) {
+                    return;
+                }
+                
                 // Clear any pending update
                 if (page._mediaTypeUpdateTimer) {
                     clearTimeout(page._mediaTypeUpdateTimer);
@@ -1358,9 +1363,36 @@
             }
         }
         
+        // Save currently selected media types before regenerating checkboxes
+        const currentlySelectedMediaTypes = [];
+        const existingCheckboxes = page.querySelectorAll('.media-type-checkbox');
+        existingCheckboxes.forEach(function(checkbox) {
+            if (checkbox.checked) {
+                currentlySelectedMediaTypes.push(checkbox.value);
+            }
+        });
+        
         // Regenerate media type checkboxes to show/hide collection-only types
         if (SmartLists.generateMediaTypeCheckboxes) {
+            // Set flag to prevent change handlers from firing during regeneration
+            page._skipMediaTypeChangeHandlers = true;
             SmartLists.generateMediaTypeCheckboxes(page);
+            
+            // Restore previously selected media types, excluding collection-only types when switching to Playlist
+            const newCheckboxes = page.querySelectorAll('.media-type-checkbox');
+            newCheckboxes.forEach(function(checkbox) {
+                // Restore if it was previously selected
+                if (currentlySelectedMediaTypes.indexOf(checkbox.value) !== -1) {
+                    // Skip Series if switching to Playlist mode (Series is collection-only)
+                    if (checkbox.value === 'Series' && !isCollection) {
+                        return;
+                    }
+                    checkbox.checked = true;
+                }
+            });
+            
+            // Clear flag to re-enable change handlers
+            page._skipMediaTypeChangeHandlers = false;
         }
         
         // Update field selects to add/remove Collections field based on list type

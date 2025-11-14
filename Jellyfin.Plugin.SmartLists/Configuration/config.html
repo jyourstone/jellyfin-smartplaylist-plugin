@@ -72,7 +72,7 @@
                             </select>
                             <div class="fieldDescription">
                                 <span class="playlist-only-description">The user who this playlist belongs to.</span>
-                                <span class="collection-only-description">The user context for rule evaluation (e.g., IsPlayed, IsFavorite). The collection itself is visible to all users.</span>
+                                <span class="collection-only-description">The user context for creating the collection and rule evaluation (e.g., IsPlayed, IsFavorite). The collection itself is visible to all users.</span>
                             </div>
                         </div>
 
@@ -83,7 +83,7 @@
                             <div class="fieldDescription">Maximum number of items in this list. Set to 0 for no limit.</div>
                         </div>
 
-                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                        <div class="inputContainer playlist-only-field" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistMaxPlayTimeMinutes">Max Playtime (Minutes)</label>
                             <input type="number" id="playlistMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Maximum playtime in minutes for this list. Set to 0 for no limit.</div>
@@ -409,7 +409,7 @@
                             </label>
                             <div style="font-size: 0.9em; color: #aaa; margin-top: 0.5em; margin-bottom: 0.5em;">
                                 <strong>Unchecked:</strong> Only delete the SmartList configuration. The Jellyfin list will remain and can be managed manually.<br><br>
-                                <strong>Checked:</strong> Delete both the SmarList configuration and the Jellyfin list.
+                                <strong>Checked:</strong> Delete both the SmartList configuration and the Jellyfin list.
                             </div>
                         </div>
                     </div>

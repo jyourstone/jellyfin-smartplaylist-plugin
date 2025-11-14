@@ -146,7 +146,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId!.Value).ToArray(),
                     mediaLookup,
                     logger);
-                logger.LogDebug("Calculated playlist stats: {ItemCount} items, {TotalRuntime} minutes total runtime",
+                logger.LogDebug("Calculated playlist stats: {ItemCount} items, {TotalRuntime} minutes total playtime",
                     dto.ItemCount, dto.TotalRuntimeMinutes);
 
                 // Try to find existing playlist by Jellyfin playlist ID first, then by current naming format, then by old format

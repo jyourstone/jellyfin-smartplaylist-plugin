@@ -113,14 +113,23 @@
         const apiClient = SmartLists.getApiClient();
         const userSelect = page.querySelector('#playlistUser');
         
-        // Don't overwrite if a value is already set (e.g., when editing/cloning)
-        if (userSelect && userSelect.value) {
+        // Check if we're in edit/clone mode
+        const editState = SmartLists.getPageEditState(page);
+        
+        // Don't overwrite if a value is already set AND we're editing/cloning
+        if (userSelect && userSelect.value && (editState.editMode || editState.cloneMode)) {
             return Promise.resolve();
+        }
+        
+        // Clear the value first (it might have been auto-selected by the browser)
+        if (userSelect && userSelect.value && !editState.editMode && !editState.cloneMode) {
+            userSelect.value = '';
         }
         
         try {
             // Use client-side method to get current user
             let userId = apiClient.getCurrentUserId();
+            
             if (!userId) {
                 return apiClient.getCurrentUser().then(function(user) {
                     userId = user ? user.Id : null;

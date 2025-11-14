@@ -1,6 +1,6 @@
 # Common Use Cases
 
-Here are some popular playlist types you can create:
+Here are some popular playlist and collection types you can create:
 
 ## TV Shows & Movies
 
@@ -22,6 +22,7 @@ Here are some popular playlist types you can create:
 
 ### Complete Franchise Collection
 - **Collections** contains "Movie Franchise" (includes all movies in the franchise)
+- **Note**: This works best as a Collection type list, which can include entire series and movies together
 
 ### Unplayed Sitcom Episodes
 - **Tags** contains "Sitcom" (with parent series tags enabled) AND **Is Played** = False
@@ -53,4 +54,24 @@ Here are some popular playlist types you can create:
 
 ### Birthday Memories
 - **File Name** contains "birthday" OR **Tags** contain "Birthday"
+
+## Collections
+
+Collections are great for organizing related content that you want to browse together:
+
+### Action Movie Collection
+- **Genre** contains "Action"
+- **Media Type**: Movie
+- **List Type**: Collection
+- Creates a collection that groups all action movies together for easy browsing
+
+### Holiday Collection
+- **Tags** contain "Christmas" OR "Holiday"
+- **List Type**: Collection
+- Groups all holiday-themed content (movies, TV shows, music) into one collection
+
+### Director's Collection
+- **People** contains "Christopher Nolan" (Director role)
+- **List Type**: Collection
+- Creates a collection of all movies by a specific director
 

@@ -16,8 +16,8 @@ This plugin allows you to create dynamic playlists and collections based on a se
 
 - 🚀 **Modern Jellyfin Support** - Built for newer Jellyfin versions with improved compatibility
 - 🎨 **Modern Web Interface** - A full-featured UI to create, edit, view and delete smart playlists and collections
-- ✏️ **Edit Playlists** - Modify existing smart lists directly from the UI
-- 👥 **User Selection** - Choose which user should own a playlist with an intuitive dropdown
+- ✏️ **Edit Lists** - Modify existing smart playlists and collections directly from the UI
+- 👥 **User Selection** - Choose which user should own a playlist or collection with an intuitive dropdown
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder
 - 🔄 **Automatic Updates** - Playlists and collections refresh automatically on library updates or via scheduled tasks
 - 📦 **Export/Import** - Export all lists to a ZIP file for backup or transfer between Jellyfin instances
@@ -27,7 +27,7 @@ This plugin allows you to create dynamic playlists and collections based on a se
 
 1. **Install the Plugin**: [See installation instructions](#-how-to-install)
 2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartLists
-3. **Create Your First list**: Use the "Create List" tab
+3. **Create Your First List**: Use the "Create List" tab
 4. **Example**: Create a playlist or collection for "Unwatched Action Movies" with:
    - Media type: "Movie"
    - Genre contains "Action"

@@ -11,104 +11,7 @@
     var userNameCache = new Map();
 
     // ===== USER MANAGEMENT =====
-    SmartLists.loadUsersForRule = function(userSelect, isOptional) {
-        isOptional = isOptional !== undefined ? isOptional : false;
-        const apiClient = SmartLists.getApiClient();
-        
-        return apiClient.ajax({
-            type: 'GET',
-            url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
-            contentType: 'application/json'
-        }).then(function(response) {
-            return response.json();
-        }).then(function(users) {
-            if (!isOptional) {
-                userSelect.innerHTML = '';
-            } else {
-                // Remove all options except the first (default) if present
-                while (userSelect.options.length > 1) {
-                    userSelect.remove(1);
-                }
-            }
-            
-            // Add user options
-            users.forEach(function(user) {
-                const option = document.createElement('option');
-                option.value = user.Id;
-                option.textContent = user.Name;
-                userSelect.appendChild(option);
-            });
-        }).catch(function(err) {
-            console.error('Error loading users for rule:', err);
-            if (!isOptional) {
-                userSelect.innerHTML = '<option value="">Error loading users</option>';
-            }
-        });
-    };
-
-    SmartLists.loadUsers = function(page) {
-        const apiClient = SmartLists.getApiClient();
-        const userSelect = page.querySelector('#playlistUser');
-        
-        return apiClient.ajax({
-            type: 'GET',
-            url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
-            contentType: 'application/json'
-        }).then(function(response) {
-            return response.json();
-        }).then(function(users) {
-            // Clear existing options
-            userSelect.innerHTML = '';
-            
-            // Add user options
-            users.forEach(function(user) {
-                const option = document.createElement('option');
-                option.value = user.Id;
-                option.textContent = user.Name;
-                userSelect.appendChild(option);
-            });
-            
-            // Set current user as default
-            return SmartLists.setCurrentUserAsDefault(page);
-        }).catch(function(err) {
-            console.error('Error loading users:', err);
-            userSelect.innerHTML = '<option value="">Error loading users</option>';
-            SmartLists.showNotification('Failed to load users. Using fallback.');
-            throw err; // Re-throw to be caught by Promise.all
-        });
-    };
-    
-    SmartLists.setCurrentUserAsDefault = function(page) {
-        const apiClient = SmartLists.getApiClient();
-        const userSelect = page.querySelector('#playlistUser');
-        
-        // Don't overwrite if a value is already set (e.g., when editing/cloning)
-        if (userSelect && userSelect.value) {
-            return Promise.resolve();
-        }
-        
-        try {
-            // Use client-side method to get current user
-            let userId = apiClient.getCurrentUserId();
-            if (!userId) {
-                return apiClient.getCurrentUser().then(function(user) {
-                    userId = user ? user.Id : null;
-                    if (userId) {
-                        userSelect.value = userId;
-                    }
-                }).catch(function(err) {
-                    console.error('Error setting current user as default:', err);
-                });
-            }
-            if (userId) {
-                userSelect.value = userId;
-            }
-            return Promise.resolve();
-        } catch (err) {
-            console.error('Error setting current user as default:', err);
-            return Promise.resolve();
-        }
-    };
+    // Note: loadUsers, loadUsersForRule, and setCurrentUserAsDefault are defined in config-api.js to avoid duplication
 
     SmartLists.resolveUsername = function(apiClient, playlist) {
         if (!playlist) {
@@ -183,8 +86,13 @@
             const apiClient = SmartLists.getApiClient();
             const playlistName = SmartLists.getElementValue(page, '#playlistName');
 
+            // Get list type to provide appropriate error messages
+            const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+            const isCollection = listType === 'Collection';
+            const listTypeName = isCollection ? 'Collection' : 'Playlist';
+
             if (!playlistName) {
-                SmartLists.showNotification('Playlist name is required.');
+                SmartLists.showNotification(listTypeName + ' name is required.');
                 return;
             }
 
@@ -226,10 +134,6 @@
                 const parsedValue = parseInt(maxPlayTimeMinutesInput, 10);
                 maxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
             }
-
-            // Get list type
-            const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
-            const isCollection = listType === 'Collection';
             
             // Get selected user ID from dropdown (required for both playlists and collections)
             const userId = SmartLists.getElementValue(page, '#playlistUser');
@@ -301,7 +205,6 @@
                 contentType: 'application/json'
             }).then(function() {
                 Dashboard.hideLoadingMsg();
-                const listTypeName = isCollection ? 'Collection' : 'Playlist';
                 const message = editState.editMode ? 
                     listTypeName + ' "' + playlistName + '" updated successfully.' : 
                     listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
@@ -334,9 +237,9 @@
                 SmartLists.clearForm(page);
             }).catch(function(err) {
                 Dashboard.hideLoadingMsg();
-                console.error('Error creating playlist:', err);
+                console.error('Error creating ' + listTypeName.toLowerCase() + ':', err);
                 const action = editState.editMode ? 'update' : 'create';
-                SmartLists.handleApiError(err, 'Failed to ' + action + ' playlist ' + playlistName);
+                SmartLists.handleApiError(err, 'Failed to ' + action + ' ' + listTypeName.toLowerCase() + ' ' + playlistName);
             });
         } catch (e) {
             Dashboard.hideLoadingMsg();
@@ -389,6 +292,13 @@
             const sortsContainer = page.querySelector('#sorts-container');
             if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
                 SmartLists.addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
+            }
+            
+            // Reset user dropdown to currently logged-in user
+            const userSelect = page.querySelector('#playlistUser');
+            if (userSelect) {
+                userSelect.value = '';
+                SmartLists.setCurrentUserAsDefault(page);
             }
         }).catch(function() {
             SmartLists.setElementChecked(page, '#playlistIsPublic', false);
@@ -488,6 +398,9 @@
                 }
                 
                 // Set media types
+                // Set flag to skip change event handlers while we programmatically set checkbox states
+                page._skipMediaTypeChangeHandlers = true;
+                
                 const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
                 if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
                     playlist.MediaTypes.forEach(function(type) {
@@ -499,6 +412,9 @@
                         }
                     });
                 }
+                
+                // Clear flag to re-enable change event handlers
+                page._skipMediaTypeChangeHandlers = false;
                 
                 // Set the list owner (for both playlists and collections)
                 // Convert User to string if it's not already (handles both Guid and string formats)
@@ -786,6 +702,10 @@
                 const listType = playlist.Type || 'Playlist';
                 const isCollection = listType === 'Collection';
                 
+                // Set playlist name FIRST (before switchToTab) to prevent populateFormDefaults from being called
+                // switchToTab checks if name is empty and calls populateFormDefaults if so, which would regenerate checkboxes
+                SmartLists.setElementValue(page, '#playlistName', (playlist.Name || '') + ' (Copy)');
+                
                 // Switch to Create tab
                 SmartLists.switchToTab(page, 'create');
                 
@@ -795,11 +715,11 @@
                 // Set list type
                 SmartLists.setElementValue(page, '#listType', listType);
                 
+                // Set flag to prevent media type change handlers from interfering during cloning setup
+                page._skipMediaTypeChangeHandlers = true;
+                
                 // Trigger type change handler to show/hide fields
                 SmartLists.handleListTypeChange(page);
-                
-                // Populate form with cloned playlist data (similar to edit, but for creating new)
-                SmartLists.setElementValue(page, '#playlistName', (playlist.Name || '') + ' (Copy)');
                 
                 // Only set public for playlists
                 if (!isCollection) {
@@ -832,23 +752,8 @@
                     maxPlayTimeMinutesElement.value = maxPlayTimeMinutesValue;
                 }
                 
-                // Set media types
-                const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
-                // First clear all checkboxes
-                mediaTypesSelect.forEach(function(checkbox) {
-                    checkbox.checked = false;
-                });
-                // Then set the ones from the cloned playlist
-                if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
-                    playlist.MediaTypes.forEach(function(type) {
-                        const checkbox = mediaTypesSelect.find(function(cb) {
-                            return cb.value === type;
-                        });
-                        if (checkbox) {
-                            checkbox.checked = true;
-                        }
-                    });
-                }
+                // Store media types to set later (after all updates are complete)
+                const clonedMediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? playlist.MediaTypes : [];
                 
                 // Set the list owner (for both playlists and collections)
                 const userIdString = playlist.User ? String(playlist.User) : null;
@@ -943,6 +848,35 @@
                 SmartLists.loadSortOptionsIntoUI(page, playlist);
                 // Update sort options visibility based on populated rules
                 SmartLists.updateAllSortOptionsVisibility(page);
+                
+                // Set media types AFTER all field updates are complete to prevent them from being cleared
+                // Flag was already set at the beginning of clone process to prevent interference
+                const mediaTypesCheckboxes = Array.from(page.querySelectorAll('.media-type-checkbox'));
+                
+                // First clear all checkboxes
+                mediaTypesCheckboxes.forEach(function(checkbox) {
+                    checkbox.checked = false;
+                });
+                // Then set the ones from the cloned playlist
+                if (clonedMediaTypes.length > 0) {
+                    clonedMediaTypes.forEach(function(type) {
+                        const checkbox = mediaTypesCheckboxes.find(function(cb) {
+                            return cb.value === type;
+                        });
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                }
+                
+                // Clear flag to re-enable change event handlers
+                page._skipMediaTypeChangeHandlers = false;
+                
+                // Clear any pending media type update timers just in case
+                if (page._mediaTypeUpdateTimer) {
+                    clearTimeout(page._mediaTypeUpdateTimer);
+                    page._mediaTypeUpdateTimer = null;
+                }
                 
                 // Show success message
                 SmartLists.showNotification('Playlist "' + playlistName + '" cloned successfully! You can now modify and create the new playlist.', 'success');
@@ -1127,12 +1061,7 @@
         });
     };
 
-    // Helper function to format playlist display values
-    SmartLists.formatPlaylistDisplayValues = function(playlist) {
-        const maxItemsDisplay = (playlist.MaxItems === undefined || playlist.MaxItems === null || playlist.MaxItems === 0) ? 'Unlimited' : playlist.MaxItems.toString();
-        const maxPlayTimeDisplay = (playlist.MaxPlayTimeMinutes === undefined || playlist.MaxPlayTimeMinutes === null || playlist.MaxPlayTimeMinutes === 0) ? 'Unlimited' : playlist.MaxPlayTimeMinutes.toString() + ' minutes';
-        return { maxItemsDisplay: maxItemsDisplay, maxPlayTimeDisplay: maxPlayTimeDisplay };
-    };
+    // Note: formatPlaylistDisplayValues is defined in config-formatters.js to avoid duplication
 
     // ===== SEARCH INPUT STATE MANAGEMENT =====
     SmartLists.setSearchInputState = function(page, disabled, placeholder) {
@@ -1163,37 +1092,7 @@
         }
     };
 
-    // ===== PEOPLE FIELD DISPLAY NAME =====
-    SmartLists.getPeopleFieldDisplayName = function(fieldName) {
-        const displayNames = {
-            'People': 'People (All)',
-            'Actors': 'People (Actors)',
-            'Directors': 'People (Directors)',
-            'Composers': 'People (Composers)',
-            'Writers': 'People (Writers)',
-            'GuestStars': 'People (Guest Stars)',
-            'Producers': 'People (Producers)',
-            'Conductors': 'People (Conductors)',
-            'Lyricists': 'People (Lyricists)',
-            'Arrangers': 'People (Arrangers)',
-            'SoundEngineers': 'People (Sound Engineers)',
-            'Mixers': 'People (Mixers)',
-            'Remixers': 'People (Remixers)',
-            'Creators': 'People (Creators)',
-            'PersonArtists': 'People (Artists)',
-            'PersonAlbumArtists': 'People (Album Artists)',
-            'Authors': 'People (Authors)',
-            'Illustrators': 'People (Illustrators)',
-            'Pencilers': 'People (Pencilers)',
-            'Inkers': 'People (Inkers)',
-            'Colorists': 'People (Colorists)',
-            'Letterers': 'People (Letterers)',
-            'CoverArtists': 'People (Cover Artists)',
-            'Editors': 'People (Editors)',
-            'Translators': 'People (Translators)'
-        };
-        return displayNames[fieldName] || fieldName;
-    };
+    // Note: getPeopleFieldDisplayName is defined in config-formatters.js to avoid duplication
 
     // ===== GENERATE RULES HTML =====
     SmartLists.generateRulesHtml = async function(playlist, apiClient) {
@@ -1488,10 +1387,12 @@
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Items</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxItems + '</td>' +
                         '</tr>' +
-                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Playtime</td>' +
-                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxPlayTime + '</td>' +
-                        '</tr>' +
+                        (!isCollection ?
+                            '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Playtime</td>' +
+                                '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxPlayTime + '</td>' +
+                            '</tr>' : ''
+                        ) +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Auto Refresh</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eAutoRefreshDisplay + '</td>' +
@@ -1515,9 +1416,9 @@
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Item Count</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + (itemCount !== null ? itemCount : 'N/A') + '</td>' +
                         '</tr>' +
-                        (totalRuntimeLong ?
+                        (!isCollection && totalRuntimeLong ?
                             '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Runtime</td>' +
+                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Playtime</td>' +
                                 '<td style="padding: 0.5em 0.75em; color: #fff;">' + eTotalRuntimeLong + '</td>' +
                             '</tr>' :
                             ''

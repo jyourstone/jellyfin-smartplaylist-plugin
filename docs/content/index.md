@@ -1,4 +1,4 @@
-# Jellyfin SmartPlaylist Plugin
+# Jellyfin SmartLists Plugin
 
 <div align="center">
     <p>
@@ -19,17 +19,17 @@ This plugin allows you to create dynamic playlists and collections based on a se
 ## Features
 
 - 🚀 **Modern Jellyfin Support** - Built for newer Jellyfin versions with improved compatibility
-- 🎨 **Modern Web Interface** - A full-featured UI to create, edit, view and delete smart playlists
-- ✏️ **Edit Playlists** - Modify existing smart playlists directly from the UI
-- 👥 **User Selection** - Choose which user should own a playlist with an intuitive dropdown
+- 🎨 **Modern Web Interface** - A full-featured UI to create, edit, view and delete smart playlists and collections
+- ✏️ **Edit Lists** - Modify existing smart playlists and collections directly from the UI
+- 👥 **User Selection** - Choose which user should own a playlist or collection with an intuitive dropdown
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder
-- 🔄 **Automatic Updates** - Playlists refresh automatically on library updates or via scheduled tasks
-- 📦 **Export/Import** - Export all playlists to a ZIP file for backup or transfer between Jellyfin instances
+- 🔄 **Automatic Updates** - Playlists and collections refresh automatically on library updates or via scheduled tasks
+- 📦 **Export/Import** - Export all lists to a ZIP file for backup or transfer between Jellyfin instances
 - 🎵 **Media Types** - Works with all Jellyfin media types
 
 ## Supported Media Types
 
-SmartPlaylist works with all media types supported by Jellyfin:
+SmartLists works with all media types supported by Jellyfin:
 
 - **🎬 Movie** - Individual movie files
 - **📺 Episode** - Individual TV show episodes
@@ -47,8 +47,8 @@ SmartPlaylist works with all media types supported by Jellyfin:
 
 1. **Install the Plugin**: See [Installation Guide](getting-started/installation.md)
 2. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartLists
-3. **Create Your First Playlist**: Use the "Create Playlist" tab
-4. **Example**: Create a playlist for "Unwatched Action Movies" with:
+3. **Create Your First List**: Use the "Create List" tab
+4. **Example**: Create a playlist or collection for "Unwatched Action Movies" with:
    - Media type: "Movie"
    - Genre contains "Action"
    - Is Played = False
@@ -67,4 +67,4 @@ This plugin creates smart playlists and collections that automatically update ba
 - **Tagged content** like "Christmas", "Kids", or "Documentaries"
 - And much more!
 
-The plugin features a modern web-based interface for easy playlist management - no technical knowledge required.
+The plugin features a modern web-based interface for easy list management - no technical knowledge required.

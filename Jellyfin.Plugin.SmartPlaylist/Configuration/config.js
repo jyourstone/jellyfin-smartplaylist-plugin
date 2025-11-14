@@ -3901,7 +3901,8 @@
         container.innerHTML = '';
         
         // Use saved fields if provided, otherwise default to Genre and Tags
-        const selectedFields = savedFields || ['Genre', 'Tags'];
+        // Check for both null/undefined and empty array (backend returns empty array when using defaults)
+        const selectedFields = (savedFields && savedFields.length > 0) ? savedFields : ['Genre', 'Tags'];
         
         // Create checkboxes for each comparison field
         availableFields.SimilarityComparisonFields.forEach(function(field) {
@@ -4682,7 +4683,7 @@
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + (itemCount !== null ? escapeHtml(String(itemCount)) : 'Not yet refreshed') + '</td>' +
                         '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Runtime</td>' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Playtime</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + (eTotalRuntimeLong ? eTotalRuntimeLong : (itemCount !== null ? 'Not available' : 'Not yet refreshed')) + '</td>' +
                         '</tr>' +
                         '<tr>' +

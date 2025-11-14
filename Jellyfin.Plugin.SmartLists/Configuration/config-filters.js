@@ -539,36 +539,7 @@
         });
     };
     
-    SmartLists.getPeopleFieldDisplayName = function(fieldName) {
-        const displayNames = {
-            'People': 'People (All)',
-            'Actors': 'People (Actors)',
-            'Directors': 'People (Directors)',
-            'Composers': 'People (Composers)',
-            'Writers': 'People (Writers)',
-            'Producers': 'People (Producers)',
-            'GuestStars': 'People (Guest Stars)',
-            'Conductors': 'People (Conductors)',
-            'Lyricists': 'People (Lyricists)',
-            'Arrangers': 'People (Arrangers)',
-            'SoundEngineers': 'People (Sound Engineers)',
-            'Mixers': 'People (Mixers)',
-            'Remixers': 'People (Remixers)',
-            'Creators': 'People (Creators)',
-            'PersonArtists': 'People (Artists)',
-            'PersonAlbumArtists': 'People (Album Artists)',
-            'Authors': 'People (Authors)',
-            'Illustrators': 'People (Illustrators)',
-            'Pencilers': 'People (Pencilers)',
-            'Inkers': 'People (Inkers)',
-            'Colorists': 'People (Colorists)',
-            'Letterers': 'People (Letterers)',
-            'CoverArtists': 'People (Cover Artists)',
-            'Editors': 'People (Editors)',
-            'Translators': 'People (Translators)'
-        };
-        return displayNames[fieldName] || fieldName;
-    };
+    // Note: getPeopleFieldDisplayName is defined in config-formatters.js to avoid duplication
     
 })(window.SmartLists = window.SmartLists || {});
 

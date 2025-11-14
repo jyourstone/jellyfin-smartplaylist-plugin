@@ -1478,7 +1478,8 @@
         container.innerHTML = '';
         
         // Use saved fields if provided, otherwise default to Genre and Tags
-        const selectedFields = savedFields || ['Genre', 'Tags'];
+        // Check for both null/undefined and empty array (backend returns empty array when using defaults)
+        const selectedFields = (savedFields && savedFields.length > 0) ? savedFields : ['Genre', 'Tags'];
         
         // Create checkboxes for each comparison field
         SmartLists.availableFields.SimilarityComparisonFields.forEach(function(field) {
@@ -1570,37 +1571,7 @@
         return peopleFieldMap[fieldName] === 'People' && fieldName !== 'People';
     };
     
-    // Get friendly display name for people fields
-    SmartLists.getPeopleFieldDisplayName = function(fieldName) {
-        const displayNames = {
-            'People': 'People (All)',
-            'Actors': 'People (Actors)',
-            'Directors': 'People (Directors)',
-            'Composers': 'People (Composers)',
-            'Writers': 'People (Writers)',
-            'GuestStars': 'People (Guest Stars)',
-            'Producers': 'People (Producers)',
-            'Conductors': 'People (Conductors)',
-            'Lyricists': 'People (Lyricists)',
-            'Arrangers': 'People (Arrangers)',
-            'SoundEngineers': 'People (Sound Engineers)',
-            'Mixers': 'People (Mixers)',
-            'Remixers': 'People (Remixers)',
-            'Creators': 'People (Creators)',
-            'PersonArtists': 'People (Artists)',
-            'PersonAlbumArtists': 'People (Album Artists)',
-            'Authors': 'People (Authors)',
-            'Illustrators': 'People (Illustrators)',
-            'Pencilers': 'People (Pencilers)',
-            'Inkers': 'People (Inkers)',
-            'Colorists': 'People (Colorists)',
-            'Letterers': 'People (Letterers)',
-            'CoverArtists': 'People (Cover Artists)',
-            'Editors': 'People (Editors)',
-            'Translators': 'People (Translators)'
-        };
-        return displayNames[fieldName] || fieldName;
-    };
+    // Note: getPeopleFieldDisplayName is defined in config-formatters.js to avoid duplication
 
     // Generic helper to update all rules using a provided update function
     // Reduces duplication across updateAll* functions
@@ -1618,129 +1589,8 @@
         });
     };
 
-    // ===== SORT OPTIONS VISIBILITY =====
-    // Sort option visibility definitions based on media types and rules
-    SmartLists.shouldShowSortOption = function(sortValue, selectedMediaTypes, hasSimilarToRule) {
-        // If no media types selected, show all options
-        if (!selectedMediaTypes || selectedMediaTypes.length === 0) {
-            return true;
-        }
-        
-        const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
-        const hasMovie = selectedMediaTypes.indexOf('Movie') !== -1;
-        const hasAudio = selectedMediaTypes.indexOf('Audio') !== -1;
-        const hasAudioBook = selectedMediaTypes.indexOf('AudioBook') !== -1;
-        const hasMusicVideo = selectedMediaTypes.indexOf('MusicVideo') !== -1;
-        const hasVideo = selectedMediaTypes.indexOf('Video') !== -1;
-        
-        // Episode-only sort options
-        if (['SeasonNumber', 'EpisodeNumber', 'SeriesName'].indexOf(sortValue) !== -1) {
-            return hasEpisode;
-        }
-        
-        // Audio/MusicVideo/AudioBook sort options
-        if (sortValue === 'TrackNumber') {
-            return hasAudio || hasMusicVideo || hasAudioBook;
-        }
-        
-        // Audio/MusicVideo sort options
-        if (['AlbumName', 'Artist'].indexOf(sortValue) !== -1) {
-            return hasAudio || hasMusicVideo;
-        }
-        
-        // Video-capable sort options (Resolution)
-        if (sortValue === 'Resolution') {
-            return hasMovie || hasEpisode || hasMusicVideo || hasVideo;
-        }
-        
-        // Runtime - shown for Movie, Episode, Audio, Music Video, Home Video (Video), Audiobook
-        if (sortValue === 'Runtime') {
-            return hasMovie || hasEpisode || hasAudio || hasMusicVideo || hasVideo || hasAudioBook;
-        }
-        
-        // Similarity - only show if there's a "Similar To" rule
-        if (sortValue === 'Similarity') {
-            return hasSimilarToRule === true;
-        }
-        
-        // Always show: Name, Name (Ignore Articles), ProductionYear, CommunityRating, 
-        // DateCreated, ReleaseDate, PlayCount (owner), LastPlayed (owner), Random, NoOrder
-        return true;
-    };
-    
-    // Check if any rule has "Similar To" field selected
-    SmartLists.hasSimilarToRuleInForm = function(page) {
-        const allRules = page.querySelectorAll('.rule-row');
-        for (var i = 0; i < allRules.length; i++) {
-            const ruleRow = allRules[i];
-            const fieldSelect = ruleRow.querySelector('.rule-field-select');
-            if (fieldSelect && fieldSelect.value === 'SimilarTo') {
-                return true;
-            }
-        }
-        return false;
-    };
-    
-    // Filter sort options based on current context
-    SmartLists.getFilteredSortOptions = function(page) {
-        const selectedMediaTypes = SmartLists.getSelectedMediaTypes(page);
-        const hasSimilarTo = SmartLists.hasSimilarToRuleInForm(page);
-        
-        return SmartLists.SORT_OPTIONS.filter(function(opt) {
-            return SmartLists.shouldShowSortOption(opt.value, selectedMediaTypes, hasSimilarTo);
-        });
-    };
-
-    SmartLists.updateAllSortOptionsVisibility = function(page) {
-        const sortsContainer = page.querySelector('#sorts-container');
-        if (!sortsContainer) return;
-        
-        const sortBoxes = sortsContainer.querySelectorAll('.sort-box');
-        const filteredOptions = SmartLists.getFilteredSortOptions(page);
-        
-        sortBoxes.forEach(function(box) {
-            const sortBySelect = box.querySelector('select[id^="sort-by-"]');
-            const sortOrderSelect = box.querySelector('select[id^="sort-order-"]');
-            const sortOrderContainer = sortOrderSelect ? sortOrderSelect.closest('.sort-field-container') : null;
-            
-            if (!sortBySelect) return;
-            
-            const currentValue = sortBySelect.value;
-            
-            // Rebuild the options
-            const sortByOptions = filteredOptions.map(function(opt) {
-                return {
-                    value: opt.value,
-                    label: opt.label,
-                    selected: opt.value === currentValue
-                };
-            });
-            
-            // Check if current value is still valid
-            const isCurrentValueValid = filteredOptions.some(function(opt) {
-                return opt.value === currentValue;
-            });
-            
-            // Repopulate the dropdown
-            SmartLists.populateSelectElement(sortBySelect, sortByOptions);
-            
-            // If current value is no longer valid, clear it and select first option
-            if (!isCurrentValueValid && currentValue) {
-                if (sortByOptions.length > 0) {
-                    sortBySelect.value = sortByOptions[0].value;
-                    // Sync Sort Order UI for the new value
-                    if (typeof SmartLists.syncSortOrderUI === 'function') {
-                        SmartLists.syncSortOrderUI(sortByOptions[0].value, sortOrderContainer, sortOrderSelect);
-                    }
-                }
-            } else {
-                // Sync Sort Order UI for the current value
-                if (typeof SmartLists.syncSortOrderUI === 'function') {
-                    SmartLists.syncSortOrderUI(sortBySelect.value, sortOrderContainer, sortOrderSelect);
-                }
-            }
-        });
-    };
+    // Note: shouldShowSortOption, hasSimilarToRuleInForm, getFilteredSortOptions, and updateAllSortOptionsVisibility
+    // are defined in config-sorts.js and config-core.js to avoid duplication
 
     // ===== RULE COLLECTION =====
     SmartLists.collectRulesFromForm = function(page) {

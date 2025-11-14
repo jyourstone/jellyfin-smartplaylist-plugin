@@ -84,12 +84,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     return (true, "Collection is disabled", string.Empty);
                 }
 
-                // Get all media items (collections are server-wide, no user filtering)
-                var allMedia = GetAllMedia(dto.MediaTypes, dto).ToArray();
-                _logger.LogDebug("Found {MediaCount} total media items for collection", allMedia.Length);
-
                 // Collections use an owner user for rule context (IsPlayed, IsFavorite, etc.)
                 // The collection is server-wide (visible to all), but rules evaluate in the owner's context
+                // and the query must be executed in the owner's context to get the correct media items
                 if (!Guid.TryParse(dto.User, out var ownerUserId) || ownerUserId == Guid.Empty)
                 {
                     _logger.LogError("Collection owner user ID is invalid or empty: {User}", dto.User);
@@ -104,7 +101,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     return (false, $"Collection owner user not found. Please set a valid owner.", string.Empty);
                 }
 
-                var smartCollection = new Core.SmartList(dto);
+                // Get all media items using the owner user's context
+                var allMedia = GetAllMedia(dto.MediaTypes, dto, ownerUser).ToArray();
+                _logger.LogDebug("Found {MediaCount} total media items for collection using owner user {OwnerUsername}", allMedia.Length, ownerUser.Username);
+
+                var smartCollection = new Core.SmartList(dto)
+                {
+                    UserManager = _userManager // Set UserManager for Jellyfin 10.11+ user resolution
+                };
 
                 // Log the collection rules
                 _logger.LogDebug("Processing collection {CollectionName} with {RuleSetCount} rule sets (Owner: {OwnerUser})", 
@@ -729,17 +733,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             }
         }
 
-        private IEnumerable<BaseItem> GetAllMedia(List<string> mediaTypes, SmartCollectionDto? dto = null)
+        private IEnumerable<BaseItem> GetAllMedia(List<string> mediaTypes, SmartCollectionDto? dto = null, User? ownerUser = null)
         {
-            // Collections are server-wide, so we query all media
-            // Use the first admin user (or first user) to query all items
-            // Since collections are server-wide, we want all items regardless of user permissions
+            // Collections are server-wide (visible to all users), but the media query and rules
+            // are evaluated in the context of the owner user to respect library access permissions
+            // and user-specific data (IsPlayed, IsFavorite, etc.)
             
             var baseItemKinds = GetBaseItemKindsFromMediaTypes(mediaTypes, dto);
             
-            // Get the first user to query all items
-            // Since collections are server-wide, we want all items regardless of user permissions
-            var queryUser = _userManager.Users.FirstOrDefault();
+            // Use the owner user for the query if provided, otherwise fall back to first user
+            var queryUser = ownerUser ?? _userManager.Users.FirstOrDefault();
             
             if (queryUser == null)
             {
@@ -747,8 +750,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 return [];
             }
             
-            // Query all items using the admin/first user
-            // This will return all items the user has access to, which for admin should be everything
+            // Query all items the owner user has access to
             var query = new InternalItemsQuery(queryUser)
             {
                 IncludeItemTypes = baseItemKinds,

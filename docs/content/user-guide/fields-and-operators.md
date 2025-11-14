@@ -2,7 +2,7 @@
 
 ## Available Fields
 
-The web interface provides access to all available fields for creating playlist rules.
+The web interface provides access to all available fields for creating list rules.
 
 ### Content Fields
 
@@ -81,9 +81,9 @@ The web interface provides access to all available fields for creating playlist 
 - **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
 - **matches regex** - Advanced pattern matching using .NET regex syntax
 
-### Using "Is In" to Simplify Playlists
+### Using "Is In" to Simplify Lists
 
-The **"is in"** and **"is not in"** operators are powerful tools that can help you simplify your playlists. Instead of creating multiple OR rule groups, you can combine multiple values in a single rule using semicolons.
+The **"is in"** and **"is not in"** operators are powerful tools that can help you simplify your lists. Instead of creating multiple OR rule groups, you can combine multiple values in a single rule using semicolons.
 
 **Example: Instead of this (multiple OR rule groups):**
 ```
@@ -113,7 +113,7 @@ Both approaches produce the same result, but the second is much simpler and easi
 
 ## Rule Logic
 
-Understanding how rule groups work is key to creating effective playlists. The plugin uses two types of logic:
+Understanding how rule groups work is key to creating effective lists. The plugin uses two types of logic:
 
 ### Within a Rule Group (AND Logic)
 
@@ -170,7 +170,7 @@ Rule Group 2:
   - Is Favorite = True
 ```
 
-This playlist will include items that are:
+This list will include items that are:
 - **(Action AND After 2010 AND Rating > 7)** **OR**
 - **(Sci-Fi AND Favorite)**
 
@@ -181,7 +181,7 @@ So you'll get highly-rated recent action movies, plus any sci-fi movies you've m
 The **matches regex** operator allows you to create complex pattern matching rules using .NET regular expression syntax.
 
 !!! important "Important: .NET Syntax Required"
-    SmartPlaylist uses **.NET regex syntax**, not JavaScript-style regex. Do not use JavaScript-style patterns like `/pattern/flags`.
+    SmartLists uses **.NET regex syntax**, not JavaScript-style regex. Do not use JavaScript-style patterns like `/pattern/flags`.
 
 **Common Examples:**
 

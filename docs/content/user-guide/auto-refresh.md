@@ -1,15 +1,15 @@
 # Auto-Refresh
 
-Smart playlists can update automatically in multiple ways.
+Smart playlists and collections can update automatically in multiple ways.
 
 ## Real-Time Auto-Refresh
 
-Configure playlists to refresh automatically when your library changes:
+Configure lists to refresh automatically when your library changes:
 
-- **Per-Playlist Setting**: Each playlist can be set to `Never`, `On Library Changes`, or `On All Changes`
-- **Global Default**: Set the default auto-refresh mode for new playlists in Settings
+- **Per-List Setting**: Each list can be set to `Never`, `On Library Changes`, or `On All Changes`
+- **Global Default**: Set the default auto-refresh mode for new lists in Settings
 - **Unified Batching**: All changes use intelligent 3-second batching to prevent spam during bulk operations
-- **Performance Optimized**: Uses advanced caching to only refresh playlists that are actually affected by changes
+- **Performance Optimized**: Uses advanced caching to only refresh lists that are actually affected by changes
 - **Automatic Deduplication**: Multiple events for the same item are combined into a single refresh
 
 ### Auto-Refresh Modes
@@ -18,14 +18,14 @@ Configure playlists to refresh automatically when your library changes:
 - **On Library Changes**: Refresh only when new items are added to your library
 - **On All Changes**: Refresh for library additions AND all updates (metadata changes, playback status, favorites, etc.)
 
-## Custom Playlist Scheduling
+## Custom List Scheduling
 
-Configure individual playlists with their own refresh schedules:
+Configure individual lists with their own refresh schedules:
 
-- **Per-playlist scheduling**: Each playlist can have its own schedule
+- **Per-list scheduling**: Each list can have its own schedule
 - **Schedule types**: Daily, Weekly, Monthly, Yearly, or Interval
 - **Flexible intervals**: 15 min, 30 min, 1 h, 2 h, 3 h, 4 h, 6 h, 8 h, 12 h, or 24 h
-- **Backward compatible**: Existing playlists continue using legacy Jellyfin scheduled tasks
+- **Backward compatible**: Existing lists continue using legacy Jellyfin scheduled tasks
 
 ### Schedule Options
 
@@ -37,14 +37,12 @@ Configure individual playlists with their own refresh schedules:
 - **No schedule**: Disable all scheduled refreshes (auto-refresh and manual only)
 
 !!! tip "Multiple Schedules"
-    You can add multiple schedules to a single playlist. For example, you could set both a Daily schedule at 6:00 AM and an Interval schedule every 4 hours to refresh the playlist both at a specific time and at regular intervals throughout the day.
+    You can add multiple schedules to a single list. For example, you could set both a Daily schedule at 6:00 AM and an Interval schedule every 4 hours to refresh the list both at a specific time and at regular intervals throughout the day.
 
 ## Legacy Scheduled Tasks
 
-For old playlists where custom schedules do not exist, the original Jellyfin scheduled tasks are still used:
-
-- **🎵 Audio SmartPlaylists**: Runs by default daily at **3:30 AM** (handles music and audiobooks)
-- **🎬 Media SmartPlaylists**: Runs by default **hourly** (handles movies, TV shows, readable books, music videos, home videos, and photos)
+!!! warning "Deprecated and Removed"
+    Legacy scheduled tasks have been deprecated and removed. The original Jellyfin scheduled tasks (Audio SmartLists and Media SmartLists) are no longer used. All lists now use the custom scheduling system described above, or rely on auto-refresh and manual refresh only.
 
 ## Example Use Cases
 
@@ -58,31 +56,31 @@ For old playlists where custom schedules do not exist, the original Jellyfin sch
 ### Auto-Refresh Examples
 
 - **Continue Watching**: NextUnwatched playlist with auto-refresh on all changes → updates when episodes are watched (batched)
-- **New Releases**: Date-based playlist with auto-refresh on library changes → updates when new content is added
-- **Favorites Collection**: Favorite-based playlist with auto-refresh on all changes → updates when items are favorited/unfavorited (batched)
+- **New Releases**: Date-based list with auto-refresh on library changes → updates when new content is added
+- **Favorites Collection**: Favorite-based collection with auto-refresh on all changes → updates when items are favorited/unfavorited (batched)
 
 ### Mixed Approach
 
 Combine both systems for optimal performance:
 
-- Use **custom scheduling** for playlists that benefit from regular refresh (random order, time-based rules)
-- Use **auto-refresh** for playlists that need immediate updates (playback status, new additions)
+- Use **custom scheduling** for lists that benefit from regular refresh (random order, time-based rules)
+- Use **auto-refresh** for lists that need immediate updates (playback status, new additions)
 
 ## Scheduled Refresh Control
 
-Perfect for randomized playlists:
+Perfect for randomized lists:
 
-- Enable scheduled refresh for randomized playlists to get fresh random order daily/hourly
-- Disable for rule-based playlists that rely on real-time auto-refresh instead
-- Mix and match: some playlists on schedule, others auto-refresh only
+- Enable scheduled refresh for randomized lists to get fresh random order daily/hourly
+- Disable for rule-based lists that rely on real-time auto-refresh instead
+- Mix and match: some lists on schedule, others auto-refresh only
 
 ## Manual Refresh
 
-- Use the **"Refresh All Playlists"** button in the Settings tab to trigger a refresh of all playlists
-- Use the **"Refresh"** button next to each playlist in the Manage Playlists tab to refresh individual playlists
+- Use the **"Refresh All Lists"** button in the Settings tab to trigger a refresh of all lists
+- Use the **"Refresh"** button next to each list in the Manage Lists tab to refresh individual lists
 
 !!! note "Refresh Time"
-    A full refresh of all playlists can take some time depending on how many media items and playlists you have. Large libraries with many playlists may take several minutes or even hours to complete, depending on the hardware. Individual playlist refreshes are typically faster.
+    A full refresh of all lists can take some time depending on how many media items and lists you have. Large libraries with many lists may take several minutes or even hours to complete, depending on the hardware. Individual list refreshes are typically faster.
 
 ## Performance Considerations
 
@@ -97,9 +95,9 @@ Perfect for randomized playlists:
 - All changes are automatically batched with a 3-second delay to prevent spam during bulk operations
 - Even `On All Changes` is efficient thanks to intelligent batching during large library scans
 - **Removed items** are automatically handled by Jellyfin (no refresh needed)
-- Consider limiting the number of playlists with auto-refresh enabled to optimize server performance
+- Consider limiting the number of lists with auto-refresh enabled to optimize server performance
 
 ### Third-Party Plugin Compatibility
 
 - Plugins that sync watched status may trigger many simultaneous updates
-- If you experience performance issues during bulk sync operations, temporarily set playlists to `Never` or `On Library Changes`
+- If you experience performance issues during bulk sync operations, temporarily set lists to `Never` or `On Library Changes`
