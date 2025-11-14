@@ -1127,10 +1127,6 @@
         const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
         const filteredFieldGroups = SmartLists.filterFieldsByMediaType(fieldGroups, selectedMediaTypes);
         
-        // Get list type to filter out Collections field for Collection lists
-        const listType = page ? SmartLists.getElementValue(page, '#listType', 'Playlist') : 'Playlist';
-        const isCollection = listType === 'Collection';
-        
         // Get the current selected value before clearing
         const currentValue = selectElement.value;
         
@@ -1156,11 +1152,6 @@
                 optgroup.label = group.label;
                 
                 fields.forEach(function(field) {
-                    // Skip Collections field when creating a Collection
-                    if (isCollection && field.Value === 'Collections') {
-                        return;
-                    }
-                    
                     const option = document.createElement('option');
                     option.value = field.Value;
                     option.textContent = field.Label;

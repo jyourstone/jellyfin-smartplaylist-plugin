@@ -1065,6 +1065,7 @@
             apiClient.updatePluginConfiguration(SmartLists.getPluginId(), config).then(function() {
                 Dashboard.hideLoadingMsg();
                 SmartLists.showNotification('Configuration saved successfully.', 'success');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }).catch(function(err) {
                 console.error('Error saving configuration:', err);
                 Dashboard.hideLoadingMsg();
@@ -1084,14 +1085,40 @@
             type: "POST",
             url: SmartLists.getApiClient().getUrl(SmartLists.ENDPOINTS.refreshDirect),
             contentType: 'application/json'
-        }).then(function() {
+        }).then(function(response) {
             Dashboard.hideLoadingMsg();
-            SmartLists.showNotification('All playlists have been refreshed successfully.', 'success');
             
-            // Auto-refresh the playlist list to show updated LastRefreshed timestamps
-            const page = document.querySelector('.SmartListsConfigurationPage');
-            if (page && SmartLists.loadPlaylistList) {
-                SmartLists.loadPlaylistList(page);
+            // Parse response if it's a Response object, otherwise use it directly
+            if (response && typeof response.json === 'function') {
+                return response.json().then(function(responseData) {
+                    // Get the message from the response if available
+                    let message = 'All lists have been refreshed successfully.';
+                    if (responseData && responseData.message) {
+                        message = responseData.message;
+                    }
+                    
+                    SmartLists.showNotification(message, 'success');
+                    
+                    // Auto-refresh the list to show updated LastRefreshed timestamps for both playlists and collections
+                    const page = document.querySelector('.SmartListsConfigurationPage');
+                    if (page && SmartLists.loadPlaylistList) {
+                        SmartLists.loadPlaylistList(page);
+                    }
+                });
+            } else {
+                // Response is already parsed or not a Response object
+                let message = 'All lists have been refreshed successfully.';
+                if (response && response.message) {
+                    message = response.message;
+                }
+                
+                SmartLists.showNotification(message, 'success');
+                
+                // Auto-refresh the list to show updated LastRefreshed timestamps for both playlists and collections
+                const page = document.querySelector('.SmartListsConfigurationPage');
+                if (page && SmartLists.loadPlaylistList) {
+                    SmartLists.loadPlaylistList(page);
+                }
             }
         }).catch(async function(err) {
             Dashboard.hideLoadingMsg();
@@ -1395,7 +1422,7 @@
             page._skipMediaTypeChangeHandlers = false;
         }
         
-        // Update field selects to add/remove Collections field based on list type
+        // Update field selects when list type changes
         if (SmartLists.updateAllFieldSelects) {
             SmartLists.updateAllFieldSelects(page);
         }

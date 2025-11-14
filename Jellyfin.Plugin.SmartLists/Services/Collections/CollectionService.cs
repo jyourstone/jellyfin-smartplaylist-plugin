@@ -412,8 +412,23 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             // Save the changes
             await collection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
 
-            // Refresh metadata to generate cover images
+            // Refresh metadata to generate cover images (metadata providers may change the name)
             await RefreshCollectionMetadataAsync(collection, cancellationToken).ConfigureAwait(false);
+
+            // Always set the name after metadata refresh to ensure it's correct
+            // This prevents metadata providers from overwriting our intended name
+            var expectedName = NameFormatter.FormatPlaylistName(dto.Name);
+            var collectionAfterRefresh = _libraryManager.GetItemById(collection.Id);
+            if (collectionAfterRefresh != null && collectionAfterRefresh.GetBaseItemKind() == BaseItemKind.BoxSet)
+            {
+                if (collectionAfterRefresh.Name != expectedName)
+                {
+                    _logger.LogDebug("Setting collection name to '{ExpectedName}' after metadata refresh (was '{CurrentName}')", 
+                        expectedName, collectionAfterRefresh.Name);
+                }
+                collectionAfterRefresh.Name = expectedName;
+                await collectionAfterRefresh.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         private async Task<string> CreateNewCollectionAsync(string collectionName, LinkedChild[] linkedChildren, SmartCollectionDto dto, CancellationToken cancellationToken)
@@ -671,9 +686,23 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             if (retrievedItem != null && retrievedItem.GetBaseItemKind() == BaseItemKind.BoxSet)
             {
                 _logger.LogDebug("Retrieved new collection: Name = {Name}", retrievedItem.Name);
-
-                // Refresh metadata to generate cover images
+                
+                // Refresh metadata to generate cover images (metadata providers may change the name)
                 await RefreshCollectionMetadataAsync(retrievedItem, cancellationToken).ConfigureAwait(false);
+                
+                // Always set the name after metadata refresh to ensure it's correct
+                // This prevents metadata providers from overwriting our intended name
+                retrievedItem = _libraryManager.GetItemById(collectionId);
+                if (retrievedItem != null && retrievedItem.GetBaseItemKind() == BaseItemKind.BoxSet)
+                {
+                    if (retrievedItem.Name != formattedName)
+                    {
+                        _logger.LogDebug("Setting collection name to '{FormattedName}' after metadata refresh (was '{CurrentName}')", 
+                            formattedName, retrievedItem.Name);
+                    }
+                    retrievedItem.Name = formattedName;
+                    await retrievedItem.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                }
                 
                 // Report the new collection to the library manager to trigger UI updates
                 try
@@ -682,10 +711,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     
                     // Try to use QueueLibraryScan if available to trigger a refresh
                     LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
-                    
-                    // Alternative: Force an update to trigger change detection if QueueLibraryScan didn't work
-                    await retrievedItem.UpdateToRepositoryAsync(ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
-                    _logger.LogDebug("Updated collection metadata to trigger UI refresh");
                 }
                 catch (Exception ex)
                 {
@@ -760,7 +785,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         MetadataRefreshMode = MetadataRefreshMode.FullRefresh,
                         ImageRefreshMode = MetadataRefreshMode.FullRefresh,
                         ReplaceAllImages = true,
-                        ReplaceAllMetadata = true
+                        ReplaceAllMetadata = false // Don't replace metadata - prevents online providers from changing the collection name
                     };
 
                     await _providerManager.RefreshSingleItem(collection, clearOptions, cancellationToken).ConfigureAwait(false);
@@ -776,7 +801,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 {
                     MetadataRefreshMode = MetadataRefreshMode.Default,
                     ImageRefreshMode = MetadataRefreshMode.Default,
-                    ReplaceAllMetadata = true,
+                    ReplaceAllMetadata = false, // Don't replace metadata - prevents online providers from changing the collection name
                     ReplaceAllImages = true
                 };
 

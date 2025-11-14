@@ -336,8 +336,19 @@
             return response.json();
         })
         .then(function(result) {
-            // Clear file input
+            // Clear file input and reset UI
             fileInput.value = '';
+            
+            // Hide import button and clear selected filename display
+            const importBtn = page.querySelector('#importPlaylistsBtn');
+            const selectedFileName = page.querySelector('#selectedFileName');
+            if (importBtn) {
+                importBtn.style.display = 'none';
+                importBtn.disabled = true;
+            }
+            if (selectedFileName) {
+                selectedFileName.textContent = '';
+            }
             
             // Backend returns: imported, skipped, errors, details
             const importedCount = result.imported || result.importedCount || 0;

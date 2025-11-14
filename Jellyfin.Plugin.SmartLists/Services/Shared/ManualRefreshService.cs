@@ -3,22 +3,46 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Playlists;
+using Jellyfin.Plugin.SmartLists.Services.Collections;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
 using Jellyfin.Plugin.SmartLists.Utilities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Providers;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Shared
 {
+    /// <summary>
+    /// Result of a refresh operation with separate messages for user notification and logging.
+    /// </summary>
+    public class RefreshResult
+    {
+        /// <summary>
+        /// Whether the operation was successful.
+        /// </summary>
+        public bool Success { get; set; }
+
+        /// <summary>
+        /// User-friendly notification message to display in the UI.
+        /// </summary>
+        public string NotificationMessage { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Detailed log message for debugging and logging purposes.
+        /// </summary>
+        public string LogMessage { get; set; } = string.Empty;
+    }
+
     /// <summary>
     /// Service for handling manual refresh operations initiated by users.
     /// This includes both individual playlist refreshes and "Refresh All" operations from the UI.
@@ -26,12 +50,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
     public interface IManualRefreshService
     {
         /// <summary>
-        /// Refresh all smart playlists manually, bypassing the Jellyfin task system.
+        /// Refresh all smart playlists manually.
         /// This method processes ALL playlists regardless of their ScheduleTrigger settings.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Tuple of (success, message)</returns>
-        Task<(bool Success, string Message)> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
+        /// <returns>Refresh result with separate notification and log messages</returns>
+        Task<RefreshResult> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Refresh all smart lists (both playlists and collections) manually.
+        /// This method processes ALL lists regardless of their ScheduleTrigger settings.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Refresh result with separate notification and log messages</returns>
+        Task<RefreshResult> RefreshAllListsAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Refresh a single smart playlist manually.
@@ -51,6 +83,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         ILibraryManager libraryManager,
         IServerApplicationPaths applicationPaths,
         IPlaylistManager playlistManager,
+        ICollectionManager collectionManager,
         IUserDataManager userDataManager,
         IProviderManager providerManager,
         ILogger<ManualRefreshService> logger,
@@ -61,6 +94,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly ILibraryManager _libraryManager = libraryManager;
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
         private readonly IPlaylistManager _playlistManager = playlistManager;
+        private readonly ICollectionManager _collectionManager = collectionManager;
         private readonly IUserDataManager _userDataManager = userDataManager;
         private readonly IProviderManager _providerManager = providerManager;
         private readonly ILogger<ManualRefreshService> _logger = logger;
@@ -97,6 +131,63 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
+        /// Formats elapsed time for user notifications. Shows seconds if under 60 seconds (rounded to integer if >= 1 second), minutes if 60+ seconds.
+        /// </summary>
+        /// <param name="elapsedMilliseconds">Elapsed time in milliseconds.</param>
+        /// <returns>Formatted time string (e.g., "0.5 seconds", "2 seconds", or "3 minutes").</returns>
+        private static string FormatElapsedTime(long elapsedMilliseconds)
+        {
+            var elapsedSeconds = elapsedMilliseconds / 1000.0;
+            
+            if (elapsedSeconds < 60)
+            {
+                if (elapsedSeconds < 1.0)
+                {
+                    return $"{elapsedSeconds:F1} seconds";
+                }
+                else
+                {
+                    var seconds = (int)Math.Round(elapsedSeconds);
+                    return seconds == 1 ? "1 second" : $"{seconds} seconds";
+                }
+            }
+            else
+            {
+                var minutes = (int)Math.Round(elapsedSeconds / 60.0);
+                return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+            }
+        }
+
+        /// <summary>
+        /// Checks if a refresh result message indicates actual failures (failure count > 0).
+        /// Message format: "Direct refresh completed: X successful, Y failed out of Z processed..."
+        /// </summary>
+        /// <param name="message">The result message to check.</param>
+        /// <returns>True if there are actual failures (Y > 0), false otherwise.</returns>
+        private static bool HasActualFailures(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return false;
+            }
+
+            // Look for pattern: "X successful, Y failed" where Y is the failure count
+            // Use regex to extract the number before "failed"
+            var match = Regex.Match(
+                message,
+                @"(\d+)\s+failed",
+                RegexOptions.IgnoreCase);
+
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var failureCount))
+            {
+                return failureCount > 0;
+            }
+
+            // If we can't parse the message, assume no failures (safer default)
+            return false;
+        }
+
+        /// <summary>
         /// Creates a PlaylistService instance for playlist operations.
         /// </summary>
         private Services.Playlists.PlaylistService GetPlaylistService()
@@ -114,12 +205,29 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
+        /// Creates a CollectionService instance for collection operations.
+        /// </summary>
+        private Services.Collections.CollectionService GetCollectionService()
+        {
+            // Create a logger specifically for CollectionService
+            var collectionServiceLogger = _loggerFactory.CreateLogger<Services.Collections.CollectionService>();
+
+            return new Services.Collections.CollectionService(
+                _libraryManager,
+                _collectionManager,
+                _userManager,
+                _userDataManager,
+                collectionServiceLogger,
+                _providerManager);
+        }
+
+        /// <summary>
         /// Refresh all smart playlists manually without using Jellyfin scheduled tasks.
         /// This method performs the same work as the scheduled tasks but processes ALL playlists
         /// regardless of their ScheduleTrigger settings, since this is a manual operation.
         /// This method uses immediate failure if another refresh is already in progress.
         /// </summary>
-        public async Task<(bool Success, string Message)> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default)
+        public async Task<RefreshResult> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -130,8 +238,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var (lockAcquired, lockHandle) = await Services.Playlists.PlaylistService.TryAcquireRefreshLockAsync(cancellationToken);
             if (!lockAcquired)
             {
+                var message = "A playlist refresh is already in progress. Please try again shortly.";
                 _logger.LogInformation("Manual refresh request rejected - another refresh is already in progress");
-                return (false, "A playlist refresh is already in progress. Please try again shortly.");
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = message,
+                    LogMessage = message
+                };
             }
 
             try
@@ -151,8 +265,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     stopwatch.Stop();
                     var message = "No playlists found to refresh";
-                    _logger.LogInformation("{Message} (completed in {ElapsedTime}ms)", message, stopwatch.ElapsedMilliseconds);
-                    return (true, message);
+                    var earlyLogMessage = $"{message} (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                    _logger.LogInformation(earlyLogMessage);
+                    return new RefreshResult
+                    {
+                        Success = true,
+                        NotificationMessage = message,
+                        LogMessage = earlyLogMessage
+                    };
                 }
 
                 // Log disabled playlists for informational purposes
@@ -288,22 +408,53 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 }
 
                 stopwatch.Stop();
-                var resultMessage = $"Direct refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed playlists (completed in {stopwatch.ElapsedMilliseconds}ms)";
-                _logger.LogInformation(resultMessage);
+                var elapsedTime = FormatElapsedTime(stopwatch.ElapsedMilliseconds);
+                var logMessage = $"Direct refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed playlists (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                
+                string notificationMessage;
+                if (failureCount == 0)
+                {
+                    notificationMessage = $"All playlists refreshed successfully in {elapsedTime}.";
+                }
+                else
+                {
+                    notificationMessage = $"Playlist refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed (in {elapsedTime})";
+                }
+                
+                _logger.LogInformation(logMessage);
 
-                return (true, resultMessage);
+                return new RefreshResult
+                {
+                    Success = true,
+                    NotificationMessage = notificationMessage,
+                    LogMessage = logMessage
+                };
             }
             catch (OperationCanceledException)
             {
                 stopwatch.Stop();
-                _logger.LogInformation("Manual playlist refresh was cancelled (after {ElapsedTime}ms)", stopwatch.ElapsedMilliseconds);
-                return (false, "Refresh operation was cancelled");
+                var message = "Refresh operation was cancelled";
+                var logMessage = $"Manual playlist refresh was cancelled (after {stopwatch.ElapsedMilliseconds}ms)";
+                _logger.LogInformation(logMessage);
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = message,
+                    LogMessage = logMessage
+                };
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogError(ex, "Error during manual playlist refresh (after {ElapsedTime}ms)", stopwatch.ElapsedMilliseconds);
-                return (false, $"Error during manual playlist refresh: {ex.Message}");
+                var notificationMessage = "An error occurred during playlist refresh. Please check the logs for details.";
+                var logMessage = $"Error during manual playlist refresh (after {stopwatch.ElapsedMilliseconds}ms): {ex.Message}";
+                _logger.LogError(ex, logMessage);
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = notificationMessage,
+                    LogMessage = logMessage
+                };
             }
             finally
             {
@@ -325,6 +476,270 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 lockHandle?.Dispose();
                 _logger.LogDebug("Released shared refresh lock");
+            }
+        }
+
+        /// <summary>
+        /// Refresh all smart lists (both playlists and collections) manually.
+        /// This method processes ALL lists regardless of their ScheduleTrigger settings, since this is a manual operation.
+        /// This method uses immediate failure if another refresh is already in progress.
+        /// </summary>
+        public async Task<RefreshResult> RefreshAllListsAsync(CancellationToken cancellationToken = default)
+        {
+            var overallStopwatch = Stopwatch.StartNew();
+            RefreshResult? playlistResult = null;
+            RefreshResult? collectionResult = null;
+
+            try
+            {
+                _logger.LogInformation("Starting manual refresh of all smart lists (playlists and collections)");
+
+                // Refresh playlists first
+                _logger.LogInformation("Refreshing all playlists...");
+                playlistResult = await RefreshAllPlaylistsAsync(cancellationToken).ConfigureAwait(false);
+
+                if (!playlistResult.Success)
+                {
+                    _logger.LogWarning("Playlist refresh failed: {LogMessage}", playlistResult.LogMessage);
+                    return new RefreshResult
+                    {
+                        Success = false,
+                        NotificationMessage = $"Playlist refresh failed: {playlistResult.NotificationMessage}",
+                        LogMessage = $"Playlist refresh failed: {playlistResult.LogMessage}"
+                    };
+                }
+
+                // Refresh collections
+                _logger.LogInformation("Refreshing all collections...");
+                collectionResult = await RefreshAllCollectionsAsync(cancellationToken).ConfigureAwait(false);
+
+                if (!collectionResult.Success)
+                {
+                    _logger.LogWarning("Collection refresh failed: {LogMessage}", collectionResult.LogMessage);
+                    return new RefreshResult
+                    {
+                        Success = false,
+                        NotificationMessage = $"Collection refresh failed: {collectionResult.NotificationMessage}",
+                        LogMessage = $"Collection refresh failed: {collectionResult.LogMessage}"
+                    };
+                }
+
+                overallStopwatch.Stop();
+                var elapsedTime = FormatElapsedTime(overallStopwatch.ElapsedMilliseconds);
+                
+                // Check if there were any actual failures
+                var playlistHasFailures = HasActualFailures(playlistResult.LogMessage);
+                var collectionHasFailures = HasActualFailures(collectionResult.LogMessage);
+                
+                string notificationMessage;
+                string logMessage;
+                
+                if (!playlistHasFailures && !collectionHasFailures)
+                {
+                    // Simple success message when everything succeeds
+                    notificationMessage = $"All lists refreshed successfully in {elapsedTime}.";
+                }
+                else
+                {
+                    // Include details when there are failures
+                    notificationMessage = $"All lists refreshed. Playlists: {playlistResult.NotificationMessage}. Collections: {collectionResult.NotificationMessage}.";
+                }
+                
+                logMessage = $"All lists refresh completed. Playlists: {playlistResult.LogMessage}. Collections: {collectionResult.LogMessage}. (Total time: {overallStopwatch.ElapsedMilliseconds}ms)";
+                _logger.LogInformation(logMessage);
+
+                return new RefreshResult
+                {
+                    Success = true,
+                    NotificationMessage = notificationMessage,
+                    LogMessage = logMessage
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                overallStopwatch.Stop();
+                var message = "Refresh operation was cancelled";
+                var logMessage = $"Manual refresh of all lists was cancelled (after {overallStopwatch.ElapsedMilliseconds}ms)";
+                _logger.LogInformation(logMessage);
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = message,
+                    LogMessage = logMessage
+                };
+            }
+            catch (Exception ex)
+            {
+                overallStopwatch.Stop();
+                var notificationMessage = "An error occurred during list refresh. Please check the logs for details.";
+                var logMessage = $"Error during manual refresh of all lists (after {overallStopwatch.ElapsedMilliseconds}ms): {ex.Message}";
+                _logger.LogError(ex, logMessage);
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = notificationMessage,
+                    LogMessage = logMessage
+                };
+            }
+        }
+
+        /// <summary>
+        /// Refresh all smart collections manually without using Jellyfin scheduled tasks.
+        /// This method processes ALL collections regardless of their ScheduleTrigger settings, since this is a manual operation.
+        /// This method uses immediate failure if another refresh is already in progress.
+        /// </summary>
+        private async Task<RefreshResult> RefreshAllCollectionsAsync(CancellationToken cancellationToken = default)
+        {
+            var stopwatch = Stopwatch.StartNew();
+
+            // Try to acquire the collection refresh lock with immediate failure
+            var collectionService = GetCollectionService();
+            var lockAcquired = await collectionService.TryRefreshAllAsync(cancellationToken).ConfigureAwait(false);
+            
+            if (!lockAcquired.Success)
+            {
+                var message = "A collection refresh is already in progress. Please try again shortly.";
+                _logger.LogInformation("Manual collection refresh request rejected - another refresh is already in progress");
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = message,
+                    LogMessage = message
+                };
+            }
+
+            try
+            {
+                _logger.LogInformation("Starting manual refresh of all smart collections (acquired refresh lock)");
+
+                // Create collection store
+                var fileSystem = new SmartListFileSystem(_applicationPaths);
+                var collectionStore = new Services.Collections.CollectionStore(fileSystem);
+
+                var allDtos = await collectionStore.GetAllAsync().ConfigureAwait(false);
+
+                _logger.LogInformation("Found {TotalCount} total collections for manual refresh", allDtos.Length);
+
+                if (allDtos.Length == 0)
+                {
+                    stopwatch.Stop();
+                    var message = "No collections found to refresh";
+                    var earlyLogMessage = $"{message} (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                    _logger.LogInformation(earlyLogMessage);
+                    return new RefreshResult
+                    {
+                        Success = true,
+                        NotificationMessage = message,
+                        LogMessage = earlyLogMessage
+                    };
+                }
+
+                // Log disabled collections for informational purposes
+                var disabledCollections = allDtos.Where(dto => !dto.Enabled).ToList();
+                if (disabledCollections.Count > 0)
+                {
+                    var disabledNames = string.Join(", ", disabledCollections.Select(c => $"'{c.Name}'"));
+                    _logger.LogDebug("Skipping {DisabledCount} disabled collections: {DisabledNames}", disabledCollections.Count, disabledNames);
+                }
+
+                // Process all enabled collections
+                var enabledCollections = allDtos.Where(dto => dto.Enabled).ToList();
+                _logger.LogInformation("Processing {EnabledCount} enabled collections", enabledCollections.Count);
+
+                var processedCount = 0;
+                var successCount = 0;
+                var failureCount = 0;
+
+                foreach (var dto in enabledCollections)
+                {
+                    var collectionStopwatch = Stopwatch.StartNew();
+                    try
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        var (success, message, collectionId) = await collectionService.RefreshAsync(dto, cancellationToken).ConfigureAwait(false);
+
+                        collectionStopwatch.Stop();
+                        if (success)
+                        {
+                            // Save the collection to persist LastRefreshed timestamp
+                            await collectionStore.SaveAsync(dto).ConfigureAwait(false);
+
+                            successCount++;
+                            _logger.LogDebug("Collection {CollectionName} processed successfully in {ElapsedTime}ms: {Message}",
+                                dto.Name, collectionStopwatch.ElapsedMilliseconds, message);
+                        }
+                        else
+                        {
+                            failureCount++;
+                            _logger.LogWarning("Collection {CollectionName} processing failed after {ElapsedTime}ms: {Message}",
+                                dto.Name, collectionStopwatch.ElapsedMilliseconds, message);
+                        }
+
+                        processedCount++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogInformation("Direct collection refresh operation was cancelled");
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        collectionStopwatch.Stop();
+                        failureCount++;
+                        processedCount++;
+                        _logger.LogError(ex, "Error processing collection {CollectionName} after {ElapsedTime}ms", dto.Name, collectionStopwatch.ElapsedMilliseconds);
+                    }
+                }
+
+                stopwatch.Stop();
+                var elapsedTime = FormatElapsedTime(stopwatch.ElapsedMilliseconds);
+                var logMessage = $"Direct refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed collections (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                
+                string notificationMessage;
+                if (failureCount == 0)
+                {
+                    notificationMessage = $"All collections refreshed successfully in {elapsedTime}.";
+                }
+                else
+                {
+                    notificationMessage = $"Collection refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed (in {elapsedTime})";
+                }
+                
+                _logger.LogInformation(logMessage);
+
+                return new RefreshResult
+                {
+                    Success = true,
+                    NotificationMessage = notificationMessage,
+                    LogMessage = logMessage
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                stopwatch.Stop();
+                var message = "Refresh operation was cancelled";
+                var logMessage = $"Manual collection refresh was cancelled (after {stopwatch.ElapsedMilliseconds}ms)";
+                _logger.LogInformation(logMessage);
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = message,
+                    LogMessage = logMessage
+                };
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                var notificationMessage = "An error occurred during collection refresh. Please check the logs for details.";
+                var logMessage = $"Error during manual collection refresh (after {stopwatch.ElapsedMilliseconds}ms): {ex.Message}";
+                _logger.LogError(ex, logMessage);
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = notificationMessage,
+                    LogMessage = logMessage
+                };
             }
         }
 
