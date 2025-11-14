@@ -31,12 +31,9 @@
             return Promise.resolve(null);
         }
         
-        // Normalize GUID format (remove dashes for comparison) to handle API inconsistency
-        const normalizedUserId = userId.replace(/-/g, '').toLowerCase();
-        
-        // Check cache first using normalized key
-        if (userNameCache.has(normalizedUserId)) {
-            const cachedName = userNameCache.get(normalizedUserId);
+        // Check cache first
+        if (userNameCache.has(userId)) {
+            const cachedName = userNameCache.get(userId);
             return Promise.resolve(cachedName);
         }
         
@@ -52,22 +49,20 @@
             if (Array.isArray(users)) {
                 users.forEach(function(user) {
                     if (user.Id && user.Name) {
-                        // Normalize GUID format when storing in cache
-                        const normalizedId = user.Id.replace(/-/g, '').toLowerCase();
-                        userNameCache.set(normalizedId, user.Name);
+                        userNameCache.set(user.Id, user.Name);
                     }
                 });
             }
             
-            // Return the requested user's name or fallback (using normalized key)
-            const resolvedName = userNameCache.get(normalizedUserId) || 'Unknown User';
+            // Return the requested user's name or fallback
+            const resolvedName = userNameCache.get(userId) || 'Unknown User';
             return resolvedName;
         }).catch(function(err) {
             console.error('Error loading users for name resolution:', err);
             const fallback = 'Unknown User';
             
-            // Cache the fallback too to avoid repeated failed lookups (using normalized key)
-            userNameCache.set(normalizedUserId, fallback);
+            // Cache the fallback too to avoid repeated failed lookups
+            userNameCache.set(userId, fallback);
             return fallback;
         });
     };
@@ -419,37 +414,8 @@
                 // Set the list owner (for both playlists and collections)
                 // Convert User to string if it's not already (handles both Guid and string formats)
                 const userIdString = playlist.User ? String(playlist.User) : null;
-                if (userIdString && userIdString !== '00000000-0000-0000-0000-000000000000') {
-                    // Function to set the User value
-                    const setUserIdValue = function() {
-                        const userSelect = page.querySelector('#playlistUser');
-                        if (userSelect) {
-                            // Check if the option exists in the dropdown
-                            const optionExists = Array.from(userSelect.options).some(function(opt) {
-                                return opt.value === userIdString;
-                            });
-                            if (optionExists) {
-                                SmartLists.setElementValue(page, '#playlistUser', userIdString);
-                                userSelect.value = userIdString;
-                                return true;
-                            }
-                        }
-                        return false;
-                    };
-                    
-                    // Try to set immediately if users are loaded
-                    if (!setUserIdValue()) {
-                        // Users not loaded yet, wait for them to load
-                        const checkUsersLoaded = setInterval(function() {
-                            if (setUserIdValue()) {
-                                clearInterval(checkUsersLoaded);
-                            }
-                        }, 50);
-                        // Timeout after 3 seconds
-                        setTimeout(function() {
-                            clearInterval(checkUsersLoaded);
-                        }, 3000);
-                    }
+                if (userIdString) {
+                    SmartLists.setUserIdValueWithRetry(page, userIdString);
                 }
                 
                 // Clear existing rules (applies to both playlists and collections)
@@ -757,37 +723,8 @@
                 
                 // Set the list owner (for both playlists and collections)
                 const userIdString = playlist.User ? String(playlist.User) : null;
-                if (userIdString && userIdString !== '00000000-0000-0000-0000-000000000000') {
-                    // Function to set the User value
-                    const setUserIdValue = function() {
-                        const userSelect = page.querySelector('#playlistUser');
-                        if (userSelect) {
-                            // Check if the option exists in the dropdown
-                            const optionExists = Array.from(userSelect.options).some(function(opt) {
-                                return opt.value === userIdString;
-                            });
-                            if (optionExists) {
-                                SmartLists.setElementValue(page, '#playlistUser', userIdString);
-                                userSelect.value = userIdString;
-                                return true;
-                            }
-                        }
-                        return false;
-                    };
-                    
-                    // Try to set immediately if users are loaded
-                    if (!setUserIdValue()) {
-                        // Users not loaded yet, wait for them to load
-                        const checkUsersLoaded = setInterval(function() {
-                            if (setUserIdValue()) {
-                                clearInterval(checkUsersLoaded);
-                            }
-                        }, 50);
-                        // Timeout after 3 seconds
-                        setTimeout(function() {
-                            clearInterval(checkUsersLoaded);
-                        }, 3000);
-                    }
+                if (userIdString) {
+                    SmartLists.setUserIdValueWithRetry(page, userIdString);
                 }
                 
                 // Clear existing rules and populate with cloned rules (applies to both playlists and collections)
@@ -1224,7 +1161,7 @@
         const scheduleDisplay = SmartLists.formatScheduleDisplay(playlist);
         
         // Format last scheduled refresh display
-        const lastRefreshDisplay = SmartLists.formatRelativeTimeFromIso(playlist.LastRefreshed, 'Unknown');
+        const lastRefreshDisplay = SmartLists.formatRelativeTimeFromIso(playlist.LastRefreshed, 'N/A') || 'N/A';
         const dateCreatedDisplay = SmartLists.formatRelativeTimeFromIso(playlist.DateCreated, 'Unknown');
         const sortName = SmartLists.formatSortDisplay(playlist);
         
@@ -1416,13 +1353,10 @@
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Item Count</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + (itemCount !== null ? itemCount : 'N/A') + '</td>' +
                         '</tr>' +
-                        (!isCollection && totalRuntimeLong ?
-                            '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Playtime</td>' +
-                                '<td style="padding: 0.5em 0.75em; color: #fff;">' + eTotalRuntimeLong + '</td>' +
-                            '</tr>' :
-                            ''
-                        ) +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Playtime</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + (eTotalRuntimeLong && playlist.TotalRuntimeMinutes && playlist.TotalRuntimeMinutes > 0 ? eTotalRuntimeLong : 'N/A') + '</td>' +
+                        '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last Refreshed</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +

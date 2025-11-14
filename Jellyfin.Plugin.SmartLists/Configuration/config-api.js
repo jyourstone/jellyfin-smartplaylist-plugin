@@ -187,6 +187,49 @@
     // Do not duplicate them here to avoid overwriting the implementation
     
     /**
+     * Sets the user ID value in the playlist user dropdown, waiting for options to load if needed.
+     * This function handles the case where users may not be loaded yet when setting the value.
+     * @param {Object} page - The page DOM element
+     * @param {string} userIdString - The user ID string to set
+     */
+    SmartLists.setUserIdValueWithRetry = function(page, userIdString) {
+        if (!userIdString || userIdString === '00000000-0000-0000-0000-000000000000') {
+            return;
+        }
+        
+        // Function to set the User value
+        const setUserIdValue = function() {
+            const userSelect = page.querySelector('#playlistUser');
+            if (userSelect) {
+                // Check if the option exists in the dropdown
+                const optionExists = Array.from(userSelect.options).some(function(opt) {
+                    return opt.value === userIdString;
+                });
+                if (optionExists) {
+                    SmartLists.setElementValue(page, '#playlistUser', userIdString);
+                    userSelect.value = userIdString;
+                    return true;
+                }
+            }
+            return false;
+        };
+        
+        // Try to set immediately if users are loaded
+        if (!setUserIdValue()) {
+            // Users not loaded yet, wait for them to load
+            const checkUsersLoaded = setInterval(function() {
+                if (setUserIdValue()) {
+                    clearInterval(checkUsersLoaded);
+                }
+            }, 50);
+            // Timeout after 3 seconds
+            setTimeout(function() {
+                clearInterval(checkUsersLoaded);
+            }, 3000);
+        }
+    };
+    
+    /**
      * Export all playlists as a ZIP file
      */
     SmartLists.exportPlaylists = function() {
@@ -331,10 +374,27 @@
                 console.log('Import details:', details);
             }
             
-            // Refresh the playlist list if we're on the manage tab
-            const currentTab = SmartLists.getCurrentTab();
-            if (currentTab === 'manage' && SmartLists.loadPlaylists) {
-                SmartLists.loadPlaylists(page);
+            // Clear all checkbox selections
+            const playlistCheckboxes = page.querySelectorAll('.playlist-checkbox');
+            playlistCheckboxes.forEach(function(checkbox) {
+                checkbox.checked = false;
+            });
+            const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+            }
+            // Update selected count display if function exists
+            if (SmartLists.updateSelectedCount) {
+                SmartLists.updateSelectedCount(page);
+            }
+            
+            // Switch to manage tab and scroll to top
+            SmartLists.switchToTab(page, 'manage');
+            window.scrollTo({ top: 0, behavior: 'auto' });
+            
+            // Refresh the playlist list
+            if (SmartLists.loadPlaylistList) {
+                SmartLists.loadPlaylistList(page);
             }
         })
         .catch(function(error) {

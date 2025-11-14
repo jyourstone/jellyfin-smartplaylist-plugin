@@ -73,8 +73,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         {
             try
             {
-                // Use a wrapper logger that implements ILogger<PlaylistService>
-                var playlistServiceLogger = new PlaylistServiceLogger(logger);
+                // Use a generic wrapper logger that implements ILogger<PlaylistService>
+                var playlistServiceLogger = new ServiceLoggerAdapter<Services.Playlists.PlaylistService>(logger);
                 return new Services.Playlists.PlaylistService(_userManager, _libraryManager, _playlistManager, _userDataManager, playlistServiceLogger, _providerManager);
             }
             catch (Exception ex)
@@ -88,8 +88,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         {
             try
             {
-                // Use a wrapper logger that implements ILogger<CollectionService>
-                var collectionServiceLogger = new CollectionServiceLogger(logger);
+                // Use a generic wrapper logger that implements ILogger<CollectionService>
+                var collectionServiceLogger = new ServiceLoggerAdapter<Services.Collections.CollectionService>(logger);
                 return new Services.Collections.CollectionService(_libraryManager, _collectionManager, _userManager, _userDataManager, collectionServiceLogger, _providerManager);
             }
             catch (Exception ex)
@@ -99,27 +99,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             }
         }
 
-        // Wrapper class to adapt the controller logger for PlaylistService
-        private sealed class PlaylistServiceLogger(ILogger logger) : ILogger<Services.Playlists.PlaylistService>
-        {
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                logger.Log(logLevel, eventId, state, exception, formatter);
-            }
-
-            public bool IsEnabled(LogLevel logLevel)
-            {
-                return logger.IsEnabled(logLevel);
-            }
-
-            IDisposable? ILogger.BeginScope<TState>(TState state)
-            {
-                return logger.BeginScope(state);
-            }
-        }
-
-        // Wrapper class to adapt the controller logger for CollectionService
-        private sealed class CollectionServiceLogger(ILogger logger) : ILogger<Services.Collections.CollectionService>
+        // Generic wrapper class to adapt the controller logger for service-specific loggers
+        private sealed class ServiceLoggerAdapter<T>(ILogger logger) : ILogger<T>
         {
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             {
@@ -630,7 +611,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var currentUser = _userManager.GetUserById(currentUserId);
                     if (currentUser != null)
                     {
-                        collection.User = currentUser.Id.ToString();
+                        collection.User = currentUser.Id.ToString("D");
                         logger.LogDebug("Set default collection owner to currently logged-in user: {Username} ({UserId})", currentUser.Username, currentUser.Id);
                     }
                     else
@@ -639,7 +620,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var defaultUser = _userManager.Users.FirstOrDefault();
                         if (defaultUser != null)
                         {
-                            collection.User = defaultUser.Id.ToString();
+                            collection.User = defaultUser.Id.ToString("D");
                             logger.LogDebug("Set default collection owner to first user: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                         }
                     }
@@ -650,7 +631,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var defaultUser = _userManager.Users.FirstOrDefault();
                     if (defaultUser != null)
                     {
-                        collection.User = defaultUser.Id.ToString();
+                        collection.User = defaultUser.Id.ToString("D");
                         logger.LogDebug("Set default collection owner to first user: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                     }
                 }
@@ -999,7 +980,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var newUserIdParsed = Guid.Empty;
                 if ((string.IsNullOrEmpty(playlist.User) || !Guid.TryParse(playlist.User, out newUserIdParsed) || newUserIdParsed == Guid.Empty) && originalUserId != Guid.Empty)
                 {
-                    playlist.User = originalUserId.ToString();
+                    playlist.User = originalUserId.ToString("D");
                     newUserIdParsed = originalUserId;
                 }
                 else if (!string.IsNullOrEmpty(playlist.User) && !Guid.TryParse(playlist.User, out newUserIdParsed))
@@ -1126,7 +1107,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var currentUser = _userManager.GetUserById(currentUserId);
                         if (currentUser != null)
                         {
-                            collection.User = currentUser.Id.ToString();
+                            collection.User = currentUser.Id.ToString("D");
                             logger.LogDebug("Set default collection owner to currently logged-in user during update: {Username} ({UserId})", currentUser.Username, currentUser.Id);
                         }
                         else
@@ -1135,7 +1116,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             var defaultUser = _userManager.Users.FirstOrDefault();
                             if (defaultUser != null)
                             {
-                                collection.User = defaultUser.Id.ToString();
+                                collection.User = defaultUser.Id.ToString("D");
                                 logger.LogDebug("Set default collection owner to first user during update: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                             }
                         }
@@ -1146,7 +1127,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var defaultUser = _userManager.Users.FirstOrDefault();
                         if (defaultUser != null)
                         {
-                            collection.User = defaultUser.Id.ToString();
+                            collection.User = defaultUser.Id.ToString("D");
                             logger.LogDebug("Set default collection owner to first user during update: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                         }
                     }
@@ -2091,7 +2072,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
                                     playlist.Name, playlist.User, currentUserId);
 
-                                playlist.User = currentUserId.ToString();
+                                playlist.User = currentUserId.ToString("D");
                                 reassignedUsers = true;
                             }
                         }

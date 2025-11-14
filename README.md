@@ -6,6 +6,8 @@
     </p>        
 </div>
 
+> **✨ New:** Collections support has been added! You can now create smart collections in addition to smart playlists.
+
 Create smart, rule-based playlists and collections in Jellyfin.
 
 This plugin allows you to create dynamic playlists and collections based on a set of rules, which will automatically update as your library changes.
@@ -104,7 +106,7 @@ SmartLists works with all media types supported by Jellyfin:
 
 ## 🙏 Credits
 
-This project is a fork of the original SmartLists plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
+This project is based on the original SmartPlaylist plugin created by **[ankenyr](https://github.com/ankenyr)**. You can find the original repository [here](https://github.com/ankenyr/jellyfin-smartplaylist-plugin). All credit for the foundational work and the core idea goes to him.
 
 ## ⚠️ Disclaimer
 

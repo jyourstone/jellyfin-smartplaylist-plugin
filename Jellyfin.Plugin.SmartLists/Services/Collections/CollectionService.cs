@@ -12,6 +12,7 @@ using Jellyfin.Plugin.SmartLists.Core;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Abstractions;
+using Jellyfin.Plugin.SmartLists.Services.Shared;
 using Jellyfin.Plugin.SmartLists.Utilities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -128,7 +129,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
 
                 // Calculate collection statistics from the same filtered list used for the actual collection
                 dto.ItemCount = newLinkedChildren.Length;
-                dto.TotalRuntimeMinutes = CalculateTotalRuntimeMinutes(
+                dto.TotalRuntimeMinutes = RuntimeCalculator.CalculateTotalRuntimeMinutes(
                     newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId!.Value).ToArray(),
                     mediaLookup,
                     _logger);
@@ -190,20 +191,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         existingCollection.Name, newLinkedChildren.Length);
 
                     // Trigger library scan to update UI
-                    try
-                    {
-                        _logger.LogDebug("Triggering library scan after collection update");
-                        var queueScanMethod = _libraryManager.GetType().GetMethod("QueueLibraryScan");
-                        if (queueScanMethod != null)
-                        {
-                            queueScanMethod.Invoke(_libraryManager, null);
-                            _logger.LogDebug("Queued library scan after collection update");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to trigger library scan after collection update");
-                    }
+                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
 
                     // Update LastRefreshed timestamp for successful refresh
                     dto.LastRefreshed = DateTime.UtcNow;
@@ -349,20 +337,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     _libraryManager.DeleteItem(existingCollection, new DeleteOptions { DeleteFileLocation = true }, true);
                     
                     // Trigger library scan to update UI
-                    try
-                    {
-                        _logger.LogDebug("Triggering library scan after collection deletion");
-                        var queueScanMethod = _libraryManager.GetType().GetMethod("QueueLibraryScan");
-                        if (queueScanMethod != null)
-                        {
-                            queueScanMethod.Invoke(_libraryManager, null);
-                            _logger.LogDebug("Queued library scan after collection deletion");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to trigger library scan after collection deletion");
-                    }
+                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
                 }
 
                 return Task.CompletedTask;
@@ -706,18 +681,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     _logger.LogDebug("Reporting new collection {CollectionId} to library manager for UI visibility", collectionId);
                     
                     // Try to use QueueLibraryScan if available to trigger a refresh
-                    var queueScanMethod = _libraryManager.GetType().GetMethod("QueueLibraryScan");
-                    if (queueScanMethod != null)
-                    {
-                        queueScanMethod.Invoke(_libraryManager, null);
-                        _logger.LogDebug("Queued library scan after collection creation");
-                    }
-                    else
-                    {
-                        // Alternative: Force an update to trigger change detection
-                        await retrievedItem.UpdateToRepositoryAsync(ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
-                        _logger.LogDebug("Updated collection metadata to trigger UI refresh");
-                    }
+                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
+                    
+                    // Alternative: Force an update to trigger change detection if QueueLibraryScan didn't work
+                    await retrievedItem.UpdateToRepositoryAsync(ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
+                    _logger.LogDebug("Updated collection metadata to trigger UI refresh");
                 }
                 catch (Exception ex)
                 {
@@ -739,7 +707,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             // are evaluated in the context of the owner user to respect library access permissions
             // and user-specific data (IsPlayed, IsFavorite, etc.)
             
-            var baseItemKinds = GetBaseItemKindsFromMediaTypes(mediaTypes, dto);
+            var baseItemKinds = MediaTypeConverter.GetBaseItemKindsFromMediaTypes(mediaTypes, dto, _logger);
             
             // Use the owner user for the query if provided, otherwise fall back to first user
             var queryUser = ownerUser ?? _userManager.Users.FirstOrDefault();
@@ -761,55 +729,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             return _libraryManager.GetItemsResult(query).Items;
         }
 
-        /// <summary>
-        /// Maps string media types to BaseItemKind enums for API-level filtering
-        /// </summary>
-        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string>? mediaTypes, SmartCollectionDto? dto = null)
-        {
-            if (mediaTypes == null || mediaTypes.Count == 0)
-            {
-                _logger?.LogError("GetBaseItemKindsFromMediaTypes called with empty media types - this should have been caught by validation");
-                throw new InvalidOperationException("No media types specified - this should have been caught by validation");
-            }
-
-            var baseItemKinds = new List<BaseItemKind>();
-
-            foreach (var mediaType in mediaTypes)
-            {
-                if (Core.Constants.MediaTypes.MediaTypeToBaseItemKind.TryGetValue(mediaType, out var baseItemKind))
-                {
-                    baseItemKinds.Add(baseItemKind);
-                }
-                else
-                {
-                    _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
-                }
-            }
-
-            // Smart Query Expansion: If Episodes media type is selected AND Collections episode expansion is enabled,
-            // also include Series in the query so we can find series in collections and expand them to episodes
-            if (dto != null && baseItemKinds.Contains(BaseItemKind.Episode) && !baseItemKinds.Contains(BaseItemKind.Series))
-            {
-                var hasCollectionsEpisodeExpansion = dto.ExpressionSets?.Any(set =>
-                    set.Expressions?.Any(expr =>
-                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
-
-                if (hasCollectionsEpisodeExpansion)
-                {
-                    baseItemKinds.Add(BaseItemKind.Series);
-                    _logger?.LogDebug("Auto-including Series in query for Episodes media type due to Collections episode expansion");
-                }
-            }
-
-            if (baseItemKinds.Count == 0)
-            {
-                _logger?.LogError("No valid media types found after processing - this should have been caught by validation");
-                throw new InvalidOperationException("No valid media types found - this should have been caught by validation");
-            }
-
-            return [.. baseItemKinds];
-        }
-
         private async Task RefreshCollectionMetadataAsync(BaseItem collection, CancellationToken cancellationToken)
         {
             // Verify this is a BoxSet using BaseItemKind
@@ -826,7 +745,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                var directoryService = new BasicDirectoryService();
+                var directoryService = new Services.Shared.BasicDirectoryService();
 
                 // Check if collection is empty using reflection to access LinkedChildren property
                 var linkedChildrenProperty = collection.GetType().GetProperty("LinkedChildren");
@@ -873,50 +792,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             }
         }
 
-        /// <summary>
-        /// Calculates the total runtime in minutes for all items in a collection.
-        /// </summary>
-        private static double? CalculateTotalRuntimeMinutes(Guid[] itemIds, Dictionary<Guid, BaseItem> mediaLookup, ILogger logger)
-        {
-            double totalMinutes = 0.0;
-            int itemsWithRuntime = 0;
-
-            foreach (var itemId in itemIds)
-            {
-                if (mediaLookup.TryGetValue(itemId, out var item))
-                {
-                    if (item.RunTimeTicks.HasValue)
-                    {
-                        var itemMinutes = TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalMinutes;
-                        totalMinutes += itemMinutes;
-                        itemsWithRuntime++;
-                    }
-                }
-            }
-
-            if (itemsWithRuntime > 0)
-            {
-                return totalMinutes;
-            }
-
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Basic DirectoryService implementation for collection metadata refresh.
-    /// </summary>
-    public class BasicDirectoryService : IDirectoryService
-    {
-        public List<FileSystemMetadata> GetDirectories(string path) => [];
-        public List<FileSystemMetadata> GetFiles(string path) => [];
-        public FileSystemMetadata[] GetFileSystemEntries(string path) => [];
-        public FileSystemMetadata? GetFile(string path) => null;
-        public FileSystemMetadata? GetDirectory(string path) => null;
-        public FileSystemMetadata? GetFileSystemEntry(string path) => null;
-        public IReadOnlyList<string> GetFilePaths(string path) => [];
-        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => [];
-        public bool IsAccessible(string path) => false;
     }
 }
 

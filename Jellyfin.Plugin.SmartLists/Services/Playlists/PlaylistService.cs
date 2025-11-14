@@ -11,6 +11,7 @@ using Jellyfin.Plugin.SmartLists.Core;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Abstractions;
+using Jellyfin.Plugin.SmartLists.Services.Shared;
 using Jellyfin.Plugin.SmartLists.Utilities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -142,7 +143,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 // Calculate playlist statistics from the same filtered list used for the actual playlist
                 dto.ItemCount = newLinkedChildren.Length;
-                dto.TotalRuntimeMinutes = CalculateTotalRuntimeMinutes(
+                dto.TotalRuntimeMinutes = RuntimeCalculator.CalculateTotalRuntimeMinutes(
                     newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId!.Value).ToArray(),
                     mediaLookup,
                     logger);
@@ -776,62 +777,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         {
             var query = new InternalItemsQuery(user)
             {
-                IncludeItemTypes = GetBaseItemKindsFromMediaTypes(mediaTypes, dto),
+                IncludeItemTypes = MediaTypeConverter.GetBaseItemKindsFromMediaTypes(mediaTypes, dto, _logger),
                 Recursive = true,
             };
 
             return _libraryManager.GetItemsResult(query).Items;
-        }
-
-        /// <summary>
-        /// Maps string media types to BaseItemKind enums for API-level filtering
-        /// </summary>
-        private BaseItemKind[] GetBaseItemKindsFromMediaTypes(List<string>? mediaTypes, SmartPlaylistDto? dto = null)
-        {
-            // This method should only be called after validation, so empty media types should not happen
-            if (mediaTypes == null || mediaTypes.Count == 0)
-            {
-                _logger?.LogError("GetBaseItemKindsFromMediaTypes called with empty media types - this should have been caught by validation");
-                throw new InvalidOperationException("No media types specified - this should have been caught by validation");
-            }
-
-            var baseItemKinds = new List<BaseItemKind>();
-
-            foreach (var mediaType in mediaTypes)
-            {
-                if (Core.Constants.MediaTypes.MediaTypeToBaseItemKind.TryGetValue(mediaType, out var baseItemKind))
-                {
-                    baseItemKinds.Add(baseItemKind);
-                }
-                else
-                {
-                    _logger?.LogWarning("Unknown media type '{MediaType}' - skipping", mediaType);
-                }
-            }
-
-            // Smart Query Expansion: If Episodes media type is selected AND Collections episode expansion is enabled,
-            // also include Series in the query so we can find series in collections and expand them to episodes
-            if (dto != null && baseItemKinds.Contains(BaseItemKind.Episode) && !baseItemKinds.Contains(BaseItemKind.Series))
-            {
-                var hasCollectionsEpisodeExpansion = dto.ExpressionSets?.Any(set =>
-                    set.Expressions?.Any(expr =>
-                        expr.MemberName == "Collections" && expr.IncludeEpisodesWithinSeries == true) == true) == true;
-
-                if (hasCollectionsEpisodeExpansion)
-                {
-                    baseItemKinds.Add(BaseItemKind.Series);
-                    _logger?.LogDebug("Auto-including Series in query for Episodes media type due to Collections episode expansion");
-                }
-            }
-
-            // This should not happen if validation is working correctly
-            if (baseItemKinds.Count == 0)
-            {
-                _logger?.LogError("No valid media types found after processing - this should have been caught by validation");
-                throw new InvalidOperationException("No valid media types found - this should have been caught by validation");
-            }
-
-            return [.. baseItemKinds];
         }
 
         private async Task RefreshPlaylistMetadataAsync(Playlist playlist, CancellationToken cancellationToken)
@@ -839,7 +789,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                var directoryService = new BasicDirectoryService();
+                var directoryService = new Services.Shared.BasicDirectoryService();
 
                 // Check if playlist is empty
                 if (playlist.LinkedChildren == null || playlist.LinkedChildren.Length == 0)
@@ -915,39 +865,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             return Core.Constants.MediaTypes.Audio;
         }
 
-        /// <summary>
-        /// Calculates the total runtime in minutes for all items in a playlist.
-        /// </summary>
-        /// <param name="itemIds">Array of item GUIDs</param>
-        /// <param name="mediaLookup">Dictionary mapping item GUIDs to BaseItem objects</param>
-        /// <param name="logger">Logger for diagnostics</param>
-        /// <returns>Total runtime in minutes, or null if no items have runtime information</returns>
-        private static double? CalculateTotalRuntimeMinutes(Guid[] itemIds, Dictionary<Guid, BaseItem> mediaLookup, ILogger logger)
-        {
-            double totalMinutes = 0.0;
-            int itemsWithRuntime = 0;
-
-            foreach (var itemId in itemIds)
-            {
-                if (mediaLookup.TryGetValue(itemId, out var item))
-                {
-                    if (item.RunTimeTicks.HasValue)
-                    {
-                        var itemMinutes = TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalMinutes;
-                        totalMinutes += itemMinutes;
-                        itemsWithRuntime++;
-                    }
-                }
-            }
-
-            // Only return runtime if at least one item has runtime information
-            if (itemsWithRuntime > 0)
-            {
-                return totalMinutes;
-            }
-
-            return null;
-        }
 
         /// <summary>
         /// Sets the MediaType of a Jellyfin playlist using reflection (similar to IsPublic implementation).
@@ -1037,22 +954,5 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             }
         }
 
-
-    }
-
-    /// <summary>
-    /// Basic DirectoryService implementation for playlist metadata refresh.
-    /// </summary>
-    public class BasicDirectoryService : IDirectoryService
-    {
-        public List<FileSystemMetadata> GetDirectories(string path) => [];
-        public List<FileSystemMetadata> GetFiles(string path) => [];
-        public FileSystemMetadata[] GetFileSystemEntries(string path) => [];
-        public FileSystemMetadata? GetFile(string path) => null;
-        public FileSystemMetadata? GetDirectory(string path) => null;
-        public FileSystemMetadata? GetFileSystemEntry(string path) => null;
-        public IReadOnlyList<string> GetFilePaths(string path) => [];
-        public IReadOnlyList<string> GetFilePaths(string path, bool clearCache, bool sort) => [];
-        public bool IsAccessible(string path) => false;
     }
 }
