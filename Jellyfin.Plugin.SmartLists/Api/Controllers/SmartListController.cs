@@ -1869,16 +1869,16 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                 if (result.Success)
                 {
-                    return Ok(new { message = result.Message });
+                    return Ok(new { message = result.NotificationMessage });
                 }
                 else
                 {
                     // Map "already in progress" to HTTP 409 Conflict for better API semantics
-                    if (result.Message.Contains("already in progress"))
+                    if (result.NotificationMessage.Contains("already in progress"))
                     {
-                        return Conflict(new { message = result.Message });
+                        return Conflict(new { message = result.NotificationMessage });
                     }
-                    return StatusCode(StatusCodes.Status500InternalServerError, result.Message);
+                    return StatusCode(StatusCodes.Status500InternalServerError, result.NotificationMessage);
                 }
             }
             catch (Exception ex)
@@ -1889,8 +1889,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         }
 
         /// <summary>
-        /// Directly refresh all smart playlists.
-        /// This method processes all enabled playlists sequentially for each user.
+        /// Directly refresh all smart lists (both playlists and collections).
+        /// This method processes all enabled lists sequentially for each user.
         /// </summary>
         /// <returns>Success message.</returns>
         [HttpPost("refresh-direct")]
@@ -1899,31 +1899,32 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             try
             {
                 // The ManualRefreshService now handles lock acquisition internally for the entire operation
-                var result = await _manualRefreshService.RefreshAllPlaylistsAsync();
+                // This now refreshes both playlists and collections
+                var result = await _manualRefreshService.RefreshAllListsAsync();
 
                 if (result.Success)
                 {
-                    return Ok(new { message = result.Message });
+                    return Ok(new { message = result.NotificationMessage });
                 }
                 else
                 {
                     // Map "already in progress" to HTTP 409 Conflict for better API semantics
-                    if (result.Message.Contains("already in progress"))
+                    if (result.NotificationMessage.Contains("already in progress"))
                     {
-                        return Conflict(new { message = result.Message });
+                        return Conflict(new { message = result.NotificationMessage });
                     }
-                    return StatusCode(StatusCodes.Status500InternalServerError, result.Message);
+                    return StatusCode(StatusCodes.Status500InternalServerError, result.NotificationMessage);
                 }
             }
             catch (OperationCanceledException)
             {
-                logger.LogInformation("Manual playlist refresh was cancelled by client");
+                logger.LogInformation("Manual list refresh was cancelled by client");
                 return StatusCode(499, "Refresh operation was cancelled");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error during manual playlist refresh");
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error during manual playlist refresh");
+                logger.LogError(ex, "Error during manual list refresh");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error during manual list refresh");
             }
         }
 
