@@ -49,17 +49,17 @@ jobs:
           # Strip preview/rc suffixes for .NET versioning
           VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
           echo "Building version: $VERSION (stripped from tag: ${{ github.ref_name }})"
-          dotnet build Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj \
+          dotnet build Jellyfin.Plugin.SmartLists/Jellyfin.Plugin.SmartLists.csproj \
             --configuration Release --no-restore -o ./build_output \
             /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
       - name: Create Plugin Zip
         run: |
           mkdir -p staging
-          cp ./build_output/Jellyfin.Plugin.SmartPlaylist.dll staging/
+          cp ./build_output/Jellyfin.Plugin.SmartLists.dll staging/
           cp images/logo.jpg staging/logo.jpg
           cd staging
-          zip -X ../Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip *
+          zip -X ../Jellyfin.Plugin.SmartLists_${{ github.ref_name }}.zip *
           cd ..
 
       - name: Create Release (auto notes from PRs)
@@ -67,7 +67,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
-          files: ./Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip
+          files: ./Jellyfin.Plugin.SmartLists_${{ github.ref_name }}.zip
           draft: false
           # Use the dynamically determined prerelease status
           prerelease: ${{ steps.check_preview.outputs.is_preview }}
@@ -98,7 +98,7 @@ jobs:
           # Strip preview/rc suffixes for .NET versioning
           VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
           ASSEMBLY_VERSION="${VERSION}"
-          ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
+          ZIP_NAME="Jellyfin.Plugin.SmartLists_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
           TARGET_ABI="${{ env.TARGET_ABI }}"
@@ -127,10 +127,10 @@ jobs:
 
           if ! jq -e --arg guid "$PLUGIN_GUID" 'any(.[]; .guid == $guid)' "$MANIFEST_FILE" > /dev/null; then
             PLUGIN_ENTRY=$(jq -n \
-              --arg name "SmartPlaylist" \
+              --arg name "SmartLists" \
               --arg guid "$PLUGIN_GUID" \
-              --arg overview "SmartPlaylist plugin for Jellyfin." \
-              --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin." \
+              --arg overview "SmartLists plugin for Jellyfin." \
+              --arg description "Create smart, rule-based playlists and collections in Jellyfin." \
               --arg category "General" \
               --arg owner "jyourstone" \
               --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" \
@@ -145,7 +145,7 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add manifest.json
-          git commit -m "Update manifest for SmartPlaylist v${VERSION}"
+          git commit -m "Update manifest for SmartLists v${VERSION}"
           git push
 
       - name: Update External Manifest (Unstable)
@@ -157,7 +157,7 @@ jobs:
           # Strip preview/rc suffixes for .NET versioning
           VERSION=$(echo "${{ github.ref_name }}" | sed -E 's/(preview|rc).*$//' | sed 's/v//' | sed 's/-$//')
           FULL_VERSION=$(echo "${{ github.ref_name }}" | sed 's/v//')
-          ZIP_NAME="Jellyfin.Plugin.SmartPlaylist_${{ github.ref_name }}.zip"
+          ZIP_NAME="Jellyfin.Plugin.SmartLists_${{ github.ref_name }}.zip"
           CHECKSUM=$(md5sum ${ZIP_NAME} | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
           TARGET_ABI="${{ env.TARGET_ABI }}"
@@ -190,10 +190,10 @@ jobs:
 
           if ! jq -e --arg guid "$PLUGIN_GUID" 'any(.[]; .guid == $guid)' "$MANIFEST_FILE" > /dev/null; then
             PLUGIN_ENTRY=$(jq -n \
-              --arg name "SmartPlaylist" \
+              --arg name "SmartLists" \
               --arg guid "$PLUGIN_GUID" \
-              --arg overview "SmartPlaylist plugin for Jellyfin (Unstable)." \
-              --arg description "A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin. This is an unstable/preview version." \
+              --arg overview "SmartLists plugin for Jellyfin (Unstable)." \
+              --arg description "Create smart, rule-based playlists and collections in Jellyfin. This is an unstable/preview version." \
               --arg category "General" \
               --arg owner "jyourstone" \
               --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" \
@@ -208,5 +208,5 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add manifest.json
-          git commit -m "Update unstable manifest for SmartPlaylist v${FULL_VERSION}"
+          git commit -m "Update unstable manifest for SmartLists v${FULL_VERSION}"
           git push origin unstable
