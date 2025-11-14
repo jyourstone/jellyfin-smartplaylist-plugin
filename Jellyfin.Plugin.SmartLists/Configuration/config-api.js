@@ -102,6 +102,12 @@
             throw err;
         });
     };
+
+    SmartLists.loadLibraries = function(page) {
+        // Collections are server-wide and don't have library assignments
+        // This function is kept for backwards compatibility but does nothing
+        return Promise.resolve();
+    };
     
     SmartLists.setCurrentUserAsDefault = function(page) {
         const apiClient = SmartLists.getApiClient();
@@ -168,45 +174,8 @@
         });
     };
     
-    SmartLists.resolveUsername = function(apiClient, playlist) {
-        if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
-            return SmartLists.resolveUserIdToName(apiClient, playlist.UserId).then(function(name) {
-                return name || 'Unknown User';
-            });
-        }
-        return Promise.resolve('Unknown User');
-    };
-    
-    // Cache for user ID to name lookups
-    var userNameCache = new Map();
-    
-    SmartLists.resolveUserIdToName = function(apiClient, userId) {
-        if (!userId || userId === '00000000-0000-0000-0000-000000000000') {
-            return Promise.resolve(null);
-        }
-        
-        // Check cache first
-        if (userNameCache.has(userId)) {
-            return Promise.resolve(userNameCache.get(userId));
-        }
-        
-        return apiClient.getUser(userId).then(function(user) {
-            const userName = user ? user.Name : null;
-            if (userName) {
-                userNameCache.set(userId, userName);
-            } else {
-                const fallback = 'Unknown User';
-                userNameCache.set(userId, fallback);
-                return fallback;
-            }
-            return userName;
-        }).catch(function(err) {
-            console.error('Error resolving user ID ' + userId + ':', err);
-            const fallback = 'Unknown User';
-            userNameCache.set(userId, fallback);
-            return fallback;
-        });
-    };
+    // Note: resolveUsername and resolveUserIdToName are defined in config-lists.js
+    // Do not duplicate them here to avoid overwriting the implementation
     
     /**
      * Export all playlists as a ZIP file

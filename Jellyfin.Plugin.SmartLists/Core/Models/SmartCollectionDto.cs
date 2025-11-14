@@ -5,7 +5,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
 {
     /// <summary>
     /// DTO for server-wide smart collections
-    /// Collections are not user-bound and appear in specified libraries
+    /// Collections are server-wide (visible to all users) but have an owner for rule context
     /// </summary>
     [Serializable]
     public class SmartCollectionDto : SmartListDto
@@ -16,8 +16,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         }
 
         // Collection-specific properties
-        public string JellyfinCollectionId { get; set; } = null!;  // Jellyfin collection (BoxSet) ID for reliable lookup
-        public List<Guid> LibraryIds { get; set; } = [];  // Which libraries this collection appears in,
+        public string? JellyfinCollectionId { get; set; }  // Jellyfin collection (BoxSet) ID for reliable lookup
     }
 }
 

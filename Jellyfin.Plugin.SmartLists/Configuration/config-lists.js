@@ -111,8 +111,12 @@
     };
 
     SmartLists.resolveUsername = function(apiClient, playlist) {
-        if (playlist.UserId && playlist.UserId !== '00000000-0000-0000-0000-000000000000') {
-            return SmartLists.resolveUserIdToName(apiClient, playlist.UserId).then(function(name) {
+        if (!playlist) {
+            return Promise.resolve('Unknown User');
+        }
+        const userId = playlist.User;  // User field contains the user ID (as string)
+        if (userId && userId !== '' && userId !== '00000000-0000-0000-0000-000000000000') {
+            return SmartLists.resolveUserIdToName(apiClient, userId).then(function(name) {
                 return name || 'Unknown User';
             });
         }
@@ -120,27 +124,47 @@
     };
     
     SmartLists.resolveUserIdToName = function(apiClient, userId) {
-        if (!userId || userId === '00000000-0000-0000-0000-000000000000') {
+        if (!userId || userId === '' || userId === '00000000-0000-0000-0000-000000000000') {
             return Promise.resolve(null);
         }
         
-        // Check cache first
-        if (userNameCache.has(userId)) {
-            return Promise.resolve(userNameCache.get(userId));
+        // Normalize GUID format (remove dashes for comparison) to handle API inconsistency
+        const normalizedUserId = userId.replace(/-/g, '').toLowerCase();
+        
+        // Check cache first using normalized key
+        if (userNameCache.has(normalizedUserId)) {
+            const cachedName = userNameCache.get(normalizedUserId);
+            return Promise.resolve(cachedName);
         }
         
-        return apiClient.getUser(userId).then(function(user) {
-            const userName = user && user.Name ? user.Name : 'Unknown User';
+        // Load all users and build cache if not already loaded
+        return apiClient.ajax({
+            type: 'GET',
+            url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
+            contentType: 'application/json'
+        }).then(function(response) {
+            return response.json();
+        }).then(function(users) {
+            // Build cache from all users
+            if (Array.isArray(users)) {
+                users.forEach(function(user) {
+                    if (user.Id && user.Name) {
+                        // Normalize GUID format when storing in cache
+                        const normalizedId = user.Id.replace(/-/g, '').toLowerCase();
+                        userNameCache.set(normalizedId, user.Name);
+                    }
+                });
+            }
             
-            // Cache the result
-            userNameCache.set(userId, userName);
-            return userName;
+            // Return the requested user's name or fallback (using normalized key)
+            const resolvedName = userNameCache.get(normalizedUserId) || 'Unknown User';
+            return resolvedName;
         }).catch(function(err) {
-            console.error('Error resolving user ID ' + userId + ':', err);
+            console.error('Error loading users for name resolution:', err);
             const fallback = 'Unknown User';
             
-            // Cache the fallback too to avoid repeated failed lookups
-            userNameCache.set(userId, fallback);
+            // Cache the fallback too to avoid repeated failed lookups (using normalized key)
+            userNameCache.set(normalizedUserId, fallback);
             return fallback;
         });
     };
@@ -203,13 +227,18 @@
                 maxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
             }
 
-            // Get selected user ID from dropdown using helper function
-            const userId = SmartLists.getElementValue(page, '#playlistUser');
+            // Get list type
+            const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+            const isCollection = listType === 'Collection';
             
+            // Get selected user ID from dropdown (required for both playlists and collections)
+            const userId = SmartLists.getElementValue(page, '#playlistUser');
             if (!userId) {
-                SmartLists.showNotification('Please select a playlist owner.');
+                SmartLists.showNotification('Please select a ' + (isCollection ? 'collection owner' : 'playlist owner') + '.');
                 return;
             }
+            
+            // Collections are server-wide and don't have library assignments
 
             // Collect similarity comparison fields from SimilarTo rules
             let similarityComparisonFields = null;
@@ -227,18 +256,26 @@
             }
 
             const playlistDto = {
+                Type: listType,
                 Name: playlistName,
                 ExpressionSets: expressionSets,
                 Order: { SortOptions: sortOptions },
-                Public: isPublic,
                 Enabled: isEnabled,
-                UserId: userId,
                 MediaTypes: selectedMediaTypes,
                 MaxItems: maxItems,
                 MaxPlayTimeMinutes: maxPlayTimeMinutes,
                 AutoRefresh: autoRefreshMode,
                 Schedules: schedules.length > 0 ? schedules : []
             };
+            
+            // Add type-specific fields
+            playlistDto.User = userId;  // User field is shared by both playlists and collections
+            
+            if (isCollection) {
+                // Collections are server-wide, no library assignment needed
+            } else {
+                playlistDto.Public = isPublic;
+            }
             
             // Add similarity comparison fields if specified
             if (similarityComparisonFields) {
@@ -264,9 +301,10 @@
                 contentType: 'application/json'
             }).then(function() {
                 Dashboard.hideLoadingMsg();
+                const listTypeName = isCollection ? 'Collection' : 'Playlist';
                 const message = editState.editMode ? 
-                    'Playlist "' + playlistName + '" updated successfully.' : 
-                    'Playlist "' + playlistName + '" created. The playlist has been generated.';
+                    listTypeName + ' "' + playlistName + '" updated successfully.' : 
+                    listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
                 SmartLists.showNotification(message, 'success');
                 
                 // Exit edit mode and clear form
@@ -279,13 +317,14 @@
                     }
                     const submitBtn = page.querySelector('#submitBtn');
                     if (submitBtn) {
-                        submitBtn.textContent = 'Create Playlist';
+                        const currentListType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+                        submitBtn.textContent = 'Create ' + currentListType;
                     }
                     
                     // Restore tab button text
                     const createTabButton = page.querySelector('a[data-tab="create"]');
                     if (createTabButton) {
-                        createTabButton.textContent = 'Create Playlist';
+                        createTabButton.textContent = 'Create List';
                     }
                     
                     // Switch to Manage tab and scroll to top after successful update (auto for instant behavior)
@@ -328,6 +367,12 @@
         
         const apiClient = SmartLists.getApiClient();
         apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+            // Set default list type
+            SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
+            
+            // Trigger type change handler to show/hide relevant fields
+            SmartLists.handleListTypeChange(page);
+            
             SmartLists.setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
             SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
@@ -392,9 +437,24 @@
             }
             
             try {
+                // Determine list type
+                const listType = playlist.Type || 'Playlist';
+                const isCollection = listType === 'Collection';
+                
+                // Set list type
+                SmartLists.setElementValue(page, '#listType', listType);
+                
+                // Trigger type change handler to show/hide fields
+                SmartLists.handleListTypeChange(page);
+                
                 // Populate form with playlist data using helper functions
                 SmartLists.setElementValue(page, '#playlistName', playlist.Name || '');
-                SmartLists.setElementChecked(page, '#playlistIsPublic', playlist.Public || false);
+                
+                // Only set public for playlists
+                if (!isCollection) {
+                    SmartLists.setElementChecked(page, '#playlistIsPublic', playlist.Public || false);
+                }
+                
                 SmartLists.setElementChecked(page, '#playlistIsEnabled', playlist.Enabled !== false); // Default to true for backward compatibility
                 
                 // Handle AutoRefresh with backward compatibility
@@ -424,7 +484,7 @@
                 if (maxPlayTimeMinutesElement) {
                     maxPlayTimeMinutesElement.value = maxPlayTimeMinutesValue;
                 } else {
-                    console.warn('Max Play Time Minutes element not found when trying to populate edit form');
+                    console.warn('Max Playtime Minutes element not found when trying to populate edit form');
                 }
                 
                 // Set media types
@@ -440,11 +500,11 @@
                     });
                 }
                 
-                // Set the playlist owner
-                // Convert UserId to string if it's not already (handles both Guid and string formats)
-                const userIdString = playlist.UserId ? String(playlist.UserId) : null;
+                // Set the list owner (for both playlists and collections)
+                // Convert User to string if it's not already (handles both Guid and string formats)
+                const userIdString = playlist.User ? String(playlist.User) : null;
                 if (userIdString && userIdString !== '00000000-0000-0000-0000-000000000000') {
-                    // Function to set the UserId value
+                    // Function to set the User value
                     const setUserIdValue = function() {
                         const userSelect = page.querySelector('#playlistUser');
                         if (userSelect) {
@@ -476,7 +536,7 @@
                     }
                 }
                 
-                // Clear existing rules
+                // Clear existing rules (applies to both playlists and collections)
                 const rulesContainer = page.querySelector('#rules-container');
                 rulesContainer.innerHTML = '';
                 
@@ -673,13 +733,14 @@
                 }
                 const submitBtn = page.querySelector('#submitBtn');
                 if (submitBtn) {
-                    submitBtn.textContent = 'Update Playlist';
+                    const currentListType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+                    submitBtn.textContent = 'Update ' + currentListType;
                 }
                 
                 // Update tab button text
                 const createTabButton = page.querySelector('a[data-tab="create"]');
                 if (createTabButton) {
-                    createTabButton.textContent = 'Edit Playlist';
+                    createTabButton.textContent = 'Edit List';
                 }
                 
                 // Switch to Create tab to show edit form
@@ -721,15 +782,30 @@
             }
             
             try {
+                // Determine list type
+                const listType = playlist.Type || 'Playlist';
+                const isCollection = listType === 'Collection';
+                
                 // Switch to Create tab
                 SmartLists.switchToTab(page, 'create');
                 
                 // Clear any existing edit state
                 SmartLists.setPageEditState(page, false, null);
                 
+                // Set list type
+                SmartLists.setElementValue(page, '#listType', listType);
+                
+                // Trigger type change handler to show/hide fields
+                SmartLists.handleListTypeChange(page);
+                
                 // Populate form with cloned playlist data (similar to edit, but for creating new)
                 SmartLists.setElementValue(page, '#playlistName', (playlist.Name || '') + ' (Copy)');
-                SmartLists.setElementChecked(page, '#playlistIsPublic', playlist.Public || false);
+                
+                // Only set public for playlists
+                if (!isCollection) {
+                    SmartLists.setElementChecked(page, '#playlistIsPublic', playlist.Public || false);
+                }
+                
                 SmartLists.setElementChecked(page, '#playlistIsEnabled', playlist.Enabled !== false);
                 
                 // Handle AutoRefresh
@@ -774,10 +850,10 @@
                     });
                 }
                 
-                // Set the playlist owner (same logic as edit)
-                const userIdString = playlist.UserId ? String(playlist.UserId) : null;
+                // Set the list owner (for both playlists and collections)
+                const userIdString = playlist.User ? String(playlist.User) : null;
                 if (userIdString && userIdString !== '00000000-0000-0000-0000-000000000000') {
-                    // Function to set the UserId value
+                    // Function to set the User value
                     const setUserIdValue = function() {
                         const userSelect = page.querySelector('#playlistUser');
                         if (userSelect) {
@@ -809,7 +885,7 @@
                     }
                 }
                 
-                // Clear existing rules and populate with cloned rules
+                // Clear existing rules and populate with cloned rules (applies to both playlists and collections)
                 const rulesContainer = page.querySelector('#rules-container');
                 if (rulesContainer) {
                     rulesContainer.innerHTML = '';
@@ -1060,7 +1136,7 @@
 
     // ===== SEARCH INPUT STATE MANAGEMENT =====
     SmartLists.setSearchInputState = function(page, disabled, placeholder) {
-        placeholder = placeholder !== undefined ? placeholder : 'Search playlists...';
+        placeholder = placeholder !== undefined ? placeholder : 'Search list...';
         try {
             const searchInput = page.querySelector('#playlistSearchInput');
             const clearSearchBtn = page.querySelector('#clearSearchBtn');
@@ -1073,7 +1149,7 @@
                 if (!page._originalSearchState) {
                     page._originalSearchState = {
                         disabled: false,
-                        placeholder: 'Search playlists...'
+                        placeholder: 'Search list...'
                     };
                 }
             }
@@ -1233,6 +1309,10 @@
 
     // ===== GENERATE PLAYLIST CARD HTML =====
     SmartLists.generatePlaylistCardHtml = function(playlist, rulesHtml, resolvedUserName) {
+        // Determine list type
+        const listType = playlist.Type || 'Playlist';
+        const isCollection = listType === 'Collection';
+        
         const isPublic = playlist.Public ? 'Public' : 'Private';
         const isEnabled = playlist.Enabled !== false; // Default to true for backward compatibility
         const enabledStatus = isEnabled ? '' : 'Disabled';
@@ -1249,9 +1329,11 @@
         const dateCreatedDisplay = SmartLists.formatRelativeTimeFromIso(playlist.DateCreated, 'Unknown');
         const sortName = SmartLists.formatSortDisplay(playlist);
         
-        // Use the resolved username passed as parameter
+        // Use the resolved username passed as parameter (for playlists) or libraries (for collections)
         const userName = resolvedUserName || 'Unknown User';
         const playlistId = playlist.Id || 'NO_ID';
+        
+        // Collections are server-wide, no library assignment needed
         // Create individual media type labels - filter out deprecated Series type
         let mediaTypesArray = [];
         if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
@@ -1298,17 +1380,29 @@
         const eMediaTypesDisplayText = SmartLists.escapeHtml(mediaTypesDisplayText);
         const eStatsDisplay = SmartLists.escapeHtml(statsDisplay);
         const eTotalRuntimeLong = totalRuntimeLong ? SmartLists.escapeHtml(totalRuntimeLong) : null;
+        const eListType = SmartLists.escapeHtml(listType);
         
-        // Build Jellyfin playlist URL if ID exists and playlist is enabled
-        let jellyfinPlaylistUrl = null;
-        if (playlist.JellyfinPlaylistId && isEnabled) {
+        // Build Jellyfin playlist/collection URL if ID exists and list is enabled
+        let jellyfinListUrl = null;
+        const jellyfinId = isCollection ? playlist.JellyfinCollectionId : playlist.JellyfinPlaylistId;
+        const hasJellyfinId = jellyfinId && jellyfinId !== '' && jellyfinId !== '00000000-0000-0000-0000-000000000000';
+        
+        if (hasJellyfinId && isEnabled) {
             try {
                 const apiClient = SmartLists.getApiClient();
                 const serverId = apiClient.serverId();
                 const baseUrl = apiClient.serverAddress();
-                jellyfinPlaylistUrl = baseUrl + '/web/#/details?id=' + encodeURIComponent(playlist.JellyfinPlaylistId) + '&serverId=' + encodeURIComponent(serverId);
+                jellyfinListUrl = baseUrl + '/web/#/details?id=' + encodeURIComponent(jellyfinId) + '&serverId=' + encodeURIComponent(serverId);
             } catch (err) {
-                console.error('Error building Jellyfin playlist URL:', err);
+                console.error('Error building Jellyfin list URL:', err);
+                // Fallback: try to build URL without serverId if that fails
+                try {
+                    const apiClient = SmartLists.getApiClient();
+                    const baseUrl = apiClient.serverAddress();
+                    jellyfinListUrl = baseUrl + '/web/#/details?id=' + encodeURIComponent(jellyfinId);
+                } catch (fallbackErr) {
+                    console.error('Error building Jellyfin list URL (fallback):', fallbackErr);
+                }
             }
         }
         
@@ -1331,8 +1425,8 @@
                     (eStatsDisplay ? '<span class="playlist-stats" style="color: #888; font-size: 0.85em; margin-right: 0.5em; flex-shrink: 0; font-weight: normal; line-height: 1.5; align-self: center;">' + eStatsDisplay + '</span>' : '') +
                 '</div>' +
                 '<div class="playlist-header-right" style="display: flex; align-items: center; margin-left: 1em; margin-right: 0.5em;">' +
-                    '<div class="playlist-media-types-container" style="display: flex; flex-wrap: wrap; gap: 0.25em; flex-shrink: 0; max-width: 160px; justify-content: flex-end;">' +
-                        mediaTypesArray.map(function(type) { return '<span class="playlist-media-type-label" style="padding: 0.2em 0.5em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc; white-space: nowrap;">' + SmartLists.escapeHtml(type) + '</span>'; }).join('') +
+                    '<div class="playlist-type-container" style="display: flex; flex-wrap: wrap; gap: 0.25em; flex-shrink: 0; max-width: 160px; justify-content: flex-end;">' +
+                        '<span class="playlist-type-label" style="padding: 0.4em 0.6em; background: #333; border-radius: 3px; font-size: 0.8em; color: #ccc; white-space: nowrap;">' + SmartLists.escapeHtml(listType) + '</span>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
@@ -1349,17 +1443,18 @@
                 '<div class="properties-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
                     '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Properties</h4>' +
                     '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
-                        (playlist.JellyfinPlaylistId && isEnabled && jellyfinPlaylistUrl ?
-                            '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Jellyfin Playlist</td>' +
-                                '<td style="padding: 0.5em 0.75em;">' +
-                                    '<a href="' + SmartLists.escapeHtmlAttribute(jellyfinPlaylistUrl) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">' +
-                                        'View in Jellyfin' +
-                                    '</a>' +
-                                '</td>' +
-                            '</tr>' :
-                            ''
-                        ) +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Type</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eListType + 
+                                (hasJellyfinId && isEnabled ?
+                                    (jellyfinListUrl ?
+                                        ' - <a href="' + SmartLists.escapeHtmlAttribute(jellyfinListUrl) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">View in Jellyfin</a>' :
+                                        ' - <span style="color: #888; font-style: italic;">(Jellyfin ID: ' + SmartLists.escapeHtml(jellyfinId) + ')</span>'
+                                    ) :
+                                    ''
+                                ) +
+                            '</td>' +
+                        '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">File</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eFileName + '</td>' +
@@ -1372,24 +1467,29 @@
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Status</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eStatusDisplayText + '</td>' +
                         '</tr>' +
-                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Visibility</td>' +
-                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + SmartLists.escapeHtml(isPublic) + '</td>' +
-                        '</tr>' +
+                        (!isCollection ?
+                            '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Visibility</td>' +
+                                '<td style="padding: 0.5em 0.75em; color: #fff;">' + SmartLists.escapeHtml(isPublic) + '</td>' +
+                            '</tr>' :
+                            ''
+                        ) +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Media Types</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMediaTypesDisplayText + '</td>' +
                         '</tr>' +
-                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Sort</td>' +
-                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eSortName + '</td>' +
-                        '</tr>' +
+                        (!isCollection ?
+                            '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                                '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Sort</td>' +
+                                '<td style="padding: 0.5em 0.75em; color: #fff;">' + eSortName + '</td>' +
+                            '</tr>' : ''
+                        ) +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Items</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxItems + '</td>' +
                         '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Play Time</td>' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Max Playtime</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eMaxPlayTime + '</td>' +
                         '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
@@ -1401,20 +1501,31 @@
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eScheduleDisplay + '</td>' +
                         '</tr>' +
                         '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last Refreshed</td>' +
-                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +
-                        '</tr>' +
-                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Created</td>' +
                             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eDateCreatedDisplay + '</td>' +
                         '</tr>' +
-                        (eTotalRuntimeLong ? 
+                    '</table>' +
+                '</div>' +
+                
+                // Statistics table
+                '<div class="statistics-section" style="margin-bottom: 1em; margin-left: 0.5em;">' +
+                    '<h4 style="margin: 0 0 0.5em 0; color: #fff; font-size: 1em;">Statistics</h4>' +
+                    '<table style="width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.02); border-radius: 4px; overflow: hidden;">' +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Item Count</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + (itemCount !== null ? itemCount : 'N/A') + '</td>' +
+                        '</tr>' +
+                        (totalRuntimeLong ?
                             '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
                                 '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Total Runtime</td>' +
                                 '<td style="padding: 0.5em 0.75em; color: #fff;">' + eTotalRuntimeLong + '</td>' +
                             '</tr>' :
                             ''
                         ) +
+                        '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
+                            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Last Refreshed</td>' +
+                            '<td style="padding: 0.5em 0.75em; color: #fff;">' + eLastRefreshDisplay + '</td>' +
+                        '</tr>' +
                     '</table>' +
                 '</div>' +
                 
@@ -1480,6 +1591,30 @@
             // Store playlists data for filtering
             page._allPlaylists = processedPlaylists;
             
+            // Preload all users to populate cache for user name resolution
+            try {
+                const usersResponse = await apiClient.ajax({
+                    type: 'GET',
+                    url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
+                    contentType: 'application/json'
+                });
+                const users = await usersResponse.json();
+                
+                // Build cache from all users for user name resolution
+                if (Array.isArray(users)) {
+                    users.forEach(function(user) {
+                        if (user.Id && user.Name) {
+                            // Normalize GUID format when storing in cache (remove dashes)
+                            const normalizedId = user.Id.replace(/-/g, '').toLowerCase();
+                            userNameCache.set(normalizedId, user.Name);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Error preloading users:', err);
+                // Continue even if user preload fails
+            }
+            
             try {
                 // Populate user filter dropdown
                 if (SmartLists.populateUserFilter) {
@@ -1510,7 +1645,12 @@
                 for (let i = 0; i < filteredPlaylists.length; i++) {
                     const playlist = filteredPlaylists[i];
                     // Resolve username first
-                    const resolvedUserName = await SmartLists.resolveUsername(apiClient, playlist);
+                    // Determine list type
+                    const listType = playlist.Type || 'Playlist';
+                    const isCollection = listType === 'Collection';
+                    
+                    // Resolve user name (both playlists and collections have a User/owner)
+                    let resolvedUserName = await SmartLists.resolveUsername(apiClient, playlist);
                     
                     // Generate detailed rules display using helper function
                     const rulesHtml = await SmartLists.generateRulesHtml(playlist, apiClient);

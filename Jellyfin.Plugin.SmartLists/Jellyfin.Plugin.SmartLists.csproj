@@ -28,7 +28,7 @@
     <!-- Rule management -->
     <EmbeddedResource Include="Configuration\config-rules.js" />
     <!-- Playlist CRUD operations -->
-    <EmbeddedResource Include="Configuration\config-playlists.js" />
+    <EmbeddedResource Include="Configuration\config-lists.js" />
     <!-- Filtering and search -->
     <EmbeddedResource Include="Configuration\config-filters.js" />
     <!-- Bulk actions -->

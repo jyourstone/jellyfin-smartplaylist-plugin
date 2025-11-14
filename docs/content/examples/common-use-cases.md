@@ -29,7 +29,7 @@ Here are some popular playlist types you can create:
 ## Music
 
 ### Workout Mix
-- **Genre** contains "Electronic" OR "Rock" AND **Max Play Time** 45 minutes
+- **Genre** contains "Electronic" OR "Rock" AND **Max Playtime** 45 minutes
 
 ### Discover New Music
 - **Play Count** = 0 AND **Date Created** newer than "1 month"

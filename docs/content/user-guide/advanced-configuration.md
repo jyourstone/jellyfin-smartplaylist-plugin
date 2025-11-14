@@ -62,7 +62,7 @@ The JSON structure follows the `SmartPlaylistDto` format, which includes fields 
 - Rules and logic groups
 - Sort options
 - Refresh settings
-- Limits (max items, max play time)
+- Limits (max items, max playtime)
 - And more
 
 ## Troubleshooting

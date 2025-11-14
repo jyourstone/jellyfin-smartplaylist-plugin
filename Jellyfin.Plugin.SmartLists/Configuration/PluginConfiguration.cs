@@ -17,6 +17,11 @@ namespace Jellyfin.Plugin.SmartLists.Configuration
         public string DefaultSortOrder { get; set; } = "Ascending";
 
         /// <summary>
+        /// Gets or sets the default list type for new lists (Playlist or Collection).
+        /// </summary>
+        public string DefaultListType { get; set; } = "Playlist";
+
+        /// <summary>
         /// Gets or sets whether new playlists should be public by default.
         /// </summary>
         public bool DefaultMakePublic { get; set; } = false;
@@ -27,7 +32,7 @@ namespace Jellyfin.Plugin.SmartLists.Configuration
         public int DefaultMaxItems { get; set; } = 500;
 
         /// <summary>
-        /// Gets or sets the default maximum play time in minutes for new playlists.
+        /// Gets or sets the default maximum playtime in minutes for new playlists.
         /// </summary>
         public int DefaultMaxPlayTimeMinutes { get; set; } = 0;
 

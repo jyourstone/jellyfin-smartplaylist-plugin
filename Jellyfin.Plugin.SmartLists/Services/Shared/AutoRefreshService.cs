@@ -47,6 +47,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly ILogger<AutoRefreshService> _logger;
         private readonly ISmartListStore<SmartPlaylistDto> _playlistStore;
         private readonly ISmartListService<SmartPlaylistDto> _playlistService;
+        private readonly ISmartListStore<SmartCollectionDto> _collectionStore;
+        private readonly ISmartListService<SmartCollectionDto> _collectionService;
         private readonly IUserDataManager _userDataManager;
         private readonly IUserManager _userManager;
         private readonly RefreshCache _playlistRefreshCache;
@@ -71,6 +73,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         // Key format: "MediaType" (e.g., "Movie", "Episode", "Audio")
         private readonly ConcurrentDictionary<string, HashSet<string>> _mediaTypeToPlaylistsCache = new();
 
+        // Collection caches (similar to playlist caches)
+        private readonly ConcurrentDictionary<string, HashSet<string>> _ruleTypeToCollectionsCache = new();
+        private readonly ConcurrentDictionary<string, HashSet<string>> _mediaTypeToCollectionsCache = new();
+
         private volatile bool _cacheInitialized = false;
         private readonly object _cacheInvalidationLock = new();
 
@@ -87,6 +93,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             ILogger<AutoRefreshService> logger,
             ISmartListStore<SmartPlaylistDto> playlistStore,
             ISmartListService<SmartPlaylistDto> playlistService,
+            ISmartListStore<SmartCollectionDto> collectionStore,
+            ISmartListService<SmartCollectionDto> collectionService,
             IUserDataManager userDataManager,
             IUserManager userManager)
         {
@@ -94,6 +102,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             _logger = logger;
             _playlistStore = playlistStore;
             _playlistService = playlistService;
+            _collectionStore = collectionStore;
+            _collectionService = collectionService;
             _userDataManager = userDataManager;
             _userManager = userManager;
 
@@ -137,24 +147,37 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 _logger.LogDebug("Initializing rule type cache for performance optimization...");
 
                 var playlists = await _playlistStore.GetAllAsync();
-                var cacheEntries = 0;
+                var playlistCacheEntries = 0;
 
                 foreach (var playlist in playlists)
                 {
                     if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
                     {
                         AddPlaylistToRuleCache(playlist);
-                        cacheEntries++;
+                        playlistCacheEntries++;
+                    }
+                }
+
+                var collections = await _collectionStore.GetAllAsync();
+                var collectionCacheEntries = 0;
+
+                foreach (var collection in collections)
+                {
+                    if (collection.Enabled && collection.AutoRefresh != AutoRefreshMode.Never)
+                    {
+                        AddCollectionToRuleCache(collection);
+                        collectionCacheEntries++;
                     }
                 }
 
                 _cacheInitialized = true;
-                _logger.LogInformation("Auto-refresh cache initialized: {PlaylistCount} playlists, {MediaTypeCount} media types, {RuleTypeCount} field-based entries",
-                    cacheEntries, _mediaTypeToPlaylistsCache.Count, _ruleTypeToPlaylistsCache.Count);
+                _logger.LogInformation("Auto-refresh cache initialized: {PlaylistCount} playlists, {CollectionCount} collections, {MediaTypeCount} media types, {RuleTypeCount} field-based entries",
+                    playlistCacheEntries, collectionCacheEntries, _mediaTypeToPlaylistsCache.Count + _mediaTypeToCollectionsCache.Count, 
+                    _ruleTypeToPlaylistsCache.Count + _ruleTypeToCollectionsCache.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to initialize rule type cache - will fall back to checking all playlists");
+                _logger.LogError(ex, "Failed to initialize rule type cache - will fall back to checking all lists");
             }
         }
 
@@ -365,26 +388,39 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             try
             {
-                // Skip processing if the item is a playlist itself - playlists updating shouldn't trigger other playlist refreshes
+                // Skip processing if the item is a playlist or collection itself
                 if (item is MediaBrowser.Controller.Playlists.Playlist)
                 {
                     _logger.LogDebug("Skipping auto-refresh for playlist item '{ItemName}' - playlists don't trigger other playlist refreshes", item.Name);
                     return;
                 }
 
+                if (item.GetBaseItemKind() == BaseItemKind.BoxSet)
+                {
+                    _logger.LogDebug("Skipping auto-refresh for collection item '{ItemName}' - collections don't trigger other collection refreshes", item.Name);
+                    return;
+                }
+
                 // Find playlists that might be affected by this change
                 var affectedPlaylistIds = await GetAffectedPlaylistsAsync(item, changeType, triggeringUserId).ConfigureAwait(false);
 
-                if (affectedPlaylistIds.Any())
+                // Find collections that might be affected by this change
+                // Collections don't use user-specific fields, so no triggeringUserId needed
+                var affectedCollectionIds = await GetAffectedCollectionsAsync(item, changeType).ConfigureAwait(false);
+
+                if (affectedPlaylistIds.Any() || affectedCollectionIds.Any())
                 {
-                    // Use batching for all changes to avoid spam during bulk operations
-                    // (e.g., marking a series as watched, or scanning a library folder)
-                    _logger.LogDebug("Queued {PlaylistCount} playlists for batched refresh due to {ChangeType} of '{ItemName}'",
-                        affectedPlaylistIds.Count, changeType, item.Name);
+                    _logger.LogDebug("Queued {PlaylistCount} playlists and {CollectionCount} collections for batched refresh due to {ChangeType} of '{ItemName}'",
+                        affectedPlaylistIds.Count, affectedCollectionIds.Count, changeType, item.Name);
 
                     foreach (var playlistId in affectedPlaylistIds)
                     {
                         _pendingLibraryRefreshes[playlistId] = DateTime.UtcNow.Add(_batchDelay);
+                    }
+
+                    foreach (var collectionId in affectedCollectionIds)
+                    {
+                        _pendingLibraryRefreshes[collectionId] = DateTime.UtcNow.Add(_batchDelay);
                     }
                 }
             }
@@ -415,12 +451,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 if (readyToProcess.Any())
                 {
-                    _logger.LogInformation("Auto-refreshing {PlaylistCount} smart playlists after library changes", readyToProcess.Count);
-                    _logger.LogDebug("Processing batched refresh for {PlaylistCount} playlists after {DelaySeconds}s delay",
+                    _logger.LogInformation("Auto-refreshing {ListCount} smart lists after library changes", readyToProcess.Count);
+                    _logger.LogDebug("Processing batched refresh for {ListCount} lists after {DelaySeconds}s delay",
                         readyToProcess.Count, _batchDelay.TotalSeconds);
 
-                    // Process the batch in background
-                    _ = Task.Run(async () => await ProcessPlaylistRefreshes(readyToProcess, isUserDataRefresh: false));
+                    // Process the batch in background - separate playlists and collections
+                    _ = Task.Run(async () => await ProcessListRefreshes(readyToProcess, isUserDataRefresh: false));
                 }
             }
             catch (Exception ex)
@@ -607,6 +643,168 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
         }
 
+        public void UpdateCollectionInCache(SmartCollectionDto collection)
+        {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            lock (_cacheInvalidationLock)
+            {
+                if (!_cacheInitialized) return;
+
+                try
+                {
+                    // Remove old entries for this collection
+                    if (!string.IsNullOrEmpty(collection.Id))
+                    {
+                        RemoveCollectionFromRuleCache(collection.Id);
+                    }
+
+                    // Add new entries if collection is enabled and has auto-refresh
+                    if (collection.Enabled && collection.AutoRefresh != AutoRefreshMode.Never)
+                    {
+                        AddCollectionToRuleCache(collection);
+                        _logger.LogDebug("Updated cache for collection '{CollectionName}'", collection.Name);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating cache for collection '{CollectionName}' - invalidating cache", collection.Name);
+                    _ruleTypeToCollectionsCache.Clear();
+                    _mediaTypeToCollectionsCache.Clear();
+                    _cacheInitialized = false;
+                }
+            }
+
+            if (!_cacheInitialized)
+            {
+                _ = Task.Run(InitializeRuleCache);
+            }
+        }
+
+        public void RemoveCollectionFromCache(string collectionId)
+        {
+            lock (_cacheInvalidationLock)
+            {
+                if (!_cacheInitialized) return;
+
+                try
+                {
+                    RemoveCollectionFromRuleCache(collectionId);
+                    _logger.LogDebug("Removed collection {CollectionId} from cache", collectionId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing collection {CollectionId} from cache - invalidating cache", collectionId);
+                    _ruleTypeToCollectionsCache.Clear();
+                    _mediaTypeToCollectionsCache.Clear();
+                    _cacheInitialized = false;
+                }
+            }
+
+            if (!_cacheInitialized)
+            {
+                _ = Task.Run(InitializeRuleCache);
+            }
+        }
+
+        private void AddCollectionToRuleCache(SmartCollectionDto collection)
+        {
+            var mediaTypes = collection.MediaTypes?.ToList() ?? [.. MediaTypes.All];
+
+            if (string.IsNullOrEmpty(collection.Id))
+            {
+                return;
+            }
+
+            foreach (var mediaType in mediaTypes)
+            {
+                _mediaTypeToCollectionsCache.AddOrUpdate(
+                    mediaType,
+                    new HashSet<string> { collection.Id },
+                    (key, existing) =>
+                    {
+                        existing.Add(collection.Id);
+                        return existing;
+                    }
+                );
+            }
+
+            // Handle collections with no rules
+            if (collection.ExpressionSets == null || !collection.ExpressionSets.Any() ||
+                !collection.ExpressionSets.Any(es => es.Expressions?.Any() == true))
+            {
+                foreach (var mediaType in mediaTypes)
+                {
+                    var cacheKey = $"{mediaType}+Any";
+                    _ruleTypeToCollectionsCache.AddOrUpdate(
+                        cacheKey,
+                        new HashSet<string> { collection.Id },
+                        (key, existing) =>
+                        {
+                            existing.Add(collection.Id);
+                            return existing;
+                        }
+                    );
+                }
+            }
+            else
+            {
+                // Add field-based cache entries (collections don't use user-specific fields)
+                foreach (var expressionSet in collection.ExpressionSets)
+                {
+                    if (expressionSet.Expressions == null) continue;
+
+                    foreach (var expression in expressionSet.Expressions)
+                    {
+                        if (string.IsNullOrEmpty(expression.MemberName)) continue;
+
+                        // Skip user-specific fields for collections
+                        if (Core.QueryEngine.FieldDefinitions.UserDataFields.Contains(expression.MemberName))
+                        {
+                            continue;
+                        }
+
+                        foreach (var mediaType in mediaTypes)
+                        {
+                            var cacheKey = $"{mediaType}+{expression.MemberName}";
+                            _ruleTypeToCollectionsCache.AddOrUpdate(
+                                cacheKey,
+                                new HashSet<string> { collection.Id },
+                                (key, existing) =>
+                                {
+                                    existing.Add(collection.Id);
+                                    return existing;
+                                }
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        private void RemoveCollectionFromRuleCache(string collectionId)
+        {
+            // Remove from field-based cache
+            foreach (var kvp in _ruleTypeToCollectionsCache.ToList())
+            {
+                kvp.Value.Remove(collectionId);
+                if (kvp.Value.Count == 0)
+                {
+                    _ruleTypeToCollectionsCache.TryRemove(kvp.Key, out _);
+                }
+            }
+
+            // Remove from media type cache
+            foreach (var kvp in _mediaTypeToCollectionsCache.ToList())
+            {
+                kvp.Value.Remove(collectionId);
+                if (kvp.Value.Count == 0)
+                {
+                    _mediaTypeToCollectionsCache.TryRemove(kvp.Key, out _);
+                }
+            }
+        }
+
         private async Task<List<string>> GetAffectedPlaylistsAsync(BaseItem item, LibraryChangeType changeType, Guid? triggeringUserId = null)
         {
             // Use cache for performance optimization if available
@@ -711,12 +909,97 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             return affectedPlaylists;
         }
 
+        private async Task<List<string>> GetAffectedCollectionsAsync(BaseItem item, LibraryChangeType changeType)
+        {
+            // Use cache for performance optimization if available
+            if (_cacheInitialized)
+            {
+                return await GetAffectedCollectionsFromCacheAsync(item, changeType).ConfigureAwait(false);
+            }
+
+            // Fallback to checking all collections if cache not ready
+            return await GetAffectedCollectionsFallbackAsync(item, changeType).ConfigureAwait(false);
+        }
+
+        private async Task<List<string>> GetAffectedCollectionsFromCacheAsync(BaseItem item, LibraryChangeType changeType)
+        {
+            var affectedCollections = new HashSet<string>();
+
+            try
+            {
+                var mediaType = GetMediaTypeFromItem(item);
+
+                // For Removed events, skip entirely (Jellyfin auto-removes items from collections)
+                if (changeType == LibraryChangeType.Removed)
+                {
+                    _logger.LogDebug("Item '{ItemName}' removed - Jellyfin will auto-remove from collections, no refresh needed", item.Name);
+                    return [];
+                }
+
+                // Use the simple media type cache to get all collections for this media type
+                if (_mediaTypeToCollectionsCache.TryGetValue(mediaType, out var collectionIds))
+                {
+                    affectedCollections.UnionWith(collectionIds.ToArray());
+                }
+
+                // Apply filtering based on change type and auto-refresh mode
+                var finalCollections = await FilterCollectionsByChangeTypeAsync(affectedCollections.ToList(), changeType).ConfigureAwait(false);
+
+                _logger.LogDebug("Cache-based filtering: {ItemName} ({MediaType}) affects {CollectionCount} collections after library change filtering",
+                    item.Name, mediaType, finalCollections.Count);
+
+                return finalCollections;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error using cache to determine affected collections for item {ItemName} - falling back", item.Name);
+                return await GetAffectedCollectionsFallbackAsync(item, changeType).ConfigureAwait(false);
+            }
+        }
+
+        private async Task<List<string>> GetAffectedCollectionsFallbackAsync(BaseItem item, LibraryChangeType changeType)
+        {
+            var affectedCollections = new List<string>();
+
+            try
+            {
+                // Get all collections that have auto-refresh enabled
+                var allCollections = await _collectionStore.GetAllAsync().ConfigureAwait(false);
+                var autoRefreshCollections = allCollections.Where(c => c.AutoRefresh != AutoRefreshMode.Never && c.Enabled);
+
+                foreach (var collection in autoRefreshCollections)
+                {
+                    // Check if this collection should be refreshed based on the change type
+                    if (ShouldCollectionRefreshForChangeType(collection, changeType))
+                    {
+                        // Additional filtering: check if the item type matches the collection's media types
+                        if (IsItemRelevantToCollection(item, collection))
+                        {
+                            if (!string.IsNullOrEmpty(collection.Id))
+                            {
+                                affectedCollections.Add(collection.Id);
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogDebug("Fallback filtering: {ItemName} potentially affects {CollectionCount} collections",
+                    item.Name, affectedCollections.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error determining affected collections for item {ItemName}", item.Name);
+            }
+
+            return affectedCollections;
+        }
+
         private bool IsUserRelevantToPlaylist(Guid userId, SmartPlaylistDto playlist)
         {
             try
             {
                 // Check if the user is the playlist owner
-                if (playlist.UserId == userId)
+                if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var playlistUserId) && playlistUserId == userId)
                 {
                     return true;
                 }
@@ -852,6 +1135,68 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             return playlist.MediaTypes.Contains(itemMediaType);
         }
 
+        private static bool ShouldCollectionRefreshForChangeType(SmartCollectionDto collection, LibraryChangeType changeType)
+        {
+            return changeType switch
+            {
+                LibraryChangeType.Added =>
+                    collection.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+                LibraryChangeType.Removed =>
+                    false, // Jellyfin auto-removes items from collections
+                LibraryChangeType.Updated =>
+                    collection.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+                _ => false
+            };
+        }
+
+        private async Task<List<string>> FilterCollectionsByChangeTypeAsync(List<string> collectionIds, LibraryChangeType changeType)
+        {
+            var filteredCollections = new List<string>();
+
+            foreach (var collectionId in collectionIds)
+            {
+                try
+                {
+                    if (!Guid.TryParse(collectionId, out var collectionGuid))
+                    {
+                        continue;
+                    }
+
+                    var collection = await _collectionStore.GetByIdAsync(collectionGuid).ConfigureAwait(false);
+                    if (collection == null || !collection.Enabled)
+                    {
+                        continue;
+                    }
+
+                    if (!ShouldCollectionRefreshForChangeType(collection, changeType))
+                    {
+                        _logger.LogDebug("Collection '{CollectionName}' auto-refresh mode {AutoRefresh} does not match change type {ChangeType} - skipping",
+                            collection.Name, collection.AutoRefresh, changeType);
+                        continue;
+                    }
+
+                    filteredCollections.Add(collectionId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error filtering collection {CollectionId} by change type", collectionId);
+                }
+            }
+
+            return filteredCollections;
+        }
+
+        private static bool IsItemRelevantToCollection(BaseItem item, SmartCollectionDto collection)
+        {
+            // If no media types specified, assume all types are relevant
+            if (collection.MediaTypes == null || !collection.MediaTypes.Any())
+                return true;
+
+            // Check if the item's type matches any of the collection's media types
+            var itemMediaType = GetMediaTypeForItem(item);
+            return collection.MediaTypes.Contains(itemMediaType);
+        }
+
         private static string GetMediaTypeForItem(BaseItem item)
         {
             // First try direct type matching for common types with concrete classes
@@ -883,6 +1228,59 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
 
+
+        private async Task ProcessListRefreshes(List<string> listIds, bool isUserDataRefresh)
+        {
+            if (_disposed) return;
+
+            try
+            {
+                // Separate playlists and collections
+                var playlistIds = new List<string>();
+                var collectionIds = new List<string>();
+
+                foreach (var listId in listIds)
+                {
+                    try
+                    {
+                        // Try to determine type by checking stores
+                        var playlist = await _playlistStore.GetByIdAsync(Guid.Parse(listId));
+                        if (playlist != null)
+                        {
+                            playlistIds.Add(listId);
+                        }
+                        else
+                        {
+                            var collection = await _collectionStore.GetByIdAsync(Guid.Parse(listId));
+                            if (collection != null)
+                            {
+                                collectionIds.Add(listId);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Skip invalid IDs
+                    }
+                }
+
+                // Process playlists
+                if (playlistIds.Any())
+                {
+                    await ProcessPlaylistRefreshes(playlistIds, isUserDataRefresh).ConfigureAwait(false);
+                }
+
+                // Process collections (collections don't use user data, so skip if isUserDataRefresh)
+                if (collectionIds.Any() && !isUserDataRefresh)
+                {
+                    await ProcessCollectionRefreshes(collectionIds).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing list refreshes");
+            }
+        }
 
         private async Task ProcessPlaylistRefreshes(List<string> playlistIds, bool isUserDataRefresh)
         {
@@ -951,6 +1349,75 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing playlist refreshes");
+            }
+        }
+
+        private async Task ProcessCollectionRefreshes(List<string> collectionIds)
+        {
+            if (_disposed) return;
+
+            try
+            {
+                _logger.LogInformation("Auto-refreshing {CollectionCount} smart collections due to library changes", collectionIds.Count);
+
+                // Load all collections first
+                var collections = new List<SmartCollectionDto>();
+                foreach (var collectionId in collectionIds)
+                {
+                    try
+                    {
+                        var collection = await _collectionStore.GetByIdAsync(Guid.Parse(collectionId));
+                        if (collection != null && collection.Enabled)
+                        {
+                            collections.Add(collection);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error loading collection {CollectionId} for batch refresh", collectionId);
+                    }
+                }
+
+                if (collections.Any())
+                {
+                    _logger.LogDebug("Processing {CollectionCount} collections", collections.Count);
+
+                    var successCount = 0;
+                    var failureCount = 0;
+
+                    foreach (var collection in collections)
+                    {
+                        try
+                        {
+                            var (success, message, _) = await _collectionService.RefreshAsync(collection, CancellationToken.None).ConfigureAwait(false);
+
+                            if (success)
+                            {
+                                successCount++;
+                                collection.LastRefreshed = DateTime.UtcNow;
+                                await _collectionStore.SaveAsync(collection).ConfigureAwait(false);
+                                _logger.LogInformation("Auto-refresh completed for collection '{CollectionName}': {Message}", collection.Name, message);
+                            }
+                            else
+                            {
+                                failureCount++;
+                                _logger.LogWarning("Auto-refresh failed for collection '{CollectionName}': {Message}", collection.Name, message);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            failureCount++;
+                            _logger.LogError(ex, "Error refreshing collection '{CollectionName}'", collection.Name);
+                        }
+                    }
+
+                    _logger.LogInformation("Batch auto-refresh completed: {SuccessCount} successful, {FailureCount} failed",
+                        successCount, failureCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing collection refreshes");
             }
         }
 
@@ -1035,46 +1502,84 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             try
             {
                 var now = DateTime.UtcNow;
-                _logger.LogDebug("Checking for scheduled playlist refreshes (15-minute boundary check) at {CurrentTime}", now);
+                _logger.LogDebug("Checking for scheduled list refreshes (15-minute boundary check) at {CurrentTime}", now);
 
+                // Check playlists
                 var allPlaylists = await _playlistStore.GetAllAsync().ConfigureAwait(false);
-                // Check for either new Schedules array or legacy ScheduleTrigger
                 var scheduledPlaylists = allPlaylists.Where(p =>
                     p.Enabled && (
-                        (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null)) ||  // Filter to valid triggers
+                        (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null)) ||
                         (p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None)
                     )).ToList();
 
-                if (!scheduledPlaylists.Any())
+                // Check collections
+                var allCollections = await _collectionStore.GetAllAsync().ConfigureAwait(false);
+                var scheduledCollections = allCollections.Where(c =>
+                    c.Enabled && (
+                        (c.Schedules != null && c.Schedules.Any(s => s?.Trigger != null)) ||
+                        (c.ScheduleTrigger != null && c.ScheduleTrigger != ScheduleTrigger.None)
+                    )).ToList();
+
+                if (!scheduledPlaylists.Any() && !scheduledCollections.Any())
                 {
-                    _logger.LogDebug("No playlists with custom schedules found");
+                    _logger.LogDebug("No lists with custom schedules found");
                     return;
                 }
 
-                _logger.LogDebug("Found {Count} playlists with schedules: {PlaylistNames}",
-                    scheduledPlaylists.Count,
-                    string.Join(", ", scheduledPlaylists.Select(p =>
-                    {
-                        if (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null))  // Filter to valid triggers
-                        {
-                            var triggers = string.Join(", ", p.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
-                            return $"'{p.Name}' ({triggers})";
-                        }
-                        return $"'{p.Name}' ({p.ScheduleTrigger})";
-                    })));
-
-                var duePlaylist = scheduledPlaylists.Where(p => IsPlaylistDueForRefresh(p, now)).ToList();
-
-                if (duePlaylist.Any())
+                if (scheduledPlaylists.Any())
                 {
-                    _logger.LogInformation("Found {Count} playlists due for scheduled refresh: {PlaylistNames}",
-                        duePlaylist.Count,
-                        string.Join(", ", duePlaylist.Select(p => $"'{p.Name}'")));
-                    await RefreshScheduledPlaylists(duePlaylist).ConfigureAwait(false);
+                    _logger.LogDebug("Found {Count} playlists with schedules: {PlaylistNames}",
+                        scheduledPlaylists.Count,
+                        string.Join(", ", scheduledPlaylists.Select(p =>
+                        {
+                            if (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null))
+                            {
+                                var triggers = string.Join(", ", p.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
+                                return $"'{p.Name}' ({triggers})";
+                            }
+                            return $"'{p.Name}' ({p.ScheduleTrigger})";
+                        })));
+                }
+
+                if (scheduledCollections.Any())
+                {
+                    _logger.LogDebug("Found {Count} collections with schedules: {CollectionNames}",
+                        scheduledCollections.Count,
+                        string.Join(", ", scheduledCollections.Select(c =>
+                        {
+                            if (c.Schedules != null && c.Schedules.Any(s => s?.Trigger != null))
+                            {
+                                var triggers = string.Join(", ", c.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
+                                return $"'{c.Name}' ({triggers})";
+                            }
+                            return $"'{c.Name}' ({c.ScheduleTrigger})";
+                        })));
+                }
+
+                var duePlaylists = scheduledPlaylists.Where(p => IsPlaylistDueForRefresh(p, now)).ToList();
+                var dueCollections = scheduledCollections.Where(c => IsCollectionDueForRefresh(c, now)).ToList();
+
+                if (duePlaylists.Any() || dueCollections.Any())
+                {
+                    if (duePlaylists.Any())
+                    {
+                        _logger.LogInformation("Found {Count} playlists due for scheduled refresh: {PlaylistNames}",
+                            duePlaylists.Count,
+                            string.Join(", ", duePlaylists.Select(p => $"'{p.Name}'")));
+                        await RefreshScheduledPlaylists(duePlaylists).ConfigureAwait(false);
+                    }
+
+                    if (dueCollections.Any())
+                    {
+                        _logger.LogInformation("Found {Count} collections due for scheduled refresh: {CollectionNames}",
+                            dueCollections.Count,
+                            string.Join(", ", dueCollections.Select(c => $"'{c.Name}'")));
+                        await RefreshScheduledCollections(dueCollections).ConfigureAwait(false);
+                    }
                 }
                 else
                 {
-                    _logger.LogDebug("No playlists are due for scheduled refresh at {CurrentTime}", now);
+                    _logger.LogDebug("No lists are due for scheduled refresh at {CurrentTime}", now);
                 }
 
                 // Reschedule the timer for the next quarter-hour boundary
@@ -1174,11 +1679,41 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             return playlist.ScheduleTrigger switch
             {
-                ScheduleTrigger.Daily => IsDailyDue(playlist, now),
-                ScheduleTrigger.Weekly => IsWeeklyDue(playlist, now),
-                ScheduleTrigger.Monthly => IsMonthlyDue(playlist, now),
-                ScheduleTrigger.Yearly => IsYearlyDue(playlist, now),
-                ScheduleTrigger.Interval => IsIntervalDue(playlist, now),
+                ScheduleTrigger.Daily => IsDailyDue((SmartListDto)playlist, now),
+                ScheduleTrigger.Weekly => IsWeeklyDue((SmartListDto)playlist, now),
+                ScheduleTrigger.Monthly => IsMonthlyDue((SmartListDto)playlist, now),
+                ScheduleTrigger.Yearly => IsYearlyDue((SmartListDto)playlist, now),
+                ScheduleTrigger.Interval => IsIntervalDue((SmartListDto)playlist, now),
+                _ => false,
+            };
+        }
+
+        private bool IsCollectionDueForRefresh(SmartCollectionDto collection, DateTime now)
+        {
+            // Check new Schedules array first (supports multiple schedules)
+            var validSchedules = collection.Schedules?.Where(s => s?.Trigger != null).ToList();
+            if (validSchedules is { Count: > 0 })
+            {
+                foreach (var schedule in validSchedules)
+                {
+                    if (IsScheduleDue(schedule, now, collection.Name))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Legacy: Check old single schedule fields for backward compatibility
+            if (collection.ScheduleTrigger == null || collection.ScheduleTrigger == ScheduleTrigger.None) return false;
+
+            return collection.ScheduleTrigger switch
+            {
+                ScheduleTrigger.Daily => IsDailyDue((SmartListDto)collection, now),
+                ScheduleTrigger.Weekly => IsWeeklyDue((SmartListDto)collection, now),
+                ScheduleTrigger.Monthly => IsMonthlyDue((SmartListDto)collection, now),
+                ScheduleTrigger.Yearly => IsYearlyDue((SmartListDto)collection, now),
+                ScheduleTrigger.Interval => IsIntervalDue((SmartListDto)collection, now),
                 _ => false,
             };
         }
@@ -1203,9 +1738,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             };
         }
 
-        private bool IsDailyDue(SmartPlaylistDto playlist, DateTime now)
+        private bool IsDailyDue(SmartListDto list, DateTime now)
         {
-            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3); // Default 3:00 AM
+            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3); // Default 3:00 AM
 
             // Convert UTC now to local time for comparison with user-configured schedule times
             var localNow = now.ToLocalTime();
@@ -1214,8 +1749,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var todayScheduled = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
             if (IsWithinTimeBuffer(localNow, todayScheduled))
             {
-                _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (today), Due=True",
-                    playlist.Name, localNow, scheduledTime);
+                _logger.LogDebug("Daily schedule check for '{ListName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (today), Due=True",
+                    list.Name, localNow, scheduledTime);
                 return true;
             }
 
@@ -1223,16 +1758,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var tomorrowScheduled = todayScheduled.AddDays(1);
             var isDue = IsWithinTimeBuffer(localNow, tomorrowScheduled);
 
-            _logger.LogDebug("Daily schedule check for '{PlaylistName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (checked today and tomorrow), Due={Due}",
-                playlist.Name, localNow, scheduledTime, isDue);
+            _logger.LogDebug("Daily schedule check for '{ListName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (checked today and tomorrow), Due={Due}",
+                list.Name, localNow, scheduledTime, isDue);
 
             return isDue;
         }
 
-        private bool IsWeeklyDue(SmartPlaylistDto playlist, DateTime now)
+        private bool IsWeeklyDue(SmartListDto list, DateTime now)
         {
-            var scheduledDay = playlist.ScheduleDayOfWeek ?? DayOfWeek.Sunday;
-            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
+            var scheduledDay = list.ScheduleDayOfWeek ?? DayOfWeek.Sunday;
+            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3);
 
             // Convert UTC now to local time for comparison with user-configured schedule times
             var localNow = now.ToLocalTime();
@@ -1246,16 +1781,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
             var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
 
-            _logger.LogDebug("Weekly schedule check for '{PlaylistName}': Now={Now:dddd HH:mm:ss} (local), Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}",
-                playlist.Name, localNow, scheduledDay, scheduledTime, isDue);
+            _logger.LogDebug("Weekly schedule check for '{ListName}': Now={Now:dddd HH:mm:ss} (local), Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}",
+                list.Name, localNow, scheduledDay, scheduledTime, isDue);
 
             return isDue;
         }
 
-        private bool IsMonthlyDue(SmartPlaylistDto playlist, DateTime now)
+        private bool IsMonthlyDue(SmartListDto list, DateTime now)
         {
-            var scheduledDayOfMonth = playlist.ScheduleDayOfMonth ?? 1; // Default to 1st of month
-            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
+            var scheduledDayOfMonth = list.ScheduleDayOfMonth ?? 1; // Default to 1st of month
+            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3);
 
             // Convert UTC now to local time for comparison with user-configured schedule times
             var localNow = now.ToLocalTime();
@@ -1273,8 +1808,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
             var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
 
-            _logger.LogDebug("Monthly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}",
-                playlist.Name, localNow, effectiveDayOfMonth, scheduledTime, isDue);
+            _logger.LogDebug("Monthly schedule check for '{ListName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}",
+                list.Name, localNow, effectiveDayOfMonth, scheduledTime, isDue);
 
             return isDue;
         }
@@ -1315,17 +1850,17 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             return isDue;
         }
 
-        private bool IsIntervalDue(SmartPlaylistDto playlist, DateTime now)
+        private bool IsIntervalDue(SmartListDto list, DateTime now)
         {
-            var interval = playlist.ScheduleInterval ?? TimeSpan.FromHours(24);
-            return IsIntervalDueCommon(interval, now, playlist.Name);
+            var interval = list.ScheduleInterval ?? TimeSpan.FromHours(24);
+            return IsIntervalDueCommon(interval, now, list.Name);
         }
 
-        private bool IsYearlyDue(SmartPlaylistDto playlist, DateTime now)
+        private bool IsYearlyDue(SmartListDto list, DateTime now)
         {
-            var scheduledMonth = Math.Clamp(playlist.ScheduleMonth ?? 1, 1, 12); // Clamp to valid month range
-            var scheduledDayOfMonth = Math.Max(1, playlist.ScheduleDayOfMonth ?? 1); // At least day 1
-            var scheduledTime = playlist.ScheduleTime ?? TimeSpan.FromHours(3);
+            var scheduledMonth = Math.Clamp(list.ScheduleMonth ?? 1, 1, 12); // Clamp to valid month range
+            var scheduledDayOfMonth = Math.Max(1, list.ScheduleDayOfMonth ?? 1); // At least day 1
+            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3);
 
             // Convert UTC now to local time for comparison with user-configured schedule times
             var localNow = now.ToLocalTime();
@@ -1349,8 +1884,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var scheduledDateTime = new DateTime(localNow.Year, scheduledMonth, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
             var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
 
-            _logger.LogDebug("Yearly schedule check for '{PlaylistName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}",
-                playlist.Name, localNow, scheduledMonth, effectiveDayOfMonth, scheduledTime, isDue);
+            _logger.LogDebug("Yearly schedule check for '{ListName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}",
+                list.Name, localNow, scheduledMonth, effectiveDayOfMonth, scheduledTime, isDue);
 
             return isDue;
         }
@@ -1512,6 +2047,57 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         _logger.LogError(fallbackEx, "Fallback refresh also failed for playlist {PlaylistName}", playlist.Name);
                     }
                 }
+            }
+        }
+
+        private async Task RefreshScheduledCollections(List<SmartCollectionDto> collections)
+        {
+            if (!collections.Any())
+            {
+                return;
+            }
+
+            _logger.LogDebug("Refreshing {CollectionCount} scheduled collections", collections.Count);
+
+            try
+            {
+                var successCount = 0;
+                var failureCount = 0;
+
+                foreach (var collection in collections)
+                {
+                    try
+                    {
+                        _logger.LogDebug("Refreshing scheduled collection: {CollectionName}", collection.Name);
+
+                        var (success, message, _) = await _collectionService.RefreshWithTimeoutAsync(collection).ConfigureAwait(false);
+
+                        if (success)
+                        {
+                            successCount++;
+                            collection.LastRefreshed = DateTime.UtcNow;
+                            await _collectionStore.SaveAsync(collection).ConfigureAwait(false);
+                            _logger.LogInformation("Successfully refreshed scheduled collection: {CollectionName}", collection.Name);
+                        }
+                        else
+                        {
+                            failureCount++;
+                            _logger.LogWarning("Failed to refresh scheduled collection {CollectionName}: {Message}", collection.Name, message);
+                        }
+                    }
+                    catch (Exception collectionEx)
+                    {
+                        failureCount++;
+                        _logger.LogError(collectionEx, "Failed to refresh scheduled collection: {CollectionName}", collection.Name);
+                    }
+                }
+
+                _logger.LogInformation("Scheduled collection refresh completed: {SuccessCount} successful, {FailureCount} failed",
+                    successCount, failureCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to refresh scheduled collections");
             }
         }
 

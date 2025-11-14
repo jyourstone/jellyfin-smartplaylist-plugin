@@ -13,9 +13,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
         // TV Types
         public const string Episode = nameof(Episode);
 
-        // Deprecated: Series media type removed due to Jellyfin playlist limitations
-        // Series objects in playlists are automatically expanded to episodes by Jellyfin,
-        // causing playback issues where only the first series' episodes are playable
+        // Series media type: Not supported in Playlists (Jellyfin expands to episodes causing playback issues)
+        // but supported in Collections (Collections don't play sequentially, so no expansion issues)
         public const string Series = nameof(Series);
 
         // Movie Types
@@ -52,7 +51,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
             { BaseItemKind.Photo, Photo },
             { BaseItemKind.Book, Book },
             { BaseItemKind.AudioBook, AudioBook },
-            // Deprecated: Series is kept here only for deserialization so we can validate and reject it properly
+            // Series: Supported in Collections, not in Playlists
             { BaseItemKind.Series, Series }
         };
 
@@ -69,15 +68,14 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
             { Photo, BaseItemKind.Photo },
             { Book, BaseItemKind.Book },
             { AudioBook, BaseItemKind.AudioBook },
-            // Deprecated: Series is kept here only for deserialization so we can validate and reject it properly
+            // Series: Supported in Collections, not in Playlists
             { Series, BaseItemKind.Series }
         };
 
         /// <summary>
-        /// Gets all supported media types as an array (excludes deprecated types like Series)
+        /// Gets all supported media types as an array (includes Series for Collections support)
         /// </summary>
         public static readonly string[] All = [.. BaseItemKindToMediaType
-            .Where(static kvp => kvp.Key != BaseItemKind.Series)
             .Select(static kvp => kvp.Value)];
 
         /// <summary>
@@ -96,9 +94,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
         public static readonly string[] BookTypes = [Book, AudioBook];
 
         /// <summary>
-        /// Gets TV media types (Episode only - Series removed due to Jellyfin playlist limitations)
+        /// Gets TV media types (Episode and Series)
         /// </summary>
-        public static readonly string[] TV = [Episode];
+        public static readonly string[] TV = [Episode, Series];
 
         /// <summary>
         /// Gets music-related media types (Audio, AudioBook, MusicVideo)

@@ -34,6 +34,7 @@
         Promise.all([
             SmartLists.populateStaticSelects(page), // Make synchronous function async
             SmartLists.loadUsers(page),
+            // Collections are server-wide, no library loading needed
             SmartLists.loadAndPopulateFields()
         ]).then(function() {
             // All async operations completed successfully
@@ -56,6 +57,16 @@
             // Populate form defaults if we're on the create tab and not in edit mode
             const currentTab = SmartLists.getCurrentTab();
             if (currentTab === 'create' && !editState.editMode) {
+                // Set default list type on initial page load only
+                const apiClient = SmartLists.getApiClient();
+                apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+                    SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
+                    SmartLists.handleListTypeChange(page);
+                }).catch(function() {
+                    SmartLists.setElementValue(page, '#listType', 'Playlist');
+                    SmartLists.handleListTypeChange(page);
+                });
+                
                 SmartLists.populateFormDefaults(page);
             }
         }).catch(function(error) {
@@ -79,8 +90,6 @@
         
         // Load configuration (this can run independently)
         SmartLists.loadConfiguration(page);
-
-        SmartLists.applyMainContainerLayoutFix(page);
     };
 
     // ===== STATIC SELECTS POPULATION =====
@@ -270,7 +279,16 @@
             return;
         }
         
+        // Get list type to filter media types
+        const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+        const isCollection = listType === 'Collection';
+        
         SmartLists.mediaTypes.forEach(function(mediaType) {
+            // Skip collection-only media types for playlists
+            if (mediaType.CollectionOnly && !isCollection) {
+                return;
+            }
+            
             const sectionCheckbox = document.createElement('div');
             sectionCheckbox.className = 'sectioncheckbox';
             
@@ -331,7 +349,11 @@
     SmartLists.populateFormDefaults = function(page) {
         const apiClient = SmartLists.getApiClient();
         apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
-            // Set default values for Max Items and Max Play Time
+            // Set default list type
+            SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
+            SmartLists.handleListTypeChange(page);
+            
+            // Set default values for Max Items and Max Playtime
             const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             SmartLists.setElementValue(page, '#playlistMaxItems', defaultMaxItems);
             
@@ -346,6 +368,8 @@
             SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
         }).catch(function() {
             // Fallback defaults if config fails to load
+            SmartLists.setElementValue(page, '#listType', 'Playlist');
+            SmartLists.handleListTypeChange(page);
             SmartLists.setElementValue(page, '#playlistMaxItems', 500);
             SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
             SmartLists.setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
@@ -540,6 +564,14 @@
         
         // Setup playlist naming event listeners
         SmartLists.setupPlaylistNamingListeners(page, pageSignal);
+        
+        // Setup list type change handler
+        const listTypeSelect = page.querySelector('#listType');
+        if (listTypeSelect) {
+            listTypeSelect.addEventListener('change', function() {
+                SmartLists.handleListTypeChange(page);
+            }, SmartLists.getEventListenerOptions(pageSignal));
+        }
         
         page.addEventListener('click', function (e) {
             const target = e.target;
@@ -806,7 +838,7 @@
         const suffix = page.querySelector('#playlistNameSuffix').value;
         const previewText = page.querySelector('#previewText');
         
-        const exampleName = 'My Awesome Playlist';
+        const exampleName = 'My Awesome List';
         let finalName = '';
         
         if (prefix) {
@@ -843,6 +875,7 @@
         SmartLists.getApiClient().getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
             const defaultSortByEl = page.querySelector('#defaultSortBy');
             const defaultSortOrderEl = page.querySelector('#defaultSortOrder');
+            const defaultListTypeEl = page.querySelector('#defaultListType');
             const defaultMakePublicEl = page.querySelector('#defaultMakePublic');
             const defaultMaxItemsEl = page.querySelector('#defaultMaxItems');
             const defaultMaxPlayTimeMinutesEl = page.querySelector('#defaultMaxPlayTimeMinutes');
@@ -852,6 +885,7 @@
             
             if (defaultSortByEl) defaultSortByEl.value = config.DefaultSortBy || 'Name';
             if (defaultSortOrderEl) defaultSortOrderEl.value = config.DefaultSortOrder || 'Ascending';
+            if (defaultListTypeEl) defaultListTypeEl.value = config.DefaultListType || 'Playlist';
             if (defaultMakePublicEl) defaultMakePublicEl.checked = config.DefaultMakePublic || false;
             if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
@@ -927,6 +961,7 @@
         apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
             config.DefaultSortBy = page.querySelector('#defaultSortBy').value;
             config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
+            config.DefaultListType = page.querySelector('#defaultListType').value;
             config.DefaultMakePublic = page.querySelector('#defaultMakePublic').checked;
             const defaultMaxItemsInput = page.querySelector('#defaultMaxItems').value;
             if (defaultMaxItemsInput === '') {
@@ -1159,29 +1194,11 @@
             /* Style danger/delete buttons to be red */
             .SmartListsConfigurationPage .emby-button.danger,
             .SmartListsConfigurationPage .emby-button.button-delete {
-                background-color: #d9534f !important;
-                border-color: #d43f3a !important;
-            }
-            .SmartListsConfigurationPage .emby-button.danger:hover,
-            .SmartListsConfigurationPage .emby-button.button-delete:hover {
-                background-color: #c9302c !important;
-                border-color: #ac2925 !important;
+                background-color: #BB3932 !important;
+                border-color: #BB3932 !important;
             }
         `;
         document.head.appendChild(style);
-    };
-
-    SmartLists.applyMainContainerLayoutFix = function(page) {
-        // Let Jellyfin's native layout handle padding/margins
-        // Only apply maxWidth if needed for content width constraint
-        var tabContents = page.querySelectorAll('.page-content');
-        for (var i = 0; i < tabContents.length; i++) {
-            SmartLists.applyStyles(tabContents[i], {
-                maxWidth: '1200px',
-                marginLeft: 'auto',
-                marginRight: 'auto'
-            });
-        }
     };
 
     // ===== CLEANUP =====
@@ -1282,6 +1299,88 @@
             SmartLists.cleanupAllEventListeners(page);
         }
     });
+
+    // ===== LIST TYPE CHANGE HANDLER =====
+    SmartLists.handleListTypeChange = function(page) {
+        const listTypeSelect = page.querySelector('#listType');
+        if (!listTypeSelect) return;
+        
+        const listType = listTypeSelect.value;
+        const isCollection = listType === 'Collection';
+        
+        // Show/hide playlist-only fields
+        const playlistOnlyFields = page.querySelectorAll('.playlist-only-field');
+        playlistOnlyFields.forEach(function(field) {
+            field.style.display = isCollection ? 'none' : '';
+        });
+        
+        // Show/hide collection-only fields
+        const collectionOnlyFields = page.querySelectorAll('.collection-only-field');
+        collectionOnlyFields.forEach(function(field) {
+            field.style.display = isCollection ? '' : 'none';
+        });
+        
+        // Show/hide playlist-only and collection-only descriptions
+        const playlistOnlyDescriptions = page.querySelectorAll('.playlist-only-description');
+        playlistOnlyDescriptions.forEach(function(desc) {
+            desc.style.display = isCollection ? 'none' : '';
+        });
+        
+        const collectionOnlyDescriptions = page.querySelectorAll('.collection-only-description');
+        collectionOnlyDescriptions.forEach(function(desc) {
+            desc.style.display = isCollection ? '' : 'none';
+        });
+        
+        // Update list type label text
+        const listTypeLabel = page.querySelector('.list-type-label');
+        if (listTypeLabel) {
+            listTypeLabel.textContent = isCollection ? 'Collection' : 'Playlist';
+        }
+        
+        // Update required attributes
+        const userSelect = page.querySelector('#playlistUser');
+        if (userSelect) {
+            if (isCollection) {
+                userSelect.removeAttribute('required');
+            } else {
+                userSelect.setAttribute('required', 'required');
+            }
+        }
+        
+        // Update submit button text
+        const submitBtn = page.querySelector('#submitBtn');
+        const editState = SmartLists.getPageEditState(page);
+        if (submitBtn) {
+            if (editState.editMode) {
+                submitBtn.textContent = 'Update ' + listType;
+            } else {
+                submitBtn.textContent = 'Create ' + listType;
+            }
+        }
+        
+        // Regenerate media type checkboxes to show/hide collection-only types
+        if (SmartLists.generateMediaTypeCheckboxes) {
+            SmartLists.generateMediaTypeCheckboxes(page);
+        }
+        
+        // Update field selects to add/remove Collections field based on list type
+        if (SmartLists.updateAllFieldSelects) {
+            SmartLists.updateAllFieldSelects(page);
+        }
+        
+        // Update visibility of parent series options based on media types
+        if (SmartLists.updateAllTagsOptionsVisibility) {
+            SmartLists.updateAllTagsOptionsVisibility(page);
+        }
+        if (SmartLists.updateAllStudiosOptionsVisibility) {
+            SmartLists.updateAllStudiosOptionsVisibility(page);
+        }
+        if (SmartLists.updateAllGenresOptionsVisibility) {
+            SmartLists.updateAllGenresOptionsVisibility(page);
+        }
+        
+        // Collections are server-wide, no library loading needed
+    };
 
 })(window.SmartLists = window.SmartLists || {});
 

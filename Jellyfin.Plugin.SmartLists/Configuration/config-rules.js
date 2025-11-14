@@ -729,7 +729,7 @@
                     'Check for specific user (optional):' +
                 '</label>' +
                 '<select is="emby-select" class="emby-select rule-user-select" style="width: 100%;">' +
-                    '<option value="">Default (playlist owner)</option>' +
+                    '<option value="">Default (owner)</option>' +
                 '</select>' +
             '</div>' +
             '<div class="rule-nextunwatched-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">' +
@@ -1127,6 +1127,10 @@
         const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
         const filteredFieldGroups = SmartLists.filterFieldsByMediaType(fieldGroups, selectedMediaTypes);
         
+        // Get list type to filter out Collections field for Collection lists
+        const listType = page ? SmartLists.getElementValue(page, '#listType', 'Playlist') : 'Playlist';
+        const isCollection = listType === 'Collection';
+        
         // Get the current selected value before clearing
         const currentValue = selectElement.value;
         
@@ -1152,6 +1156,11 @@
                 optgroup.label = group.label;
                 
                 fields.forEach(function(field) {
+                    // Skip Collections field when creating a Collection
+                    if (isCollection && field.Value === 'Collections') {
+                        return;
+                    }
+                    
                     const option = document.createElement('option');
                     option.value = field.Value;
                     option.textContent = field.Label;
@@ -1375,10 +1384,12 @@
         const tagsOptionsDiv = ruleRow.querySelector('.rule-tags-options');
         
         if (tagsOptionsDiv) {
-            // Show if Tags field is selected
-            // Note: This option is only meaningful for Episode media type, but we show it
-            // whenever Tags is selected so users can configure it
-            if (isTagsField) {
+            // Get selected media types to check if Episode is selected
+            const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
+            const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
+            
+            // Show only if Tags field is selected AND Episode media type is selected
+            if (isTagsField && hasEpisode) {
                 tagsOptionsDiv.style.display = 'block';
             } else {
                 // Hide but preserve user's selection - don't reset value
@@ -1397,10 +1408,12 @@
         const studiosOptionsDiv = ruleRow.querySelector('.rule-studios-options');
         
         if (studiosOptionsDiv) {
-            // Show if Studios field is selected
-            // Note: This option is only meaningful for Episode media type, but we show it
-            // whenever Studios is selected so users can configure it
-            if (isStudiosField) {
+            // Get selected media types to check if Episode is selected
+            const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
+            const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
+            
+            // Show only if Studios field is selected AND Episode media type is selected
+            if (isStudiosField && hasEpisode) {
                 studiosOptionsDiv.style.display = 'block';
             } else {
                 // Hide but preserve user's selection - don't reset value
@@ -1419,10 +1432,12 @@
         const genresOptionsDiv = ruleRow.querySelector('.rule-genres-options');
         
         if (genresOptionsDiv) {
-            // Show if Genres field is selected
-            // Note: This option is only meaningful for Episode media type, but we show it
-            // whenever Genres is selected so users can configure it
-            if (isGenresField) {
+            // Get selected media types to check if Episode is selected
+            const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
+            const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
+            
+            // Show only if Genres field is selected AND Episode media type is selected
+            if (isGenresField && hasEpisode) {
                 genresOptionsDiv.style.display = 'block';
             } else {
                 // Hide but preserve user's selection - don't reset value

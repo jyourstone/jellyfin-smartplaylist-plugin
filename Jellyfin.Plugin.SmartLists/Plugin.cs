@@ -71,8 +71,8 @@ namespace Jellyfin.Plugin.SmartLists
                 // Playlist CRUD operations
                 new PluginPageInfo
                 {
-                    Name = "config-playlists.js",
-                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-playlists.js",
+                    Name = "config-lists.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-lists.js",
                 },
                 // Filtering and search
                 new PluginPageInfo

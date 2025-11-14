@@ -562,7 +562,7 @@
         let filteredPlaylists = playlists.slice();
         
         // Apply all filters using the generic system
-        const filterOrder = ['search', 'mediaType', 'visibility', 'user'];
+        const filterOrder = ['search', 'type', 'mediaType', 'user'];
         
         for (var i = 0; i < filterOrder.length; i++) {
             const filterKey = filterOrder[i];

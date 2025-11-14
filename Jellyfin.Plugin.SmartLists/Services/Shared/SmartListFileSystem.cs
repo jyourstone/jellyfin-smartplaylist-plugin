@@ -1,6 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+using Jellyfin.Plugin.SmartLists.Core.Enums;
+using Jellyfin.Plugin.SmartLists.Core.Models;
 using MediaBrowser.Controller;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Shared
@@ -16,6 +22,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         string[] GetAllSmartListFilePaths();
         string GetSmartListPath(string fileName);
         string GetLegacyPath(string fileName);
+        Task<(SmartPlaylistDto[] Playlists, SmartCollectionDto[] Collections)> GetAllSmartListsAsync();
     }
 
     /// <summary>
@@ -106,6 +113,99 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
 
             return Path.Combine(_legacyBasePath, $"{fileName}.json");
+        }
+
+        /// <summary>
+        /// Reads all smart list files once and returns them grouped by type.
+        /// This is more efficient than having each store read files separately.
+        /// </summary>
+        public async Task<(SmartPlaylistDto[] Playlists, SmartCollectionDto[] Collections)> GetAllSmartListsAsync()
+        {
+            var filePaths = GetAllSmartListFilePaths();
+            var playlists = new List<SmartPlaylistDto>();
+            var collections = new List<SmartCollectionDto>();
+
+            var jsonOptions = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Converters = { new JsonStringEnumConverter() }
+            };
+
+            foreach (var filePath in filePaths)
+            {
+                try
+                {
+                    // Read file content as JSON document to check Type field first
+                    var jsonContent = await File.ReadAllTextAsync(filePath).ConfigureAwait(false);
+                    using var jsonDoc = JsonDocument.Parse(jsonContent);
+                    
+                    if (!jsonDoc.RootElement.TryGetProperty("Type", out var typeElement))
+                    {
+                        // Legacy file without Type field - default to Playlist
+                        var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, jsonOptions);
+                        if (playlist != null)
+                        {
+                            playlist.Type = SmartListType.Playlist;
+                            playlists.Add(playlist);
+                        }
+                        continue;
+                    }
+
+                    // Determine type from JSON
+                    SmartListType listType;
+                    if (typeElement.ValueKind == JsonValueKind.String)
+                    {
+                        var typeString = typeElement.GetString();
+                        if (Enum.TryParse<SmartListType>(typeString, ignoreCase: true, out var parsedType))
+                        {
+                            listType = parsedType;
+                        }
+                        else
+                        {
+                            // Invalid type, default to Playlist for backward compatibility
+                            listType = SmartListType.Playlist;
+                        }
+                    }
+                    else if (typeElement.ValueKind == JsonValueKind.Number)
+                    {
+                        var typeValue = typeElement.GetInt32();
+                        listType = typeValue == 1 ? SmartListType.Collection : SmartListType.Playlist;
+                    }
+                    else
+                    {
+                        // Invalid type format, default to Playlist
+                        listType = SmartListType.Playlist;
+                    }
+
+                    // Deserialize to the correct type based on the Type field
+                    if (listType == SmartListType.Playlist)
+                    {
+                        var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, jsonOptions);
+                        if (playlist != null)
+                        {
+                            // Ensure type is set
+                            playlist.Type = SmartListType.Playlist;
+                            playlists.Add(playlist);
+                        }
+                    }
+                    else if (listType == SmartListType.Collection)
+                    {
+                        var collection = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, jsonOptions);
+                        if (collection != null)
+                        {
+                            // Ensure type is set
+                            collection.Type = SmartListType.Collection;
+                            collections.Add(collection);
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // Skip invalid files and continue loading others
+                }
+            }
+
+            return (playlists.ToArray(), collections.ToArray());
         }
     }
 }

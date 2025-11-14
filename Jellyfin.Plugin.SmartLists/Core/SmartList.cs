@@ -62,7 +62,33 @@ namespace Jellyfin.Plugin.SmartLists.Core
             Id = dto.Id ?? throw new ArgumentException("Playlist ID cannot be null", nameof(dto));
             Name = dto.Name;
             FileName = dto.FileName ?? $"{dto.Id}.json";
-            UserId = dto.UserId;
+            UserId = Guid.TryParse(dto.User, out var userId) ? userId : Guid.Empty;
+
+            // Initialize properties before calling InitializeFromDto
+            Orders = [];
+            ExpressionSets = [];
+
+            InitializeFromDto(dto);
+        }
+
+        public SmartList(SmartCollectionDto dto)
+        {
+            ArgumentNullException.ThrowIfNull(dto);
+
+            Id = dto.Id ?? throw new ArgumentException("Collection ID cannot be null", nameof(dto));
+            Name = dto.Name;
+            FileName = dto.FileName ?? $"{dto.Id}.json";
+            UserId = Guid.TryParse(dto.User, out var userId) ? userId : Guid.Empty; // Owner user for rule context (IsPlayed, IsFavorite, etc.)
+
+            // Initialize properties before calling InitializeFromDto
+            Orders = [];
+            ExpressionSets = [];
+
+            InitializeFromDto(dto);
+        }
+
+        private void InitializeFromDto(SmartListDto dto)
+        {
 
             // Handle both legacy single Order and new multiple Orders formats
             if (dto.Order?.SortOptions != null && dto.Order.SortOptions.Count > 0)

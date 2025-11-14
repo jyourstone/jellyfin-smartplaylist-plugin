@@ -2,8 +2,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.SmartLists.Services.Playlists;
+using Jellyfin.Plugin.SmartLists.Services.Collections;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Controller.Providers;
@@ -38,6 +40,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var libraryManager = _serviceProvider.GetRequiredService<ILibraryManager>();
                 var userManager = _serviceProvider.GetRequiredService<IUserManager>();
                 var playlistManager = _serviceProvider.GetRequiredService<IPlaylistManager>();
+                var collectionManager = _serviceProvider.GetRequiredService<ICollectionManager>();
                 var userDataManager = _serviceProvider.GetRequiredService<IUserDataManager>();
                 var providerManager = _serviceProvider.GetRequiredService<IProviderManager>();
                 var serverApplicationPaths = _serviceProvider.GetRequiredService<IServerApplicationPaths>();
@@ -49,8 +52,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var fileSystem = new SmartListFileSystem(serverApplicationPaths);
                 var playlistStore = new PlaylistStore(fileSystem, userManager);
                 var playlistService = new PlaylistService(userManager, libraryManager, playlistManager, userDataManager, playlistServiceLogger, providerManager);
+                
+                var collectionServiceLogger = loggerFactory.CreateLogger<CollectionService>();
+                var collectionStore = new CollectionStore(fileSystem);
+                var collectionService = new CollectionService(libraryManager, collectionManager, userManager, userDataManager, collectionServiceLogger, providerManager);
 
-                _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, userDataManager, userManager);
+                _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, collectionStore, collectionService, userDataManager, userManager);
 
                 _logger.LogInformation("SmartLists AutoRefreshService started successfully (schedule timer initialized)");
             }

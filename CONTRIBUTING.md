@@ -1,6 +1,6 @@
-# Contributing to Jellyfin SmartPlaylist Plugin
+# Contributing to Jellyfin SmartLists Plugin
 
-Thank you for your wanting to contribute to the Jellyfin Smart Playlist Plugin! This document provides guidelines for contributing to this project.
+Thank you for your wanting to contribute to the Jellyfin SmartLists Plugin! This document provides guidelines for contributing to this project.
 
 ## How to Contribute
 

@@ -41,9 +41,9 @@ You can optionally set a maximum number of items for your smart playlist. This i
 !!! warning "Performance"
     Setting this to unlimited (0) might cause performance issues or even crashes for very large playlists.
 
-## Max Play Time
+## Max Playtime
 
-You can optionally set a maximum play time in minutes for your smart playlist. This is useful for:
+You can optionally set a maximum playtime in minutes for your smart playlist. This is useful for:
 
 - Creating workout playlists that match your exercise duration
 - Setting up Pomodoro-style work sessions with music

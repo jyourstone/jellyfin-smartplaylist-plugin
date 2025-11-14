@@ -12,6 +12,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
     /// Contains all shared properties and logic
     /// </summary>
     [Serializable]
+    [JsonPolymorphic(TypeDiscriminatorPropertyName = "Type")]
+    [JsonDerivedType(typeof(SmartPlaylistDto), typeDiscriminator: "Playlist")]
+    [JsonDerivedType(typeof(SmartCollectionDto), typeDiscriminator: "Collection")]
     public abstract class SmartListDto
     {
         /// <summary>
@@ -26,6 +29,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         public string Name { get; set; } = null!;
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? FileName { get; set; }
+        
+        /// <summary>
+        /// Owner user ID - the user this list belongs to or whose context is used for rule evaluation
+        /// </summary>
+        public string User { get; set; } = string.Empty;
 
         // Query and filtering
         public List<ExpressionSet> ExpressionSets { get; set; } = [];

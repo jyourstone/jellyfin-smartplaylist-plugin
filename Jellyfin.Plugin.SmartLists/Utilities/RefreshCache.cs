@@ -80,21 +80,23 @@ namespace Jellyfin.Plugin.SmartLists
                 var userMediaCache = new Dictionary<Guid, BaseItem[]>();
                 var userCacheStats = new Dictionary<Guid, (int mediaCount, int playlistCount)>();
 
-                // Handle playlists with missing/invalid UserId first
-                var playlistsWithInvalidUserId = playlists.Where(p => p.UserId == Guid.Empty).ToList();
-                if (playlistsWithInvalidUserId.Any())
+                // Handle playlists with missing/invalid User first
+                var playlistsWithInvalidUser = playlists
+                    .Where(p => string.IsNullOrEmpty(p.User) || !Guid.TryParse(p.User, out var userId) || userId == Guid.Empty)
+                    .ToList();
+                if (playlistsWithInvalidUser.Any())
                 {
-                    _logger.LogWarning("Found {InvalidCount} playlists with missing or invalid UserId, adding failure results", playlistsWithInvalidUserId.Count);
+                    _logger.LogWarning("Found {InvalidCount} playlists with missing or invalid User, adding failure results", playlistsWithInvalidUser.Count);
 
-                    // Add failure results for playlists with invalid UserId
-                    foreach (var playlist in playlistsWithInvalidUserId)
+                    // Add failure results for playlists with invalid User
+                    foreach (var playlist in playlistsWithInvalidUser)
                     {
                         results.Add(new PlaylistRefreshResult
                         {
                             PlaylistId = playlist.Id ?? string.Empty,
                             PlaylistName = playlist.Name,
                             Success = false,
-                            Message = "Missing or invalid UserId",
+                            Message = "Missing or invalid User",
                             JellyfinPlaylistId = string.Empty,
                         });
                     }
@@ -102,8 +104,8 @@ namespace Jellyfin.Plugin.SmartLists
 
                 // Group playlists by user (same as legacy tasks)
                 var playlistsByUser = playlists
-                    .Where(p => p.UserId != Guid.Empty)
-                    .GroupBy(p => p.UserId)
+                    .Where(p => !string.IsNullOrEmpty(p.User) && Guid.TryParse(p.User, out var userId) && userId != Guid.Empty)
+                    .GroupBy(p => Guid.Parse(p.User))
                     .ToDictionary(g => g.Key, g => g.ToList());
 
                 if (!playlistsByUser.Any())

@@ -12,6 +12,7 @@ using Jellyfin.Plugin.SmartLists.Core;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Playlists;
+using Jellyfin.Plugin.SmartLists.Services.Collections;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
 using AutoRefreshService = Jellyfin.Plugin.SmartLists.Services.Shared.AutoRefreshService;
 using Jellyfin.Plugin.SmartLists.Utilities;
@@ -19,6 +20,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Providers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -41,6 +43,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         IUserManager userManager,
         ILibraryManager libraryManager,
         IPlaylistManager playlistManager,
+        ICollectionManager collectionManager,
         IUserDataManager userDataManager,
         IProviderManager providerManager,
         IManualRefreshService manualRefreshService) : ControllerBase
@@ -49,6 +52,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         private readonly IUserManager _userManager = userManager;
         private readonly ILibraryManager _libraryManager = libraryManager;
         private readonly IPlaylistManager _playlistManager = playlistManager;
+        private readonly ICollectionManager _collectionManager = collectionManager;
         private readonly IUserDataManager _userDataManager = userDataManager;
         private readonly IProviderManager _providerManager = providerManager;
         private readonly IManualRefreshService _manualRefreshService = manualRefreshService;
@@ -59,7 +63,11 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             return new Services.Playlists.PlaylistStore(fileSystem, _userManager);
         }
 
-
+        private Services.Collections.CollectionStore GetCollectionStore()
+        {
+            var fileSystem = new SmartListFileSystem(_applicationPaths);
+            return new Services.Collections.CollectionStore(fileSystem);
+        }
 
         private Services.Playlists.PlaylistService GetPlaylistService()
         {
@@ -76,10 +84,43 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             }
         }
 
+        private Services.Collections.CollectionService GetCollectionService()
+        {
+            try
+            {
+                // Use a wrapper logger that implements ILogger<CollectionService>
+                var collectionServiceLogger = new CollectionServiceLogger(logger);
+                return new Services.Collections.CollectionService(_libraryManager, _collectionManager, _userManager, _userDataManager, collectionServiceLogger, _providerManager);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to create CollectionService");
+                throw;
+            }
+        }
+
         // Wrapper class to adapt the controller logger for PlaylistService
         private sealed class PlaylistServiceLogger(ILogger logger) : ILogger<Services.Playlists.PlaylistService>
         {
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                logger.Log(logLevel, eventId, state, exception, formatter);
+            }
 
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return logger.IsEnabled(logLevel);
+            }
+
+            IDisposable? ILogger.BeginScope<TState>(TState state)
+            {
+                return logger.BeginScope(state);
+            }
+        }
+
+        // Wrapper class to adapt the controller logger for CollectionService
+        private sealed class CollectionServiceLogger(ILogger logger) : ILogger<Services.Collections.CollectionService>
+        {
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             {
                 logger.Log(logLevel, eventId, state, exception, formatter);
@@ -103,10 +144,10 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
         private static Guid GetPlaylistUserId(SmartPlaylistDto playlist)
         {
-            // If UserId field is set and not empty, use it
-            if (playlist.UserId != Guid.Empty)
+            // If User field is set and not empty, parse and return it
+            if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var userId) && userId != Guid.Empty)
             {
-                return playlist.UserId;
+                return userId;
             }
 
             return Guid.Empty;
@@ -190,75 +231,117 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         }
 
         /// <summary>
-        /// Get all smart playlists.
+        /// Get all smart lists (playlists and collections).
         /// </summary>
-        /// <returns>List of smart playlists.</returns>
+        /// <param name="type">Optional filter by type (Playlist or Collection).</param>
+        /// <returns>List of smart lists.</returns>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<SmartPlaylistDto>>> GetSmartPlaylists()
+        public async Task<ActionResult<IEnumerable<SmartListDto>>> GetSmartLists([FromQuery] string? type = null)
         {
             try
             {
-                var playlistStore = GetPlaylistStore();
-                var playlists = await playlistStore.GetAllAsync();
-                return Ok(playlists);
+                var allLists = new List<SmartListDto>();
+                
+                // Get playlists
+                if (type == null || type.Equals("Playlist", StringComparison.OrdinalIgnoreCase))
+                {
+                    var playlistStore = GetPlaylistStore();
+                    var playlists = await playlistStore.GetAllAsync();
+                    allLists.AddRange(playlists);
+                }
+                
+                // Get collections
+                if (type == null || type.Equals("Collection", StringComparison.OrdinalIgnoreCase))
+                {
+                    var collectionStore = GetCollectionStore();
+                    var collections = await collectionStore.GetAllAsync();
+                    allLists.AddRange(collections);
+                }
+                
+                return Ok(allLists);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error retrieving smart playlists");
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving smart playlists");
+                logger.LogError(ex, "Error retrieving smart lists");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving smart lists");
             }
         }
 
         /// <summary>
-        /// Get a specific smart playlist by ID.
+        /// Get a specific smart list by ID (playlist or collection).
         /// </summary>
-        /// <param name="id">The playlist ID.</param>
-        /// <returns>The smart playlist.</returns>
+        /// <param name="id">The list ID.</param>
+        /// <returns>The smart list.</returns>
         [HttpGet("{id}")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
-        public async Task<ActionResult<SmartPlaylistDto>> GetSmartPlaylist([FromRoute, Required] string id)
+        public async Task<ActionResult<SmartListDto>> GetSmartList([FromRoute, Required] string id)
         {
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
-                    return BadRequest("Invalid playlist ID format");
+                    return BadRequest("Invalid list ID format");
                 }
 
+                // Try playlist first
                 var playlistStore = GetPlaylistStore();
                 var playlist = await playlistStore.GetByIdAsync(guidId);
-                if (playlist == null)
+                if (playlist != null)
                 {
-                    return NotFound();
+                    return Ok(playlist);
                 }
-                return Ok(playlist);
+
+                // Try collection
+                var collectionStore = GetCollectionStore();
+                var collection = await collectionStore.GetByIdAsync(guidId);
+                if (collection != null)
+                {
+                    return Ok(collection);
+                }
+
+                return NotFound();
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error retrieving smart playlist {PlaylistId}", id);
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving smart playlist");
+                logger.LogError(ex, "Error retrieving smart list {ListId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving smart list");
             }
         }
 
         /// <summary>
-        /// Create a new smart playlist.
+        /// Create a new smart list (playlist or collection).
         /// </summary>
-        /// <param name="playlist">The smart playlist to create.</param>
-        /// <returns>The created smart playlist.</returns>
+        /// <param name="list">The smart list to create (playlist or collection).</param>
+        /// <returns>The created smart list.</returns>
         [HttpPost]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3012:Review code for regex injection vulnerabilities", Justification = "Regex patterns are validated with IsValidRegexPattern method including length limits and timeout")]
-        public async Task<ActionResult<SmartPlaylistDto>> CreateSmartPlaylist([FromBody] SmartPlaylistDto? playlist)
+        public async Task<ActionResult<SmartListDto>> CreateSmartList([FromBody] SmartListDto? list)
         {
-            if (playlist == null)
+            if (list == null)
             {
-                logger.LogWarning("CreateSmartPlaylist called with null playlist data");
+                logger.LogWarning("CreateSmartList called with null list data");
                 return BadRequest(new ProblemDetails
                 {
                     Title = "Validation Error",
-                    Detail = "Playlist data is required",
+                    Detail = "List data is required",
                     Status = StatusCodes.Status400BadRequest
                 });
             }
+
+            // Route to appropriate handler based on type
+            if (list.Type == Core.Enums.SmartListType.Collection)
+            {
+                return await CreateCollectionInternal(list as SmartCollectionDto ?? JsonSerializer.Deserialize<SmartCollectionDto>(JsonSerializer.Serialize(list))!);
+            }
+            else
+            {
+                return await CreatePlaylistInternal(list as SmartPlaylistDto ?? JsonSerializer.Deserialize<SmartPlaylistDto>(JsonSerializer.Serialize(list))!);
+            }
+        }
+
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3012:Review code for regex injection vulnerabilities", Justification = "Regex patterns are validated with IsValidRegexPattern method including length limits and timeout")]
+        private async Task<ActionResult<SmartListDto>> CreatePlaylistInternal(SmartPlaylistDto playlist)
+        {
 
             // Set defaults for optional fields
             // These fields are optional for creation (we generate/set them)
@@ -327,21 +410,21 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 });
             }
 
-            if (playlist.UserId == Guid.Empty)
+            if (string.IsNullOrEmpty(playlist.User) || !Guid.TryParse(playlist.User, out var playlistUserId) || playlistUserId == Guid.Empty)
             {
-                logger.LogWarning("CreateSmartPlaylist called with empty UserId. Name={Name}", playlist.Name);
+                logger.LogWarning("CreateSmartPlaylist called with empty or invalid User. Name={Name}", playlist.Name);
                 return BadRequest(new ProblemDetails
                 {
                     Title = "Validation Error",
-                    Detail = "Playlist owner (UserId) is required",
+                    Detail = "Playlist owner (User) is required",
                     Status = StatusCodes.Status400BadRequest
                 });
             }
 
             var stopwatch = Stopwatch.StartNew();
             logger.LogDebug("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist.Name);
-            logger.LogDebug("Playlist data received: Name={Name}, UserId={UserId}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}",
-                playlist.Name, playlist.UserId, playlist.Public, playlist.ExpressionSets?.Count ?? 0,
+            logger.LogDebug("Playlist data received: Name={Name}, User={User}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}",
+                playlist.Name, playlist.User, playlist.Public, playlist.ExpressionSets?.Count ?? 0,
                 playlist.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
 
             if (playlist.ExpressionSets != null)
@@ -392,13 +475,6 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
 
                 var playlistStore = GetPlaylistStore();
-
-                // Check for duplicate names
-                var existingPlaylists = await playlistStore.GetAllAsync();
-                if (existingPlaylists.Any(p => p.Name.Equals(playlist.Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
-                }
 
                 // Validate regex patterns before saving
                 if (playlist.ExpressionSets != null)
@@ -470,32 +546,35 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 {
                     logger.LogWarning("Failed to refresh newly created playlist {PlaylistName}: {Message}", playlist.Name, message);
                     // Still return the created playlist but log the warning
-                    return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
+                    return CreatedAtAction(nameof(GetSmartList), new { id = createdPlaylist.Id }, createdPlaylist);
                 }
 
                 // DEBUG: Check the MediaType of the created Jellyfin playlist
                 try
                 {
-                    var user = _userManager.GetUserById(createdPlaylist.UserId);
-                    if (user != null)
+                    if (Guid.TryParse(createdPlaylist.User, out var userId))
                     {
-                        var smartPlaylistName = NameFormatter.FormatPlaylistName(createdPlaylist.Name);
-                        var query = new InternalItemsQuery(user)
+                        var user = _userManager.GetUserById(userId);
+                        if (user != null)
                         {
-                            IncludeItemTypes = [BaseItemKind.Playlist],
-                            Recursive = true,
-                            Name = smartPlaylistName,
-                        };
-                        var jellyfinPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
+                            var smartPlaylistName = NameFormatter.FormatPlaylistName(createdPlaylist.Name);
+                            var query = new InternalItemsQuery(user)
+                            {
+                                IncludeItemTypes = [BaseItemKind.Playlist],
+                                Recursive = true,
+                                Name = smartPlaylistName,
+                            };
+                            var jellyfinPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
 
-                        if (jellyfinPlaylist != null)
-                        {
-                            var mediaTypeProperty = jellyfinPlaylist.GetType().GetProperty("MediaType");
-                            var currentMediaType = mediaTypeProperty?.GetValue(jellyfinPlaylist)?.ToString() ?? "Unknown";
+                            if (jellyfinPlaylist != null)
+                            {
+                                var mediaTypeProperty = jellyfinPlaylist.GetType().GetProperty("MediaType");
+                                var currentMediaType = mediaTypeProperty?.GetValue(jellyfinPlaylist)?.ToString() ?? "Unknown";
 
-                            // Log MediaType for debugging - note this is a known Jellyfin limitation
-                            logger.LogDebug("Created Jellyfin playlist '{PlaylistName}' has MediaType: {MediaType}.",
-                                smartPlaylistName, currentMediaType);
+                                // Log MediaType for debugging - note this is a known Jellyfin limitation
+                                logger.LogDebug("Created Jellyfin playlist '{PlaylistName}' has MediaType: {MediaType}.",
+                                    smartPlaylistName, currentMediaType);
+                            }
                         }
                     }
                 }
@@ -506,7 +585,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                 logger.LogDebug("Finished RefreshWithTimeoutAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
 
-                return CreatedAtAction(nameof(GetSmartPlaylist), new { id = createdPlaylist.Id }, createdPlaylist);
+                return CreatedAtAction(nameof(GetSmartList), new { id = createdPlaylist.Id }, createdPlaylist);
             }
             catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
             {
@@ -522,20 +601,186 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3012:Review code for regex injection vulnerabilities", Justification = "Regex patterns are validated with IsValidRegexPattern method including length limits and timeout")]
+        private async Task<ActionResult<SmartListDto>> CreateCollectionInternal(SmartCollectionDto collection)
+        {
+            // Set defaults for optional fields
+            if (string.IsNullOrEmpty(collection.Id))
+            {
+                collection.Id = Guid.NewGuid().ToString();
+            }
+
+            if (collection.Order == null)
+            {
+                collection.Order = new OrderDto { SortOptions = [] };
+            }
+            else if (collection.Order.SortOptions == null || collection.Order.SortOptions.Count == 0)
+            {
+                collection.Order.SortOptions = [];
+            }
+
+            // Set default owner user if not specified
+            if (string.IsNullOrEmpty(collection.User) || !Guid.TryParse(collection.User, out var userId) || userId == Guid.Empty)
+            {
+                // Default to first user (typically the admin)
+                var defaultUser = _userManager.Users.FirstOrDefault();
+                
+                if (defaultUser != null)
+                {
+                    collection.User = defaultUser.Id.ToString();
+                    logger.LogDebug("Set default collection owner to {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
+                }
+                else
+                {
+                    logger.LogError("No users found to set as collection owner");
+                    return BadRequest(new ProblemDetails
+                    {
+                        Title = "Configuration Error",
+                        Detail = "No users found. At least one user must exist to create collections.",
+                        Status = StatusCodes.Status400BadRequest
+                    });
+                }
+            }
+
+            // Ensure Type is set correctly
+            collection.Type = Core.Enums.SmartListType.Collection;
+
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(collection.Name))
+            {
+                logger.LogWarning("CreateCollectionInternal called with empty Name");
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Validation Error",
+                    Detail = "Collection name is required",
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            logger.LogDebug("CreateCollectionInternal called for collection: {CollectionName}", collection.Name);
+
+            try
+            {
+                if (string.IsNullOrEmpty(collection.Id))
+                {
+                    collection.Id = Guid.NewGuid().ToString();
+                    logger.LogDebug("Generated new collection ID: {Id}", collection.Id);
+                }
+
+                if (string.IsNullOrEmpty(collection.FileName))
+                {
+                    collection.FileName = $"{collection.Id}.json";
+                }
+
+                if (collection.Order == null)
+                {
+                    collection.Order = new OrderDto { SortOptions = [] };
+                }
+
+                var collectionStore = GetCollectionStore();
+
+                // Validate regex patterns before saving
+                if (collection.ExpressionSets != null)
+                {
+                    foreach (var expressionSet in collection.ExpressionSets)
+                    {
+                        if (expressionSet.Expressions != null)
+                        {
+                            foreach (var expression in expressionSet.Expressions)
+                            {
+                                if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
+                                {
+                                    if (!IsValidRegexPattern(expression.TargetValue, out var validationError))
+                                    {
+                                        return BadRequest($"Invalid regex pattern: {validationError}");
+                                    }
+
+                                    try
+                                    {
+                                        var regex = new Regex(expression.TargetValue, RegexOptions.None, TimeSpan.FromMilliseconds(100));
+                                    }
+                                    catch (ArgumentException ex)
+                                    {
+                                        logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}': {ex.Message}");
+                                    }
+                                    catch (RegexMatchTimeoutException ex)
+                                    {
+                                        logger.LogError(ex, "Regex pattern '{Pattern}' timed out during validation", expression.TargetValue);
+                                        return BadRequest($"Regex pattern '{expression.TargetValue}' is too complex or caused a timeout");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Set DateCreated to current time for new collections
+                collection.DateCreated = DateTime.UtcNow;
+
+                var createdCollection = await collectionStore.SaveAsync(collection);
+                logger.LogInformation("Created smart collection: {CollectionName}", collection.Name);
+
+                // Update the auto-refresh cache with the new collection
+                AutoRefreshService.Instance?.UpdateCollectionInCache(createdCollection);
+
+                // Clear the rule cache
+                SmartList.ClearRuleCache(logger);
+                logger.LogDebug("Cleared rule cache after creating collection '{CollectionName}'", collection.Name);
+
+                logger.LogDebug("Calling RefreshWithTimeoutAsync for {CollectionName}", collection.Name);
+                var collectionService = GetCollectionService();
+                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(createdCollection);
+
+                // If refresh was successful, save the Jellyfin collection ID
+                if (success && !string.IsNullOrEmpty(jellyfinCollectionId))
+                {
+                    createdCollection.JellyfinCollectionId = jellyfinCollectionId;
+                    await collectionStore.SaveAsync(createdCollection);
+                    logger.LogDebug("Saved Jellyfin collection ID {JellyfinCollectionId} for smart collection {CollectionName}",
+                        jellyfinCollectionId, createdCollection.Name);
+                }
+                stopwatch.Stop();
+
+                if (!success)
+                {
+                    logger.LogWarning("Failed to refresh newly created collection {CollectionName}: {Message}", collection.Name, message);
+                    return CreatedAtAction(nameof(GetSmartList), new { id = createdCollection.Id }, createdCollection);
+                }
+
+                logger.LogDebug("Finished RefreshWithTimeoutAsync for {CollectionName} in {ElapsedTime}ms", collection.Name, stopwatch.ElapsedMilliseconds);
+
+                return CreatedAtAction(nameof(GetSmartList), new { id = createdCollection.Id }, createdCollection);
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
+            {
+                stopwatch.Stop();
+                logger.LogError(ex, "Unexpected regex validation error in smart collection creation after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                logger.LogError(ex, "Error creating smart collection after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error creating smart collection");
+            }
+        }
+
         /// <summary>
-        /// Update an existing smart playlist.
+        /// Update an existing smart list (playlist or collection).
         /// </summary>
-        /// <param name="id">The playlist ID.</param>
-        /// <param name="playlist">The updated smart playlist.</param>
-        /// <returns>The updated smart playlist.</returns>
+        /// <param name="id">The list ID.</param>
+        /// <param name="list">The updated smart list.</param>
+        /// <returns>The updated smart list.</returns>
         [HttpPut("{id}")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3012:Review code for regex injection vulnerabilities", Justification = "Regex patterns are validated with IsValidRegexPattern method including length limits and timeout")]
-        public async Task<ActionResult<SmartPlaylistDto>> UpdateSmartPlaylist([FromRoute, Required] string id, [FromBody, Required] SmartPlaylistDto playlist)
+        public async Task<ActionResult<SmartListDto>> UpdateSmartList([FromRoute, Required] string id, [FromBody, Required] SmartListDto list)
         {
-            if (playlist == null)
+            if (list == null)
             {
-                return BadRequest("Playlist data is required");
+                return BadRequest("List data is required");
             }
 
             var stopwatch = Stopwatch.StartNew();
@@ -543,25 +788,56 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
-                    return BadRequest("Invalid playlist ID format");
+                    return BadRequest("Invalid list ID format");
                 }
 
+                // Determine type and route to appropriate handler
+                // Try to find existing list to determine type
+                var playlistStore = GetPlaylistStore();
+                var existingPlaylist = await playlistStore.GetByIdAsync(guidId);
+                if (existingPlaylist != null)
+                {
+                    // Ensure type matches
+                    if (list.Type == Core.Enums.SmartListType.Collection)
+                    {
+                        return BadRequest("Cannot update playlist as collection - type mismatch");
+                    }
+                    return await UpdatePlaylistInternal(id, guidId, list as SmartPlaylistDto ?? JsonSerializer.Deserialize<SmartPlaylistDto>(JsonSerializer.Serialize(list))!);
+                }
+
+                var collectionStore = GetCollectionStore();
+                var existingCollection = await collectionStore.GetByIdAsync(guidId);
+                if (existingCollection != null)
+                {
+                    // Ensure type matches
+                    if (list.Type == Core.Enums.SmartListType.Playlist)
+                    {
+                        return BadRequest("Cannot update collection as playlist - type mismatch");
+                    }
+                    return await UpdateCollectionInternal(id, guidId, list as SmartCollectionDto ?? JsonSerializer.Deserialize<SmartCollectionDto>(JsonSerializer.Serialize(list))!);
+                }
+
+                return NotFound("Smart list not found");
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                logger.LogError(ex, "Error updating smart list {ListId} after {ElapsedTime}ms", id, stopwatch.ElapsedMilliseconds);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error updating smart list");
+            }
+        }
+
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3012:Review code for regex injection vulnerabilities", Justification = "Regex patterns are validated with IsValidRegexPattern method including length limits and timeout")]
+        private async Task<ActionResult<SmartListDto>> UpdatePlaylistInternal(string id, Guid guidId, SmartPlaylistDto playlist)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
                 var playlistStore = GetPlaylistStore();
                 var existingPlaylist = await playlistStore.GetByIdAsync(guidId);
                 if (existingPlaylist == null)
                 {
                     return NotFound("Smart playlist not found");
-                }
-
-                // Check for duplicate names (excluding the current playlist being updated)
-                var allPlaylists = await playlistStore.GetAllAsync();
-                var duplicateName = allPlaylists.FirstOrDefault(p =>
-                    p.Id != id &&
-                    p.Name.Equals(playlist.Name, StringComparison.OrdinalIgnoreCase));
-
-                if (duplicateName != null)
-                {
-                    return BadRequest($"A smart playlist with the name '{playlist.Name}' already exists. Please choose a different name.");
                 }
 
                 // Validate regex patterns before saving
@@ -603,13 +879,19 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     }
                 }
 
-                // Preserve UserId if not provided (frontend might not send it during edit)
+                // Preserve User if not provided (frontend might not send it during edit)
                 var originalUserId = GetPlaylistUserId(existingPlaylist);
-                if (playlist.UserId == Guid.Empty && originalUserId != Guid.Empty)
+                var newUserIdParsed = Guid.Empty;
+                if ((string.IsNullOrEmpty(playlist.User) || !Guid.TryParse(playlist.User, out newUserIdParsed) || newUserIdParsed == Guid.Empty) && originalUserId != Guid.Empty)
                 {
-                    playlist.UserId = originalUserId;
+                    playlist.User = originalUserId.ToString();
+                    newUserIdParsed = originalUserId;
                 }
-                var newUserId = playlist.UserId;
+                else if (!string.IsNullOrEmpty(playlist.User) && !Guid.TryParse(playlist.User, out newUserIdParsed))
+                {
+                    newUserIdParsed = Guid.Empty;
+                }
+                var newUserId = newUserIdParsed;
 
                 bool ownershipChanging = originalUserId != Guid.Empty && newUserId != originalUserId;
                 bool nameChanging = !string.Equals(existingPlaylist.Name, playlist.Name, StringComparison.OrdinalIgnoreCase);
@@ -705,58 +987,180 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3012:Review code for regex injection vulnerabilities", Justification = "Regex patterns are validated with IsValidRegexPattern method including length limits and timeout")]
+        private async Task<ActionResult<SmartListDto>> UpdateCollectionInternal(string id, Guid guidId, SmartCollectionDto collection)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                var collectionStore = GetCollectionStore();
+                var existingCollection = await collectionStore.GetByIdAsync(guidId);
+                if (existingCollection == null)
+                {
+                    return NotFound("Smart collection not found");
+                }
+
+                // Validate regex patterns before saving
+                if (collection.ExpressionSets != null)
+                {
+                    foreach (var expressionSet in collection.ExpressionSets)
+                    {
+                        if (expressionSet.Expressions != null)
+                        {
+                            foreach (var expression in expressionSet.Expressions)
+                            {
+                                if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
+                                {
+                                    if (!IsValidRegexPattern(expression.TargetValue, out var validationError))
+                                    {
+                                        return BadRequest($"Invalid regex pattern: {validationError}");
+                                    }
+
+                                    try
+                                    {
+                                        var regex = new Regex(expression.TargetValue, RegexOptions.None, TimeSpan.FromMilliseconds(100));
+                                    }
+                                    catch (ArgumentException ex)
+                                    {
+                                        logger.LogError(ex, "Invalid regex pattern '{Pattern}' during validation", expression.TargetValue);
+                                        return BadRequest($"Invalid regex pattern '{expression.TargetValue}': {ex.Message}");
+                                    }
+                                    catch (RegexMatchTimeoutException ex)
+                                    {
+                                        logger.LogError(ex, "Regex pattern '{Pattern}' timed out during validation", expression.TargetValue);
+                                        return BadRequest($"Regex pattern '{expression.TargetValue}' is too complex or caused a timeout");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                collection.Id = id;
+
+                // Preserve original creation timestamp
+                if (existingCollection.DateCreated.HasValue)
+                {
+                    collection.DateCreated = existingCollection.DateCreated;
+                }
+
+                // Preserve the Jellyfin collection ID from the existing collection if it exists
+                if (!string.IsNullOrEmpty(existingCollection.JellyfinCollectionId))
+                {
+                    collection.JellyfinCollectionId = existingCollection.JellyfinCollectionId;
+                    logger.LogDebug("Preserved Jellyfin collection ID {JellyfinCollectionId} from existing collection", existingCollection.JellyfinCollectionId);
+                }
+
+                var updatedCollection = await collectionStore.SaveAsync(collection);
+
+                // Update the auto-refresh cache with the updated collection
+                AutoRefreshService.Instance?.UpdateCollectionInCache(updatedCollection);
+
+                // Clear the rule cache to ensure any rule changes are properly reflected
+                SmartList.ClearRuleCache(logger);
+                logger.LogDebug("Cleared rule cache after updating collection '{CollectionName}'", collection.Name);
+
+                // Immediately update the Jellyfin collection using the single collection service with timeout
+                var collectionService = GetCollectionService();
+                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(updatedCollection);
+
+                // If refresh was successful, save the Jellyfin collection ID
+                if (success && !string.IsNullOrEmpty(jellyfinCollectionId))
+                {
+                    updatedCollection.JellyfinCollectionId = jellyfinCollectionId;
+                    await collectionStore.SaveAsync(updatedCollection);
+                    logger.LogDebug("Saved Jellyfin collection ID {JellyfinCollectionId} for smart collection {CollectionName}",
+                        jellyfinCollectionId, updatedCollection.Name);
+                }
+
+                stopwatch.Stop();
+
+                if (!success)
+                {
+                    logger.LogWarning("Failed to refresh updated collection {CollectionName}: {Message}", collection.Name, message);
+                    return Ok(updatedCollection);
+                }
+
+                logger.LogInformation("Updated SmartList: {CollectionName} in {ElapsedTime}ms", collection.Name, stopwatch.ElapsedMilliseconds);
+
+                return Ok(updatedCollection);
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("Invalid regex pattern"))
+            {
+                stopwatch.Stop();
+                logger.LogError(ex, "Unexpected regex validation error in smart collection update after {ElapsedTime}ms", stopwatch.ElapsedMilliseconds);
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                logger.LogError(ex, "Error updating smart collection {CollectionId} after {ElapsedTime}ms", id, stopwatch.ElapsedMilliseconds);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error updating smart collection");
+            }
+        }
+
         /// <summary>
-        /// Delete a smart playlist.
+        /// Delete a smart list (playlist or collection).
         /// </summary>
-        /// <param name="id">The playlist ID.</param>
-        /// <param name="deleteJellyfinPlaylist">Whether to also delete the corresponding Jellyfin playlist. Defaults to true for backward compatibility.</param>
+        /// <param name="id">The list ID.</param>
+        /// <param name="deleteJellyfinList">Whether to also delete the corresponding Jellyfin playlist/collection. Defaults to true for backward compatibility.</param>
         /// <returns>No content.</returns>
         [HttpDelete("{id}")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
-        public async Task<ActionResult> DeleteSmartPlaylist([FromRoute, Required] string id, [FromQuery] bool deleteJellyfinPlaylist = true)
+        public async Task<ActionResult> DeleteSmartList([FromRoute, Required] string id, [FromQuery] bool deleteJellyfinList = true)
         {
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
-                    return BadRequest("Invalid playlist ID format");
+                    return BadRequest("Invalid list ID format");
                 }
 
+                // Try playlist first
                 var playlistStore = GetPlaylistStore();
-
-                // First get the playlist details before deleting
                 var playlist = await playlistStore.GetByIdAsync(guidId);
-                if (playlist == null)
+                if (playlist != null)
                 {
-                    return NotFound("Smart playlist not found");
+                    var playlistService = GetPlaylistService();
+                    if (deleteJellyfinList)
+                    {
+                        await playlistService.DeleteAsync(playlist);
+                        logger.LogInformation("Deleted smart playlist: {PlaylistName}", playlist.Name);
+                    }
+                    else
+                    {
+                        await playlistService.RemoveSmartSuffixAsync(playlist);
+                        logger.LogInformation("Deleted smart playlist configuration: {PlaylistName}", playlist.Name);
+                    }
+
+                    await playlistStore.DeleteAsync(guidId).ConfigureAwait(false);
+                    AutoRefreshService.Instance?.RemovePlaylistFromCache(id);
+                    return NoContent();
                 }
 
-                // Handle the Jellyfin playlist based on user choice
-                var playlistService = GetPlaylistService();
-                if (deleteJellyfinPlaylist)
+                // Try collection
+                var collectionStore = GetCollectionStore();
+                var collection = await collectionStore.GetByIdAsync(guidId);
+                if (collection != null)
                 {
-                    await playlistService.DeleteAsync(playlist);
-                    logger.LogInformation("Deleted smart playlist: {PlaylistName}", playlist.Name);
+                    var collectionService = GetCollectionService();
+                    if (deleteJellyfinList)
+                    {
+                        await collectionService.DeleteAsync(collection);
+                        logger.LogInformation("Deleted smart collection: {CollectionName}", collection.Name);
+                    }
+
+                    await collectionStore.DeleteAsync(guidId).ConfigureAwait(false);
+                    AutoRefreshService.Instance?.RemoveCollectionFromCache(id);
+                    return NoContent();
                 }
-                else
-                {
-                    // Remove the suffix/prefix from the playlist name
-                    await playlistService.RemoveSmartSuffixAsync(playlist);
-                    logger.LogInformation("Deleted smart playlist configuration: {PlaylistName}", playlist.Name);
-                }
 
-                // Then delete the smart playlist configuration
-                await playlistStore.DeleteAsync(guidId).ConfigureAwait(false);
-
-                // Remove the playlist from auto-refresh cache
-                AutoRefreshService.Instance?.RemovePlaylistFromCache(id);
-
-                return NoContent();
+                return NotFound("Smart list not found");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error deleting smart playlist {PlaylistId}", id);
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error deleting smart playlist");
+                logger.LogError(ex, "Error deleting smart list {ListId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error deleting smart list");
             }
         }
 
@@ -984,196 +1388,302 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         }
 
         /// <summary>
-        /// Enable a smart playlist.
+        /// Get all libraries for collection assignment.
         /// </summary>
-        /// <param name="id">The playlist ID.</param>
+        /// <returns>List of libraries.</returns>
+        [HttpGet("libraries")]
+        public ActionResult<object> GetLibraries()
+        {
+            try
+            {
+                // Get virtual folders (libraries) from library manager
+                var virtualFolders = _libraryManager.GetVirtualFolders();
+                
+                var libraries = virtualFolders
+                    .Select(vf => new
+                    {
+                        Id = vf.ItemId.ToString(),
+                        Name = vf.Name,
+                        CollectionType = vf.CollectionType
+                    })
+                    .OrderBy(l => l.Name)
+                    .ToList();
+
+                return Ok(libraries);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error retrieving libraries");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error retrieving libraries");
+            }
+        }
+
+        /// <summary>
+        /// Enable a smart list (playlist or collection).
+        /// </summary>
+        /// <param name="id">The list ID.</param>
         /// <returns>Success message.</returns>
         [HttpPost("{id}/enable")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
-        public async Task<ActionResult> EnableSmartPlaylist([FromRoute, Required] string id)
+        public async Task<ActionResult> EnableSmartList([FromRoute, Required] string id)
         {
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
-                    return BadRequest("Invalid playlist ID format");
+                    return BadRequest("Invalid list ID format");
                 }
 
+                // Try playlist first
                 var playlistStore = GetPlaylistStore();
                 var playlist = await playlistStore.GetByIdAsync(guidId);
-                if (playlist == null)
+                if (playlist != null)
                 {
-                    return NotFound("Smart playlist not found");
-                }
+                    // Temporarily set enabled state for the Jellyfin operation
+                    var originalEnabledState = playlist.Enabled;
+                    playlist.Enabled = true;
 
-                // Temporarily set enabled state for the Jellyfin operation
-                var originalEnabledState = playlist.Enabled;
-                playlist.Enabled = true;
-
-                try
-                {
-                    // Create/update the Jellyfin playlist FIRST
-                    var playlistService = GetPlaylistService();
-                    var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(playlist);
-
-                    if (!success)
+                    try
                     {
-                        logger.LogWarning("Failed to enable playlist {PlaylistName}: {Message}", playlist.Name, message);
-                        throw new InvalidOperationException(message);
-                    }
+                        // Create/update the Jellyfin playlist FIRST
+                        var playlistService = GetPlaylistService();
+                        var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(playlist);
 
-                    // If refresh was successful, save the Jellyfin playlist ID
-                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                        if (!success)
+                        {
+                            logger.LogWarning("Failed to enable playlist {PlaylistName}: {Message}", playlist.Name, message);
+                            throw new InvalidOperationException(message);
+                        }
+
+                        // If refresh was successful, save the Jellyfin playlist ID
+                        if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                        {
+                            playlist.JellyfinPlaylistId = jellyfinPlaylistId;
+                            logger.LogDebug("Captured Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}",
+                                jellyfinPlaylistId, playlist.Name);
+                        }
+
+                        // Only save the configuration if the Jellyfin operation succeeds
+                        await playlistStore.SaveAsync(playlist);
+
+                        // Update the auto-refresh cache with the enabled playlist
+                        AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
+
+                        logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                        return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
+                    }
+                    catch (Exception jellyfinEx)
                     {
-                        playlist.JellyfinPlaylistId = jellyfinPlaylistId;
-                        logger.LogDebug("Captured Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}",
-                            jellyfinPlaylistId, playlist.Name);
+                        playlist.Enabled = originalEnabledState;
+                        logger.LogError(jellyfinEx, "Failed to enable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                        throw;
                     }
-
-                    // Only save the configuration if the Jellyfin operation succeeds
-                    await playlistStore.SaveAsync(playlist);
-
-                    // Update the auto-refresh cache with the enabled playlist
-                    AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
-
-                    logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
-                    return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
                 }
-                catch (Exception jellyfinEx)
+
+                // Try collection
+                var collectionStore = GetCollectionStore();
+                var collection = await collectionStore.GetByIdAsync(guidId);
+                if (collection != null)
                 {
-                    // Restore original state if Jellyfin operation fails
-                    playlist.Enabled = originalEnabledState;
-                    logger.LogError(jellyfinEx, "Failed to enable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
-                    throw;
+                    var originalEnabledState = collection.Enabled;
+                    collection.Enabled = true;
+
+                    try
+                    {
+                        var collectionService = GetCollectionService();
+                        var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(collection);
+
+                        if (!success)
+                        {
+                            logger.LogWarning("Failed to enable collection {CollectionName}: {Message}", collection.Name, message);
+                            throw new InvalidOperationException(message);
+                        }
+
+                        if (!string.IsNullOrEmpty(jellyfinCollectionId))
+                        {
+                            collection.JellyfinCollectionId = jellyfinCollectionId;
+                        }
+
+                        await collectionStore.SaveAsync(collection);
+                        AutoRefreshService.Instance?.UpdateCollectionInCache(collection);
+
+                        logger.LogInformation("Enabled smart collection: {CollectionId} - {CollectionName}", id, collection.Name);
+                        return Ok(new { message = $"Smart collection '{collection.Name}' has been enabled" });
+                    }
+                    catch (Exception jellyfinEx)
+                    {
+                        collection.Enabled = originalEnabledState;
+                        logger.LogError(jellyfinEx, "Failed to enable Jellyfin collection for {CollectionId} - {CollectionName}", id, collection.Name);
+                        throw;
+                    }
                 }
+
+                return NotFound("Smart list not found");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error enabling smart playlist {PlaylistId}", id);
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error enabling smart playlist");
+                logger.LogError(ex, "Error enabling smart list {ListId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error enabling smart list");
             }
         }
 
         /// <summary>
-        /// Disable a smart playlist.
+        /// Disable a smart list (playlist or collection).
         /// </summary>
-        /// <param name="id">The playlist ID.</param>
+        /// <param name="id">The list ID.</param>
         /// <returns>Success message.</returns>
         [HttpPost("{id}/disable")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
-        public async Task<ActionResult> DisableSmartPlaylist([FromRoute, Required] string id)
+        public async Task<ActionResult> DisableSmartList([FromRoute, Required] string id)
         {
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
-                    return BadRequest("Invalid playlist ID format");
+                    return BadRequest("Invalid list ID format");
                 }
 
+                // Try playlist first
                 var playlistStore = GetPlaylistStore();
                 var playlist = await playlistStore.GetByIdAsync(guidId);
-                if (playlist == null)
+                if (playlist != null)
                 {
-                    return NotFound("Smart playlist not found");
+                    // Temporarily set disabled state for the Jellyfin operation
+                    var originalEnabledState = playlist.Enabled;
+                    playlist.Enabled = false;
+
+                    try
+                    {
+                        // Remove the Jellyfin playlist FIRST
+                        var playlistService = GetPlaylistService();
+                        await playlistService.DisableAsync(playlist);
+
+                        // Clear the Jellyfin playlist ID since the playlist no longer exists
+                        playlist.JellyfinPlaylistId = null;
+
+                        // Only save the configuration if the Jellyfin operation succeeds
+                        await playlistStore.SaveAsync(playlist);
+
+                        // Update the auto-refresh cache with the disabled playlist
+                        AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
+
+                        logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                        return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
+                    }
+                    catch (Exception jellyfinEx)
+                    {
+                        playlist.Enabled = originalEnabledState;
+                        logger.LogError(jellyfinEx, "Failed to disable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
+                        throw;
+                    }
                 }
 
-                // Temporarily set disabled state for the Jellyfin operation
-                var originalEnabledState = playlist.Enabled;
-                playlist.Enabled = false;
-
-                try
+                // Try collection
+                var collectionStore = GetCollectionStore();
+                var collection = await collectionStore.GetByIdAsync(guidId);
+                if (collection != null)
                 {
-                    // Remove the Jellyfin playlist FIRST
-                    var playlistService = GetPlaylistService();
-                    await playlistService.DisableAsync(playlist);
+                    var originalEnabledState = collection.Enabled;
+                    collection.Enabled = false;
 
-                    // Clear the Jellyfin playlist ID since the playlist no longer exists
-                    playlist.JellyfinPlaylistId = null;
+                    try
+                    {
+                        var collectionService = GetCollectionService();
+                        await collectionService.DisableAsync(collection);
 
-                    // Only save the configuration if the Jellyfin operation succeeds
-                    await playlistStore.SaveAsync(playlist);
+                        collection.JellyfinCollectionId = string.Empty;
+                        await collectionStore.SaveAsync(collection);
+                        AutoRefreshService.Instance?.UpdateCollectionInCache(collection);
 
-                    // Update the auto-refresh cache with the disabled playlist
-                    AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
-
-                    logger.LogInformation("Disabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
-                    return Ok(new { message = $"Smart playlist '{playlist.Name}' has been disabled" });
+                        logger.LogInformation("Disabled smart collection: {CollectionId} - {CollectionName}", id, collection.Name);
+                        return Ok(new { message = $"Smart collection '{collection.Name}' has been disabled" });
+                    }
+                    catch (Exception jellyfinEx)
+                    {
+                        collection.Enabled = originalEnabledState;
+                        logger.LogError(jellyfinEx, "Failed to disable Jellyfin collection for {CollectionId} - {CollectionName}", id, collection.Name);
+                        throw;
+                    }
                 }
-                catch (Exception jellyfinEx)
-                {
-                    // Restore original state if Jellyfin operation fails
-                    playlist.Enabled = originalEnabledState;
-                    logger.LogError(jellyfinEx, "Failed to disable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
-                    throw;
-                }
+
+                return NotFound("Smart list not found");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error disabling smart playlist {PlaylistId}", id);
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error disabling smart playlist");
+                logger.LogError(ex, "Error disabling smart list {ListId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error disabling smart list");
             }
         }
 
         /// <summary>
-        /// Trigger a refresh of a specific smart playlist.
+        /// Trigger a refresh of a specific smart list (playlist or collection).
         /// </summary>
-        /// <param name="id">The playlist ID.</param>
+        /// <param name="id">The list ID.</param>
         /// <returns>Success message.</returns>
         [HttpPost("{id}/refresh")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
-        public async Task<ActionResult> TriggerSinglePlaylistRefresh([FromRoute, Required] string id)
+        public async Task<ActionResult> TriggerSingleListRefresh([FromRoute, Required] string id)
         {
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
-                    return BadRequest("Invalid playlist ID format");
+                    return BadRequest("Invalid list ID format");
                 }
 
+                // Try playlist first
                 var playlistStore = GetPlaylistStore();
                 var playlist = await playlistStore.GetByIdAsync(guidId);
-                if (playlist == null)
+                if (playlist != null)
                 {
-                    return NotFound("Smart playlist not found");
-                }
+                    var (success, message, jellyfinPlaylistId) = await _manualRefreshService.RefreshSinglePlaylistAsync(playlist);
 
-                // Use the manual refresh service for consistency
-                var (success, message, jellyfinPlaylistId) = await _manualRefreshService.RefreshSinglePlaylistAsync(playlist);
+                    if (success)
+                    {
+                        if (!string.IsNullOrEmpty(jellyfinPlaylistId))
+                        {
+                            playlist.JellyfinPlaylistId = jellyfinPlaylistId;
+                        }
 
-                if (success)
-                {
-                    // Update the playlist with the returned Jellyfin playlist ID only if it's valid
-                    if (!string.IsNullOrEmpty(jellyfinPlaylistId))
-                    {
-                        playlist.JellyfinPlaylistId = jellyfinPlaylistId;
-                        logger.LogDebug("Updated JellyfinPlaylistId to {JellyfinPlaylistId} for manually refreshed playlist: {PlaylistName}",
-                            jellyfinPlaylistId, playlist.Name);
-                    }
-                    else if (string.IsNullOrEmpty(playlist.JellyfinPlaylistId))
-                    {
-                        logger.LogWarning("No Jellyfin playlist ID returned for manually refreshed playlist: {PlaylistName}, and no existing ID to preserve",
-                            playlist.Name);
+                        await playlistStore.SaveAsync(playlist);
+                        return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
                     }
                     else
                     {
-                        logger.LogWarning("No Jellyfin playlist ID returned for manually refreshed playlist: {PlaylistName}, preserving existing ID: {ExistingId}",
-                            playlist.Name, playlist.JellyfinPlaylistId);
+                        return BadRequest(new { message });
                     }
-
-                    // Save the playlist to persist LastRefreshed timestamp (and JellyfinPlaylistId if updated)
-                    await playlistStore.SaveAsync(playlist);
-
-                    return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
                 }
-                else
+
+                // Try collection
+                var collectionStore = GetCollectionStore();
+                var collection = await collectionStore.GetByIdAsync(guidId);
+                if (collection != null)
                 {
-                    return BadRequest(new { message });
+                    var collectionService = GetCollectionService();
+                    var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(collection);
+
+                    if (success)
+                    {
+                        if (!string.IsNullOrEmpty(jellyfinCollectionId))
+                        {
+                            collection.JellyfinCollectionId = jellyfinCollectionId;
+                        }
+
+                        await collectionStore.SaveAsync(collection);
+                        return Ok(new { message = $"Smart collection '{collection.Name}' has been refreshed successfully" });
+                    }
+                    else
+                    {
+                        return BadRequest(new { message });
+                    }
                 }
+
+                return NotFound("Smart list not found");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error refreshing single smart playlist {PlaylistId}", id);
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error refreshing smart playlist");
+                logger.LogError(ex, "Error refreshing single smart list {ListId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error refreshing smart list");
             }
         }
 
@@ -1372,9 +1882,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         Guid currentUserId = Guid.Empty;
 
                         // Check playlist owner
-                        if (playlist.UserId != Guid.Empty)
+                        if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
                         {
-                            var user = _userManager.GetUserById(playlist.UserId);
+                            var user = _userManager.GetUserById(playlistUserIdParsed);
                             if (user == null)
                             {
                                 // Only get current user ID when we need to reassign
@@ -1383,18 +1893,18 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                     currentUserId = GetCurrentUserId();
                                     if (currentUserId == Guid.Empty)
                                     {
-                                        logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId} but cannot determine importing user for reassignment",
-                                            playlist.Name, playlist.UserId);
+                                        logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} but cannot determine importing user for reassignment",
+                                            playlist.Name, playlist.User);
                                         importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
                                         errorCount++;
                                         continue; // Skip this entire playlist,
                                     }
                                 }
 
-                                logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {UserId}, reassigning to importing user {CurrentUserId}",
-                                    playlist.Name, playlist.UserId, currentUserId);
+                                logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
+                                    playlist.Name, playlist.User, currentUserId);
 
-                                playlist.UserId = currentUserId;
+                                playlist.User = currentUserId.ToString();
                                 reassignedUsers = true;
                             }
                         }

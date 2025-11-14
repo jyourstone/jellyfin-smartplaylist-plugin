@@ -20,6 +20,21 @@
                 return SmartLists.filterPlaylists(playlists, searchTerm, page);
             }
         },
+        type: {
+            selector: '#typeFilter',
+            defaultValue: 'all',
+            getValue: function(element) {
+                return element ? element.value : 'all';
+            },
+            filterFn: function(playlists, typeFilter) {
+                if (!typeFilter || typeFilter === 'all') return playlists;
+                
+                return playlists.filter(function(list) {
+                    const listType = list.Type || 'Playlist'; // Default to Playlist for backward compatibility
+                    return listType === typeFilter;
+                });
+            }
+        },
         mediaType: {
             selector: '#mediaTypeFilter',
             defaultValue: 'all',
@@ -35,27 +50,6 @@
                 });
             }
         },
-        visibility: {
-            selector: '#visibilityFilter',
-            defaultValue: 'all',
-            getValue: function(element) {
-                return element ? element.value : 'all';
-            },
-            filterFn: function(playlists, visibilityFilter) {
-                if (!visibilityFilter || visibilityFilter === 'all') return playlists;
-                
-                return playlists.filter(function(playlist) {
-                    const isPublic = playlist.Public === true;
-                    
-                    if (visibilityFilter === 'public') {
-                        return isPublic;
-                    } else if (visibilityFilter === 'private') {
-                        return !isPublic;
-                    }
-                    return true;
-                });
-            }
-        },
         user: {
             selector: '#userFilter',
             defaultValue: 'all',
@@ -66,7 +60,8 @@
                 if (!userFilter || userFilter === 'all') return playlists;
                 
                 return playlists.filter(function(playlist) {
-                    return playlist.UserId === userFilter;
+                    // User filter applies to both playlists (owner) and collections (rule context user)
+                    return playlist.User === userFilter;
                 });
             }
         },
@@ -158,9 +153,9 @@
                 return true;
             }
             
-            // Search in username (resolved from UserId)
-            if (page && page._usernameCache && playlist.UserId) {
-                const username = page._usernameCache.get(playlist.UserId);
+            // Search in username (resolved from User ID)
+            if (page && page._usernameCache && playlist.User) {
+                const username = page._usernameCache.get(playlist.User);
                 if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
                     return true;
                 }
@@ -201,7 +196,7 @@
     // Generic event listener setup - eliminates repetitive filter change handlers
     SmartLists.setupFilterEventListeners = function(page, pageSignal) {
         pageSignal = pageSignal || SmartLists.initializePageEventListeners(page);
-        const filterKeys = ['sort', 'mediaType', 'visibility', 'user'];
+        const filterKeys = ['sort', 'type', 'mediaType', 'user'];
         
         filterKeys.forEach(function(filterKey) {
             const config = SmartLists.PLAYLIST_FILTER_CONFIGS[filterKey];
@@ -228,15 +223,16 @@
         }
         
         // Reset filters to default
+        const typeFilter = page.querySelector('#typeFilter');
+        if (typeFilter) {
+            typeFilter.value = 'all';
+        }
+        
         const mediaTypeFilter = page.querySelector('#mediaTypeFilter');
         if (mediaTypeFilter) {
             mediaTypeFilter.value = 'all';
         }
         
-        const visibilityFilter = page.querySelector('#visibilityFilter');
-        if (visibilityFilter) {
-            visibilityFilter.value = 'all';
-        }
         
         const userFilter = page.querySelector('#userFilter');
         if (userFilter) {
@@ -271,7 +267,7 @@
             const preferences = {};
             
             // Get preferences for all filters except search (session-specific)
-            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
+            const persistentFilters = ['sort', 'type', 'mediaType', 'user'];
             
             for (var i = 0; i < persistentFilters.length; i++) {
                 const filterKey = persistentFilters[i];
@@ -338,7 +334,7 @@
             });
             
             // Ensure all filters have valid values, even if not in saved preferences
-            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
+            const persistentFilters = ['sort', 'type', 'mediaType', 'user'];
             persistentFilters.forEach(function(filterKey) {
                 if (!preferences.hasOwnProperty(filterKey)) {
                     const config = SmartLists.PLAYLIST_FILTER_CONFIGS[filterKey];
@@ -361,7 +357,7 @@
     
     SmartLists.resetFiltersToDefaults = function(page) {
         try {
-            const persistentFilters = ['sort', 'mediaType', 'visibility', 'user'];
+            const persistentFilters = ['sort', 'type', 'mediaType', 'user'];
             persistentFilters.forEach(function(filterKey) {
                 const config = SmartLists.PLAYLIST_FILTER_CONFIGS[filterKey];
                 if (config) {
@@ -410,7 +406,7 @@
             const userIds = [];
             const seenIds = {};
             for (var i = 0; i < playlists.length; i++) {
-                const userId = playlists[i].UserId;
+                const userId = playlists[i].User;  // User field contains the user ID
                 if (userId && !seenIds[userId]) {
                     userIds.push(userId);
                     seenIds[userId] = true;

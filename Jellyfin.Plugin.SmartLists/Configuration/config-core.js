@@ -13,6 +13,7 @@
         fields: 'Plugins/SmartLists/fields',
         base: 'Plugins/SmartLists',
         users: 'Plugins/SmartLists/users',
+        libraries: 'Plugins/SmartLists/libraries',
         refresh: 'Plugins/SmartLists/refresh',
         refreshDirect: 'Plugins/SmartLists/refresh-direct',
         export: 'Plugins/SmartLists/export',
@@ -81,6 +82,7 @@
     SmartLists.mediaTypes = [
         { Value: "Movie", Label: "Movie" },
         { Value: "Episode", Label: "Episode (TV Show)" },
+        { Value: "Series", Label: "Series (TV Show)", CollectionOnly: true }, // Series can only be added to Collections, not Playlists
         { Value: "Audio", Label: "Audio (Music)" },
         { Value: "MusicVideo", Label: "Music Video" },
         { Value: "Video", Label: "Video (Home Video)" },

@@ -26,7 +26,7 @@ This is where you build new playlists:
 - Choose the sort order
 - Select which user should own the playlist
 - Set the maximum number of items
-- Set the maximum play time for the playlist
+- Set the maximum playtime for the playlist
 - Decide if the playlist should be public or private
 - Choose whether or not to enable the playlist
 - Configure auto-refresh behavior (Never, On Library Changes, On All Changes)
@@ -50,7 +50,7 @@ View and edit all of your existing smart playlists:
 Configure global settings for the plugin:
 
 - Set the default sort order for new playlists
-- Set the default max items and max play time for new playlists
+- Set the default max items and max playtime for new playlists
 - Configure custom prefix and suffix for playlist names
 - Set the default auto-refresh mode for new playlists
 - Set the default custom schedule settings for new playlists
@@ -77,7 +77,7 @@ You can customize how smart playlist names appear in Jellyfin by configuring a p
 - **Both**: Use both prefix and suffix (e.g., "My " + " - Smart" → "My Action Movies - Smart")
 - **None**: Leave both empty for no prefix/suffix
 
-The naming configuration applies to all new smart playlists. When you delete a smart playlist but keep the Jellyfin playlist, the custom prefix/suffix will be automatically removed.
+The naming configuration applies to all new smart lists. When you delete a smart playlist but keep the Jellyfin playlist, the custom prefix/suffix will be automatically removed.
 
 ## Export & Import
 
