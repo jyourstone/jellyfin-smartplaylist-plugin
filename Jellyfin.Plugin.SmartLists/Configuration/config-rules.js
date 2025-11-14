@@ -607,11 +607,6 @@
         hiddenInput.value = tags.join(';');
     };
 
-    SmartLists.showAddOptionDropdown = function(valueContainer, searchValue) {
-        // Placeholder for dropdown functionality - can be implemented later if needed
-        // For now, this is a no-op
-    };
-
     SmartLists.hideAddOptionDropdown = function(valueContainer) {
         const dropdown = valueContainer.querySelector('.add-option-dropdown');
         if (dropdown) {
@@ -742,13 +737,24 @@
                 '</select>' +
             '</div>' +
             '<div class="rule-collections-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">' +
-                '<label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">' +
-                    'Include episodes within series:' +
-                '</label>' +
-                '<select is="emby-select" class="emby-select rule-collections-select" style="width: 100%;">' +
-                    '<option value="false">No - Only include the series themselves</option>' +
-                    '<option value="true">Yes - Include individual episodes from series in collections</option>' +
-                '</select>' +
+                '<div class="rule-collections-collection-only" style="margin-bottom: 0.75em;">' +
+                    '<label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">' +
+                        'Include collection only:' +
+                    '</label>' +
+                    '<select is="emby-select" class="emby-select rule-collections-collection-only-select" style="width: 100%;">' +
+                        '<option value="false">No - Include media items from the collection</option>' +
+                        '<option value="true">Yes - Only include the collection itself</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div class="rule-collections-episodes" style="margin-bottom: 0.75em;">' +
+                    '<label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">' +
+                        'Include episodes within series:' +
+                    '</label>' +
+                    '<select is="emby-select" class="emby-select rule-collections-select" style="width: 100%;">' +
+                        '<option value="false">No - Only include the series themselves</option>' +
+                        '<option value="true">Yes - Include individual episodes from series in collections</option>' +
+                    '</select>' +
+                '</div>' +
             '</div>' +
             '<div class="rule-tags-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">' +
                 '<label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">' +
@@ -862,6 +868,17 @@
             const fieldValue = fieldSelect.value;
             SmartLists.setValueInput(fieldValue, valueContainer, this.value);
         }, listenerOptions);
+        
+        // Add event listener for collection-only select to hide/show episodes field
+        const collectionOnlySelect = newRuleRow.querySelector('.rule-collections-collection-only-select');
+        if (collectionOnlySelect) {
+            collectionOnlySelect.addEventListener('change', function() {
+                // Use the centralized visibility function to ensure consistency
+                const fieldSelect = newRuleRow.querySelector('.rule-field-select');
+                const fieldValue = fieldSelect ? fieldSelect.value : '';
+                SmartLists.updateCollectionsOptionsVisibility(newRuleRow, fieldValue, page);
+            }, listenerOptions);
+        }
 
         // Style the action buttons
         const actionButtons = newRuleRow.querySelectorAll('.rule-action-btn');
@@ -1080,6 +1097,17 @@
                     const fieldValue = fieldSelect.value;
                     SmartLists.setValueInput(fieldValue, valueContainer, this.value);
                 }, listenerOptions);
+                
+                // Add event listener for collection-only select to hide/show episodes field
+                const collectionOnlySelect = ruleRow.querySelector('.rule-collections-collection-only-select');
+                if (collectionOnlySelect) {
+                    collectionOnlySelect.addEventListener('change', function() {
+                        // Use the centralized visibility function to ensure consistency
+                        const fieldSelect = ruleRow.querySelector('.rule-field-select');
+                        const fieldValue = fieldSelect ? fieldSelect.value : '';
+                        SmartLists.updateCollectionsOptionsVisibility(ruleRow, fieldValue, page);
+                    }, listenerOptions);
+                }
                 
                 // Re-style action buttons
                 const actionButtons = ruleRow.querySelectorAll('.rule-action-btn');
@@ -1326,7 +1354,7 @@
         });
     };
     
-    SmartLists.updateNextUnwatchedOptionsVisibility = function(ruleRow, fieldValue, page) {
+    SmartLists.updateNextUnwatchedOptionsVisibility = function(ruleRow, fieldValue) {
         const isNextUnwatchedField = fieldValue === 'NextUnwatched';
         const nextUnwatchedOptionsDiv = ruleRow.querySelector('.rule-nextunwatched-options');
         
@@ -1353,11 +1381,33 @@
         const collectionsOptionsDiv = ruleRow.querySelector('.rule-collections-options');
         
         if (collectionsOptionsDiv) {
-            // Show if Collections field is selected
-            // Note: This option is only meaningful for Episode media type, but we show it
-            // whenever Collections is selected so users can configure it
             if (isCollectionsField) {
+                // Get list type to determine visibility
+                const listType = page ? SmartLists.getElementValue(page, '#listType', 'Playlist') : 'Playlist';
+                const isCollection = listType === 'Collection';
+                
+                // Show collections options
                 collectionsOptionsDiv.style.display = 'block';
+                
+                // Show/hide collection-only option based on list type
+                const collectionOnlyDiv = ruleRow.querySelector('.rule-collections-collection-only');
+                if (collectionOnlyDiv) {
+                    collectionOnlyDiv.style.display = isCollection ? 'block' : 'none';
+                }
+                
+                // Show/hide episodes option (hidden if collection-only is yes OR Episode media type is not selected)
+                const episodesDiv = ruleRow.querySelector('.rule-collections-episodes');
+                if (episodesDiv) {
+                    const collectionOnlySelect = ruleRow.querySelector('.rule-collections-collection-only-select');
+                    const isCollectionOnly = collectionOnlySelect && collectionOnlySelect.value === 'true';
+                    
+                    // Get selected media types to check if Episode is selected
+                    const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
+                    const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
+                    
+                    // Show only if collection-only is disabled AND Episode media type is selected
+                    episodesDiv.style.display = (isCollectionOnly || !hasEpisode) ? 'none' : 'block';
+                }
             } else {
                 // Hide but preserve user's selection - don't reset value
                 collectionsOptionsDiv.style.display = 'none';
@@ -1636,15 +1686,33 @@
                         // If true (default), don't include the parameter to save space
                     }
                     
-                    // Check for Collections specific options (only if Episode is selected)
-                    const collectionsSelect = rule.querySelector('.rule-collections-select');
-                    if (collectionsSelect && memberName === 'Collections' && hasEpisode) {
-                        // Convert string to boolean and only include if it's explicitly true
-                        const includeEpisodesWithinSeries = collectionsSelect.value === 'true';
-                        if (includeEpisodesWithinSeries) {
-                            expression.IncludeEpisodesWithinSeries = true;
+                    // Check for Collections specific options
+                    if (memberName === 'Collections') {
+                        // Check for collection-only option (only for Collections type)
+                        const collectionOnlySelect = rule.querySelector('.rule-collections-collection-only-select');
+                        if (collectionOnlySelect) {
+                            const includeCollectionOnly = collectionOnlySelect.value === 'true';
+                            if (includeCollectionOnly) {
+                                expression.IncludeCollectionOnly = true;
+                            }
+                            // If false (default), don't include the parameter to save space
                         }
-                        // If false (default), don't include the parameter to save space
+                        
+                        // Check for episodes option (only if Episode is selected and collection-only is not enabled)
+                        const collectionsSelect = rule.querySelector('.rule-collections-select');
+                        if (collectionsSelect && hasEpisode) {
+                            // Only process if collection-only is not enabled
+                            const collectionOnlySelect2 = rule.querySelector('.rule-collections-collection-only-select');
+                            const isCollectionOnly = collectionOnlySelect2 && collectionOnlySelect2.value === 'true';
+                            if (!isCollectionOnly) {
+                                // Convert string to boolean and only include if it's explicitly true
+                                const includeEpisodesWithinSeries = collectionsSelect.value === 'true';
+                                if (includeEpisodesWithinSeries) {
+                                    expression.IncludeEpisodesWithinSeries = true;
+                                }
+                                // If false (default), don't include the parameter to save space
+                            }
+                        }
                     }
                     
                     // Handle Tags-specific options (only if Episode is selected)
@@ -1763,6 +1831,16 @@
                 }
             }
             if (expression.MemberName === 'Collections') {
+                // Restore collection-only option
+                const collectionOnlySelect = ruleRow.querySelector('.rule-collections-collection-only-select');
+                if (collectionOnlySelect) {
+                    const includeCollectionOnlyValue = expression.IncludeCollectionOnly === true ? 'true' : 'false';
+                    collectionOnlySelect.value = includeCollectionOnlyValue;
+                    // Trigger change to update visibility of episodes field
+                    collectionOnlySelect.dispatchEvent(new Event('change'));
+                }
+                
+                // Restore episodes option
                 const collectionsSelect = ruleRow.querySelector('.rule-collections-select');
                 if (collectionsSelect) {
                     const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';

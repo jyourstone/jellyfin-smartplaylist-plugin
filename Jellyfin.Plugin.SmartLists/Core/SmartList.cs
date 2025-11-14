@@ -187,6 +187,13 @@ namespace Jellyfin.Plugin.SmartLists.Core
                                     continue;
                                 }
 
+                                // Skip Collections expressions with IncludeCollectionOnly=true - they're handled separately
+                                if (expr.MemberName == "Collections" && expr.IncludeCollectionOnly == true)
+                                {
+                                    logger?.LogDebug("Skipping Collections expression with IncludeCollectionOnly=true at set {SetIndex}, index {ExprIndex} for playlist '{PlaylistName}' - handled separately", setIndex, exprIndex, Name);
+                                    continue;
+                                }
+
                                 try
                                 {
                                     // Validate UserId before converting to string to prevent runtime errors
@@ -413,8 +420,23 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     var group = ExpressionSets[groupIndex];
                     var groupRules = compiledRules[groupIndex];
 
-                    if (group == null || groupRules == null || groupRules.Count == 0)
-                        continue; // Skip empty or null groups
+                    if (group == null)
+                        continue; // Skip null groups
+
+                    // Check if this group has only skipped rules (SimilarTo or IncludeCollectionOnly Collections)
+                    // If so, skip it for item evaluation (these are handled separately)
+                    bool hasOnlySkippedRules = group.Expressions != null && 
+                        group.Expressions.All(expr => 
+                            expr?.MemberName == "SimilarTo" || 
+                            (expr?.MemberName == "Collections" && expr.IncludeCollectionOnly == true));
+
+                    if (hasOnlySkippedRules)
+                    {
+                        continue; // Skip groups with only skipped rules - they don't match items
+                    }
+
+                    if (groupRules == null || groupRules.Count == 0)
+                        continue; // Skip empty rule groups
 
                     try
                     {
@@ -493,6 +515,14 @@ namespace Jellyfin.Plugin.SmartLists.Core
                             if (expression.MemberName == "SimilarTo")
                             {
                                 logger?.LogDebug("Skipping SimilarTo rule in episode evaluation (not compiled)");
+                                continue;
+                            }
+
+                            // Skip Collections rules with IncludeCollectionOnly=true - handled separately
+                            if (expression.MemberName == "Collections" && expression.IncludeCollectionOnly == true)
+                            {
+                                logger?.LogDebug("Skipping Collections rule with IncludeCollectionOnly=true in episode evaluation (handled separately)");
+                                compiledIndex++; // Still advance the compiled index
                                 continue;
                             }
 
@@ -690,6 +720,27 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     logger?.LogDebug(ex, "Error merging SimilarTo comparison fields into expensive-field requirements");
                 }
 
+                // Check if any Collections rule has IncludeCollectionOnly = true
+                var hasCollectionsIncludeCollectionOnly = ExpressionSets?.Any(set =>
+                    set.Expressions?.Any(expr =>
+                        expr.MemberName == "Collections" && expr.IncludeCollectionOnly == true) == true) == true;
+
+                // If IncludeCollectionOnly is enabled, fetch matching collections directly
+                if (hasCollectionsIncludeCollectionOnly)
+                {
+                    logger?.LogDebug("IncludeCollectionOnly is enabled - fetching matching collections directly");
+                    var matchingCollections = GetMatchingCollections(libraryManager, user, logger);
+                    if (matchingCollections.Count > 0)
+                    {
+                        logger?.LogDebug("Found {Count} matching collections to include directly", matchingCollections.Count);
+                        results.AddRange(matchingCollections);
+                    }
+                    else
+                    {
+                        logger?.LogDebug("No matching collections found for IncludeCollectionOnly mode");
+                    }
+                }
+
                 // Early validation of additional users to prevent exceptions during item processing
                 if (additionalUserIds.Count > 0 && userDataManager != null)
                 {
@@ -730,7 +781,12 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     return [];
                 }
 
-                bool hasAnyRules = compiledRules.Any(set => set?.Count > 0);
+                // Check if there are any rules to evaluate (including skipped ones like SimilarTo and IncludeCollectionOnly)
+                // This prevents "no rules = match everything" when all rules are skipped
+                bool hasAnyRules = compiledRules.Any(set => set?.Count > 0) ||
+                    ExpressionSets?.Any(set => set?.Expressions?.Any(expr => 
+                        expr?.MemberName == "SimilarTo" || 
+                        (expr?.MemberName == "Collections" && expr.IncludeCollectionOnly == true)) == true) == true;
 
                 // Check if there are any non-expensive rules for two-phase filtering optimization
                 bool hasNonExpensiveRules = false;
@@ -906,9 +962,11 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 return false;
 
             // Check if any collection matches any Collections rule
+            // Skip rules with IncludeCollectionOnly=true since those are handled separately
             return ExpressionSets?.Any(set =>
                 set.Expressions?.Any(expr =>
                     expr.MemberName == "Collections" &&
+                    expr.IncludeCollectionOnly != true && // Skip IncludeCollectionOnly rules
                     DoesCollectionMatchRule(collections, expr)) == true) == true;
         }
 
@@ -925,6 +983,10 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
             switch (expr.Operator)
             {
+                case "Equal":
+                    // Reuse Engine helper for consistency and null safety
+                    return Engine.AnyItemEquals(collections, expr.TargetValue);
+
                 case "Contains":
                     // Reuse Engine helper for consistency and null safety
                     return Engine.AnyItemContains(collections, expr.TargetValue);
@@ -942,6 +1004,73 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     // Unknown operator - treat as no match
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Gets collections that match Collections rules when IncludeCollectionOnly is enabled.
+        /// </summary>
+        /// <param name="libraryManager">Library manager to query collections</param>
+        /// <param name="user">User context</param>
+        /// <param name="logger">Logger for debugging</param>
+        /// <returns>List of matching collections</returns>
+        private List<BaseItem> GetMatchingCollections(ILibraryManager libraryManager, User user, ILogger? logger)
+        {
+            var matchingCollections = new List<BaseItem>();
+            
+            try
+            {
+                // Query all collections (BoxSet items)
+                var collectionQuery = new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = [BaseItemKind.BoxSet],
+                    Recursive = true,
+                };
+
+                var allCollections = libraryManager.GetItemsResult(collectionQuery).Items;
+                logger?.LogDebug("Found {Count} total collections to check against Collections rules with IncludeCollectionOnly=true", allCollections.Count);
+
+                // Check each collection against Collections rules with IncludeCollectionOnly=true
+                foreach (var collection in allCollections)
+                {
+                    if (collection == null) continue;
+
+                    // Check if this collection's name matches any Collections rule with IncludeCollectionOnly=true
+                    var collectionNames = new List<string> { collection.Name };
+                    if (DoCollectionsMatchRulesForIncludeCollectionOnly(collectionNames))
+                    {
+                        matchingCollections.Add(collection);
+                        logger?.LogDebug("Collection '{CollectionName}' matches Collections rules with IncludeCollectionOnly=true", collection.Name);
+                    }
+                }
+
+                logger?.LogDebug("Found {Count} matching collections out of {TotalCount} total collections",
+                    matchingCollections.Count, allCollections.Count);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Error fetching matching collections for IncludeCollectionOnly mode");
+            }
+
+            return matchingCollections;
+        }
+
+        /// <summary>
+        /// Checks if collections match Collections rules with IncludeCollectionOnly=true.
+        /// This is used specifically for IncludeCollectionOnly mode to match collection names.
+        /// </summary>
+        /// <param name="collections">The collection names to check</param>
+        /// <returns>True if collections match any Collections rule with IncludeCollectionOnly=true, false otherwise</returns>
+        private bool DoCollectionsMatchRulesForIncludeCollectionOnly(List<string> collections)
+        {
+            if (collections == null || collections.Count == 0)
+                return false;
+
+            // Check if any collection matches any Collections rule with IncludeCollectionOnly=true
+            return ExpressionSets?.Any(set =>
+                set.Expressions?.Any(expr =>
+                    expr.MemberName == "Collections" &&
+                    expr.IncludeCollectionOnly == true && // Only check IncludeCollectionOnly rules
+                    DoesCollectionMatchRule(collections, expr)) == true) == true;
         }
 
         /// <summary>

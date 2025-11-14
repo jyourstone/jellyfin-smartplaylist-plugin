@@ -118,6 +118,25 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     UserManager = _userManager // Set UserManager for Jellyfin 10.11+ user resolution
                 };
 
+                // Check if IncludeCollectionOnly is enabled
+                var hasCollectionsIncludeCollectionOnly = dto.ExpressionSets?.Any(set =>
+                    set.Expressions?.Any(expr =>
+                        expr.MemberName == "Collections" && expr.IncludeCollectionOnly == true) == true) == true;
+
+                // If IncludeCollectionOnly is enabled, also query for collections to include in lookup
+                var allCollections = new List<BaseItem>();
+                if (hasCollectionsIncludeCollectionOnly)
+                {
+                    _logger.LogDebug("IncludeCollectionOnly is enabled - querying collections for lookup");
+                    var collectionQuery = new InternalItemsQuery(ownerUser)
+                    {
+                        IncludeItemTypes = [BaseItemKind.BoxSet],
+                        Recursive = true,
+                    };
+                    allCollections = _libraryManager.GetItemsResult(collectionQuery).Items.ToList();
+                    _logger.LogDebug("Found {CollectionCount} collections for lookup", allCollections.Count);
+                }
+
                 // Log the collection rules
                 _logger.LogDebug("Processing collection {CollectionName} with {RuleSetCount} rule sets (Owner: {OwnerUser})", 
                     dto.Name, dto.ExpressionSets?.Count ?? 0, ownerUser.Username);
@@ -128,7 +147,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     dto.Name, newItems.Length, allMedia.Length);
 
                 // Create a lookup dictionary for O(1) access while preserving order from newItems
+                // Include both media items and collections (if IncludeCollectionOnly is enabled)
                 var mediaLookup = allMedia.ToDictionary(m => m.Id, m => m);
+                if (hasCollectionsIncludeCollectionOnly)
+                {
+                    foreach (var collection in allCollections)
+                    {
+                        mediaLookup[collection.Id] = collection;
+                    }
+                }
                 var newLinkedChildren = newItems
                     .Where(itemId => mediaLookup.ContainsKey(itemId))
                     .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
@@ -352,6 +379,106 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting smart collection {CollectionName}", dto.Name);
+                throw;
+            }
+        }
+
+        public async Task RemoveSmartSuffixAsync(SmartCollectionDto dto, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(dto);
+
+            try
+            {
+                BaseItem? existingCollection = null;
+
+                // Try to find by Jellyfin collection ID only (no name fallback for suffix removal)
+                if (!string.IsNullOrEmpty(dto.JellyfinCollectionId) && Guid.TryParse(dto.JellyfinCollectionId, out var jellyfinCollectionId))
+                {
+                    var itemById = _libraryManager.GetItemById(jellyfinCollectionId);
+                    if (itemById != null && itemById.GetBaseItemKind() == BaseItemKind.BoxSet)
+                    {
+                        existingCollection = itemById;
+                        _logger.LogDebug("Found collection by Jellyfin collection ID for suffix removal: {JellyfinCollectionId} - {CollectionName}",
+                            dto.JellyfinCollectionId, existingCollection.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No Jellyfin collection found by ID '{JellyfinCollectionId}' for suffix removal. Collection may have been manually deleted.", dto.JellyfinCollectionId);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("No Jellyfin collection ID available for collection '{CollectionName}'.", dto.Name);
+                }
+
+                if (existingCollection != null)
+                {
+                    var oldName = existingCollection.Name;
+                    _logger.LogInformation("Removing smart collection suffix from '{CollectionName}' (ID: {CollectionId})",
+                        oldName, existingCollection.Id);
+
+                    // Get the current smart collection name format to see what needs to be removed
+                    var currentSmartName = NameFormatter.FormatPlaylistName(dto.Name);
+
+                    // Check if the collection name matches the current smart format
+                    if (oldName == currentSmartName)
+                    {
+                        // Remove the smart collection naming and keep just the base name
+                        existingCollection.Name = dto.Name;
+
+                        // Save the changes
+                        await existingCollection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+
+                        // Trigger library scan to update UI
+                        LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
+
+                        _logger.LogDebug("Successfully renamed collection from '{OldName}' to '{NewName}'",
+                            oldName, dto.Name);
+                    }
+                    else
+                    {
+                        // Try to remove prefix and suffix even if they don't match current settings
+                        // This handles cases where the user changed their prefix/suffix settings
+                        var config = Plugin.Instance?.Configuration;
+                        if (config != null)
+                        {
+                            var prefix = config.PlaylistNamePrefix ?? "";
+                            var suffix = config.PlaylistNameSuffix ?? "[Smart]";
+
+                            var baseName = dto.Name;
+                            var expectedName = NameFormatter.FormatPlaylistNameWithSettings(baseName, prefix, suffix);
+
+                            // If the collection name matches this pattern, remove the prefix and suffix
+                            if (oldName == expectedName)
+                            {
+                                existingCollection.Name = baseName;
+
+                                // Save the changes
+                                await existingCollection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+
+                                // Trigger library scan to update UI
+                                LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
+
+                                _logger.LogDebug("Successfully renamed collection from '{OldName}' to '{NewName}' (removed prefix/suffix)",
+                                    oldName, baseName);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Collection name '{OldName}' doesn't match expected smart format '{ExpectedName}'. Skipping rename.",
+                                    oldName, expectedName);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Collection name '{OldName}' doesn't match expected smart format '{ExpectedName}'. Skipping rename.",
+                                oldName, currentSmartName);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error removing smart suffix from collection {CollectionName}", dto.Name);
                 throw;
             }
         }
@@ -767,6 +894,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             return _libraryManager.GetItemsResult(query).Items;
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "File path comes from Jellyfin's internal ItemImageInfo.Path property, which is validated by Jellyfin")]
         private async Task RefreshCollectionMetadataAsync(BaseItem collection, CancellationToken cancellationToken)
         {
             // Verify this is a BoxSet using BaseItemKind
@@ -791,17 +919,50 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 
                 if (linkedChildren == null || linkedChildren.Length == 0)
                 {
+                    // Check if collection has a manually uploaded image (don't clear user-uploaded images)
+                    if (HasManuallyUploadedImage(collection))
+                    {
+                        _logger.LogDebug("Collection {CollectionName} is empty but has a manually uploaded image, preserving it", collection.Name);
+                        stopwatch.Stop();
+                        return;
+                    }
+
                     _logger.LogDebug("Collection {CollectionName} is empty - clearing any existing cover images", collection.Name);
 
-                    var clearOptions = new MetadataRefreshOptions(directoryService)
+                    // Clear the image by removing it directly
+                    if (collection.ImageInfos != null)
                     {
-                        MetadataRefreshMode = MetadataRefreshMode.FullRefresh,
-                        ImageRefreshMode = MetadataRefreshMode.FullRefresh,
-                        ReplaceAllImages = true,
-                        ReplaceAllMetadata = false // Don't replace metadata - prevents online providers from changing the collection name
-                    };
-
-                    await _providerManager.RefreshSingleItem(collection, clearOptions, cancellationToken).ConfigureAwait(false);
+                        var primaryImage = collection.ImageInfos.FirstOrDefault(i => i.Type == ImageType.Primary);
+                        if (primaryImage != null)
+                        {
+                            // Remove the image
+                            collection.ImageInfos = collection.ImageInfos.Where(i => i.Type != ImageType.Primary).ToArray();
+                            await collection.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+                            
+                            // Also delete the auto-generated collage file if it exists
+                            if (!string.IsNullOrEmpty(primaryImage.Path))
+                            {
+                                var fileName = System.IO.Path.GetFileName(primaryImage.Path);
+                                if (string.Equals(fileName, "smartlist-collage.jpg", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        if (System.IO.File.Exists(primaryImage.Path))
+                                        {
+                                            System.IO.File.Delete(primaryImage.Path);
+                                            _logger.LogDebug("Deleted auto-generated collage image file for empty collection {CollectionName}", collection.Name);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning(ex, "Failed to delete collage image file for empty collection {CollectionName}", collection.Name);
+                                    }
+                                }
+                            }
+                            
+                            _logger.LogDebug("Cleared cover image for empty collection {CollectionName}", collection.Name);
+                        }
+                    }
 
                     stopwatch.Stop();
                     _logger.LogDebug("Cover image clearing completed for empty collection {CollectionName} in {ElapsedTime}ms", collection.Name, stopwatch.ElapsedMilliseconds);
@@ -837,6 +998,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         /// </summary>
         /// <param name="collection">The collection to set the image for</param>
         /// <param name="cancellationToken">Cancellation token</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "File path comes from Jellyfin's internal ItemImageInfo.Path property, which is validated by Jellyfin")]
         private async Task SetPhotoForCollection(BaseItem collection, CancellationToken cancellationToken)
         {
             try
@@ -853,7 +1015,43 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 
                 if (items.Count == 0)
                 {
-                    _logger.LogDebug("Collection {CollectionName} has no items, cannot set image from collection content", collection.Name);
+                    // Collection is empty - clear the image (we already checked for user-uploaded images above)
+                    _logger.LogDebug("Collection {CollectionName} has no items - clearing any existing cover images", collection.Name);
+                    
+                    // Clear the image by removing it
+                    if (collection.ImageInfos != null)
+                    {
+                        var primaryImage = collection.ImageInfos.FirstOrDefault(i => i.Type == ImageType.Primary);
+                        if (primaryImage != null)
+                        {
+                            // Remove the image
+                            collection.ImageInfos = collection.ImageInfos.Where(i => i.Type != ImageType.Primary).ToArray();
+                            await collection.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+                            
+                            // Also delete the auto-generated collage file if it exists
+                            if (!string.IsNullOrEmpty(primaryImage.Path))
+                            {
+                                var fileName = System.IO.Path.GetFileName(primaryImage.Path);
+                                if (string.Equals(fileName, "smartlist-collage.jpg", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        if (System.IO.File.Exists(primaryImage.Path))
+                                        {
+                                            System.IO.File.Delete(primaryImage.Path);
+                                            _logger.LogDebug("Deleted auto-generated collage image file for empty collection {CollectionName}", collection.Name);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning(ex, "Failed to delete collage image file for empty collection {CollectionName}", collection.Name);
+                                    }
+                                }
+                            }
+                            
+                            _logger.LogDebug("Cleared cover image for empty collection {CollectionName}", collection.Name);
+                        }
+                    }
                     return;
                 }
 
@@ -862,9 +1060,45 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 
                 if (itemsWithImages.Count == 0)
                 {
-                    _logger.LogDebug("No items with images found in collection {CollectionName}. Items: {Items}",
+                    // No items with images - clear the image (we already checked for user-uploaded images above)
+                    _logger.LogDebug("No items with images found in collection {CollectionName}. Items: {Items}. Clearing existing cover image.",
                         collection.Name,
                         string.Join(", ", items.Select(i => i.Name)));
+                    
+                    // Clear the image by removing it
+                    if (collection.ImageInfos != null)
+                    {
+                        var primaryImage = collection.ImageInfos.FirstOrDefault(i => i.Type == ImageType.Primary);
+                        if (primaryImage != null)
+                        {
+                            // Remove the image
+                            collection.ImageInfos = collection.ImageInfos.Where(i => i.Type != ImageType.Primary).ToArray();
+                            await collection.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+                            
+                            // Also delete the auto-generated collage file if it exists
+                            if (!string.IsNullOrEmpty(primaryImage.Path))
+                            {
+                                var fileName = System.IO.Path.GetFileName(primaryImage.Path);
+                                if (string.Equals(fileName, "smartlist-collage.jpg", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        if (System.IO.File.Exists(primaryImage.Path))
+                                        {
+                                            System.IO.File.Delete(primaryImage.Path);
+                                            _logger.LogDebug("Deleted auto-generated collage image file for collection {CollectionName} (no items with images)", collection.Name);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning(ex, "Failed to delete collage image file for collection {CollectionName}", collection.Name);
+                                    }
+                                }
+                            }
+                            
+                            _logger.LogDebug("Cleared cover image for collection {CollectionName} (no items with images)", collection.Name);
+                        }
+                    }
                     return;
                 }
 

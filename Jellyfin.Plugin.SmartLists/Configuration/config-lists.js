@@ -550,6 +550,16 @@
                                     }
                                 }
                                 if (expression.MemberName === 'Collections') {
+                                    // Restore collection-only option
+                                    const collectionOnlySelect = currentRule.querySelector('.rule-collections-collection-only-select');
+                                    if (collectionOnlySelect) {
+                                        const includeCollectionOnlyValue = expression.IncludeCollectionOnly === true ? 'true' : 'false';
+                                        collectionOnlySelect.value = includeCollectionOnlyValue;
+                                        // Trigger change to update visibility of episodes field
+                                        collectionOnlySelect.dispatchEvent(new Event('change'));
+                                    }
+                                    
+                                    // Restore episodes option
                                     const collectionsSelect = currentRule.querySelector('.rule-collections-select');
                                     if (collectionsSelect) {
                                         const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';
@@ -924,77 +934,50 @@
         });
     };
 
-    SmartLists.deletePlaylist = function(page, playlistId, playlistName) {
-        const apiClient = SmartLists.getApiClient();
-        const deleteJellyfinPlaylist = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
-        
-        Dashboard.showLoadingMsg();
-        apiClient.ajax({
-            type: 'DELETE',
-            url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '?deleteJellyfinPlaylist=' + deleteJellyfinPlaylist),
-            contentType: 'application/json'
-        }).then(function() {
-            Dashboard.hideLoadingMsg();
-            const action = deleteJellyfinPlaylist ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
-            SmartLists.showNotification('Playlist "' + playlistName + '" ' + action + ' successfully.', 'success');
-            SmartLists.loadPlaylistList(page);
-        }).catch(function(err) {
-            Dashboard.hideLoadingMsg();
-            SmartLists.displayApiError(err, 'Failed to delete playlist "' + playlistName + '"');
-        });
-    };
-
-    SmartLists.enablePlaylist = function(page, playlistId, playlistName) {
-        const apiClient = SmartLists.getApiClient();
-        
-        Dashboard.showLoadingMsg();
-        apiClient.ajax({
-            type: 'POST',
-            url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '/enable'),
-            contentType: 'application/json'
-        }).then(function(response) {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+    SmartLists.deletePlaylist = async function(page, listId, listName) {
+        await SmartLists.performListAction(page, listId, listName, {
+            actionType: 'delete',
+            apiPath: '',
+            httpMethod: 'DELETE',
+            getQueryParams: function(page) {
+                const deleteJellyfinList = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+                return 'deleteJellyfinList=' + deleteJellyfinList;
+            },
+            formatSuccessMessage: function(name, page) {
+                const deleteJellyfinList = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+                const action = deleteJellyfinList ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
+                return 'List "' + name + '" ' + action + ' successfully.';
             }
-            return response.json();
-        }).then(function(result) {
-            Dashboard.hideLoadingMsg();
-            SmartLists.showNotification(result.message || 'Playlist "' + playlistName + '" has been enabled.', 'success');
-            SmartLists.loadPlaylistList(page);
-        }).catch(function(err) {
-            Dashboard.hideLoadingMsg();
-            SmartLists.displayApiError(err, 'Failed to enable playlist "' + playlistName + '"');
         });
     };
 
-    SmartLists.disablePlaylist = function(page, playlistId, playlistName) {
-        const apiClient = SmartLists.getApiClient();
-        
-        Dashboard.showLoadingMsg();
-        apiClient.ajax({
-            type: 'POST',
-            url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '/disable'),
-            contentType: 'application/json'
-        }).then(function(response) {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+    SmartLists.enablePlaylist = async function(page, listId, listName) {
+        await SmartLists.performListAction(page, listId, listName, {
+            actionType: 'enable',
+            apiPath: '/enable',
+            httpMethod: 'POST',
+            formatSuccessMessage: function(name) {
+                return 'List "' + name + '" has been enabled.';
             }
-            return response.json();
-        }).then(function(result) {
-            Dashboard.hideLoadingMsg();
-            SmartLists.showNotification(result.message || 'Playlist "' + playlistName + '" has been disabled.', 'success');
-            SmartLists.loadPlaylistList(page);
-        }).catch(function(err) {
-            Dashboard.hideLoadingMsg();
-            SmartLists.displayApiError(err, 'Failed to disable playlist "' + playlistName + '"');
         });
     };
 
-    SmartLists.showDeleteConfirm = function(page, playlistId, playlistName) {
-        const confirmText = 'Are you sure you want to delete the smart playlist "' + playlistName + '"? This cannot be undone.';
+    SmartLists.disablePlaylist = async function(page, listId, listName) {
+        await SmartLists.performListAction(page, listId, listName, {
+            actionType: 'disable',
+            apiPath: '/disable',
+            httpMethod: 'POST',
+            formatSuccessMessage: function(name) {
+                return 'List "' + name + '" has been disabled.';
+            }
+        });
+    };
+
+    SmartLists.showDeleteConfirm = function(page, listId, listName) {
+        const confirmText = 'Are you sure you want to delete the smart playlist "' + listName + '"? This cannot be undone.';
         
         SmartLists.showDeleteModal(page, confirmText, function() {
-            SmartLists.deletePlaylist(page, playlistId, playlistName);
+            SmartLists.deletePlaylist(page, listId, listName);
         });
     };
 
@@ -1098,8 +1081,12 @@
                         
                         // Add Collections configuration info
                         let collectionsInfo = '';
-                        if (rule.MemberName === 'Collections' && rule.IncludeEpisodesWithinSeries === true) {
-                            collectionsInfo = ' (including episodes within series)';
+                        if (rule.MemberName === 'Collections') {
+                            if (rule.IncludeCollectionOnly === true) {
+                                collectionsInfo = ' (collection only)';
+                            } else if (rule.IncludeEpisodesWithinSeries === true) {
+                                collectionsInfo = ' (including episodes within series)';
+                            }
                         }
                         
                         // Add Tags configuration info
@@ -1481,8 +1468,6 @@
                     const playlist = filteredPlaylists[i];
                     // Resolve username first
                     // Determine list type
-                    const listType = playlist.Type || 'Playlist';
-                    const isCollection = listType === 'Collection';
                     
                     // Resolve user name (both playlists and collections have a User/owner)
                     let resolvedUserName = await SmartLists.resolveUsername(apiClient, playlist);

@@ -814,6 +814,15 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         private static System.Linq.Expressions.Expression BuildStringEnumerableExpression(Expression r, MemberExpression left, ILogger? logger)
         {
+            if (r.Operator == "Equal")
+            {
+                logger?.LogDebug("SmartLists applying collection Equal to {Field} with value '{Value}'", r.MemberName, r.TargetValue);
+                var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+                var method = typeof(Engine).GetMethod("AnyItemEquals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (method == null) throw new InvalidOperationException("Engine.AnyItemEquals method not found");
+                return System.Linq.Expressions.Expression.Call(method, left, right);
+            }
+
             if (r.Operator == "Contains" || r.Operator == "NotContains")
             {
                 var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
@@ -989,6 +998,12 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             if (list == null) return false;
             return list.Any(s => s != null && s.Contains(value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static bool AnyItemEquals(IEnumerable<string> list, string value)
+        {
+            if (list == null) return false;
+            return list.Any(s => s != null && s.Equals(value, StringComparison.OrdinalIgnoreCase));
         }
 
         internal static bool AnyRegexMatch(IEnumerable<string> list, string pattern)

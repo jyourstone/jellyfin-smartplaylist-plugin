@@ -6,10 +6,7 @@
         window.SmartLists = {};
         SmartLists = window.SmartLists;
     }
-    
-    // Global variable for available fields (loaded from API)
-    var availableFields = null;
-    
+       
     SmartLists.handleApiError = function(err, defaultMessage) {
         // Try to extract meaningful error message from server response
         if (err && typeof err.text === 'function') {
@@ -101,12 +98,6 @@
             SmartLists.showNotification('Failed to load users. Using fallback.');
             throw err;
         });
-    };
-
-    SmartLists.loadLibraries = function(page) {
-        // Collections are server-wide and don't have library assignments
-        // This function is kept for backwards compatibility but does nothing
-        return Promise.resolve();
     };
     
     SmartLists.setCurrentUserAsDefault = function(page) {
@@ -244,11 +235,10 @@
                     'Content-Type': 'application/json'
                 }
             })
-            .then(function(response) {
+            .then(async function(response) {
                 if (!response.ok) {
-                    return response.json().then(function(errorData) {
-                        throw new Error(errorData.message || 'Export failed');
-                    });
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Export failed');
                 }
                 
                 // Get filename from Content-Disposition header BEFORE consuming the blob
@@ -262,19 +252,17 @@
                 }
                 
                 // Get the blob from response
-                return response.blob().then(function(blob) {
-                    // Create download link
-                    const blobUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(blobUrl);
-                    document.body.removeChild(a);
-                    
-                    SmartLists.showNotification('Export completed successfully!', 'success');
-                });
+                const blob = await response.blob();
+                // Create download link
+                const blobUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+                SmartLists.showNotification('Export completed successfully!', 'success');
             })
             .catch(function(error) {
                 console.error('Export error:', error);
@@ -327,7 +315,7 @@
             },
             body: formData
         })
-        .then(function(response) {
+        .then(async function(response) {
             if (!response.ok) {
                 return response.json().then(function(errorData) {
                     throw new Error(errorData.message || 'Import failed');

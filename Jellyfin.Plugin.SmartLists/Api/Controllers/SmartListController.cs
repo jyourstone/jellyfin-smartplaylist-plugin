@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -1317,6 +1318,11 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         await collectionService.DeleteAsync(collection);
                         logger.LogInformation("Deleted smart collection: {CollectionName}", collection.Name);
                     }
+                    else
+                    {
+                        await collectionService.RemoveSmartSuffixAsync(collection);
+                        logger.LogInformation("Deleted smart collection configuration: {CollectionName}", collection.Name);
+                    }
 
                     await collectionStore.DeleteAsync(guidId).ConfigureAwait(false);
                     AutoRefreshService.Instance?.RemoveCollectionFromCache(id);
@@ -1759,7 +1765,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var collectionService = GetCollectionService();
                         await collectionService.DisableAsync(collection);
 
-                        collection.JellyfinCollectionId = string.Empty;
+                        collection.JellyfinCollectionId = null;
                         await collectionStore.SaveAsync(collection);
                         AutoRefreshService.Instance?.UpdateCollectionInCache(collection);
 
@@ -1976,10 +1982,10 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         }
 
         /// <summary>
-        /// Import smart playlists from a ZIP file.
+        /// Import smart lists (playlists and collections) from a ZIP file.
         /// </summary>
-        /// <param name="file">ZIP file containing playlist JSON files.</param>
-        /// <returns>Import results with counts of imported and skipped playlists.</returns>
+        /// <param name="file">ZIP file containing smart list JSON files.</param>
+        /// <returns>Import results with counts of imported and skipped lists.</returns>
         [HttpPost("import")]
         public async Task<ActionResult> ImportPlaylists([FromForm] IFormFile file)
         {
@@ -1996,11 +2002,21 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
 
                 var playlistStore = GetPlaylistStore();
+                var collectionStore = GetCollectionStore();
                 var existingPlaylists = await playlistStore.GetAllAsync();
-                var existingIds = existingPlaylists.Select(p => p.Id).ToHashSet();
+                var existingCollections = await collectionStore.GetAllAsync();
+                var existingPlaylistIds = existingPlaylists.Select(p => p.Id).ToHashSet();
+                var existingCollectionIds = existingCollections.Select(c => c.Id).ToHashSet();
+
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Converters = { new JsonStringEnumConverter() }
+                };
 
                 var importResults = new List<object>();
-                int importedCount = 0;
+                int importedPlaylistCount = 0;
+                int importedCollectionCount = 0;
                 int skippedCount = 0;
                 int errorCount = 0;
 
@@ -2026,112 +2042,230 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                     try
                     {
-                        using var entryStream = entry.Open();
-                        var playlist = await JsonSerializer.DeserializeAsync<SmartPlaylistDto>(entryStream);
-
-                        if (playlist == null || string.IsNullOrEmpty(playlist.Id))
+                        // Read JSON content to check Type property first
+                        string jsonContent;
+                        using (var entryStream = entry.Open())
                         {
-                            logger.LogWarning("Invalid playlist data in file {FileName}: {Issue}",
-                                entry.Name, playlist == null ? "null playlist" : "empty ID");
-                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Invalid or empty playlist data" });
-                            errorCount++;
-                            continue;
+                            using var reader = new StreamReader(entryStream);
+                            jsonContent = await reader.ReadToEndAsync();
                         }
+                        using var jsonDoc = JsonDocument.Parse(jsonContent);
 
-                        if (string.IsNullOrWhiteSpace(playlist.Name))
+                        // Determine if this is a playlist or collection based on Type property
+                        Core.Enums.SmartListType listType = Core.Enums.SmartListType.Playlist; // Default to Playlist for backward compatibility
+                        bool hasTypeProperty = jsonDoc.RootElement.TryGetProperty("Type", out var typeElement);
+
+                        if (hasTypeProperty)
                         {
-                            logger.LogWarning("Playlist in file {FileName} has no name", entry.Name);
-                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Playlist must have a name" });
-                            errorCount++;
-                            continue;
-                        }
-
-                        // Validate and potentially reassign user references
-                        bool reassignedUsers = false;
-                        Guid currentUserId = Guid.Empty;
-
-                        // Check playlist owner
-                        if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
-                        {
-                            var user = _userManager.GetUserById(playlistUserIdParsed);
-                            if (user == null)
+                            if (typeElement.ValueKind == JsonValueKind.String)
                             {
-                                // Only get current user ID when we need to reassign
-                                if (currentUserId == Guid.Empty)
+                                var typeString = typeElement.GetString();
+                                if (Enum.TryParse<Core.Enums.SmartListType>(typeString, ignoreCase: true, out var parsedType))
                                 {
-                                    currentUserId = GetCurrentUserId();
-                                    if (currentUserId == Guid.Empty)
-                                    {
-                                        logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} but cannot determine importing user for reassignment",
-                                            playlist.Name, playlist.User);
-                                        importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
-                                        errorCount++;
-                                        continue; // Skip this entire playlist,
-                                    }
+                                    listType = parsedType;
                                 }
-
-                                logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
-                                    playlist.Name, playlist.User, currentUserId);
-
-                                playlist.User = currentUserId.ToString("D");
-                                reassignedUsers = true;
+                            }
+                            else if (typeElement.ValueKind == JsonValueKind.Number)
+                            {
+                                var typeValue = typeElement.GetInt32();
+                                listType = typeValue == 1 ? Core.Enums.SmartListType.Collection : Core.Enums.SmartListType.Playlist;
                             }
                         }
 
-                        // Note: We don't reassign user-specific expression rules if the referenced user doesn't exist.
-                        // The system will naturally fall back to the playlist owner for such rules.
-
-                        // Add note to import results if users were reassigned
-                        if (reassignedUsers)
+                        // Deserialize to the correct type based on the Type field
+                        if (listType == Core.Enums.SmartListType.Playlist)
                         {
-                            logger.LogInformation("Reassigned user references in playlist '{PlaylistName}' due to non-existent users", playlist.Name);
-                        }
+                            var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, jsonOptions);
+                            if (playlist == null || string.IsNullOrEmpty(playlist.Id))
+                            {
+                                logger.LogWarning("Invalid playlist data in file {FileName}: {Issue}",
+                                    entry.Name, playlist == null ? "null playlist" : "empty ID");
+                                importResults.Add(new { fileName = entry.Name, status = "error", message = "Invalid or empty playlist data" });
+                                errorCount++;
+                                continue;
+                            }
 
-                        if (existingIds.Contains(playlist.Id))
+                            if (string.IsNullOrWhiteSpace(playlist.Name))
+                            {
+                                logger.LogWarning("Playlist in file {FileName} has no name", entry.Name);
+                                importResults.Add(new { fileName = entry.Name, status = "error", message = "Playlist must have a name" });
+                                errorCount++;
+                                continue;
+                            }
+
+                            // Ensure type is set
+                            playlist.Type = Core.Enums.SmartListType.Playlist;
+
+                            // Validate and potentially reassign user references
+                            bool reassignedUsers = false;
+                            Guid currentUserId = Guid.Empty;
+
+                            // Check playlist owner
+                            if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
+                            {
+                                var user = _userManager.GetUserById(playlistUserIdParsed);
+                                if (user == null)
+                                {
+                                    // Only get current user ID when we need to reassign
+                                    if (currentUserId == Guid.Empty)
+                                    {
+                                        currentUserId = GetCurrentUserId();
+                                        if (currentUserId == Guid.Empty)
+                                        {
+                                            logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} but cannot determine importing user for reassignment",
+                                                playlist.Name, playlist.User);
+                                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
+                                            errorCount++;
+                                            continue; // Skip this entire playlist,
+                                        }
+                                    }
+
+                                    logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
+                                        playlist.Name, playlist.User, currentUserId);
+
+                                    playlist.User = currentUserId.ToString("D");
+                                    reassignedUsers = true;
+                                }
+                            }
+
+                            // Note: We don't reassign user-specific expression rules if the referenced user doesn't exist.
+                            // The system will naturally fall back to the playlist owner for such rules.
+
+                            // Add note to import results if users were reassigned
+                            if (reassignedUsers)
+                            {
+                                logger.LogInformation("Reassigned user references in playlist '{PlaylistName}' due to non-existent users", playlist.Name);
+                            }
+
+                            if (existingPlaylistIds.Contains(playlist.Id))
+                            {
+                                importResults.Add(new { fileName = entry.Name, listName = playlist.Name, listType = "Playlist", status = "skipped", message = "Playlist with this ID already exists" });
+                                skippedCount++;
+                                continue;
+                            }
+
+                            // Import the playlist
+                            await playlistStore.SaveAsync(playlist);
+
+                            // Update the auto-refresh cache with the imported playlist
+                            AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
+
+                            importResults.Add(new { fileName = entry.Name, listName = playlist.Name, listType = "Playlist", status = "imported", message = "Successfully imported" });
+                            importedPlaylistCount++;
+
+                            logger.LogDebug("Imported playlist {PlaylistName} (ID: {PlaylistId}) from {FileName}",
+                                playlist.Name, playlist.Id, entry.Name);
+                        }
+                        else if (listType == Core.Enums.SmartListType.Collection)
                         {
-                            importResults.Add(new { fileName = entry.Name, playlistName = playlist.Name, status = "skipped", message = "Playlist with this ID already exists" });
-                            skippedCount++;
-                            continue;
+                            var collection = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, jsonOptions);
+                            if (collection == null || string.IsNullOrEmpty(collection.Id))
+                            {
+                                logger.LogWarning("Invalid collection data in file {FileName}: {Issue}",
+                                    entry.Name, collection == null ? "null collection" : "empty ID");
+                                importResults.Add(new { fileName = entry.Name, status = "error", message = "Invalid or empty collection data" });
+                                errorCount++;
+                                continue;
+                            }
+
+                            if (string.IsNullOrWhiteSpace(collection.Name))
+                            {
+                                logger.LogWarning("Collection in file {FileName} has no name", entry.Name);
+                                importResults.Add(new { fileName = entry.Name, status = "error", message = "Collection must have a name" });
+                                errorCount++;
+                                continue;
+                            }
+
+                            // Ensure type is set
+                            collection.Type = Core.Enums.SmartListType.Collection;
+
+                            // Validate and potentially reassign user references (collections use User property from base class)
+                            bool reassignedUsers = false;
+                            Guid currentUserId = Guid.Empty;
+
+                            // Check collection user
+                            if (!string.IsNullOrEmpty(collection.User) && Guid.TryParse(collection.User, out var collectionUserIdParsed) && collectionUserIdParsed != Guid.Empty)
+                            {
+                                var user = _userManager.GetUserById(collectionUserIdParsed);
+                                if (user == null)
+                                {
+                                    // Only get current user ID when we need to reassign
+                                    if (currentUserId == Guid.Empty)
+                                    {
+                                        currentUserId = GetCurrentUserId();
+                                        if (currentUserId == Guid.Empty)
+                                        {
+                                            logger.LogWarning("Collection '{CollectionName}' references non-existent user {User} but cannot determine importing user for reassignment",
+                                                collection.Name, collection.User);
+                                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign collection - unable to determine importing user" });
+                                            errorCount++;
+                                            continue; // Skip this entire collection,
+                                        }
+                                    }
+
+                                    logger.LogWarning("Collection '{CollectionName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
+                                        collection.Name, collection.User, currentUserId);
+
+                                    collection.User = currentUserId.ToString("D");
+                                    reassignedUsers = true;
+                                }
+                            }
+
+                            // Add note to import results if users were reassigned
+                            if (reassignedUsers)
+                            {
+                                logger.LogInformation("Reassigned user references in collection '{CollectionName}' due to non-existent users", collection.Name);
+                            }
+
+                            if (existingCollectionIds.Contains(collection.Id))
+                            {
+                                importResults.Add(new { fileName = entry.Name, listName = collection.Name, listType = "Collection", status = "skipped", message = "Collection with this ID already exists" });
+                                skippedCount++;
+                                continue;
+                            }
+
+                            // Import the collection
+                            await collectionStore.SaveAsync(collection);
+
+                            // Update the auto-refresh cache with the imported collection
+                            AutoRefreshService.Instance?.UpdateCollectionInCache(collection);
+
+                            importResults.Add(new { fileName = entry.Name, listName = collection.Name, listType = "Collection", status = "imported", message = "Successfully imported" });
+                            importedCollectionCount++;
+
+                            logger.LogDebug("Imported collection {CollectionName} (ID: {CollectionId}) from {FileName}",
+                                collection.Name, collection.Id, entry.Name);
                         }
-
-                        // Import the playlist
-                        await playlistStore.SaveAsync(playlist);
-
-                        // Update the auto-refresh cache with the imported playlist
-                        AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
-
-                        importResults.Add(new { fileName = entry.Name, playlistName = playlist.Name, status = "imported", message = "Successfully imported" });
-                        importedCount++;
-
-                        logger.LogDebug("Imported playlist {PlaylistName} (ID: {PlaylistId}) from {FileName}",
-                            playlist.Name, playlist.Id, entry.Name);
                     }
                     catch (Exception ex)
                     {
-                        logger.LogWarning(ex, "Error importing playlist from {FileName}", entry.Name);
+                        logger.LogWarning(ex, "Error importing smart list from {FileName}", entry.Name);
                         importResults.Add(new { fileName = entry.Name, status = "error", message = ex.Message });
                         errorCount++;
                     }
                 }
 
+                var totalImported = importedPlaylistCount + importedCollectionCount;
                 var summary = new
                 {
                     totalFiles = archive.Entries.Count(e => e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)),
-                    imported = importedCount,
+                    imported = totalImported,
+                    importedPlaylists = importedPlaylistCount,
+                    importedCollections = importedCollectionCount,
                     skipped = skippedCount,
                     errors = errorCount,
                     details = importResults,
                 };
 
-                logger.LogInformation("Import completed: {Imported} imported, {Skipped} skipped, {Errors} errors",
-                    importedCount, skippedCount, errorCount);
+                logger.LogInformation("Import completed: {Imported} imported ({Playlists} playlists, {Collections} collections), {Skipped} skipped, {Errors} errors",
+                    totalImported, importedPlaylistCount, importedCollectionCount, skippedCount, errorCount);
 
                 return Ok(summary);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error importing smart playlists");
-                return StatusCode(StatusCodes.Status500InternalServerError, "Error importing smart playlists");
+                logger.LogError(ex, "Error importing smart lists");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error importing smart lists");
             }
         }
 

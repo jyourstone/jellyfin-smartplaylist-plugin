@@ -478,7 +478,7 @@
         return SmartLists.displayFilteredPlaylists(page, filteredPlaylists, '');
     };
     
-    SmartLists.displayFilteredPlaylists = function(page, filteredPlaylists, searchTerm) {
+    SmartLists.displayFilteredPlaylists = async function(page, filteredPlaylists, searchTerm) {
         const container = page.querySelector('#playlist-list-container');
         const apiClient = SmartLists.getApiClient();
         
@@ -514,29 +514,24 @@
             );
         }
         
-        return Promise.all(promises).then(function(results) {
-            for (var j = 0; j < results.length; j++) {
-                const result = results[j];
-                html += SmartLists.generatePlaylistCardHtml(result.playlist, result.rulesHtml, result.resolvedUserName);
-            }
-            
-            container.innerHTML = html;
-            
-            // Restore expand states from localStorage after regenerating HTML
-            if (SmartLists.restorePlaylistExpandStates) {
-                SmartLists.restorePlaylistExpandStates(page);
-            }
-            
-            // Update expand all button text based on current states
-            if (SmartLists.updateExpandAllButtonText) {
-                SmartLists.updateExpandAllButtonText(page);
-            }
-            
-            // Update bulk actions visibility and state
-            if (SmartLists.updateBulkActionsVisibility) {
-                SmartLists.updateBulkActionsVisibility(page);
-            }
-        });
+        const results = await Promise.all(promises);
+        for (var j = 0; j < results.length; j++) {
+            const result = results[j];
+            html += SmartLists.generatePlaylistCardHtml(result.playlist, result.rulesHtml, result.resolvedUserName);
+        }
+        container.innerHTML = html;
+        // Restore expand states from localStorage after regenerating HTML
+        if (SmartLists.restorePlaylistExpandStates) {
+            SmartLists.restorePlaylistExpandStates(page);
+        }
+        // Update expand all button text based on current states
+        if (SmartLists.updateExpandAllButtonText) {
+            SmartLists.updateExpandAllButtonText(page);
+        }
+        // Update bulk actions visibility and state
+        if (SmartLists.updateBulkActionsVisibility) {
+            SmartLists.updateBulkActionsVisibility(page);
+        }
     };
     
     // Note: getPeopleFieldDisplayName is defined in config-formatters.js to avoid duplication

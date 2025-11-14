@@ -93,9 +93,10 @@ When using the **Next Unwatched** field, you can configure:
 
 ### Collections Options
 
-When using the **Collections** field with episodes, you can configure:
+When using the **Collections** field, you can configure:
 
-- **Include episodes within series** (default: No) - When enabled, individual episodes from series in collections are included. When disabled, only the series themselves are included in the collection match.
+- **Include collection only** (Collections only, default: No) - When enabled, only the collection itself is included, not the media items within it. This is useful for collections that contain other collections. When disabled, media items from the collection are included as normal.
+- **Include episodes within series** (default: No) - When enabled, individual episodes from series in collections are included. When disabled, only the series themselves are included in the collection match. This option is hidden when "Include collection only" is enabled.
 
 ### Episode-Specific Collection Field Options
 

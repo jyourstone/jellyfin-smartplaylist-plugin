@@ -7,6 +7,139 @@
         SmartLists = window.SmartLists;
     }
     
+    // ===== HELPER FUNCTIONS FOR ACTION OPERATIONS =====
+    
+    /**
+     * Generic helper for performing bulk list actions
+     * @param {Object} page - The page element
+     * @param {Object} options - Configuration options
+     * @param {string} options.actionType - The action type (e.g., 'enable', 'disable', 'delete')
+     * @param {string} options.apiPath - The API path (e.g., '/enable', '/disable', or '' for delete)
+     * @param {string} options.httpMethod - HTTP method ('POST' or 'DELETE')
+     * @param {Function} [options.filterFunction] - Optional function to filter which lists to act on
+     * @param {Function} [options.getQueryParams] - Optional function to get query parameters
+     * @param {Function} [options.formatSuccessMessage] - Custom success message formatter (successCount, page) => string
+     * @param {Function} [options.formatErrorMessage] - Custom error message formatter (errorCount, successCount) => string
+     */
+    SmartLists.performBulkListAction = async function(page, options) {
+        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
+        const listIds = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
+            return cb.getAttribute('data-playlist-id');
+        });
+        
+        if (listIds.length === 0) {
+            SmartLists.showNotification('No lists selected', 'error');
+            return;
+        }
+        
+        // Apply filter function if provided (e.g., to skip already enabled/disabled items)
+        let listsToProcess = listIds;
+        if (options.filterFunction) {
+            const filterResult = options.filterFunction(selectedCheckboxes);
+            listsToProcess = filterResult.filtered;
+            
+            if (listsToProcess.length === 0) {
+                SmartLists.showNotification(filterResult.message, 'info');
+                return;
+            }
+        }
+        
+        const apiClient = SmartLists.getApiClient();
+        let successCount = 0;
+        let errorCount = 0;
+        
+        Dashboard.showLoadingMsg();
+        
+        const promises = listsToProcess.map(function(listId) {
+            let url = SmartLists.ENDPOINTS.base + '/' + listId + options.apiPath;
+            if (options.getQueryParams) {
+                url += '?' + options.getQueryParams(page);
+            }
+            
+            return apiClient.ajax({
+                type: options.httpMethod,
+                url: apiClient.getUrl(url),
+                contentType: 'application/json'
+            }).then(function() {
+                successCount++;
+            }).catch(function(err) {
+                console.error('Error ' + options.actionType + ' list:', listId, err);
+                errorCount++;
+            });
+        });
+        
+        await Promise.all(promises);
+        Dashboard.hideLoadingMsg();
+        
+        // Show notifications
+        if (successCount > 0) {
+            const message = options.formatSuccessMessage 
+                ? options.formatSuccessMessage(successCount, page)
+                : 'Successfully ' + options.actionType + ' ' + successCount + ' list(s).';
+            SmartLists.showNotification(message, 'success');
+        }
+        if (errorCount > 0) {
+            const message = options.formatErrorMessage
+                ? options.formatErrorMessage(errorCount, successCount)
+                : 'Failed to ' + options.actionType + ' ' + errorCount + ' list(s).';
+            SmartLists.showNotification(message, 'error');
+        }
+        
+        // Clear selections and reload
+        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
+        
+        if (SmartLists.loadPlaylistList) {
+            SmartLists.loadPlaylistList(page);
+        }
+    };
+    
+    /**
+     * Generic helper for performing individual list actions
+     * @param {Object} page - The page element
+     * @param {string} listId - The list ID
+     * @param {string} listName - The list name
+     * @param {Object} options - Configuration options
+     * @param {string} options.actionType - The action type (e.g., 'enable', 'disable', 'delete')
+     * @param {string} options.apiPath - The API path (e.g., '/enable', '/disable', or '' for delete)
+     * @param {string} options.httpMethod - HTTP method ('POST' or 'DELETE')
+     * @param {Function} [options.getQueryParams] - Optional function to get query parameters
+     * @param {Function} [options.formatSuccessMessage] - Custom success message formatter
+     */
+    SmartLists.performListAction = async function(page, listId, listName, options) {
+        const apiClient = SmartLists.getApiClient();
+        
+        let url = SmartLists.ENDPOINTS.base + '/' + listId + options.apiPath;
+        if (options.getQueryParams) {
+            url += '?' + options.getQueryParams(page);
+        }
+        
+        Dashboard.showLoadingMsg();
+        
+        try {
+            await apiClient.ajax({
+                type: options.httpMethod,
+                url: apiClient.getUrl(url),
+                contentType: 'application/json'
+            });
+            
+            Dashboard.hideLoadingMsg();
+            const message = options.formatSuccessMessage 
+                ? options.formatSuccessMessage(listName, page)
+                : 'List "' + listName + '" ' + options.actionType + ' successfully.';
+            SmartLists.showNotification(message, 'success');
+            
+            if (SmartLists.loadPlaylistList) {
+                SmartLists.loadPlaylistList(page);
+            }
+        } catch (err) {
+            Dashboard.hideLoadingMsg();
+            SmartLists.displayApiError(err, 'Failed to ' + options.actionType + ' list "' + listName + '"');
+        }
+    };
+    
     SmartLists.getBulkActionElements = function(page, forceRefresh) {
         forceRefresh = forceRefresh !== undefined ? forceRefresh : false;
         if (!page._bulkActionElements || forceRefresh) {
@@ -75,148 +208,70 @@
         SmartLists.updateSelectedCount(page);
     };
     
-    SmartLists.bulkEnablePlaylists = function(page) {
-        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
-        const playlistIds = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
-            return cb.getAttribute('data-playlist-id');
-        });
-        
-        if (playlistIds.length === 0) {
-            SmartLists.showNotification('No playlists selected', 'error');
-            return Promise.resolve();
-        }
-        
-        // Filter to only playlists that are currently disabled
-        const playlistsToEnable = [];
-        const alreadyEnabled = [];
-        
-        for (var i = 0; i < selectedCheckboxes.length; i++) {
-            const checkbox = selectedCheckboxes[i];
-            const playlistId = checkbox.getAttribute('data-playlist-id');
-            const playlistCard = checkbox.closest('.playlist-card');
-            const statusElement = playlistCard ? playlistCard.querySelector('.playlist-status') : null;
-            const isCurrentlyEnabled = !statusElement || statusElement.textContent.indexOf('Disabled') === -1;
-            
-            if (isCurrentlyEnabled) {
-                alreadyEnabled.push(playlistId);
-            } else {
-                playlistsToEnable.push(playlistId);
-            }
-        }
-        
-        if (playlistsToEnable.length === 0) {
-            SmartLists.showNotification('All selected playlists are already enabled', 'info');
-            return Promise.resolve();
-        }
-        
-        const apiClient = SmartLists.getApiClient();
-        let successCount = 0;
-        let errorCount = 0;
-        
-        Dashboard.showLoadingMsg();
-        
-        const promises = [];
-        for (var j = 0; j < playlistsToEnable.length; j++) {
-            const playlistId = playlistsToEnable[j];
-            promises.push(
-                apiClient.ajax({
-                    type: "POST",
-                    url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '/enable'),
-                    contentType: 'application/json'
-                }).then(function() {
-                    successCount++;
-                }).catch(function(err) {
-                    console.error('Error enabling playlist:', playlistId, err);
-                    errorCount++;
-                })
-            );
-        }
-        
-        return Promise.all(promises).then(function() {
-            Dashboard.hideLoadingMsg();
-            
-            if (errorCount === 0) {
-                SmartLists.showNotification(successCount + ' playlist(s) enabled successfully', 'success');
-            } else {
-                SmartLists.showNotification(successCount + ' enabled, ' + errorCount + ' failed', 'error');
-            }
-            
-            // Refresh the list and clear selections
-            if (SmartLists.loadPlaylistList) {
-                SmartLists.loadPlaylistList(page);
+    SmartLists.bulkEnablePlaylists = async function(page) {
+        await SmartLists.performBulkListAction(page, {
+            actionType: 'enable',
+            apiPath: '/enable',
+            httpMethod: 'POST',
+            filterFunction: function(selectedCheckboxes) {
+                const listsToEnable = [];
+                
+                for (var i = 0; i < selectedCheckboxes.length; i++) {
+                    const checkbox = selectedCheckboxes[i];
+                    const listId = checkbox.getAttribute('data-playlist-id');
+                    const playlistCard = checkbox.closest('.playlist-card');
+                    const statusElement = playlistCard ? playlistCard.querySelector('.playlist-status') : null;
+                    const isCurrentlyEnabled = !statusElement || statusElement.textContent.indexOf('Disabled') === -1;
+                    
+                    if (!isCurrentlyEnabled) {
+                        listsToEnable.push(listId);
+                    }
+                }
+                
+                return {
+                    filtered: listsToEnable,
+                    message: 'All selected lists are already enabled'
+                };
+            },
+            formatSuccessMessage: function(count) {
+                return count + ' list(s) enabled successfully';
+            },
+            formatErrorMessage: function(errorCount, successCount) {
+                return (successCount || 0) + ' enabled, ' + errorCount + ' failed';
             }
         });
     };
     
-    SmartLists.bulkDisablePlaylists = function(page) {
-        const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
-        const playlistIds = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
-            return cb.getAttribute('data-playlist-id');
-        });
-        
-        if (playlistIds.length === 0) {
-            SmartLists.showNotification('No playlists selected', 'error');
-            return Promise.resolve();
-        }
-        
-        // Filter to only playlists that are currently enabled
-        const playlistsToDisable = [];
-        const alreadyDisabled = [];
-        
-        for (var i = 0; i < selectedCheckboxes.length; i++) {
-            const checkbox = selectedCheckboxes[i];
-            const playlistId = checkbox.getAttribute('data-playlist-id');
-            const playlistCard = checkbox.closest('.playlist-card');
-            const statusElement = playlistCard ? playlistCard.querySelector('.playlist-status') : null;
-            const isCurrentlyEnabled = !statusElement || statusElement.textContent.indexOf('Disabled') === -1;
-            
-            if (isCurrentlyEnabled) {
-                playlistsToDisable.push(playlistId);
-            } else {
-                alreadyDisabled.push(playlistId);
-            }
-        }
-        
-        if (playlistsToDisable.length === 0) {
-            SmartLists.showNotification('All selected playlists are already disabled', 'info');
-            return Promise.resolve();
-        }
-        
-        const apiClient = SmartLists.getApiClient();
-        let successCount = 0;
-        let errorCount = 0;
-        
-        Dashboard.showLoadingMsg();
-        
-        const promises = [];
-        for (var j = 0; j < playlistsToDisable.length; j++) {
-            const playlistId = playlistsToDisable[j];
-            promises.push(
-                apiClient.ajax({
-                    type: "POST",
-                    url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '/disable'),
-                    contentType: 'application/json'
-                }).then(function() {
-                    successCount++;
-                }).catch(function(err) {
-                    console.error('Error disabling playlist:', playlistId, err);
-                    errorCount++;
-                })
-            );
-        }
-        
-        return Promise.all(promises).then(function() {
-            Dashboard.hideLoadingMsg();
-            
-            if (errorCount === 0) {
-                SmartLists.showNotification(successCount + ' playlist(s) disabled successfully', 'success');
-            } else {
-                SmartLists.showNotification(successCount + ' disabled, ' + errorCount + ' failed', 'error');
-            }
-            
-            // Refresh the list and clear selections
-            if (SmartLists.loadPlaylistList) {
-                SmartLists.loadPlaylistList(page);
+    SmartLists.bulkDisablePlaylists = async function(page) {
+        await SmartLists.performBulkListAction(page, {
+            actionType: 'disable',
+            apiPath: '/disable',
+            httpMethod: 'POST',
+            filterFunction: function(selectedCheckboxes) {
+                const listsToDisable = [];
+                
+                for (var i = 0; i < selectedCheckboxes.length; i++) {
+                    const checkbox = selectedCheckboxes[i];
+                    const listId = checkbox.getAttribute('data-playlist-id');
+                    const playlistCard = checkbox.closest('.playlist-card');
+                    const statusElement = playlistCard ? playlistCard.querySelector('.playlist-status') : null;
+                    const isCurrentlyEnabled = !statusElement || statusElement.textContent.indexOf('Disabled') === -1;
+                    
+                    if (isCurrentlyEnabled) {
+                        listsToDisable.push(listId);
+                    }
+                }
+                
+                return {
+                    filtered: listsToDisable,
+                    message: 'All selected lists are already disabled'
+                };
+            },
+            formatSuccessMessage: function(count) {
+                return count + ' list(s) disabled successfully';
+            },
+            formatErrorMessage: function(errorCount, successCount) {
+                return (successCount || 0) + ' disabled, ' + errorCount + ' failed';
             }
         });
     };
@@ -332,86 +387,83 @@
         modal._modalAbortController = modalAbortController;
     };
     
-    SmartLists.showBulkDeleteConfirm = function(page, playlistIds, playlistNames) {
-        const playlistList = playlistNames.length > 5 
-            ? playlistNames.slice(0, 5).join('\n') + '\n... and ' + (playlistNames.length - 5) + ' more'
-            : playlistNames.join('\n');
+    SmartLists.showBulkDeleteConfirm = function(page, listIds, listNames) {
+        const listList = listNames.length > 5 
+            ? listNames.slice(0, 5).join('\n') + '\n... and ' + (listNames.length - 5) + ' more'
+            : listNames.join('\n');
         
-        const isPlural = playlistNames.length !== 1;
-        const confirmText = 'Are you sure you want to delete the following ' + (isPlural ? 'playlists' : 'playlist') + '?\n\n' + playlistList + '\n\nThis action cannot be undone.';
+        const isPlural = listNames.length !== 1;
+        const confirmText = 'Are you sure you want to delete the following ' + (isPlural ? 'playlists' : 'playlist') + '?\n\n' + listList + '\n\nThis action cannot be undone.';
         
         SmartLists.showDeleteModal(page, confirmText, function() {
-            SmartLists.performBulkDelete(page, playlistIds);
+            SmartLists.performBulkDelete(page, listIds);
         });
     };
     
-    SmartLists.performBulkDelete = function(page, playlistIds) {
+    SmartLists.performBulkDelete = async function(page, listIds) {
+        // For bulk delete, we need to pass the listIds directly since they come from the confirm modal
+        // Instead of getting them from checkboxes again
         const apiClient = SmartLists.getApiClient();
-        const deleteJellyfinPlaylist = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+        const deleteJellyfinList = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
         let successCount = 0;
         let errorCount = 0;
         
         Dashboard.showLoadingMsg();
         
-        const promises = [];
-        for (var i = 0; i < playlistIds.length; i++) {
-            const playlistId = playlistIds[i];
-            promises.push(
-                apiClient.ajax({
-                    type: "DELETE",
-                    url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '?deleteJellyfinPlaylist=' + deleteJellyfinPlaylist),
-                    contentType: 'application/json'
-                }).then(function() {
-                    successCount++;
-                }).catch(function(err) {
-                    console.error('Error deleting playlist:', playlistId, err);
-                    errorCount++;
-                })
-            );
+        const promises = listIds.map(function(listId) {
+            const url = SmartLists.ENDPOINTS.base + '/' + listId + '?deleteJellyfinList=' + deleteJellyfinList;
+            return apiClient.ajax({
+                type: 'DELETE',
+                url: apiClient.getUrl(url),
+                contentType: 'application/json'
+            }).then(function() {
+                successCount++;
+            }).catch(function(err) {
+                console.error('Error deleting list:', listId, err);
+                errorCount++;
+            });
+        });
+        
+        await Promise.all(promises);
+        Dashboard.hideLoadingMsg();
+        
+        if (successCount > 0) {
+            const action = deleteJellyfinList ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
+            SmartLists.showNotification('Successfully ' + action + ' ' + successCount + ' list(s).', 'success');
+        }
+        if (errorCount > 0) {
+            SmartLists.showNotification('Failed to delete ' + errorCount + ' list(s).', 'error');
         }
         
-        return Promise.all(promises).then(function() {
-            Dashboard.hideLoadingMsg();
-            
-            if (successCount > 0) {
-                const action = deleteJellyfinPlaylist ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
-                SmartLists.showNotification('Successfully ' + action + ' ' + successCount + ' playlist(s).', 'success');
-            }
-            if (errorCount > 0) {
-                SmartLists.showNotification('Failed to delete ' + errorCount + ' playlist(s).', 'error');
-            }
-            
-            // Clear selections and reload
-            const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = false;
-            }
-            
-            if (SmartLists.loadPlaylistList) {
-                SmartLists.loadPlaylistList(page);
-            }
-        });
+        // Clear selections and reload
+        const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
+        if (SmartLists.loadPlaylistList) {
+            SmartLists.loadPlaylistList(page);
+        }
     };
     
     SmartLists.bulkDeletePlaylists = function(page) {
         const selectedCheckboxes = page.querySelectorAll('.playlist-checkbox:checked');
-        const playlistIds = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
+        const listIds = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
             return cb.getAttribute('data-playlist-id');
         });
         
-        if (playlistIds.length === 0) {
+        if (listIds.length === 0) {
             SmartLists.showNotification('No playlists selected', 'error');
             return;
         }
         
-        const playlistNames = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
+        const listNames = Array.prototype.slice.call(selectedCheckboxes).map(function(cb) {
             const playlistCard = cb.closest('.playlist-card');
             const nameElement = playlistCard ? playlistCard.querySelector('.playlist-header-left h3') : null;
             return nameElement ? nameElement.textContent : 'Unknown';
         });
         
         // Show the custom modal instead of browser confirm
-        SmartLists.showBulkDeleteConfirm(page, playlistIds, playlistNames);
+        SmartLists.showBulkDeleteConfirm(page, listIds, listNames);
     };
     
     // Collapsible playlist functionality

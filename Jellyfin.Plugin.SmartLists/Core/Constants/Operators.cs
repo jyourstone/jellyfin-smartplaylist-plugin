@@ -56,7 +56,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
         /// <summary>
         /// Operators for multi-valued fields with special handling (Collections has limited operators).
         /// </summary>
-        public static readonly string[] LimitedMultiValuedFieldOperators = ["Contains", "IsIn", "MatchRegex"];
+        public static readonly string[] LimitedMultiValuedFieldOperators = ["Equal", "Contains", "IsIn", "MatchRegex"];
 
         /// <summary>
         /// Operators for simple single-choice fields.

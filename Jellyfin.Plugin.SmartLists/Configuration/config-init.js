@@ -1175,7 +1175,7 @@
     };
 
     // ===== STYLING =====
-    SmartLists.applyCustomStyles = function(page) {
+    SmartLists.applyCustomStyles = function() {
         // Check if styles are already added
         if (document.getElementById('smartlists-custom-styles')) {
             return;
@@ -1398,6 +1398,9 @@
                 currentlySelectedMediaTypes.push(checkbox.value);
             }
         });
+        
+        // Update Collections options visibility for all rules when list type changes
+        SmartLists.updateAllCollectionsOptionsVisibility(page);
         
         // Regenerate media type checkboxes to show/hide collection-only types
         if (SmartLists.generateMediaTypeCheckboxes) {
