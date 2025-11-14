@@ -9,9 +9,12 @@
    - Choose whether to create a Playlist or Collection
    - Select the media type(s) you want to include
    - Add rules to filter your content
-   - Choose sorting options
-   - Set the list owner (user)
+   - Choose sorting options (playlists only - collections don't support sorting)
+   - Set the list owner (for playlists) or reference user (for collections)
    - Configure other settings as needed
+
+!!! tip "Playlists vs Collections"
+    For a detailed explanation of the differences between Playlists and Collections, see the [Configuration Guide](../user-guide/configuration.md#playlists-vs-collections).
 
 ## Example: Unwatched Action Movies
 

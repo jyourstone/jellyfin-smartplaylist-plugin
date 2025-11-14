@@ -14,6 +14,30 @@ SmartLists features a modern web-based configuration interface through the plugi
     </a>
 </div>
 
+## Playlists vs Collections
+
+Before creating your first list, it's important to understand the differences between **Playlists** and **Collections**:
+
+### Playlists
+- **User-specific**: Each playlist belongs to a specific user (the "owner")
+- **Sorting**: Items can be sorted using multiple sorting levels (see [Sorting and Limits](sorting-and-limits.md))
+- **Max Playtime**: Can set a maximum playtime limit
+- **Visibility**: Can be set as public (visible to all users) or private (visible only to the owner)
+- **Use cases**: Personal music playlists, "Continue Watching" lists, workout mixes, etc.
+
+### Collections
+- **Server-wide**: Collections are visible to all users on the server (no individual ownership)
+- **No Sorting**: Collections do not support custom sorting
+- **No Max Playtime**: Collections cannot have a playtime limit
+- **User Reference**: While collections don't have an "owner" in the traditional sense, you must select a user whose context will be used when evaluating rules and filtering items. This user's library access permissions and user-specific data (like "Is Played", "Is Favorite", etc.) are used to determine which items are included in the collection
+- **Use cases**: Organizing related content for browsing (e.g., "Action Movies", "Holiday Collection", "Director's Collection")
+
+!!! note "User Selection for Collections"
+    When creating a collection, the user you select is used as a **reference** for rule evaluation, not as an owner. The collection itself is server-wide and visible to everyone. This user's context is important for:
+    - Evaluating user-specific rules (Is Played, Is Favorite, Play Count, etc.)
+    - Respecting library access permissions
+    - Filtering items based on what that user can see and access
+
 ## Web Interface Overview
 
 The web interface is organized into three tabs:
@@ -24,11 +48,11 @@ This is where you build new playlists and collections:
 
 - Choose whether to create a Playlist or Collection
 - Define the rules for including items
-- Choose the sort order
-- Select which user should own the list
+- Choose the sort order (playlists only - collections don't support sorting)
+- Select which user should own the list (for playlists) or serve as reference user (for collections)
 - Set the maximum number of items
 - Set the maximum playtime for the list (playlists only)
-- Decide if the list should be public or private
+- Decide if the list should be public or private (playlists only - collections are always server-wide)
 - Choose whether or not to enable the list
 - Configure auto-refresh behavior (Never, On Library Changes, On All Changes)
 - Set custom refresh schedule (Daily, Weekly, Monthly, Yearly, Interval or No schedule)

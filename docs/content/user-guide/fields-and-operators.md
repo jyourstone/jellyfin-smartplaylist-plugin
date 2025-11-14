@@ -69,6 +69,82 @@ The web interface provides access to all available fields for creating list rule
 - **Artists** - Track-level artists (for music)
 - **Album Artists** - Album-level primary artists (for music)
 
+## Optional Field Options
+
+Some fields have additional optional settings that appear when you select them. These options allow you to fine-tune how the field is evaluated:
+
+### User-Specific Fields
+
+The following fields support an optional **user selector** that allows you to check playback data for a specific user instead of the playlist/collection owner:
+
+- **Is Played**
+- **Is Favorite**
+- **Play Count**
+- **Next Unwatched**
+- **Last Played**
+
+By default, these fields check the owner's data. You can optionally select a specific user from the dropdown to check their playback status instead. This is useful for creating shared playlists that show different content based on who is viewing them.
+
+### Next Unwatched Options
+
+When using the **Next Unwatched** field, you can configure:
+
+- **Include unwatched series** (default: Yes) - When enabled, includes the first episode of series that haven't been started yet. When disabled, only shows the next episode from series that have been partially watched.
+
+### Collections Options
+
+When using the **Collections** field with episodes, you can configure:
+
+- **Include episodes within series** (default: No) - When enabled, individual episodes from series in collections are included. When disabled, only the series themselves are included in the collection match.
+
+### Episode-Specific Collection Field Options
+
+When using **Tags**, **Studios**, or **Genres** fields with episodes selected as a media type, you can configure whether to also check the parent series:
+
+- **Include parent series tags** (Tags field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified tag.
+- **Include parent series studios** (Studios field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified studio.
+- **Include parent series genres** (Genres field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified genre.
+
+These options are useful when series-level metadata is more complete than episode-level metadata, or when you want to match episodes based on series characteristics.
+
+### Similar To Options
+
+When using the **Similar To** field, you can configure which metadata fields to use for similarity comparison:
+
+**Default fields**: Genre + Tags
+
+You can optionally select additional fields to include in the similarity calculation:
+- Genre
+- Tags
+- Actors
+- Writers
+- Producers
+- Directors
+- Studios
+- Audio Languages
+- Name
+- Production Year
+- Parental Rating
+
+The more fields you select, the more comprehensive the similarity matching becomes. However, using too many fields may make matches less likely.
+
+### People Field Options
+
+When using the **People** field, you can select a specific person type to filter by:
+
+- **People (All)** - Matches any cast or crew member (default)
+- **Actors** - Only actors
+- **Directors** - Only directors
+- **Writers** - Only writers/screenwriters
+- **Producers** - Only producers
+- **Guest Stars** - Only guest stars (TV episodes)
+- **Composers** - Only composers
+- **Conductors** - Only conductors
+- **Lyricists** - Only lyricists
+- And many more specialized roles...
+
+This allows you to create more specific rules, such as "Movies directed by Christopher Nolan" instead of "Movies with Christopher Nolan in any role."
+
 ## Available Operators
 
 - **equals** / **not equals** - Exact matches
