@@ -6,9 +6,9 @@
     </p>        
 </div>
 
-### ✨✨ NEW: Collections support! You can now create smart collections in addition to smart playlists. ✨✨
+### ✨✨ NEW: Collections support! ✨✨
 
-Create smart, rule-based playlists and collections in Jellyfin.
+Create smart, rule-based playlists and **collections** in Jellyfin.
 
 This plugin allows you to create dynamic playlists and collections based on a set of rules, which will automatically update as your library changes.
 
