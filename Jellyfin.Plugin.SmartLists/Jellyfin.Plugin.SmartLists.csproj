@@ -42,7 +42,17 @@
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="10.11.0" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.0" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12">
+      <PrivateAssets>none</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
+
+  <Target Name="CopyImageSharpDll" AfterTargets="ResolveReferences">
+    <ItemGroup>
+      <ImageSharpReference Include="@(ReferencePath)" Condition="'%(Filename)' == 'SixLabors.ImageSharp'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ImageSharpReference)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />

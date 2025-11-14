@@ -15,11 +15,18 @@ using Jellyfin.Plugin.SmartLists.Services.Abstractions;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
 using Jellyfin.Plugin.SmartLists.Utilities;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Jpeg;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Collections
 {
@@ -428,6 +435,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 }
                 collectionAfterRefresh.Name = expectedName;
                 await collectionAfterRefresh.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                
+                // Set collection image if metadata refresh didn't generate one
+                await SetPhotoForCollection(collectionAfterRefresh, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -702,6 +712,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     }
                     retrievedItem.Name = formattedName;
                     await retrievedItem.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    
+                    // Set collection image if metadata refresh didn't generate one
+                    await SetPhotoForCollection(retrievedItem, cancellationToken).ConfigureAwait(false);
                 }
                 
                 // Report the new collection to the library manager to trigger UI updates
@@ -814,6 +827,385 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             {
                 stopwatch.Stop();
                 _logger.LogWarning(ex, "Failed to refresh metadata for collection {CollectionName} after {ElapsedTime}ms. Cover image may not be generated.", collection.Name, stopwatch.ElapsedMilliseconds);
+            }
+        }
+
+        /// <summary>
+        /// Sets a photo/image for a collection from items within the collection.
+        /// Creates a single image for 1 item, or a 4-image collage for 2+ items.
+        /// Skips if the collection has a manually uploaded image.
+        /// </summary>
+        /// <param name="collection">The collection to set the image for</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        private async Task SetPhotoForCollection(BaseItem collection, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Check if collection has a manually uploaded image (don't overwrite)
+                if (HasManuallyUploadedImage(collection))
+                {
+                    _logger.LogDebug("Collection {CollectionName} has a manually uploaded image, skipping automatic image generation", collection.Name);
+                    return;
+                }
+
+                // Get collection items
+                var items = await GetCollectionItemsAsync(collection, cancellationToken).ConfigureAwait(false);
+                
+                if (items.Count == 0)
+                {
+                    _logger.LogDebug("Collection {CollectionName} has no items, cannot set image from collection content", collection.Name);
+                    return;
+                }
+
+                // Get items with images (prefer Movies/Series, fallback to any item with image)
+                var itemsWithImages = GetItemsWithImages(items);
+                
+                if (itemsWithImages.Count == 0)
+                {
+                    _logger.LogDebug("No items with images found in collection {CollectionName}. Items: {Items}",
+                        collection.Name,
+                        string.Join(", ", items.Select(i => i.Name)));
+                    return;
+                }
+
+                // Create image: single for 1 item, collage for 2+ items
+                await CreateCollectionImageAsync(collection, itemsWithImages, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting image for collection {CollectionName}",
+                    collection.Name);
+            }
+        }
+
+        /// <summary>
+        /// Checks if the collection has a manually uploaded image that should not be overwritten.
+        /// A manually uploaded image is one that:
+        /// 1. Exists in the collection's metadata directory
+        /// 2. Is NOT one of the collection items' images
+        /// 3. Is NOT our auto-generated collage (smartlist-collage.jpg)
+        /// 
+        /// Note: Our auto-generated collage (smartlist-collage.jpg) will be regenerated to match current items.
+        /// </summary>
+        private bool HasManuallyUploadedImage(BaseItem collection)
+        {
+            if (collection.ImageInfos == null)
+            {
+                return false;
+            }
+
+            var primaryImage = collection.ImageInfos.FirstOrDefault(i => i.Type == ImageType.Primary);
+            if (primaryImage == null || string.IsNullOrEmpty(primaryImage.Path))
+            {
+                return false;
+            }
+
+            var collectionPath = collection.Path;
+            if (string.IsNullOrEmpty(collectionPath))
+            {
+                return false;
+            }
+
+            // Normalize paths for comparison
+            var normalizedCollectionPath = System.IO.Path.GetFullPath(collectionPath);
+            var normalizedImagePath = System.IO.Path.GetFullPath(primaryImage.Path);
+
+            // Check if image is in the collection's metadata directory
+            if (!normalizedImagePath.StartsWith(normalizedCollectionPath, StringComparison.OrdinalIgnoreCase))
+            {
+                // Image is not in collection's directory, so it's from an item (auto-generated or referenced)
+                // This is safe to overwrite
+                return false;
+            }
+
+            // Image is in collection's metadata directory
+            // Check if it's our auto-generated collage
+            var fileName = System.IO.Path.GetFileName(normalizedImagePath);
+            if (string.Equals(fileName, "smartlist-collage.jpg", StringComparison.OrdinalIgnoreCase))
+            {
+                // This is our auto-generated collage - safe to overwrite (will regenerate to match current items)
+                return false;
+            }
+
+            // Check if it matches any of the collection items' images
+            try
+            {
+                var items = GetCollectionItemsAsync(collection, CancellationToken.None).GetAwaiter().GetResult();
+                var itemsWithImages = GetItemsWithImages(items);
+                
+                // Check if any item uses this exact image path
+                foreach (var item in itemsWithImages)
+                {
+                    if (item.ImageInfos != null)
+                    {
+                        var itemImage = item.ImageInfos.FirstOrDefault(i => i.Type == ImageType.Primary);
+                        if (itemImage != null && !string.IsNullOrEmpty(itemImage.Path))
+                        {
+                            var normalizedItemPath = System.IO.Path.GetFullPath(itemImage.Path);
+                            if (normalizedImagePath.Equals(normalizedItemPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Image matches an item's image, so it's auto-generated/referenced
+                                // Safe to overwrite (will regenerate to match current items)
+                                return false;
+                            }
+                        }
+                    }
+                }
+                
+                // Image is in collection's metadata directory but doesn't match any item's image
+                // and is not our auto-generated collage - this is likely a manually uploaded image
+                _logger.LogDebug("Collection {CollectionName} has image '{ImagePath}' in metadata directory that doesn't match any item's image - treating as manually uploaded", 
+                    collection.Name, fileName);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // If we can't check, be conservative and preserve the image
+                _logger.LogWarning(ex, "Could not verify if collection {CollectionName} has manually uploaded image, preserving existing image", collection.Name);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Gets all items in a collection using GetLinkedChildren method.
+        /// </summary>
+        private Task<List<BaseItem>> GetCollectionItemsAsync(BaseItem collection, CancellationToken cancellationToken)
+        {
+            List<BaseItem> items = [];
+
+            try
+            {
+                var getLinkedChildrenMethod = collection.GetType().GetMethod("GetLinkedChildren", Type.EmptyTypes);
+                if (getLinkedChildrenMethod != null)
+                {
+                    var linkedChildren = getLinkedChildrenMethod.Invoke(collection, null);
+                    if (linkedChildren is IEnumerable<BaseItem> linkedEnumerable)
+                    {
+                        items = linkedEnumerable.ToList();
+                        _logger.LogDebug("GetLinkedChildren method returned {Count} items for collection {CollectionName}", 
+                            items.Count, collection.Name);
+                        return Task.FromResult(items);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "GetLinkedChildren method failed for collection {CollectionName}: {Error}", 
+                    collection.Name, ex.Message);
+            }
+
+            return Task.FromResult(items);
+        }
+
+        /// <summary>
+        /// Filters items to those with primary images, preferring Movies and Series.
+        /// Returns items in their original order (first items first).
+        /// </summary>
+        private static List<BaseItem> GetItemsWithImages(List<BaseItem> items)
+        {
+            // First, get Movies and Series with images (preserving order)
+            var mediaItemsWithImages = items
+                .Where(item => (item is Movie || item is Series) &&
+                               item.ImageInfos != null &&
+                               item.ImageInfos.Any(i => i.Type == ImageType.Primary))
+                .ToList();
+
+            // If we have media items with images, use those; otherwise use any items with images
+            if (mediaItemsWithImages.Count > 0)
+            {
+                return mediaItemsWithImages;
+            }
+
+            // Fallback: use any items with images (preserving order)
+            return items
+                .Where(item => item.ImageInfos != null &&
+                               item.ImageInfos.Any(i => i.Type == ImageType.Primary))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Creates and sets the collection image: single image for 1 item, 4-image collage for 2+ items.
+        /// Always uses the first item(s) with images from the collection.
+        /// </summary>
+        private async Task CreateCollectionImageAsync(BaseItem collection, List<BaseItem> itemsWithImages, CancellationToken cancellationToken)
+        {
+            if (itemsWithImages.Count == 0)
+            {
+                return;
+            }
+
+            if (itemsWithImages.Count == 1)
+            {
+                // Single item: use the first (and only) item's image directly
+                // First, remove any existing auto-generated collage image file if it exists
+                var collectionPath = collection.Path;
+                if (!string.IsNullOrEmpty(collectionPath))
+                {
+                    var oldCollagePath = System.IO.Path.Combine(collectionPath, "smartlist-collage.jpg");
+                    if (System.IO.File.Exists(oldCollagePath))
+                    {
+                        try
+                        {
+                            System.IO.File.Delete(oldCollagePath);
+                            _logger.LogDebug("Deleted old auto-generated collage image file for collection {CollectionName}", collection.Name);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete old collage image file for collection {CollectionName}", collection.Name);
+                        }
+                    }
+                }
+
+                var item = itemsWithImages[0];
+                var imageInfo = item.ImageInfos!.First(i => i.Type == ImageType.Primary);
+
+                if (!string.IsNullOrEmpty(imageInfo.Path))
+                {
+                    collection.SetImage(new ItemImageInfo
+                    {
+                        Path = imageInfo.Path,
+                        Type = ImageType.Primary
+                    }, 0);
+
+                    await _libraryManager.UpdateItemAsync(
+                        collection,
+                        collection.GetParent(),
+                        ItemUpdateType.ImageUpdate,
+                        cancellationToken);
+                    _logger.LogInformation("Successfully set single image for collection {CollectionName} from first item: {ItemName}",
+                        collection.Name, item.Name);
+                }
+            }
+            else
+            {
+                // 2+ items: create 4-image collage using the first items
+                await CreateImageCollageAsync(collection, itemsWithImages, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Creates a 4-image collage from collection items and sets it as the collection's primary image.
+        /// Uses the first items with valid images (duplicates if needed to fill 4 slots).
+        /// </summary>
+        private async Task CreateImageCollageAsync(BaseItem collection, List<BaseItem> itemsWithImages, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Select up to 4 items from the first items with images (duplicate if needed to fill 4 slots)
+                var selectedItems = new List<BaseItem>();
+                for (int i = 0; i < 4; i++)
+                {
+                    selectedItems.Add(itemsWithImages[i % itemsWithImages.Count]);
+                }
+
+                _logger.LogDebug("Creating 4-image collage for collection {CollectionName} from {ItemCount} items (using first items: {ItemNames})", 
+                    collection.Name, itemsWithImages.Count,
+                    string.Join(", ", selectedItems.Take(Math.Min(4, itemsWithImages.Count)).Select(i => i.Name)));
+
+                // Get image paths
+                var imagePaths = new List<string>();
+                foreach (var item in selectedItems)
+                {
+                    var imageInfo = item.ImageInfos!.First(i => i.Type == ImageType.Primary);
+                    if (!string.IsNullOrEmpty(imageInfo.Path) && System.IO.File.Exists(imageInfo.Path))
+                    {
+                        imagePaths.Add(imageInfo.Path);
+                    }
+                }
+
+                if (imagePaths.Count == 0)
+                {
+                    _logger.LogWarning("No valid image paths found for collage creation for collection {CollectionName}", collection.Name);
+                    return;
+                }
+
+                // Get collection's metadata directory
+                var collectionPath = collection.Path;
+                if (string.IsNullOrEmpty(collectionPath))
+                {
+                    _logger.LogWarning("Collection {CollectionName} has no path, cannot save collage image", collection.Name);
+                    return;
+                }
+
+                // Use a specific filename for our auto-generated collage to avoid conflicts with user-uploaded poster.jpg
+                var metadataPath = System.IO.Path.Combine(collectionPath, "smartlist-collage.jpg");
+                var metadataDir = System.IO.Path.GetDirectoryName(metadataPath);
+                if (metadataDir != null && !System.IO.Directory.Exists(metadataDir))
+                {
+                    System.IO.Directory.CreateDirectory(metadataDir);
+                }
+
+                // Create collage: 2x2 grid
+                // Standard Jellyfin poster size is typically 300x450 (2:3 aspect ratio)
+                // For 2x2 grid, we'll use 600x900 (each quadrant is 300x450)
+                const int collageWidth = 600;
+                const int collageHeight = 900;
+                const int quadrantWidth = 300;
+                const int quadrantHeight = 450;
+
+                using (var collage = new Image<Rgba32>(collageWidth, collageHeight))
+                {
+                    // Fill background with black
+                    collage.Mutate(x => x.BackgroundColor(Color.Black));
+
+                    // Position images in 2x2 grid
+                    var positions = new[]
+                    {
+                        new { X = 0, Y = 0 },           // Top-left
+                        new { X = quadrantWidth, Y = 0 }, // Top-right
+                        new { X = 0, Y = quadrantHeight }, // Bottom-left
+                        new { X = quadrantWidth, Y = quadrantHeight } // Bottom-right
+                    };
+
+                    for (int i = 0; i < 4 && i < imagePaths.Count; i++)
+                    {
+                        try
+                        {
+                            using (var sourceImage = await Image.LoadAsync(imagePaths[i], cancellationToken).ConfigureAwait(false))
+                            {
+                                // Resize image to fit quadrant while maintaining aspect ratio
+                                var resizeOptions = new ResizeOptions
+                                {
+                                    Size = new Size(quadrantWidth, quadrantHeight),
+                                    Mode = ResizeMode.Crop,
+                                    Position = AnchorPositionMode.Center
+                                };
+
+                                sourceImage.Mutate(x => x.Resize(resizeOptions));
+
+                                // Draw image at position
+                                var point = new Point(positions[i].X, positions[i].Y);
+                                collage.Mutate(ctx => ctx.DrawImage(sourceImage, point, 1.0f));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to load image {ImagePath} for collage, skipping", imagePaths[i]);
+                        }
+                    }
+
+                    // Save collage
+                    await collage.SaveAsync(metadataPath, new JpegEncoder { Quality = 90 }, cancellationToken).ConfigureAwait(false);
+                    _logger.LogDebug("Created collage image at {ImagePath}", metadataPath);
+                }
+
+                // Set the collage as the collection's primary image
+                collection.SetImage(new ItemImageInfo
+                {
+                    Path = metadataPath,
+                    Type = ImageType.Primary
+                }, 0);
+
+                await _libraryManager.UpdateItemAsync(
+                    collection,
+                    collection.GetParent(),
+                    ItemUpdateType.ImageUpdate,
+                    cancellationToken);
+                _logger.LogInformation("Successfully set 4-image collage for collection {CollectionName}", collection.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating collage image for collection {CollectionName}", collection.Name);
             }
         }
 
