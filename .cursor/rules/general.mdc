@@ -5,16 +5,51 @@ alwaysApply: true
 ## Development Environment
 Local development is contained in `/dev` directory. Use `./build-local.sh` from `/dev` for builds. Don't modify files outside `/dev` for local testing.
 
+## Codebase Structure
+
+The plugin is organized into the following main directories:
+
+- **`Core/`** - Core business logic and models
+  - `Constants/` - MediaTypes, Operators, ResolutionTypes
+  - `Enums/` - AutoRefreshMode, RuleLogic, ScheduleTrigger, SmartListType
+  - `Models/` - DTOs (SmartListDto, SmartPlaylistDto, SmartCollectionDto, ExpressionSet, OrderDto, Schedule, SortOption)
+  - `QueryEngine/` - Rule evaluation engine (Engine, Expression, Factory, FieldDefinitions, Operand, DateUtils)
+  - `SmartList.cs` - Main filtering and evaluation class
+
+- **`Api/`** - API layer
+  - `Controllers/` - SmartListController (handles both playlists and collections)
+  - `Models/` - API-specific models
+
+- **`Services/`** - Service layer with separation between playlists and collections
+  - `Abstractions/` - ISmartListService, ISmartListStore interfaces
+  - `Playlists/` - PlaylistService, PlaylistStore
+  - `Collections/` - CollectionService, CollectionStore
+  - `Shared/` - AutoRefreshService, ManualRefreshService, SmartListFileSystem, BasicDirectoryService, AutoRefreshHostedService
+
+- **`Configuration/`** - UI and configuration
+  - `config.html` - Main configuration page
+  - `config-*.js` - Modular JavaScript files (core, api, lists, rules, filters, etc.)
+  - `PluginConfiguration.cs` - Plugin configuration model
+
+- **`Utilities/`** - Helper utilities
+  - LibraryManagerHelper, MediaTypeConverter, MediaTypesKey, NameFormatter, ParallelismHelper, RefreshCache, RuntimeCalculator
+
+**Key Classes:**
+- `SmartListDto` - Base class for all smart lists (polymorphic with SmartPlaylistDto and SmartCollectionDto)
+- `SmartList` - Core filtering engine that processes items based on rules
+- `OperandFactory` - Extracts metadata from BaseItem objects
+- `SmartListController` - Unified API controller for both playlists and collections
+
 ## Code Patterns
 Use C# 12+ collection expressions for cleaner code.
 
 ## Media Type Constants
-Use `Jellyfin.Plugin.SmartPlaylist.Constants.MediaTypes` constants instead of hard-coded strings.
+Use `Jellyfin.Plugin.SmartLists.Core.Constants.MediaTypes` constants instead of hard-coded strings.
 
 **❌ Don't:** `mediaType == "Episode"`  
 **✅ Do:** `mediaType == MediaTypes.Episode`
 
-**Available:** `MediaTypes.Episode`, `MediaTypes.Series`, `MediaTypes.Movie`, `MediaTypes.Audio`, `MediaTypes.MusicVideo`
+**Available:** `MediaTypes.Episode`, `MediaTypes.Series`, `MediaTypes.Movie`, `MediaTypes.Audio`, `MediaTypes.MusicVideo`, `MediaTypes.Video`, `MediaTypes.Photo`, `MediaTypes.Book`, `MediaTypes.AudioBook`
 
 ## UI Development
 When adding form fields, implement across all flows: create form (defaults), edit form (backwards compatibility), display views, API handling, backend DTOs.
@@ -81,7 +116,7 @@ logger?.LogDebug("Methods containing 'keyword': [{Methods}]", string.Join(", ", 
 Log analysis:
 ```bash
 grep -A 10 -B 5 "specific_debug_message" jellyfin-data/config/log/log_*.log
-tail -f jellyfin-data/config/log/log_*.log | grep "SmartPlaylist"
+tail -f jellyfin-data/config/log/log_*.log | grep "SmartLists"
 grep -c "expensive_operation" jellyfin-data/config/log/log_*.log
 ```
 
@@ -116,7 +151,7 @@ The project uses **MkDocs** for documentation, located in the `/docs` folder. Wh
 - Build and serve locally: Use `mkdocs serve` from the `/docs` directory
 
 ## Threading and Thread Safety
-Individual playlists are processed using threading for performance. However, multiple playlists are **not** processed simultaneously in parallel.
+Individual lists (playlists and collections) are processed using threading for performance. However, multiple lists are **not** processed simultaneously in parallel.
 
 **Critical:** All code must be **thread-safe**. When working with shared resources, collections, or state:
 - Use thread-safe collections (`ConcurrentDictionary`, `ConcurrentBag`, etc.) when needed
@@ -125,16 +160,18 @@ Individual playlists are processed using threading for performance. However, mul
 - Consider immutability where possible to avoid threading issues
 
 ## Performance Optimization
-Two-phase filtering for expensive fields (AudioLanguages, People):
+Two-phase filtering for expensive fields (AudioLanguages, People, AudioQuality, VideoQuality, Collections):
 1. Phase 1 (Cheap): Extract basic properties, evaluate non-expensive rules
 2. Phase 2 (Expensive): Only for items passing Phase 1, extract expensive data, evaluate complete rules
 
+The two-phase filtering logic is implemented in `Core/SmartList.cs` and uses `MediaTypeExtractionOptions` in `Core/QueryEngine/Factory.cs` to control which expensive fields are extracted.
+
 Adding new expensive fields:
 1. Add property to Operand class as `List<string>` or appropriate type
-2. Modify Factory.cs with extraction logic in expensive field parameter
-3. Update SmartPlaylist.cs filtering with field detection and expensive field condition
-4. Add to API in appropriate field category in SmartPlaylistController.cs
-5. Update UI in config.html if collection field
+2. Modify `Core/QueryEngine/Factory.cs` with extraction logic in `MediaTypeExtractionOptions` parameter
+3. Update `Core/SmartList.cs` filtering with field detection and expensive field condition
+4. Add to API in appropriate field category in `Api/Controllers/SmartListController.cs`
+5. Update UI in `Configuration/config.html` if collection field
 
 ## Jellyfin Data Patterns
 
@@ -154,9 +191,5 @@ Adding new expensive fields:
 - PlayCount, IsFavorite, LastPlayedDate
 
 ## Music Fields
-Artists (track-level) and AlbumArtists (album-level) are separate from People field (movies/TV only). These are cheap operations (simple property access via reflection), not expensive like People (database queries) or AudioLanguages (media stream analysis). NOT included in expensive field optimization logic.
-
-
-### Music Fields
 
 **Artists** (track-level) and **AlbumArtists** (album-level) are separate from **People** field (movies/TV only). These are **cheap operations** (simple property access via reflection), not expensive like People (database queries) or AudioLanguages (media stream analysis). They are NOT included in expensive field optimization logic.

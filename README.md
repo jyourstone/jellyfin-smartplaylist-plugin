@@ -6,7 +6,7 @@
     </p>        
 </div>
 
-> **✨ New:** Collections support has been added! You can now create smart collections in addition to smart playlists.
+### ✨✨ NEW: Collections support! You can now create smart collections in addition to smart playlists. ✨✨
 
 Create smart, rule-based playlists and collections in Jellyfin.
 
@@ -51,7 +51,7 @@ SmartLists features a modern web-based configuration interface with three main t
 
 <div align="center">
 
-### 📖 **[View Full Documentation →](https://jellyfin-smartplaylist.dinsten.se)**
+### 📖 **[View Full Documentation →](https://jellyfin-smartlists-plugin.dinsten.se)**
 
 Complete guide with detailed field descriptions, operators, examples, advanced configuration, and more!
 
