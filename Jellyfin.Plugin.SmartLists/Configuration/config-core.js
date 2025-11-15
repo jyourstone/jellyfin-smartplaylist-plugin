@@ -1,12 +1,6 @@
 (function(SmartLists) {
     'use strict';
     
-    // Initialize namespace if it doesn't exist
-    if (!SmartLists) {
-        window.SmartLists = {};
-        SmartLists = window.SmartLists;
-    }
-    
     // Constants
     SmartLists.PLUGIN_ID = "A0A2A7B2-747A-4113-8B39-757A9D267C79";
     SmartLists.ENDPOINTS = {
@@ -677,6 +671,13 @@
                 }
             }, 300);
         }, 8000);
+    };
+    
+    SmartLists.clearNotification = function() {
+        if (notificationTimeout) {
+            clearTimeout(notificationTimeout);
+            notificationTimeout = null;
+        }
     };
     
     SmartLists.cleanupModalListeners = function(modal) {

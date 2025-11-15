@@ -63,5 +63,82 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
             }
             return formatted.Trim();
         }
+
+        /// <summary>
+        /// Strips the configured prefix and suffix from a collection/playlist name.
+        /// This is useful for matching collection names in rules, where users may enter
+        /// the base name without prefix/suffix, but the actual collection has them applied.
+        /// </summary>
+        /// <param name="formattedName">The formatted name that may contain prefix/suffix</param>
+        /// <returns>The base name without prefix/suffix</returns>
+        public static string StripPrefixAndSuffix(string formattedName)
+        {
+            try
+            {
+                var config = Plugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    // Fallback to default suffix if configuration is not available
+                    return StripPrefixAndSuffixWithSettings(formattedName, "", DefaultSuffix);
+                }
+
+                var prefix = config.PlaylistNamePrefix ?? "";
+                var suffix = config.PlaylistNameSuffix ?? DefaultSuffix;
+
+                return StripPrefixAndSuffixWithSettings(formattedName, prefix, suffix);
+            }
+            catch (Exception)
+            {
+                // Fallback to default behavior if any error occurs
+                return StripPrefixAndSuffixWithSettings(formattedName, "", DefaultSuffix);
+            }
+        }
+
+        /// <summary>
+        /// Strips specific prefix and suffix values from a name.
+        /// </summary>
+        /// <param name="formattedName">The formatted name that may contain prefix/suffix</param>
+        /// <param name="prefix">The prefix to remove (can be null or empty)</param>
+        /// <param name="suffix">The suffix to remove (can be null or empty)</param>
+        /// <returns>The base name without prefix/suffix</returns>
+        public static string StripPrefixAndSuffixWithSettings(string formattedName, string prefix, string suffix)
+        {
+            if (string.IsNullOrEmpty(formattedName))
+                return formattedName;
+
+            var result = formattedName;
+
+            // Remove suffix first (from the end)
+            if (!string.IsNullOrEmpty(suffix))
+            {
+                var suffixWithSpace = " " + suffix;
+                if (result.EndsWith(suffixWithSpace, StringComparison.OrdinalIgnoreCase))
+                {
+                    result = result.Substring(0, result.Length - suffixWithSpace.Length);
+                }
+                // Also check without space (in case of edge cases)
+                else if (result.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    result = result.Substring(0, result.Length - suffix.Length);
+                }
+            }
+
+            // Remove prefix (from the beginning)
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                var prefixWithSpace = prefix + " ";
+                if (result.StartsWith(prefixWithSpace, StringComparison.OrdinalIgnoreCase))
+                {
+                    result = result.Substring(prefixWithSpace.Length);
+                }
+                // Also check without space (in case of edge cases)
+                else if (result.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    result = result.Substring(prefix.Length);
+                }
+            }
+
+            return result.Trim();
+        }
     }
 }

@@ -1345,21 +1345,16 @@
         container.innerHTML = '<p>Loading playlists...</p>';
         
         try {
-            const response = await apiClient.ajax({
+            const playlists = await apiClient.ajax({
                 type: "GET",
                 url: apiClient.getUrl(SmartLists.ENDPOINTS.base),
                 contentType: 'application/json'
             });
             
-            if (!response.ok) { 
-                throw new Error('HTTP ' + response.status + ': ' + response.statusText); 
-            }
-            
-            const playlists = await response.json();
+            // Validate that playlists is an array
             let processedPlaylists = playlists;
-            // Ensure playlists is an array
             if (!Array.isArray(processedPlaylists)) {
-                console.warn('API returned non-array playlists data, converting to empty array');
+                console.warn('API returned non-array playlists data, converting to empty array. Received:', typeof processedPlaylists);
                 processedPlaylists = [];
             }
             
@@ -1375,12 +1370,11 @@
             
             // Preload all users to populate cache for user name resolution
             try {
-                const usersResponse = await apiClient.ajax({
+                const users = await apiClient.ajax({
                     type: 'GET',
                     url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
                     contentType: 'application/json'
                 });
-                const users = await usersResponse.json();
                 
                 // Build cache from all users for user name resolution
                 if (Array.isArray(users)) {
@@ -1391,6 +1385,8 @@
                             userNameCache.set(normalizedId, user.Name);
                         }
                     });
+                } else {
+                    console.warn('API returned non-array users data. Received:', typeof users);
                 }
             } catch (err) {
                 console.error('Error preloading users:', err);

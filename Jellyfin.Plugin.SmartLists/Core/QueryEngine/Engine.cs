@@ -8,6 +8,7 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
 using Jellyfin.Plugin.SmartLists.Core.Models;
+using Jellyfin.Plugin.SmartLists.Utilities;
 
 namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 {
@@ -818,8 +819,21 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             {
                 logger?.LogDebug("SmartLists applying collection Equal to {Field} with value '{Value}'", r.MemberName, r.TargetValue);
                 var right = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
-                var method = typeof(Engine).GetMethod("AnyItemEquals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                if (method == null) throw new InvalidOperationException("Engine.AnyItemEquals method not found");
+                
+                // Use special method for Collections that handles prefix/suffix stripping
+                // For other fields, use the standard AnyItemEquals method
+                System.Reflection.MethodInfo? method;
+                if (r.MemberName == "Collections")
+                {
+                    method = typeof(Engine).GetMethod("AnyCollectionEquals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    if (method == null) throw new InvalidOperationException("Engine.AnyCollectionEquals method not found");
+                }
+                else
+                {
+                    method = typeof(Engine).GetMethod("AnyItemEquals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    if (method == null) throw new InvalidOperationException("Engine.AnyItemEquals method not found");
+                }
+                
                 return System.Linq.Expressions.Expression.Call(method, left, right);
             }
 
@@ -1004,6 +1018,20 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             if (list == null) return false;
             return list.Any(s => s != null && s.Equals(value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Checks if any item in the collection list equals the target value.
+        /// For Collections field, this also checks items without prefix/suffix.
+        /// This handles cases where collections have prefix/suffix applied but users enter base name.
+        /// </summary>
+        internal static bool AnyCollectionEquals(IEnumerable<string> list, string value)
+        {
+            if (list == null) return false;
+            return list.Any(s => 
+                s != null && 
+                (s.Equals(value, StringComparison.OrdinalIgnoreCase) ||
+                 NameFormatter.StripPrefixAndSuffix(s).Equals(value, StringComparison.OrdinalIgnoreCase)));
         }
 
         internal static bool AnyRegexMatch(IEnumerable<string> list, string pattern)

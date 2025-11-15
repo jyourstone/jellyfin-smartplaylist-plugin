@@ -7,6 +7,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartLists.Core.QueryEngine;
 using Jellyfin.Plugin.SmartLists.Core.Models;
+using Jellyfin.Plugin.SmartLists.Utilities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -984,8 +985,12 @@ namespace Jellyfin.Plugin.SmartLists.Core
             switch (expr.Operator)
             {
                 case "Equal":
-                    // Reuse Engine helper for consistency and null safety
-                    return Engine.AnyItemEquals(collections, expr.TargetValue);
+                    // Check both exact name match and name without prefix/suffix
+                    // This handles cases where collections have prefix/suffix applied but users enter base name
+                    return collections.Any(c => 
+                        c != null && 
+                        (c.Equals(expr.TargetValue, StringComparison.OrdinalIgnoreCase) ||
+                         NameFormatter.StripPrefixAndSuffix(c).Equals(expr.TargetValue, StringComparison.OrdinalIgnoreCase)));
 
                 case "Contains":
                     // Reuse Engine helper for consistency and null safety
@@ -1033,6 +1038,15 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 foreach (var collection in allCollections)
                 {
                     if (collection == null) continue;
+
+                    // Skip if this collection is the same as the one we're currently building (prevent self-reference)
+                    var collectionBaseName = NameFormatter.StripPrefixAndSuffix(collection.Name);
+                    var currentListBaseName = NameFormatter.StripPrefixAndSuffix(Name);
+                    if (collectionBaseName.Equals(currentListBaseName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        logger?.LogDebug("Skipping collection '{CollectionName}' - matches current collection being built (preventing self-reference)", collection.Name);
+                        continue;
+                    }
 
                     // Check if this collection's name matches any Collections rule with IncludeCollectionOnly=true
                     var collectionNames = new List<string> { collection.Name };

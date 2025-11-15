@@ -1320,9 +1320,8 @@
         }
         
         // Clean up notification timer
-        if (typeof notificationTimeout !== 'undefined' && notificationTimeout) {
-            clearTimeout(notificationTimeout);
-            notificationTimeout = null;
+        if (SmartLists.clearNotification) {
+            SmartLists.clearNotification();
         }
         
         // Clean up navigation listeners
