@@ -2,6 +2,21 @@
 alwaysApply: true
 ---
 
+## Code Quality Principles
+
+### DRY (Don't Repeat Yourself)
+**Always apply the DRY principle.** When you find duplicated code or logic:
+- Extract it into a helper function or utility
+- Reuse existing helpers instead of recreating similar functionality
+- Prefer creating a new utility over copying and pasting code
+
+Duplicated code leads to:
+- Maintenance burden (fixing bugs in multiple places)
+- Inconsistencies (forgetting to update all copies)
+- Larger codebase with more surface area for bugs
+
+**Example**: If error handling logic is repeated across multiple API calls, extract it into a reusable `extractErrorMessage` utility function.
+
 ## Development Environment
 Local development is contained in `/dev` directory. Use `./build-local.sh` from `/dev` for builds. Don't modify files outside `/dev` for local testing.
 

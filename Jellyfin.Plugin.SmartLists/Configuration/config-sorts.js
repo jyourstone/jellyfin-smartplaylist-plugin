@@ -519,14 +519,7 @@
         let boxes = sortsContainer.querySelectorAll('.sort-box');
         boxes.forEach(function(box, index) {
             if (index > 0) { // Skip first box
-                const separator = document.createElement('div');
-                separator.className = 'sort-separator';
-                separator.style.textAlign = 'center';
-                separator.style.margin = '0.5em 0';
-                separator.style.color = '#888';
-                separator.style.fontSize = '0.9em';
-                separator.style.fontWeight = 'bold';
-                separator.textContent = 'AND THEN';
+                const separator = SmartLists.createSortSeparator();
                 
                 // Insert separator before this box
                 box.parentNode.insertBefore(separator, box);

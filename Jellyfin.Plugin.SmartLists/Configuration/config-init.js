@@ -2,7 +2,7 @@
     'use strict';
 
     // Initialize namespace if it doesn't exist
-    if (!SmartLists) {
+    if (!window.SmartLists) {
         window.SmartLists = {};
         SmartLists = window.SmartLists;
     }
@@ -1200,52 +1200,11 @@
         }).catch(async function(err) {
             Dashboard.hideLoadingMsg();
             
-            // Enhanced error handling for API responses
-            let errorMessage = 'An unexpected error occurred, check the logs for more details.';
-            
-            try {
-                // Check if this is a Response object (from fetch API)
-                if (err && typeof err.json === 'function') {
-                    try {
-                        const errorData = await err.json();
-                        if (errorData.message) {
-                            errorMessage = errorData.message;
-                        } else if (typeof errorData === 'string') {
-                            errorMessage = errorData;
-                        }
-                    } catch (parseError) {
-                        // If JSON parsing fails, try to get text
-                        try {
-                            const textContent = await err.text();
-                            if (textContent) {
-                                errorMessage = textContent;
-                            }
-                        } catch (textError) {
-                            console.log('Could not extract error text:', textError);
-                        }
-                    }
-                }
-                // Check if the error has response text (legacy error format)
-                else if (err.responseText) {
-                    try {
-                        const errorData = JSON.parse(err.responseText);
-                        if (errorData.message) {
-                            errorMessage = errorData.message;
-                        } else if (typeof errorData === 'string') {
-                            errorMessage = errorData;
-                        }
-                    } catch (parseError) {
-                        // If JSON parsing fails, use the raw response text
-                        errorMessage = err.responseText;
-                    }
-                }
-                // Check if the error has a message property
-                else if (err.message) {
-                    errorMessage = err.message;
-                }
-            } catch (extractError) {
-                console.error('Error extracting error message:', extractError);
-            }
+            // Extract error message using utility function
+            const errorMessage = await SmartLists.extractErrorMessage(
+                err, 
+                'An unexpected error occurred, check the logs for more details.'
+            );
             
             SmartLists.showNotification('Failed to refresh all playlists: ' + errorMessage, 'error');
         });

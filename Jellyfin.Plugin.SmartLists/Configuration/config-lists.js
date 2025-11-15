@@ -866,7 +866,7 @@
             contentType: 'application/json'
         }).then(function() {
             Dashboard.hideLoadingMsg();
-            SmartLists.showNotification('Playlist "' + playlistName + '" has been refreshed successfully.', 'success');
+            SmartLists.showNotification('List "' + playlistName + '" has been refreshed successfully.', 'success');
             
             // Auto-refresh the playlist list to show updated LastRefreshed timestamp
             const page = document.querySelector('.SmartListsConfigurationPage');
@@ -876,49 +876,14 @@
         }).catch(async function(err) {
             Dashboard.hideLoadingMsg();
             
-            // Enhanced error handling for API responses
-            let errorMessage = 'An unexpected error occurred, check the logs for more details.';
+            // Extract error message using utility function
+            const errorMessage = await SmartLists.extractErrorMessage(
+                err, 
+                'An unexpected error occurred, check the logs for more details.'
+            );
             
-            // Check if this is a Response object (from fetch API)
-            if (err && typeof err.json === 'function') {
-                try {
-                    const errorData = await err.json();
-                    if (errorData.message) {
-                        errorMessage = errorData.message;
-                    } else if (typeof errorData === 'string') {
-                        errorMessage = errorData;
-                    }
-                } catch (jsonError) {
-                    // If JSON parsing fails, try to get text
-                    try {
-                        const textContent = await err.text();
-                        if (textContent) {
-                            errorMessage = textContent;
-                        }
-                    } catch (textError) {
-                        // Ignore text extraction errors
-                    }
-                }
-            }
-            // Check if the error has response text (legacy error format)
-            else if (err.responseText) {
-                try {
-                    const errorData = JSON.parse(err.responseText);
-                    if (errorData.message) {
-                        errorMessage = errorData.message;
-                    } else if (typeof errorData === 'string') {
-                        errorMessage = errorData;
-                    }
-                } catch (parseError) {
-                    // If JSON parsing fails, use the raw response text
-                    errorMessage = err.responseText;
-                }
-            } else if (err.message) {
-                errorMessage = err.message;
-            }
-            
-            const fullMessage = 'Failed to refresh playlist "' + playlistName + '": ' + errorMessage;
-            console.error('Playlist refresh error:', fullMessage, err);
+            const fullMessage = 'Failed to refresh list "' + playlistName + '": ' + errorMessage;
+            console.error('List refresh error:', fullMessage, err);
             SmartLists.showNotification(fullMessage, 'error');
         });
     };
@@ -976,7 +941,7 @@
 
     // ===== SEARCH INPUT STATE MANAGEMENT =====
     SmartLists.setSearchInputState = function(page, disabled, placeholder) {
-        placeholder = placeholder !== undefined ? placeholder : 'Search list...';
+        placeholder = placeholder !== undefined ? placeholder : 'Search lists...';
         try {
             const searchInput = page.querySelector('#playlistSearchInput');
             const clearSearchBtn = page.querySelector('#clearSearchBtn');
@@ -989,7 +954,7 @@
                 if (!page._originalSearchState) {
                     page._originalSearchState = {
                         disabled: false,
-                        placeholder: 'Search list...'
+                        placeholder: 'Search lists...'
                     };
                 }
             }

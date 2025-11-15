@@ -143,6 +143,58 @@
             .replace(/>/g, '&gt;');
     };
     
+    // Extract error message from API error responses
+    // Handles both modern Response objects and legacy error formats
+    SmartLists.extractErrorMessage = async function(err, defaultMessage) {
+        if (!err) return defaultMessage;
+        
+        try {
+            // Check if this is a Response object (from fetch API)
+            if (err && typeof err.json === 'function') {
+                try {
+                    const errorData = await err.json();
+                    if (errorData.message) {
+                        return errorData.message;
+                    } else if (typeof errorData === 'string') {
+                        return errorData;
+                    }
+                } catch (parseError) {
+                    // If JSON parsing fails, try to get text
+                    try {
+                        const textContent = await err.text();
+                        if (textContent) {
+                            return textContent;
+                        }
+                    } catch (textError) {
+                        console.log('Could not extract error text:', textError);
+                    }
+                }
+            }
+            // Check if the error has response text (legacy error format)
+            else if (err.responseText) {
+                try {
+                    const errorData = JSON.parse(err.responseText);
+                    if (errorData.message) {
+                        return errorData.message;
+                    } else if (typeof errorData === 'string') {
+                        return errorData;
+                    }
+                } catch (parseError) {
+                    // If JSON parsing fails, use the raw response text
+                    return err.responseText;
+                }
+            }
+            // Check if the error has a message property
+            else if (err.message) {
+                return err.message;
+            }
+        } catch (extractError) {
+            console.error('Error extracting error message:', extractError);
+        }
+        
+        return defaultMessage;
+    };
+    
     // Custom error class for API errors
     SmartLists.ApiError = function(message, status) {
         this.name = 'ApiError';
