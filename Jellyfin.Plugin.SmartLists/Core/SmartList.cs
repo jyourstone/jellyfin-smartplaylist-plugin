@@ -63,7 +63,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             Id = dto.Id ?? throw new ArgumentException("Playlist ID cannot be null", nameof(dto));
             Name = dto.Name;
             FileName = dto.FileName ?? $"{dto.Id}.json";
-            UserId = Guid.TryParse(dto.User, out var userId) ? userId : Guid.Empty;
+            UserId = Guid.TryParse(dto.UserId, out var userId) ? userId : Guid.Empty;
 
             // Initialize properties before calling InitializeFromDto
             Orders = [];
@@ -79,7 +79,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             Id = dto.Id ?? throw new ArgumentException("Collection ID cannot be null", nameof(dto));
             Name = dto.Name;
             FileName = dto.FileName ?? $"{dto.Id}.json";
-            UserId = Guid.TryParse(dto.User, out var userId) ? userId : Guid.Empty; // Owner user for rule context (IsPlayed, IsFavorite, etc.)
+            UserId = Guid.TryParse(dto.UserId, out var userId) ? userId : Guid.Empty; // Owner user for rule context (IsPlayed, IsFavorite, etc.)
 
             // Initialize properties before calling InitializeFromDto
             Orders = [];

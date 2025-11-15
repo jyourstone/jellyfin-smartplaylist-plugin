@@ -95,9 +95,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 // Collections use an owner user for rule context (IsPlayed, IsFavorite, etc.)
                 // The collection is server-wide (visible to all), but rules evaluate in the owner's context
                 // and the query must be executed in the owner's context to get the correct media items
-                if (!Guid.TryParse(dto.User, out var ownerUserId) || ownerUserId == Guid.Empty)
+                if (!Guid.TryParse(dto.UserId, out var ownerUserId) || ownerUserId == Guid.Empty)
                 {
-                    _logger.LogError("Collection owner user ID is invalid or empty: {User}", dto.User);
+                    _logger.LogError("Collection owner user ID is invalid or empty: {User}", dto.UserId);
                     return (false, $"Collection owner user is required. Please set a valid owner.", string.Empty);
                 }
                 
@@ -105,7 +105,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 
                 if (ownerUser == null)
                 {
-                    _logger.LogError("Collection owner user {User} not found - cannot filter collection items", dto.User);
+                    _logger.LogError("Collection owner user {User} not found - cannot filter collection items", dto.UserId);
                     return (false, $"Collection owner user not found. Please set a valid owner.", string.Empty);
                 }
 

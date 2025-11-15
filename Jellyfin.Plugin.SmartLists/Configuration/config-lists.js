@@ -26,7 +26,7 @@
         if (!playlist) {
             return Promise.resolve('Unknown User');
         }
-        const userId = playlist.User;  // User field contains the user ID (as string)
+        const userId = playlist.UserId;  // User field contains the user ID (as string)
         if (userId && userId !== '' && userId !== '00000000-0000-0000-0000-000000000000') {
             return SmartLists.resolveUserIdToName(apiClient, userId).then(function(name) {
                 return name || 'Unknown User';
@@ -188,7 +188,7 @@
             };
             
             // Add type-specific fields
-            playlistDto.User = userId;  // User field is shared by both playlists and collections
+            playlistDto.UserId = userId;  // User field is shared by both playlists and collections
             
             if (isCollection) {
                 // Collections are server-wide, no library assignment needed
@@ -400,7 +400,7 @@
                 
                 // Set the list owner (for both playlists and collections)
                 // Convert User to string if it's not already (handles both Guid and string formats)
-                const userIdString = playlist.User ? String(playlist.User) : null;
+                const userIdString = playlist.UserId ? String(playlist.UserId) : null;
                 if (userIdString) {
                     SmartLists.setUserIdValueWithRetry(page, userIdString);
                 }
@@ -719,7 +719,7 @@
                 const clonedMediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? playlist.MediaTypes : [];
                 
                 // Set the list owner (for both playlists and collections)
-                const userIdString = playlist.User ? String(playlist.User) : null;
+                const userIdString = playlist.UserId ? String(playlist.UserId) : null;
                 if (userIdString) {
                     SmartLists.setUserIdValueWithRetry(page, userIdString);
                 }

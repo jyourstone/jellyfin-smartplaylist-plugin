@@ -57,6 +57,8 @@ jobs:
         run: |
           mkdir -p staging
           cp ./build_output/Jellyfin.Plugin.SmartLists.dll staging/
+          cp ./build_output/SixLabors.ImageSharp.dll staging/
+          cp ./build_output/Jellyfin.Plugin.SmartLists.deps.json staging/
           cp images/logo.jpg staging/logo.jpg
           cd staging
           zip -X ../Jellyfin.Plugin.SmartLists_${{ github.ref_name }}.zip *

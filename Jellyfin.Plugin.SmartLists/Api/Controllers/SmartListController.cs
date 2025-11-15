@@ -127,7 +127,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         private static Guid GetPlaylistUserId(SmartPlaylistDto playlist)
         {
             // If User field is set and not empty, parse and return it
-            if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var userId) && userId != Guid.Empty)
+            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId) && userId != Guid.Empty)
             {
                 return userId;
             }
@@ -392,7 +392,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 });
             }
 
-            if (string.IsNullOrEmpty(playlist.User) || !Guid.TryParse(playlist.User, out var playlistUserId) || playlistUserId == Guid.Empty)
+            if (string.IsNullOrEmpty(playlist.UserId) || !Guid.TryParse(playlist.UserId, out var playlistUserId) || playlistUserId == Guid.Empty)
             {
                 logger.LogWarning("CreateSmartPlaylist called with empty or invalid User. Name={Name}", playlist.Name);
                 return BadRequest(new ProblemDetails
@@ -406,7 +406,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             var stopwatch = Stopwatch.StartNew();
             logger.LogDebug("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist.Name);
             logger.LogDebug("Playlist data received: Name={Name}, User={User}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}",
-                playlist.Name, playlist.User, playlist.Public, playlist.ExpressionSets?.Count ?? 0,
+                playlist.Name, playlist.UserId, playlist.Public, playlist.ExpressionSets?.Count ?? 0,
                 playlist.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
 
             if (playlist.ExpressionSets != null)
@@ -534,7 +534,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 // DEBUG: Check the MediaType of the created Jellyfin playlist
                 try
                 {
-                    if (Guid.TryParse(createdPlaylist.User, out var userId))
+                    if (Guid.TryParse(createdPlaylist.UserId, out var userId))
                     {
                         var user = _userManager.GetUserById(userId);
                         if (user != null)
@@ -602,7 +602,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             }
 
             // Set default owner user if not specified
-            if (string.IsNullOrEmpty(collection.User) || !Guid.TryParse(collection.User, out var userId) || userId == Guid.Empty)
+            if (string.IsNullOrEmpty(collection.UserId) || !Guid.TryParse(collection.UserId, out var userId) || userId == Guid.Empty)
             {
                 // Default to currently logged-in user
                 var currentUserId = GetCurrentUserId();
@@ -612,7 +612,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var currentUser = _userManager.GetUserById(currentUserId);
                     if (currentUser != null)
                     {
-                        collection.User = currentUser.Id.ToString("D");
+                        collection.UserId = currentUser.Id.ToString("D");
                         logger.LogDebug("Set default collection owner to currently logged-in user: {Username} ({UserId})", currentUser.Username, currentUser.Id);
                     }
                     else
@@ -621,7 +621,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var defaultUser = _userManager.Users.FirstOrDefault();
                         if (defaultUser != null)
                         {
-                            collection.User = defaultUser.Id.ToString("D");
+                            collection.UserId = defaultUser.Id.ToString("D");
                             logger.LogDebug("Set default collection owner to first user: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                         }
                     }
@@ -632,12 +632,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var defaultUser = _userManager.Users.FirstOrDefault();
                     if (defaultUser != null)
                     {
-                        collection.User = defaultUser.Id.ToString("D");
+                        collection.UserId = defaultUser.Id.ToString("D");
                         logger.LogDebug("Set default collection owner to first user: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                     }
                 }
                 
-                if (string.IsNullOrEmpty(collection.User))
+                if (string.IsNullOrEmpty(collection.UserId))
                 {
                     logger.LogError("No users found to set as collection owner");
                     return BadRequest(new ProblemDetails
@@ -877,9 +877,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         playlistDto.JellyfinPlaylistId = null; // Clear old Jellyfin ID
                         
                         // Ensure User field is set (required for playlists)
-                        if (string.IsNullOrEmpty(playlistDto.User))
+                        if (string.IsNullOrEmpty(playlistDto.UserId))
                         {
-                            playlistDto.User = existingCollection.User; // Carry over from collection
+                            playlistDto.UserId = existingCollection.UserId; // Carry over from collection
                         }
                         
                         // Create the new Jellyfin playlist first (this populates JellyfinPlaylistId)
@@ -975,12 +975,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 // Preserve User if not provided (frontend might not send it during edit)
                 var originalUserId = GetPlaylistUserId(existingPlaylist);
                 var newUserIdParsed = Guid.Empty;
-                if ((string.IsNullOrEmpty(playlist.User) || !Guid.TryParse(playlist.User, out newUserIdParsed) || newUserIdParsed == Guid.Empty) && originalUserId != Guid.Empty)
+                if ((string.IsNullOrEmpty(playlist.UserId) || !Guid.TryParse(playlist.UserId, out newUserIdParsed) || newUserIdParsed == Guid.Empty) && originalUserId != Guid.Empty)
                 {
-                    playlist.User = originalUserId.ToString("D");
+                    playlist.UserId = originalUserId.ToString("D");
                     newUserIdParsed = originalUserId;
                 }
-                else if (!string.IsNullOrEmpty(playlist.User) && !Guid.TryParse(playlist.User, out newUserIdParsed))
+                else if (!string.IsNullOrEmpty(playlist.UserId) && !Guid.TryParse(playlist.UserId, out newUserIdParsed))
                 {
                     newUserIdParsed = Guid.Empty;
                 }
@@ -1094,7 +1094,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
 
                 // Set default owner user if not specified (same as CreateCollectionInternal)
-                if (string.IsNullOrEmpty(collection.User) || !Guid.TryParse(collection.User, out var userId) || userId == Guid.Empty)
+                if (string.IsNullOrEmpty(collection.UserId) || !Guid.TryParse(collection.UserId, out var userId) || userId == Guid.Empty)
                 {
                     // Default to currently logged-in user
                     var currentUserId = GetCurrentUserId();
@@ -1104,7 +1104,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var currentUser = _userManager.GetUserById(currentUserId);
                         if (currentUser != null)
                         {
-                            collection.User = currentUser.Id.ToString("D");
+                            collection.UserId = currentUser.Id.ToString("D");
                             logger.LogDebug("Set default collection owner to currently logged-in user during update: {Username} ({UserId})", currentUser.Username, currentUser.Id);
                         }
                         else
@@ -1113,7 +1113,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             var defaultUser = _userManager.Users.FirstOrDefault();
                             if (defaultUser != null)
                             {
-                                collection.User = defaultUser.Id.ToString("D");
+                                collection.UserId = defaultUser.Id.ToString("D");
                                 logger.LogDebug("Set default collection owner to first user during update: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                             }
                         }
@@ -1124,12 +1124,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var defaultUser = _userManager.Users.FirstOrDefault();
                         if (defaultUser != null)
                         {
-                            collection.User = defaultUser.Id.ToString("D");
+                            collection.UserId = defaultUser.Id.ToString("D");
                             logger.LogDebug("Set default collection owner to first user during update: {Username} ({UserId})", defaultUser.Username, defaultUser.Id);
                         }
                     }
                     
-                    if (string.IsNullOrEmpty(collection.User))
+                    if (string.IsNullOrEmpty(collection.UserId))
                     {
                         logger.LogError("No users found to set as collection owner during update");
                         return BadRequest(new ProblemDetails
@@ -2097,7 +2097,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             Guid currentUserId = Guid.Empty;
 
                             // Check playlist owner
-                            if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
+                            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
                             {
                                 var user = _userManager.GetUserById(playlistUserIdParsed);
                                 if (user == null)
@@ -2109,7 +2109,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                         if (currentUserId == Guid.Empty)
                                         {
                                             logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} but cannot determine importing user for reassignment",
-                                                playlist.Name, playlist.User);
+                                                playlist.Name, playlist.UserId);
                                             importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
                                             errorCount++;
                                             continue; // Skip this entire playlist,
@@ -2117,9 +2117,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                     }
 
                                     logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
-                                        playlist.Name, playlist.User, currentUserId);
+                                        playlist.Name, playlist.UserId, currentUserId);
 
-                                    playlist.User = currentUserId.ToString("D");
+                                    playlist.UserId = currentUserId.ToString("D");
                                     reassignedUsers = true;
                                 }
                             }
@@ -2180,7 +2180,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             Guid currentUserId = Guid.Empty;
 
                             // Check collection user
-                            if (!string.IsNullOrEmpty(collection.User) && Guid.TryParse(collection.User, out var collectionUserIdParsed) && collectionUserIdParsed != Guid.Empty)
+                            if (!string.IsNullOrEmpty(collection.UserId) && Guid.TryParse(collection.UserId, out var collectionUserIdParsed) && collectionUserIdParsed != Guid.Empty)
                             {
                                 var user = _userManager.GetUserById(collectionUserIdParsed);
                                 if (user == null)
@@ -2192,7 +2192,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                         if (currentUserId == Guid.Empty)
                                         {
                                             logger.LogWarning("Collection '{CollectionName}' references non-existent user {User} but cannot determine importing user for reassignment",
-                                                collection.Name, collection.User);
+                                                collection.Name, collection.UserId);
                                             importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign collection - unable to determine importing user" });
                                             errorCount++;
                                             continue; // Skip this entire collection,
@@ -2200,9 +2200,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                     }
 
                                     logger.LogWarning("Collection '{CollectionName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
-                                        collection.Name, collection.User, currentUserId);
+                                        collection.Name, collection.UserId, currentUserId);
 
-                                    collection.User = currentUserId.ToString("D");
+                                    collection.UserId = currentUserId.ToString("D");
                                     reassignedUsers = true;
                                 }
                             }

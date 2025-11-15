@@ -282,7 +282,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             {
                 _logger.LogDebug("Refreshing single smart playlist: {PlaylistName}", dto.Name);
                 _logger.LogDebug("PlaylistService.RefreshSinglePlaylistAsync called with: Name={Name}, User={User}, Public={Public}, Enabled={Enabled}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}",
-                    dto.Name, dto.User, dto.Public, dto.Enabled, dto.ExpressionSets?.Count ?? 0,
+                    dto.Name, dto.UserId, dto.Public, dto.Enabled, dto.ExpressionSets?.Count ?? 0,
                     dto.MediaTypes != null ? string.Join(",", dto.MediaTypes) : "None");
 
                 // Validate media types before processing
@@ -732,7 +732,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         private User? GetPlaylistUser(SmartPlaylistDto playlist)
         {
             // Parse User field and get the user
-            if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var userId) && userId != Guid.Empty)
+            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId) && userId != Guid.Empty)
             {
                 return _userManager.GetUserById(userId);
             }

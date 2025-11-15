@@ -33,7 +33,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         /// <summary>
         /// Owner user ID - the user this list belongs to or whose context is used for rule evaluation
         /// </summary>
-        public string User { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
 
         // Query and filtering
         public List<ExpressionSet> ExpressionSets { get; set; } = [];

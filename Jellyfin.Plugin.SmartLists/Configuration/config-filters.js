@@ -61,7 +61,7 @@
                 
                 return playlists.filter(function(playlist) {
                     // User filter applies to both playlists (owner) and collections (rule context user)
-                    return playlist.User === userFilter;
+                    return playlist.UserId === userFilter;
                 });
             }
         },
@@ -154,8 +154,8 @@
             }
             
             // Search in username (resolved from User ID)
-            if (page && page._usernameCache && playlist.User) {
-                const username = page._usernameCache.get(playlist.User);
+            if (page && page._usernameCache && playlist.UserId) {
+                const username = page._usernameCache.get(playlist.UserId);
                 if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
                     return true;
                 }

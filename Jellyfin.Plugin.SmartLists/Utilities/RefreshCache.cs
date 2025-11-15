@@ -82,7 +82,7 @@ namespace Jellyfin.Plugin.SmartLists
 
                 // Handle playlists with missing/invalid User first
                 var playlistsWithInvalidUser = playlists
-                    .Where(p => string.IsNullOrEmpty(p.User) || !Guid.TryParse(p.User, out var userId) || userId == Guid.Empty)
+                    .Where(p => string.IsNullOrEmpty(p.UserId) || !Guid.TryParse(p.UserId, out var userId) || userId == Guid.Empty)
                     .ToList();
                 if (playlistsWithInvalidUser.Any())
                 {
@@ -104,8 +104,8 @@ namespace Jellyfin.Plugin.SmartLists
 
                 // Group playlists by user (same as legacy tasks)
                 var playlistsByUser = playlists
-                    .Where(p => !string.IsNullOrEmpty(p.User) && Guid.TryParse(p.User, out var userId) && userId != Guid.Empty)
-                    .GroupBy(p => Guid.Parse(p.User))
+                    .Where(p => !string.IsNullOrEmpty(p.UserId) && Guid.TryParse(p.UserId, out var userId) && userId != Guid.Empty)
+                    .GroupBy(p => Guid.Parse(p.UserId))
                     .ToDictionary(g => g.Key, g => g.ToList());
 
                 if (!playlistsByUser.Any())

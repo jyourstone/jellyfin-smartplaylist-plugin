@@ -42,8 +42,10 @@
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="10.11.0" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.0" />
+    <!-- ImageSharp is bundled with the plugin as Jellyfin doesn't provide it -->
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12">
-      <PrivateAssets>none</PrivateAssets>
+      <Private>true</Private>
+      <CopyLocal>true</CopyLocal>
     </PackageReference>
   </ItemGroup>
 

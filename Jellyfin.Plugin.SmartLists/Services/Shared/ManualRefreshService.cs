@@ -123,7 +123,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
         private static Task<Guid> GetPlaylistUserIdAsync(SmartPlaylistDto playlist)
         {
-            if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var userId))
+            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId))
             {
                 return Task.FromResult(userId);
             }

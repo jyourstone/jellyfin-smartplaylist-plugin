@@ -1013,7 +1013,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             try
             {
                 // Check if the user is the playlist owner
-                if (!string.IsNullOrEmpty(playlist.User) && Guid.TryParse(playlist.User, out var playlistUserId) && playlistUserId == userId)
+                if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var playlistUserId) && playlistUserId == userId)
                 {
                     return true;
                 }

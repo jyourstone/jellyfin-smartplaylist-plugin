@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Jellyfin.Plugin.SmartLists.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -15,6 +16,9 @@ namespace Jellyfin.Plugin.SmartLists
             : base(applicationPaths, xmlSerializer)
         {
             Instance = this;
+            
+            // Register assembly resolver to help .NET find ImageSharp DLL
+            AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
         }
 
         public override Guid Id => Guid.Parse("A0A2A7B2-747A-4113-8B39-757A9D267C79");
@@ -25,6 +29,34 @@ namespace Jellyfin.Plugin.SmartLists
         /// Gets the current plugin instance.
         /// </summary>
         public static Plugin? Instance { get; private set; }
+
+        /// <summary>
+        /// Resolves assembly loading for SixLabors.ImageSharp.
+        /// </summary>
+        private Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
+        {
+            // Only handle ImageSharp assembly
+            var assemblyName = new AssemblyName(args.Name);
+            if (!assemblyName.Name!.Equals("SixLabors.ImageSharp", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            // Try to load from the plugin directory
+            var pluginDirectory = System.IO.Path.GetDirectoryName(GetType().Assembly.Location);
+            if (string.IsNullOrEmpty(pluginDirectory))
+            {
+                return null;
+            }
+
+            var imageSharpPath = System.IO.Path.Combine(pluginDirectory, "SixLabors.ImageSharp.dll");
+            if (System.IO.File.Exists(imageSharpPath))
+            {
+                return Assembly.LoadFrom(imageSharpPath);
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Gets the plugin's web pages.
