@@ -407,14 +407,14 @@
         // Create the main container with EXACT same styling as standard Jellyfin inputs
         const tagContainer = document.createElement('div');
         tagContainer.className = 'tag-input-container';
-        tagContainer.style.cssText = 'width: 100%; min-height: 38px; border: none; border-radius: 0; background: #292929; padding: 0.5em; display: flex; flex-wrap: wrap; gap: 0.5em; align-items: flex-start; box-sizing: border-box; align-content: flex-start;';
+        tagContainer.style.cssText = 'width: 100%; border: none; border-radius: 0; background: #292929; padding: 0.55em 0.5em; display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center; box-sizing: border-box; align-content: flex-start;';
         
         // Create the input field with standard Jellyfin styling
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'emby-input tag-input-field';
         input.placeholder = 'Type a value and press Enter';
-        input.style.cssText = 'border: none; background: transparent; color: #fff; flex: 1; min-width: 200px; outline: none; font-size: 0.9em; font-family: inherit;';
+        input.style.cssText = 'border: none; background: transparent; color: #fff; flex: 1; min-width: 200px; outline: none; font-family: inherit; padding: 0; margin: 0;';
         input.setAttribute('data-input-type', 'tag-input');
         
         // Use page-level ::placeholder styling (see config.html)
@@ -1344,17 +1344,17 @@
                 const listType = page ? SmartLists.getElementValue(page, '#listType', 'Playlist') : 'Playlist';
                 const isCollection = listType === 'Collection';
                 
-                // Show collections options
-                collectionsOptionsDiv.style.display = 'block';
-                
                 // Show/hide collection-only option based on list type
                 const collectionOnlyDiv = ruleRow.querySelector('.rule-collections-collection-only');
+                let collectionOnlyVisible = false;
                 if (collectionOnlyDiv) {
                     collectionOnlyDiv.style.display = isCollection ? 'block' : 'none';
+                    collectionOnlyVisible = isCollection;
                 }
                 
                 // Show/hide episodes option (hidden if collection-only is yes OR Episode media type is not selected)
                 const episodesDiv = ruleRow.querySelector('.rule-collections-episodes');
+                let episodesVisible = false;
                 if (episodesDiv) {
                     const collectionOnlySelect = ruleRow.querySelector('.rule-collections-collection-only-select');
                     const isCollectionOnly = collectionOnlySelect && collectionOnlySelect.value === 'true';
@@ -1364,8 +1364,12 @@
                     const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
                     
                     // Show only if collection-only is disabled AND Episode media type is selected
-                    episodesDiv.style.display = (isCollectionOnly || !hasEpisode) ? 'none' : 'block';
+                    episodesVisible = !isCollectionOnly && hasEpisode;
+                    episodesDiv.style.display = episodesVisible ? 'block' : 'none';
                 }
+                
+                // Only show the container if at least one inner option is visible
+                collectionsOptionsDiv.style.display = (collectionOnlyVisible || episodesVisible) ? 'block' : 'none';
             } else {
                 // Hide but preserve user's selection - don't reset value
                 collectionsOptionsDiv.style.display = 'none';

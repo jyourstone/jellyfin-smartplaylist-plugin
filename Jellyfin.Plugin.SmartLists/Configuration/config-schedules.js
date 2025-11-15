@@ -360,5 +360,67 @@
         schedulesContainer.appendChild(addBtn);
     };
     
+    // Helper function to apply default schedule from config (DRY)
+    SmartLists.applyDefaultScheduleFromConfig = function(page, config) {
+        // Apply default schedule if configured
+        if (config.DefaultScheduleTrigger && config.DefaultScheduleTrigger !== '') {
+            const defaultSchedule = {
+                Trigger: config.DefaultScheduleTrigger
+            };
+            
+            // Add schedule-specific fields based on trigger type
+            if (config.DefaultScheduleTrigger === 'Daily') {
+                if (config.DefaultScheduleTime) {
+                    const timeParts = config.DefaultScheduleTime.split(':');
+                    if (timeParts.length >= 2) {
+                        defaultSchedule.Time = timeParts[0] + ':' + timeParts[1] + ':00';
+                    }
+                }
+            } else if (config.DefaultScheduleTrigger === 'Weekly') {
+                if (config.DefaultScheduleDayOfWeek !== undefined) {
+                    defaultSchedule.DayOfWeek = config.DefaultScheduleDayOfWeek;
+                }
+                if (config.DefaultScheduleTime) {
+                    const timeParts = config.DefaultScheduleTime.split(':');
+                    if (timeParts.length >= 2) {
+                        defaultSchedule.Time = timeParts[0] + ':' + timeParts[1] + ':00';
+                    }
+                }
+            } else if (config.DefaultScheduleTrigger === 'Monthly') {
+                if (config.DefaultScheduleDayOfMonth !== undefined) {
+                    defaultSchedule.DayOfMonth = config.DefaultScheduleDayOfMonth;
+                }
+                if (config.DefaultScheduleTime) {
+                    const timeParts = config.DefaultScheduleTime.split(':');
+                    if (timeParts.length >= 2) {
+                        defaultSchedule.Time = timeParts[0] + ':' + timeParts[1] + ':00';
+                    }
+                }
+            } else if (config.DefaultScheduleTrigger === 'Yearly') {
+                if (config.DefaultScheduleMonth !== undefined) {
+                    defaultSchedule.Month = config.DefaultScheduleMonth;
+                }
+                if (config.DefaultScheduleDayOfMonth !== undefined) {
+                    defaultSchedule.DayOfMonth = config.DefaultScheduleDayOfMonth;
+                }
+                if (config.DefaultScheduleTime) {
+                    const timeParts = config.DefaultScheduleTime.split(':');
+                    if (timeParts.length >= 2) {
+                        defaultSchedule.Time = timeParts[0] + ':' + timeParts[1] + ':00';
+                    }
+                }
+            } else if (config.DefaultScheduleTrigger === 'Interval') {
+                if (config.DefaultScheduleInterval) {
+                    defaultSchedule.Interval = config.DefaultScheduleInterval;
+                }
+            }
+            
+            // Add the default schedule box
+            if (SmartLists.addScheduleBox) {
+                SmartLists.addScheduleBox(page, defaultSchedule);
+            }
+        }
+    };
+    
 })(window.SmartLists = window.SmartLists || {});
 

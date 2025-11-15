@@ -350,36 +350,74 @@
         container.appendChild(mainContainer);
     };
 
-    // ===== FORM DEFAULTS POPULATION =====
+    // ===== FORM DEFAULTS POPULATION (DRY) =====
+    // Helper function to apply all form defaults from config
+    SmartLists.applyFormDefaults = function(page, config) {
+        // Set default list type
+        SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
+        SmartLists.handleListTypeChange(page);
+        
+        // Set default values for Max Items and Max Playtime
+        const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
+        SmartLists.setElementValue(page, '#playlistMaxItems', defaultMaxItems);
+        
+        const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
+        SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
+        
+        // Set default auto refresh mode
+        SmartLists.setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
+        
+        // Set default public/enabled checkboxes
+        SmartLists.setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
+        SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
+        
+        // Reinitialize schedule system
+        SmartLists.initializeScheduleSystem(page);
+        
+        // Apply default schedule if configured
+        if (SmartLists.applyDefaultScheduleFromConfig) {
+            SmartLists.applyDefaultScheduleFromConfig(page, config);
+        }
+        
+        // Reinitialize sort system with defaults
+        SmartLists.initializeSortSystem(page);
+        const sortsContainer = page.querySelector('#sorts-container');
+        if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
+            SmartLists.addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
+        }
+        
+        // Reset user dropdown to currently logged-in user
+        const userSelect = page.querySelector('#playlistUser');
+        if (userSelect) {
+            userSelect.value = '';
+            SmartLists.setCurrentUserAsDefault(page);
+        }
+    };
+    
+    // Fallback defaults when config fails to load
+    SmartLists.applyFallbackDefaults = function(page) {
+        SmartLists.setElementValue(page, '#listType', 'Playlist');
+        SmartLists.handleListTypeChange(page);
+        SmartLists.setElementValue(page, '#playlistMaxItems', 500);
+        SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
+        SmartLists.setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
+        SmartLists.setElementChecked(page, '#playlistIsPublic', false);
+        SmartLists.setElementChecked(page, '#playlistIsEnabled', true);
+        
+        // Reinitialize schedule system with fallback defaults
+        SmartLists.initializeScheduleSystem(page);
+        
+        // Reinitialize sort system with fallback defaults
+        SmartLists.initializeSortSystem(page);
+        SmartLists.addSortBox(page, { SortBy: 'Name', SortOrder: 'Ascending' });
+    };
+    
     SmartLists.populateFormDefaults = function(page) {
         const apiClient = SmartLists.getApiClient();
         apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
-            // Set default list type
-            SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
-            SmartLists.handleListTypeChange(page);
-            
-            // Set default values for Max Items and Max Playtime
-            const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
-            SmartLists.setElementValue(page, '#playlistMaxItems', defaultMaxItems);
-            
-            const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
-            SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
-            
-            // Set default auto refresh mode
-            SmartLists.setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
-            
-            // Set default public/enabled checkboxes
-            SmartLists.setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
-            SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
+            SmartLists.applyFormDefaults(page, config);
         }).catch(function() {
-            // Fallback defaults if config fails to load
-            SmartLists.setElementValue(page, '#listType', 'Playlist');
-            SmartLists.handleListTypeChange(page);
-            SmartLists.setElementValue(page, '#playlistMaxItems', 500);
-            SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
-            SmartLists.setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
-            SmartLists.setElementChecked(page, '#playlistIsPublic', false);
-            SmartLists.setElementChecked(page, '#playlistIsEnabled', true);
+            SmartLists.applyFallbackDefaults(page);
         });
     };
 

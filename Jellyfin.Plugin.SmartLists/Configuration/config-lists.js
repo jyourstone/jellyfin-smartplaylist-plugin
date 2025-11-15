@@ -285,51 +285,16 @@
             checkbox.checked = false;
         });
         
+        // Apply all form defaults using shared helper (DRY)
         const apiClient = SmartLists.getApiClient();
         apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
-            // Set default list type
-            SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
-            
-            // Trigger type change handler to show/hide relevant fields
-            SmartLists.handleListTypeChange(page);
-            
-            SmartLists.setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
-            SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
-            const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
-            SmartLists.setElementValue(page, '#playlistMaxItems', defaultMaxItems);
-            const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
-            SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
-            SmartLists.setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
-            
-            // Reinitialize schedule system with defaults
-            SmartLists.initializeScheduleSystem(page);
-            
-            // Reinitialize sort system with defaults
-            SmartLists.initializeSortSystem(page);
-            const sortsContainer = page.querySelector('#sorts-container');
-            if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
-                SmartLists.addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
-            }
-            
-            // Reset user dropdown to currently logged-in user
-            const userSelect = page.querySelector('#playlistUser');
-            if (userSelect) {
-                userSelect.value = '';
-                SmartLists.setCurrentUserAsDefault(page);
+            if (SmartLists.applyFormDefaults) {
+                SmartLists.applyFormDefaults(page, config);
             }
         }).catch(function() {
-            SmartLists.setElementChecked(page, '#playlistIsPublic', false);
-            SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
-            SmartLists.setElementValue(page, '#playlistMaxItems', 500);
-            SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', 0);
-            SmartLists.setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
-            
-            // Reinitialize schedule system with fallback defaults
-            SmartLists.initializeScheduleSystem(page);
-            
-            // Reinitialize sort system with fallback defaults
-            SmartLists.initializeSortSystem(page);
-            SmartLists.addSortBox(page, { SortBy: 'Name', SortOrder: 'Ascending' });
+            if (SmartLists.applyFallbackDefaults) {
+                SmartLists.applyFallbackDefaults(page);
+            }
         });
         
         // Create initial logic group with one rule
