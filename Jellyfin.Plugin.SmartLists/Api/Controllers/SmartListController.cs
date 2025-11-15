@@ -61,7 +61,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         private Services.Playlists.PlaylistStore GetPlaylistStore()
         {
             var fileSystem = new SmartListFileSystem(_applicationPaths);
-            return new Services.Playlists.PlaylistStore(fileSystem, _userManager);
+            return new Services.Playlists.PlaylistStore(fileSystem);
         }
 
         private Services.Collections.CollectionStore GetCollectionStore()

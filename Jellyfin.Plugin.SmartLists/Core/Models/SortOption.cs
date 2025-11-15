@@ -5,8 +5,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
     /// </summary>
     public class SortOption
     {
-        public string SortBy { get; set; } = null!;      // e.g., "Name", "ProductionYear", "SeasonNumber"
-        public string SortOrder { get; set; } = null!;   // "Ascending" or "Descending",
+        public required string SortBy { get; set; }      // e.g., "Name", "ProductionYear", "SeasonNumber"
+        public required string SortOrder { get; set; }   // "Ascending" or "Descending"
     }
 }
 

@@ -341,7 +341,7 @@
     
     // Format schedule display text
     SmartLists.formatScheduleDisplay = function(playlist) {
-        // Check for new Schedules array first (if it exists and has items)
+        // Check if Schedules array exists and has items
         if (playlist.Schedules && playlist.Schedules.length > 0) {
             var scheduleTexts = playlist.Schedules.map(function(schedule) {
                 return SmartLists.formatSingleSchedule(schedule);
@@ -349,23 +349,8 @@
             return scheduleTexts.join(' • ');
         }
         
-        // If Schedules property exists (even if null or empty array), this is a new-format playlist with no schedule
-        if (playlist.hasOwnProperty('Schedules')) {
-            return 'No schedule';
-        }
-        
-        // Legacy single schedule handling
-        if (!playlist.hasOwnProperty('ScheduleTrigger')) {
-            return 'Legacy Jellyfin task';
-        }
-        
-        // ScheduleTrigger exists but is null or 'None' = no schedule
-        if (!playlist.ScheduleTrigger || playlist.ScheduleTrigger === 'None') {
-            return 'No schedule';
-        }
-        
-        // Convert legacy format to single schedule object for formatting
-        return SmartLists.formatLegacySchedule(playlist);
+        // No schedules configured
+        return 'No schedule';
     };
     
     // Helper function to format sort display text
@@ -391,45 +376,45 @@
     
     SmartLists.formatSingleSchedule = function(schedule) {
         if (schedule.Trigger === 'Daily') {
-            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            const raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            const parts = raw.split(':');
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
             return 'Daily at ' + SmartLists.formatTimeForUser(h, m);
         } else if (schedule.Trigger === 'Weekly') {
-            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            var dayIndex = (schedule.DayOfWeek !== undefined && schedule.DayOfWeek !== null) ? schedule.DayOfWeek : 0;
-            var dayName = days[dayIndex] || 'Sunday';
+            const raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            const parts = raw.split(':');
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const dayIndex = (schedule.DayOfWeek !== undefined && schedule.DayOfWeek !== null) ? schedule.DayOfWeek : 0;
+            const dayName = days[dayIndex] || 'Sunday';
             return 'Weekly on ' + dayName + ' at ' + SmartLists.formatTimeForUser(h, m);
         } else if (schedule.Trigger === 'Monthly') {
-            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            var dayOfMonth = schedule.DayOfMonth || 1;
-            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+            const raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            const parts = raw.split(':');
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            const dayOfMonth = schedule.DayOfMonth || 1;
+            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
                         (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
                         (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
             return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + SmartLists.formatTimeForUser(h, m);
         } else if (schedule.Trigger === 'Yearly') {
-            var raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            var monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+            const raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
+            const parts = raw.split(':');
+            const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
+            const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                              'July', 'August', 'September', 'October', 'November', 'December'];
-            var month = schedule.Month || 1;
-            var dayOfMonth = schedule.DayOfMonth || 1;
-            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
+            const month = schedule.Month || 1;
+            const dayOfMonth = schedule.DayOfMonth || 1;
+            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
                         (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
                         (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
             return 'Yearly on ' + monthNames[month - 1] + ' ' + dayOfMonth + suffix + ' at ' + SmartLists.formatTimeForUser(h, m);
         } else if (schedule.Trigger === 'Interval') {
-            var interval = schedule.Interval || '24:00:00';
+            const interval = schedule.Interval || '24:00:00';
             if (interval === '00:15:00') return 'Every 15 minutes';
             if (interval === '00:30:00') return 'Every 30 minutes';
             if (interval === '01:00:00') return 'Every hour';
@@ -443,71 +428,6 @@
             return 'Every ' + interval;
         }
         return schedule.Trigger || 'Unknown';
-    };
-    
-    SmartLists.formatLegacySchedule = function(playlist) {
-        if (playlist.ScheduleTrigger === 'Daily') {
-            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            return 'Daily at ' + SmartLists.formatTimeForUser(h, m);
-        } else if (playlist.ScheduleTrigger === 'Weekly') {
-            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            var dayIndex = 0;
-            if (playlist.ScheduleDayOfWeek !== undefined && playlist.ScheduleDayOfWeek !== null) {
-                if (typeof playlist.ScheduleDayOfWeek === 'number') {
-                    dayIndex = Math.max(0, Math.min(6, playlist.ScheduleDayOfWeek));
-                } else if (typeof playlist.ScheduleDayOfWeek === 'string') {
-                    var numericValue = parseInt(playlist.ScheduleDayOfWeek, 10);
-                    if (!isNaN(numericValue) && numericValue >= 0 && numericValue <= 6) {
-                        dayIndex = numericValue;
-                    }
-                }
-            }
-            return 'Weekly on ' + days[dayIndex] + ' at ' + SmartLists.formatTimeForUser(h, m);
-        } else if (playlist.ScheduleTrigger === 'Monthly') {
-            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            var dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
-            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
-                          (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
-                          (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
-            return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + SmartLists.formatTimeForUser(h, m);
-        } else if (playlist.ScheduleTrigger === 'Yearly') {
-            var raw = playlist.ScheduleTime ? playlist.ScheduleTime.substring(0, 5) : '03:00';
-            var parts = raw.split(':');
-            var h = parts[0] !== undefined ? parseInt(parts[0], 10) : 3;
-            var m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
-            var monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                             'July', 'August', 'September', 'October', 'November', 'December'];
-            var month = playlist.ScheduleMonth || 1;
-            var dayOfMonth = Math.min(31, Math.max(1, parseInt(playlist.ScheduleDayOfMonth, 10) || 1));
-            var suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
-                        (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
-                        (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
-            return 'Yearly on ' + monthNames[month - 1] + ' ' + dayOfMonth + suffix + ' at ' + SmartLists.formatTimeForUser(h, m);
-        } else if (playlist.ScheduleTrigger === 'Interval') {
-            var interval = playlist.ScheduleInterval || '1.00:00:00';
-            if (interval === '00:15:00') return 'Every 15 minutes';
-            if (interval === '00:30:00') return 'Every 30 minutes';
-            if (interval === '01:00:00') return 'Every hour';
-            if (interval === '02:00:00') return 'Every 2 hours';
-            if (interval === '03:00:00') return 'Every 3 hours';
-            if (interval === '04:00:00') return 'Every 4 hours';
-            if (interval === '06:00:00') return 'Every 6 hours';
-            if (interval === '08:00:00') return 'Every 8 hours';
-            if (interval === '12:00:00') return 'Every 12 hours';
-            if (interval === '1.00:00:00') return 'Every 24 hours';
-            return 'Every ' + interval;
-        }
-        return playlist.ScheduleTrigger;
     };
     
     // Format playlist display values (used in playlist cards)

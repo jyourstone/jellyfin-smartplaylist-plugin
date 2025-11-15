@@ -404,7 +404,8 @@
         // For bulk delete, we need to pass the listIds directly since they come from the confirm modal
         // Instead of getting them from checkboxes again
         const apiClient = SmartLists.getApiClient();
-        const deleteJellyfinList = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+        const deleteCheckbox = page.querySelector('#delete-jellyfin-playlist-checkbox');
+        const deleteJellyfinList = deleteCheckbox ? deleteCheckbox.checked : false;
         let successCount = 0;
         let errorCount = 0;
         
@@ -494,7 +495,7 @@
         const expandAllBtn = page.querySelector('#expandAllBtn');
         const playlistCards = page.querySelectorAll('.playlist-card');
         
-        if (!playlistCards.length) return;
+        if (!playlistCards.length || !expandAllBtn) return;
         
         // Base action on current button text, not on current state
         const shouldExpand = expandAllBtn.textContent.trim() === 'Expand All';

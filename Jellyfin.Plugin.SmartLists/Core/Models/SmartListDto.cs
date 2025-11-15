@@ -72,21 +72,6 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<Schedule> Schedules { get; set; } = [];
 
-        // Legacy single schedule properties - kept for backward compatibility
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public ScheduleTrigger? ScheduleTrigger { get; set; } = null;
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public TimeSpan? ScheduleTime { get; set; }
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        [JsonConverter(typeof(DayOfWeekAsIntegerConverter))]
-        public DayOfWeek? ScheduleDayOfWeek { get; set; }
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? ScheduleDayOfMonth { get; set; }
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? ScheduleMonth { get; set; }
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public TimeSpan? ScheduleInterval { get; set; }
-
         // Timestamps
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTime? LastRefreshed { get; set; }
@@ -102,73 +87,6 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         // Similarity comparison fields
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<string> SimilarityComparisonFields { get; set; } = [];
-
-        // Legacy support - for migration from old RuleLogic field
-        [Obsolete("Use ExpressionSet.Logic instead. This property is for backward compatibility only.")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public RuleLogic? RuleLogic { get; set; }
-
-        /// <summary>
-        /// Migrates legacy single schedule fields to the new Schedules array format.
-        /// This is called automatically during save operations.
-        /// </summary>
-        public void MigrateToNewScheduleFormat()
-        {
-            // If already using new format (Schedules array exists), nothing to do
-            if (Schedules != null)
-            {
-                return;
-            }
-
-            // If no legacy schedule exists or it's set to None, don't migrate
-            // This preserves truly legacy lists (v10.10) that have no custom schedules
-            if (!ScheduleTrigger.HasValue || ScheduleTrigger.Value == Core.Enums.ScheduleTrigger.None)
-            {
-                return;
-            }
-
-            // Migrate legacy single schedule to new array format
-            var legacySchedule = new Schedule
-            {
-                Trigger = ScheduleTrigger.Value,
-            };
-
-            if (ScheduleTime != null)
-            {
-                legacySchedule.Time = ScheduleTime;
-            }
-
-            if (ScheduleDayOfWeek != null)
-            {
-                legacySchedule.DayOfWeek = ScheduleDayOfWeek;
-            }
-
-            if (ScheduleDayOfMonth != null)
-            {
-                legacySchedule.DayOfMonth = ScheduleDayOfMonth;
-            }
-
-            if (ScheduleMonth != null)
-            {
-                legacySchedule.Month = ScheduleMonth;
-            }
-
-            if (ScheduleInterval != null)
-            {
-                legacySchedule.Interval = ScheduleInterval;
-            }
-
-            // Set the new format
-            Schedules = [legacySchedule];
-
-            // Clear legacy fields so they don't get serialized
-            ScheduleTrigger = null;
-            ScheduleTime = null;
-            ScheduleDayOfWeek = null;
-            ScheduleDayOfMonth = null;
-            ScheduleMonth = null;
-            ScheduleInterval = null;
-        }
     }
 }
 

@@ -85,9 +85,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             var fileName = smartCollection.Id;
             smartCollection.FileName = $"{fileName}.json";
 
-            // Automatically migrate legacy schedule format to new format during save
-            smartCollection.MigrateToNewScheduleFormat();
-
             var filePath = _fileSystem.GetSmartListPath(fileName);
             var tempPath = filePath + ".tmp";
 

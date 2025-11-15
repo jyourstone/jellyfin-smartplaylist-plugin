@@ -30,7 +30,24 @@ Before creating your first list, it's important to understand the differences be
 - **No Sorting**: Collections do not support custom sorting
 - **No Max Playtime**: Collections cannot have a playtime limit
 - **User Reference**: While collections don't have an "owner" in the traditional sense, you must select a user whose context will be used when evaluating rules and filtering items. This user's library access permissions and user-specific data (like "Is Played", "Is Favorite", etc.) are used to determine which items are included in the collection
+- **Automatic Image Generation**: Collections automatically generate cover images based on the media items they contain (see details below)
 - **Use cases**: Organizing related content for browsing (e.g., "Action Movies", "Holiday Collection", "Director's Collection")
+
+#### Automatic Image Generation for Collections
+
+SmartLists automatically generates cover images for collections based on the media items they contain. This feature works as follows:
+
+- **Single Item**: If a collection contains only one item with an image, that item's primary image is used directly as the collection cover
+- **Multiple Items**: If a collection contains two or more items with images, a 4-image collage is automatically created using the first items from the collection
+- **Image Selection**: The plugin prioritizes Movies and Series with images, falling back to any items with images if needed
+- **Automatic Updates**: Collection images are automatically regenerated when the collection is refreshed to reflect the current items
+
+!!! important "Custom Images Are Preserved"
+    Automatic image generation **only occurs** when a collection doesn't already have a custom image in place. Custom images can be set through:
+    - **Metadata cover downloads**: Images downloaded by Jellyfin's metadata providers
+    - **User image uploads**: Images manually uploaded through Jellyfin's interface
+    
+    If a custom image exists, the plugin will preserve it and skip automatic generation. This ensures that any images you specifically set or download are never overwritten.
 
 !!! note "User Selection for Collections"
     When creating a collection, the user you select is used as a **reference** for rule evaluation, not as an owner. The collection itself is server-wide and visible to everyone. This user's context is important for:

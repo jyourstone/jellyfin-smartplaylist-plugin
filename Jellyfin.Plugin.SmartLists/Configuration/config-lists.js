@@ -9,6 +9,15 @@
 
     // Cache for user ID to name lookups
     var userNameCache = new Map();
+    
+    // Helper function to normalize user IDs for consistent cache keys
+    // Removes dashes and converts to lowercase for GUID comparison
+    var normalizeUserId = function(userId) {
+        if (!userId || typeof userId !== 'string') {
+            return '';
+        }
+        return userId.replace(/-/g, '').toLowerCase();
+    };
 
     // ===== USER MANAGEMENT =====
     // Note: loadUsers, loadUsersForRule, and setCurrentUserAsDefault are defined in config-api.js to avoid duplication
@@ -31,9 +40,12 @@
             return Promise.resolve(null);
         }
         
+        // Normalize userId for cache lookup
+        const normalizedId = normalizeUserId(userId);
+        
         // Check cache first
-        if (userNameCache.has(userId)) {
-            const cachedName = userNameCache.get(userId);
+        if (userNameCache.has(normalizedId)) {
+            const cachedName = userNameCache.get(normalizedId);
             return Promise.resolve(cachedName);
         }
         
@@ -49,13 +61,14 @@
             if (Array.isArray(users)) {
                 users.forEach(function(user) {
                     if (user.Id && user.Name) {
-                        userNameCache.set(user.Id, user.Name);
+                        const normalizedUserId = normalizeUserId(user.Id);
+                        userNameCache.set(normalizedUserId, user.Name);
                     }
                 });
             }
             
             // Return the requested user's name or fallback
-            const resolvedName = userNameCache.get(userId) || 'Unknown User';
+            const resolvedName = userNameCache.get(normalizedId) || 'Unknown User';
             return resolvedName;
         }).catch(function(err) {
             console.error('Error loading users for name resolution:', err);
@@ -250,12 +263,14 @@
         
         // Clean up all existing event listeners before clearing rules
         const rulesContainer = page.querySelector('#rules-container');
-        const allRules = rulesContainer.querySelectorAll('.rule-row');
-        allRules.forEach(function(rule) {
-            SmartLists.cleanupRuleEventListeners(rule);
-        });
-        
-        rulesContainer.innerHTML = '';
+        if (rulesContainer) {
+            const allRules = rulesContainer.querySelectorAll('.rule-row');
+            allRules.forEach(function(rule) {
+                SmartLists.cleanupRuleEventListeners(rule);
+            });
+            
+            rulesContainer.innerHTML = '';
+        }
         
         // Clear media type selections
         const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
@@ -826,16 +841,16 @@
                 }
                 
                 // Show success message
-                SmartLists.showNotification('Playlist "' + playlistName + '" cloned successfully! You can now modify and create the new playlist.', 'success');
+                SmartLists.showNotification('List "' + playlistName + '" cloned successfully! You can now modify and create the new list.', 'success');
                 
             } catch (formError) {
                 console.error('Error populating form for clone:', formError);
-                SmartLists.showNotification('Error loading playlist data for cloning: ' + formError.message);
+                SmartLists.showNotification('Error loading list data for cloning: ' + formError.message);
             }
         }).catch(function(err) {
             Dashboard.hideLoadingMsg();
-            console.error('Error loading playlist for clone:', err);
-            SmartLists.handleApiError(err, 'Failed to load playlist for cloning');
+            console.error('Error loading list for clone:', err);
+            SmartLists.handleApiError(err, 'Failed to load list for cloning');
         });
     };
 
@@ -849,13 +864,13 @@
         }
         const submitBtn = page.querySelector('#submitBtn');
         if (submitBtn) {
-            submitBtn.textContent = 'Create Playlist';
+            submitBtn.textContent = 'Create List';
         }
         
         // Restore tab button text
         const createTabButton = page.querySelector('a[data-tab="create"]');
         if (createTabButton) {
-            createTabButton.textContent = 'Create Playlist';
+            createTabButton.textContent = 'Create List';
         }
         
         // Clear form
@@ -886,7 +901,7 @@
             if (page) {
                 SmartLists.loadPlaylistList(page);
             }
-        }).catch(function(err) {
+        }).catch(async function(err) {
             Dashboard.hideLoadingMsg();
             
             // Enhanced error handling for API responses
@@ -894,22 +909,24 @@
             
             // Check if this is a Response object (from fetch API)
             if (err && typeof err.json === 'function') {
-                err.json().then(function(errorData) {
+                try {
+                    const errorData = await err.json();
                     if (errorData.message) {
                         errorMessage = errorData.message;
                     } else if (typeof errorData === 'string') {
                         errorMessage = errorData;
                     }
-                }).catch(function() {
+                } catch (jsonError) {
                     // If JSON parsing fails, try to get text
-                    err.text().then(function(textContent) {
+                    try {
+                        const textContent = await err.text();
                         if (textContent) {
                             errorMessage = textContent;
                         }
-                    }).catch(function() {
+                    } catch (textError) {
                         // Ignore text extraction errors
-                    });
-                });
+                    }
+                }
             }
             // Check if the error has response text (legacy error format)
             else if (err.responseText) {
@@ -974,7 +991,7 @@
     };
 
     SmartLists.showDeleteConfirm = function(page, listId, listName) {
-        const confirmText = 'Are you sure you want to delete the smart playlist "' + listName + '"? This cannot be undone.';
+        const confirmText = 'Are you sure you want to delete the smart list "' + listName + '"? This cannot be undone.';
         
         SmartLists.showDeleteModal(page, confirmText, function() {
             SmartLists.deletePlaylist(page, listId, listName);
@@ -1157,10 +1174,14 @@
         const playlistId = playlist.Id || 'NO_ID';
         
         // Collections are server-wide, no library assignment needed
-        // Create individual media type labels - filter out deprecated Series type
+        // Create individual media type labels - filter out Series for playlists only (not supported due to Jellyfin limitations)
         let mediaTypesArray = [];
         if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
-            const validTypes = playlist.MediaTypes.filter(function(type) { return type !== 'Series'; });
+            // Only filter Series for Playlists (Collections support Series)
+            const isPlaylist = playlist.Type === 'Playlist' || !playlist.Type; // Default to Playlist if Type not set
+            const validTypes = isPlaylist 
+                ? playlist.MediaTypes.filter(function(type) { return type !== 'Series'; })
+                : playlist.MediaTypes; // Collections: show all types including Series
             mediaTypesArray = validTypes.length > 0 ? validTypes : ['Unknown'];
         } else {
             mediaTypesArray = ['Unknown'];
@@ -1426,8 +1447,8 @@
                 if (Array.isArray(users)) {
                     users.forEach(function(user) {
                         if (user.Id && user.Name) {
-                            // Normalize GUID format when storing in cache (remove dashes)
-                            const normalizedId = user.Id.replace(/-/g, '').toLowerCase();
+                            // Normalize GUID format when storing in cache
+                            const normalizedId = normalizeUserId(user.Id);
                             userNameCache.set(normalizedId, user.Name);
                         }
                     });

@@ -1,12 +1,6 @@
 (function (SmartLists) {
     'use strict';
 
-    // Initialize namespace if it doesn't exist
-    if (!SmartLists) {
-        window.SmartLists = {};
-        SmartLists = window.SmartLists;
-    }
-
     // ===== OPERATOR OPTIONS MANAGEMENT =====
     SmartLists.updateOperatorOptions = function(fieldValue, operatorSelect) {
         operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';

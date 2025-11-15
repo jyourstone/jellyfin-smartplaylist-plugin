@@ -290,8 +290,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 if (dto.MediaTypes?.Contains(Core.Constants.MediaTypes.Series) == true)
                 {
-                    _logger.LogError("Smart playlist '{PlaylistName}' uses deprecated 'Series' media type. Series playlists are not supported due to Jellyfin limitations. Please recreate this playlist using 'Episode' media type instead. Skipping playlist refresh.", dto.Name);
-                    return (false, "Series media type is no longer supported. Please recreate using Episode media type.", string.Empty);
+                    _logger.LogError("Smart playlist '{PlaylistName}' uses 'Series' media type. Series playlists are not supported due to Jellyfin playlist limitations. Use 'Episode' media type instead, or create a Collection for Series support. Skipping playlist refresh.", dto.Name);
+                    return (false, "Series media type is not supported for Playlists. Use Episode media type, or create a Collection instead.", string.Empty);
                 }
 
                 if (dto.MediaTypes == null || dto.MediaTypes.Count == 0)
@@ -759,8 +759,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 if (mediaTypes?.Contains(Core.Constants.MediaTypes.Series) == true)
                 {
-                    _logger?.LogError("Smart playlist '{PlaylistName}' uses deprecated 'Series' media type. Series playlists are not supported due to Jellyfin limitations. Please recreate this playlist using 'Episode' media type instead.", dto.Name);
-                    throw new InvalidOperationException("Series media type is no longer supported. Please recreate using Episode media type.");
+                    _logger?.LogError("Smart playlist '{PlaylistName}' uses 'Series' media type. Series playlists are not supported due to Jellyfin playlist limitations. Use 'Episode' media type instead, or create a Collection for Series support.", dto.Name);
+                    throw new InvalidOperationException("Series media type is not supported for Playlists. Use Episode media type, or create a Collection instead.");
                 }
 
                 if (mediaTypes == null || mediaTypes.Count == 0)

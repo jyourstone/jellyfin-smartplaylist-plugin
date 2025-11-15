@@ -19,7 +19,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
     public class PlaylistStore : ISmartListStore<SmartPlaylistDto>
     {
         private readonly ISmartListFileSystem _fileSystem;
-        private readonly IUserManager _userManager;
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             WriteIndented = true,
@@ -27,10 +26,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             Converters = { new JsonStringEnumConverter() }
         };
 
-        public PlaylistStore(ISmartListFileSystem fileSystem, IUserManager userManager)
+        public PlaylistStore(ISmartListFileSystem fileSystem)
         {
             _fileSystem = fileSystem;
-            _userManager = userManager;
         }
 
         public async Task<SmartPlaylistDto?> GetByIdAsync(Guid id)
@@ -87,9 +85,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
             var fileName = smartPlaylist.Id;
             smartPlaylist.FileName = $"{fileName}.json";
-
-            // Automatically migrate legacy schedule format to new format during save
-            smartPlaylist.MigrateToNewScheduleFormat();
 
             var filePath = _fileSystem.GetSmartListPath(fileName);
             var tempPath = filePath + ".tmp";

@@ -254,7 +254,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 // Create playlist store
                 var fileSystem = new SmartListFileSystem(_applicationPaths);
-                var plStore = new PlaylistStore(fileSystem, _userManager);
+                var plStore = new PlaylistStore(fileSystem);
                 var playlistService = GetPlaylistService();
 
                 var allDtos = await plStore.GetAllAsync().ConfigureAwait(false);

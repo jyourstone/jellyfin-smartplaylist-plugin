@@ -1507,18 +1507,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 // Check playlists
                 var allPlaylists = await _playlistStore.GetAllAsync().ConfigureAwait(false);
                 var scheduledPlaylists = allPlaylists.Where(p =>
-                    p.Enabled && (
-                        (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null)) ||
-                        (p.ScheduleTrigger != null && p.ScheduleTrigger != ScheduleTrigger.None)
-                    )).ToList();
+                    p.Enabled &&
+                        p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null)
+                    ).ToList();
 
                 // Check collections
                 var allCollections = await _collectionStore.GetAllAsync().ConfigureAwait(false);
                 var scheduledCollections = allCollections.Where(c =>
-                    c.Enabled && (
-                        (c.Schedules != null && c.Schedules.Any(s => s?.Trigger != null)) ||
-                        (c.ScheduleTrigger != null && c.ScheduleTrigger != ScheduleTrigger.None)
-                    )).ToList();
+                    c.Enabled &&
+                        c.Schedules != null && c.Schedules.Any(s => s?.Trigger != null)
+                    ).ToList();
 
                 if (!scheduledPlaylists.Any() && !scheduledCollections.Any())
                 {
@@ -1532,12 +1530,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         scheduledPlaylists.Count,
                         string.Join(", ", scheduledPlaylists.Select(p =>
                         {
-                            if (p.Schedules != null && p.Schedules.Any(s => s?.Trigger != null))
-                            {
-                                var triggers = string.Join(", ", p.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
-                                return $"'{p.Name}' ({triggers})";
-                            }
-                            return $"'{p.Name}' ({p.ScheduleTrigger})";
+                            var triggers = string.Join(", ", p.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
+                            return $"'{p.Name}' ({triggers})";
                         })));
                 }
 
@@ -1547,12 +1541,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         scheduledCollections.Count,
                         string.Join(", ", scheduledCollections.Select(c =>
                         {
-                            if (c.Schedules != null && c.Schedules.Any(s => s?.Trigger != null))
-                            {
-                                var triggers = string.Join(", ", c.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
-                                return $"'{c.Name}' ({triggers})";
-                            }
-                            return $"'{c.Name}' ({c.ScheduleTrigger})";
+                            var triggers = string.Join(", ", c.Schedules.Where(s => s?.Trigger != null).Select(s => s.Trigger.ToString()));
+                            return $"'{c.Name}' ({triggers})";
                         })));
                 }
 
@@ -1658,8 +1648,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         private bool IsPlaylistDueForRefresh(SmartPlaylistDto playlist, DateTime now)
         {
-            // Check new Schedules array first (supports multiple schedules)
-            // Pre-filter to valid schedules only
+            // Check if playlist has any schedules configured
             var validSchedules = playlist.Schedules?.Where(s => s?.Trigger != null).ToList();
             if (validSchedules is { Count: > 0 })
             {
@@ -1671,26 +1660,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         return true;
                     }
                 }
-                return false;
             }
-
-            // Legacy: Check old single schedule fields for backward compatibility
-            if (playlist.ScheduleTrigger == null || playlist.ScheduleTrigger == ScheduleTrigger.None) return false;
-
-            return playlist.ScheduleTrigger switch
-            {
-                ScheduleTrigger.Daily => IsDailyDue((SmartListDto)playlist, now),
-                ScheduleTrigger.Weekly => IsWeeklyDue((SmartListDto)playlist, now),
-                ScheduleTrigger.Monthly => IsMonthlyDue((SmartListDto)playlist, now),
-                ScheduleTrigger.Yearly => IsYearlyDue((SmartListDto)playlist, now),
-                ScheduleTrigger.Interval => IsIntervalDue((SmartListDto)playlist, now),
-                _ => false,
-            };
+            
+            return false;
         }
 
         private bool IsCollectionDueForRefresh(SmartCollectionDto collection, DateTime now)
         {
-            // Check new Schedules array first (supports multiple schedules)
+            // Check if collection has any schedules configured
             var validSchedules = collection.Schedules?.Where(s => s?.Trigger != null).ToList();
             if (validSchedules is { Count: > 0 })
             {
@@ -1701,21 +1678,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         return true;
                     }
                 }
-                return false;
             }
-
-            // Legacy: Check old single schedule fields for backward compatibility
-            if (collection.ScheduleTrigger == null || collection.ScheduleTrigger == ScheduleTrigger.None) return false;
-
-            return collection.ScheduleTrigger switch
-            {
-                ScheduleTrigger.Daily => IsDailyDue((SmartListDto)collection, now),
-                ScheduleTrigger.Weekly => IsWeeklyDue((SmartListDto)collection, now),
-                ScheduleTrigger.Monthly => IsMonthlyDue((SmartListDto)collection, now),
-                ScheduleTrigger.Yearly => IsYearlyDue((SmartListDto)collection, now),
-                ScheduleTrigger.Interval => IsIntervalDue((SmartListDto)collection, now),
-                _ => false,
-            };
+            
+            return false;
         }
 
         private bool IsScheduleDue(Schedule schedule, DateTime now, string playlistName)
@@ -1738,159 +1703,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             };
         }
 
-        private bool IsDailyDue(SmartListDto list, DateTime now)
-        {
-            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3); // Default 3:00 AM
-
-            // Convert UTC now to local time for comparison with user-configured schedule times
-            var localNow = now.ToLocalTime();
-
-            // Try today's scheduled time first
-            var todayScheduled = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
-            if (IsWithinTimeBuffer(localNow, todayScheduled))
-            {
-                _logger.LogDebug("Daily schedule check for '{ListName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (today), Due=True",
-                    list.Name, localNow, scheduledTime);
-                return true;
-            }
-
-            // For times near midnight, also check tomorrow's scheduled time
-            var tomorrowScheduled = todayScheduled.AddDays(1);
-            var isDue = IsWithinTimeBuffer(localNow, tomorrowScheduled);
-
-            _logger.LogDebug("Daily schedule check for '{ListName}': Now={Now:HH:mm:ss} (local), Scheduled={Scheduled:hh\\:mm} (checked today and tomorrow), Due={Due}",
-                list.Name, localNow, scheduledTime, isDue);
-
-            return isDue;
-        }
-
-        private bool IsWeeklyDue(SmartListDto list, DateTime now)
-        {
-            var scheduledDay = list.ScheduleDayOfWeek ?? DayOfWeek.Sunday;
-            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3);
-
-            // Convert UTC now to local time for comparison with user-configured schedule times
-            var localNow = now.ToLocalTime();
-
-            // Check if current day matches and time is within 2 minutes of scheduled time
-            if (localNow.DayOfWeek != scheduledDay)
-            {
-                return false;
-            }
-
-            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
-            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
-
-            _logger.LogDebug("Weekly schedule check for '{ListName}': Now={Now:dddd HH:mm:ss} (local), Scheduled={ScheduledDay} {Scheduled:hh\\:mm}, Due={Due}",
-                list.Name, localNow, scheduledDay, scheduledTime, isDue);
-
-            return isDue;
-        }
-
-        private bool IsMonthlyDue(SmartListDto list, DateTime now)
-        {
-            var scheduledDayOfMonth = list.ScheduleDayOfMonth ?? 1; // Default to 1st of month
-            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3);
-
-            // Convert UTC now to local time for comparison with user-configured schedule times
-            var localNow = now.ToLocalTime();
-
-            // Handle months with fewer days (e.g., Feb 30th becomes Feb 28th/29th)
-            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
-            var effectiveDayOfMonth = Math.Min(scheduledDayOfMonth, daysInCurrentMonth);
-
-            // Check if current day matches and time is within 2 minutes of scheduled time
-            if (localNow.Day != effectiveDayOfMonth)
-            {
-                return false;
-            }
-
-            var scheduledDateTime = new DateTime(localNow.Year, localNow.Month, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
-            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
-
-            _logger.LogDebug("Monthly schedule check for '{ListName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}",
-                list.Name, localNow, effectiveDayOfMonth, scheduledTime, isDue);
-
-            return isDue;
-        }
-
-        /// <summary>
-        /// Common interval checking logic shared between legacy and new scheduling systems.
-        /// </summary>
-        private bool IsIntervalDueCommon(TimeSpan interval, DateTime now, string playlistName)
-        {
-            // Guard against invalid intervals
-            if (interval <= TimeSpan.Zero)
-            {
-                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
-                    interval, playlistName);
-                interval = TimeSpan.FromHours(24);
-            }
-
-            // For intervals, we use UTC time since intervals are about absolute time periods
-            var totalMinutes = (int)interval.TotalMinutes;
-            bool isDue;
-
-            // For intervals >= 2 hours, check if we're at an hour boundary that aligns with the interval
-            if (totalMinutes >= 120)
-            {
-                var intervalHours = totalMinutes / 60;
-                var isHourBoundary = now.Hour % intervalHours == 0;
-                isDue = isHourBoundary && IsWithinIntervalBuffer(now, 60);
-            }
-            else
-            {
-                // For shorter intervals (< 2 hours), just check if we're within the interval window
-                isDue = IsWithinIntervalBuffer(now, totalMinutes);
-            }
-
-            _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}",
-                playlistName, now, interval, isDue);
-
-            return isDue;
-        }
-
-        private bool IsIntervalDue(SmartListDto list, DateTime now)
-        {
-            var interval = list.ScheduleInterval ?? TimeSpan.FromHours(24);
-            return IsIntervalDueCommon(interval, now, list.Name);
-        }
-
-        private bool IsYearlyDue(SmartListDto list, DateTime now)
-        {
-            var scheduledMonth = Math.Clamp(list.ScheduleMonth ?? 1, 1, 12); // Clamp to valid month range
-            var scheduledDayOfMonth = Math.Max(1, list.ScheduleDayOfMonth ?? 1); // At least day 1
-            var scheduledTime = list.ScheduleTime ?? TimeSpan.FromHours(3);
-
-            // Convert UTC now to local time for comparison with user-configured schedule times
-            var localNow = now.ToLocalTime();
-
-            // Check if current month matches
-            if (localNow.Month != scheduledMonth)
-            {
-                return false;
-            }
-
-            // Handle months with fewer days (e.g., Feb 30th becomes Feb 28th/29th)
-            var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, scheduledMonth);
-            var effectiveDayOfMonth = Math.Clamp(scheduledDayOfMonth, 1, daysInCurrentMonth);
-
-            // Check if current day matches
-            if (localNow.Day != effectiveDayOfMonth)
-            {
-                return false;
-            }
-
-            var scheduledDateTime = new DateTime(localNow.Year, scheduledMonth, effectiveDayOfMonth, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
-            var isDue = IsWithinTimeBuffer(localNow, scheduledDateTime);
-
-            _logger.LogDebug("Yearly schedule check for '{ListName}': Now={Now:yyyy-MM-dd HH:mm:ss} (local), Scheduled=Month {ScheduledMonth} Day {ScheduledDay} at {Scheduled:hh\\:mm}, Due={Due}",
-                list.Name, localNow, scheduledMonth, effectiveDayOfMonth, scheduledTime, isDue);
-
-            return isDue;
-        }
-
-        // Overloaded methods for Schedule objects (new array-based approach)
+        // Schedule checking methods for Schedule objects
 
         private bool IsDailyDue(Schedule schedule, DateTime now, string playlistName)
         {
@@ -1989,7 +1802,36 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private bool IsIntervalDue(Schedule schedule, DateTime now, string playlistName)
         {
             var interval = schedule.Interval ?? TimeSpan.FromHours(24);
-            return IsIntervalDueCommon(interval, now, playlistName);
+            
+            // Guard against invalid intervals
+            if (interval <= TimeSpan.Zero)
+            {
+                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
+                    interval, playlistName);
+                interval = TimeSpan.FromHours(24);
+            }
+
+            // For intervals, we use UTC time since intervals are about absolute time periods
+            var totalMinutes = (int)interval.TotalMinutes;
+            bool isDue;
+
+            // For intervals >= 2 hours, check if we're at an hour boundary that aligns with the interval
+            if (totalMinutes >= 120)
+            {
+                var intervalHours = totalMinutes / 60;
+                var isHourBoundary = now.Hour % intervalHours == 0;
+                isDue = isHourBoundary && IsWithinIntervalBuffer(now, 60);
+            }
+            else
+            {
+                // For shorter intervals (< 2 hours), just check if we're within the interval window
+                isDue = IsWithinIntervalBuffer(now, totalMinutes);
+            }
+
+            _logger.LogDebug("Interval schedule check for '{PlaylistName}': Now={Now:HH:mm:ss}, Interval={Interval}, Due={Due}",
+                playlistName, now, interval, isDue);
+
+            return isDue;
         }
 
         private async Task RefreshScheduledPlaylists(List<SmartPlaylistDto> playlists)
