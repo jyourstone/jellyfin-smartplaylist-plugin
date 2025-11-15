@@ -1,12 +1,6 @@
 (function(SmartLists) {
     'use strict';
     
-    // Initialize namespace if it doesn't exist
-    if (!SmartLists) {
-        window.SmartLists = {};
-        SmartLists = window.SmartLists;
-    }
-    
     // Determine if locale uses 12-hour format
     SmartLists.isLocale12Hour = function(locale) {
         try {

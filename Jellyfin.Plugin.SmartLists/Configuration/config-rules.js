@@ -440,22 +440,7 @@
                     SmartLists.addTagToContainer(valueContainer, value);
                     input.value = '';
                     SmartLists.updateHiddenInput(valueContainer);
-                    SmartLists.hideAddOptionDropdown(valueContainer);
                 }
-            } else if (e.key === 'Tab') {
-                // Only handle Tab when dropdown is visible (for tag commit)
-                const dropdown = valueContainer.querySelector('.add-option-dropdown');
-                if (dropdown && dropdown.style.display !== 'none') {
-                    e.preventDefault();
-                    const value = input.value.trim();
-                    if (value) {
-                        SmartLists.addTagToContainer(valueContainer, value);
-                        input.value = '';
-                        SmartLists.updateHiddenInput(valueContainer);
-                        SmartLists.hideAddOptionDropdown(valueContainer);
-                    }
-                }
-                // If no dropdown visible, let Tab work normally for keyboard navigation
             } else if (e.key === 'Backspace' && input.value === '') {
                 // Remove last tag when backspace is pressed on empty input
                 e.preventDefault();
@@ -466,32 +451,18 @@
         input.addEventListener('input', function() {
             const value = input.value.trim();
             
-            if (value) {
-                // Check if value contains semicolon
-                if (value.indexOf(';') !== -1) {
-                    const parts = value.split(';');
-                    parts.forEach(function(part) {
-                        const trimmedPart = part.trim();
-                        if (trimmedPart) {
-                            SmartLists.addTagToContainer(valueContainer, trimmedPart);
-                        }
-                    });
-                    input.value = '';
-                    SmartLists.updateHiddenInput(valueContainer);
-                    SmartLists.hideAddOptionDropdown(valueContainer);
-                } else {
-                    SmartLists.showAddOptionDropdown(valueContainer, value);
-                }
-            } else {
-                SmartLists.hideAddOptionDropdown(valueContainer);
+            // Check if value contains semicolon (for pasting multiple values)
+            if (value && value.indexOf(';') !== -1) {
+                const parts = value.split(';');
+                parts.forEach(function(part) {
+                    const trimmedPart = part.trim();
+                    if (trimmedPart) {
+                        SmartLists.addTagToContainer(valueContainer, trimmedPart);
+                    }
+                });
+                input.value = '';
+                SmartLists.updateHiddenInput(valueContainer);
             }
-        });
-        
-        input.addEventListener('blur', function() {
-            // Small delay to allow clicking on the dropdown
-            setTimeout(function() {
-                SmartLists.hideAddOptionDropdown(valueContainer);
-            }, 150);
         });
         
         // Restore existing tags if any
@@ -599,13 +570,6 @@
             });
         
         hiddenInput.value = tags.join(';');
-    };
-
-    SmartLists.hideAddOptionDropdown = function(valueContainer) {
-        const dropdown = valueContainer.querySelector('.add-option-dropdown');
-        if (dropdown) {
-            dropdown.style.display = 'none';
-        }
     };
 
     // ===== REGEX HELP =====

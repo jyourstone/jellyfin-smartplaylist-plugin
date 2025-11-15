@@ -9,6 +9,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// Extracts the PremiereDate property from a BaseItem and returns its Unix timestamp, or 0 on error.
         /// Treats the PremiereDate as UTC to ensure consistency with user-input date handling.
         /// </summary>
+        /// <param name="item">The BaseItem to extract the release date from. Must not be null.</param>
+        /// <returns>Unix timestamp of the release date, or 0 if the date is not available or invalid.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when item is null.</exception>
         public static double GetReleaseDateUnixTimestamp(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);

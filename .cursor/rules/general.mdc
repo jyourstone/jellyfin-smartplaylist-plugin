@@ -116,7 +116,7 @@ logger?.LogDebug("Methods containing 'keyword': [{Methods}]", string.Join(", ", 
 Log analysis:
 ```bash
 grep -A 10 -B 5 "specific_debug_message" jellyfin-data/config/log/log_*.log
-tail -f jellyfin-data/config/log/log_*.log | grep "SmartLists"
+tail -f jellyfin-data/config/log/log_*.log | grep "Smart"
 grep -c "expensive_operation" jellyfin-data/config/log/log_*.log
 ```
 

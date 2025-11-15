@@ -827,20 +827,13 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     {
                         logger.LogInformation("Converting playlist '{Name}' to collection", existingPlaylist.Name);
                         
-                        // Delete the old Jellyfin playlist
-                        var playlistService = GetPlaylistService();
-                        await playlistService.DeleteAsync(existingPlaylist);
-                        
-                        // Delete from playlist store
-                        await playlistStore.DeleteAsync(guidId);
-                        
                         // Convert to collection DTO and create as new collection
                         var collectionDto = list as SmartCollectionDto ?? JsonSerializer.Deserialize<SmartCollectionDto>(JsonSerializer.Serialize(list))!;
                         collectionDto.Id = id; // Keep the same ID
                         collectionDto.FileName = existingPlaylist.FileName; // Keep the same filename
                         collectionDto.JellyfinCollectionId = null; // Clear old Jellyfin ID
                         
-                        // Create the new Jellyfin collection (this populates JellyfinCollectionId)
+                        // Create the new Jellyfin collection first (this populates JellyfinCollectionId)
                         var collectionService = GetCollectionService();
                         var refreshResult = await collectionService.RefreshAsync(collectionDto);
                         
@@ -853,6 +846,11 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         // Save to collection store with the populated JellyfinCollectionId
                         var newCollectionStore = GetCollectionStore();
                         await newCollectionStore.SaveAsync(collectionDto);
+                        
+                        // Only delete the old playlist after successful conversion
+                        var playlistService = GetPlaylistService();
+                        await playlistService.DeleteAsync(existingPlaylist);
+                        await playlistStore.DeleteAsync(guidId);
                         
                         logger.LogInformation("Successfully converted playlist to collection '{Name}' (JellyfinCollectionId: {Id})", 
                             collectionDto.Name, collectionDto.JellyfinCollectionId);
@@ -872,13 +870,6 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     {
                         logger.LogInformation("Converting collection '{Name}' to playlist", existingCollection.Name);
                         
-                        // Delete the old Jellyfin collection
-                        var collectionService = GetCollectionService();
-                        await collectionService.DeleteAsync(existingCollection);
-                        
-                        // Delete from collection store
-                        await collectionStore.DeleteAsync(guidId);
-                        
                         // Convert to playlist DTO and create as new playlist
                         var playlistDto = list as SmartPlaylistDto ?? JsonSerializer.Deserialize<SmartPlaylistDto>(JsonSerializer.Serialize(list))!;
                         playlistDto.Id = id; // Keep the same ID
@@ -891,7 +882,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             playlistDto.User = existingCollection.User; // Carry over from collection
                         }
                         
-                        // Create the new Jellyfin playlist (this populates JellyfinPlaylistId)
+                        // Create the new Jellyfin playlist first (this populates JellyfinPlaylistId)
                         var playlistService = GetPlaylistService();
                         var refreshResult = await playlistService.RefreshAsync(playlistDto);
                         
@@ -904,6 +895,11 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         // Save to playlist store with the populated JellyfinPlaylistId
                         var newPlaylistStore = GetPlaylistStore();
                         await newPlaylistStore.SaveAsync(playlistDto);
+                        
+                        // Only delete the old collection after successful conversion
+                        var collectionService = GetCollectionService();
+                        await collectionService.DeleteAsync(existingCollection);
+                        await collectionStore.DeleteAsync(guidId);
                         
                         logger.LogInformation("Successfully converted collection to playlist '{Name}' (JellyfinPlaylistId: {Id})", 
                             playlistDto.Name, playlistDto.JellyfinPlaylistId);

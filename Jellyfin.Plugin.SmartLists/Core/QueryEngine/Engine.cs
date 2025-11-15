@@ -399,7 +399,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
             }
 
-            string unit = parts[1].ToUpperInvariant();
+            string unit = parts[1].ToLowerInvariant();
             DateTimeOffset cutoffDate = unit switch
             {
                 "hours" => DateTimeOffset.UtcNow.AddHours(-num),

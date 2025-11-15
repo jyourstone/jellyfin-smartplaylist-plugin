@@ -220,8 +220,7 @@
                     const checkbox = selectedCheckboxes[i];
                     const listId = checkbox.getAttribute('data-playlist-id');
                     const playlistCard = checkbox.closest('.playlist-card');
-                    const statusElement = playlistCard ? playlistCard.querySelector('.playlist-status') : null;
-                    const isCurrentlyEnabled = !statusElement || statusElement.textContent.indexOf('Disabled') === -1;
+                    const isCurrentlyEnabled = playlistCard ? playlistCard.dataset.enabled === 'true' : true;
                     
                     if (!isCurrentlyEnabled) {
                         listsToEnable.push(listId);
@@ -254,8 +253,7 @@
                     const checkbox = selectedCheckboxes[i];
                     const listId = checkbox.getAttribute('data-playlist-id');
                     const playlistCard = checkbox.closest('.playlist-card');
-                    const statusElement = playlistCard ? playlistCard.querySelector('.playlist-status') : null;
-                    const isCurrentlyEnabled = !statusElement || statusElement.textContent.indexOf('Disabled') === -1;
+                    const isCurrentlyEnabled = playlistCard ? playlistCard.dataset.enabled === 'true' : true;
                     
                     if (isCurrentlyEnabled) {
                         listsToDisable.push(listId);

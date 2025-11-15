@@ -68,14 +68,20 @@
             }
             
             // Return the requested user's name or fallback
-            const resolvedName = userNameCache.get(normalizedId) || 'Unknown User';
+            const resolvedName = userNameCache.get(normalizedId);
+            if (!resolvedName) {
+                // User not found, cache the fallback to avoid repeated lookups
+                const fallback = 'Unknown User';
+                userNameCache.set(normalizedId, fallback);
+                return fallback;
+            }
             return resolvedName;
         }).catch(function(err) {
             console.error('Error loading users for name resolution:', err);
             const fallback = 'Unknown User';
             
-            // Cache the fallback too to avoid repeated failed lookups
-            userNameCache.set(userId, fallback);
+            // Cache the fallback with normalized ID to avoid repeated failed lookups
+            userNameCache.set(normalizedId, fallback);
             return fallback;
         });
     };
@@ -124,10 +130,11 @@
             // Collect schedules from the new schedule boxes
             const schedules = SmartLists.collectSchedulesFromForm(page);
             // Handle maxItems with validation using helper function
+            // Empty string means no limit (0), consistent with UI text "Set to 0 for no limit"
             const maxItemsInput = SmartLists.getElementValue(page, '#playlistMaxItems');
             let maxItems;
             if (maxItemsInput === '') {
-                maxItems = 500;
+                maxItems = 0; // Empty = no limit
             } else {
                 const parsedValue = parseInt(maxItemsInput, 10);
                 maxItems = isNaN(parsedValue) ? 500 : parsedValue;
@@ -957,11 +964,13 @@
             apiPath: '',
             httpMethod: 'DELETE',
             getQueryParams: function(page) {
-                const deleteJellyfinList = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+                const checkbox = page.querySelector('#delete-jellyfin-playlist-checkbox');
+                const deleteJellyfinList = checkbox ? checkbox.checked : false;
                 return 'deleteJellyfinList=' + deleteJellyfinList;
             },
             formatSuccessMessage: function(name, page) {
-                const deleteJellyfinList = page.querySelector('#delete-jellyfin-playlist-checkbox').checked;
+                const checkbox = page.querySelector('#delete-jellyfin-playlist-checkbox');
+                const deleteJellyfinList = checkbox ? checkbox.checked : false;
                 const action = deleteJellyfinList ? 'deleted' : 'suffix/prefix removed (if any) and configuration deleted';
                 return 'List "' + name + '" ' + action + ' successfully.';
             }
@@ -1251,7 +1260,7 @@
         }
         
         // Generate collapsible playlist card with improved styling
-        return '<div class="inputContainer playlist-card" data-playlist-id="' + SmartLists.escapeHtmlAttribute(playlistId) + '" style="border: none; border-radius: 2px; margin-bottom: 1em; background: #202020;">' +
+        return '<div class="inputContainer playlist-card" data-playlist-id="' + SmartLists.escapeHtmlAttribute(playlistId) + '" data-enabled="' + (isEnabled ? 'true' : 'false') + '" style="border: none; border-radius: 2px; margin-bottom: 1em; background: #202020;">' +
             // Compact header (always visible)
             '<div class="playlist-header" style="padding: 0.75em; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">' +
                 '<div class="playlist-header-left" style="display: flex; align-items: center; flex: 1; min-width: 0;">' +
@@ -1516,7 +1525,7 @@
                     SmartLists.updateBulkActionsVisibility(page);
                 }
             } else {
-                container.innerHTML = '<div class="inputContainer"><p>No smart playlists found.</p></div>';
+                container.innerHTML = '<div class="inputContainer"><p>No lists found.</p></div>';
             }
             
         } catch (err) {

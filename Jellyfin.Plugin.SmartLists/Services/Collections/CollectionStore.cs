@@ -57,8 +57,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             }
 
             // Fallback: scan all collections if direct lookup failed
+            // Use case-insensitive comparison to handle GUID casing differences
             var allCollections = await GetAllAsync().ConfigureAwait(false);
-            return allCollections.FirstOrDefault(c => c.Id == id.ToString());
+            return allCollections.FirstOrDefault(c => string.Equals(c.Id, id.ToString(), StringComparison.OrdinalIgnoreCase));
         }
 
         public async Task<SmartCollectionDto[]> GetAllAsync()
@@ -82,6 +83,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 throw new ArgumentException("Collection ID must be a valid non-empty GUID", nameof(smartCollection));
             }
 
+            // Normalize ID to canonical GUID string for consistent file lookups
+            smartCollection.Id = parsedId.ToString();
             var fileName = smartCollection.Id;
             smartCollection.FileName = $"{fileName}.json";
 

@@ -26,7 +26,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         // Id is optional for creation (generated if not provided)
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Id { get; set; }
-        public string Name { get; set; } = null!;
+        public required string Name { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? FileName { get; set; }
         
@@ -53,8 +53,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
             {
                 var source = value ?? [];
                 // Keep only known types and remove duplicates (ordinal)
+                // Filter out nulls before ContainsKey check to prevent ArgumentNullException
                 _mediaTypes = source
-                    .Where(mt => Core.Constants.MediaTypes.MediaTypeToBaseItemKind.ContainsKey(mt))
+                    .Where(mt => mt != null && Core.Constants.MediaTypes.MediaTypeToBaseItemKind.ContainsKey(mt))
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
             }

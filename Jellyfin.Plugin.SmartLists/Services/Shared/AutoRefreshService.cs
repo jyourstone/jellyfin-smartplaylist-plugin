@@ -9,6 +9,7 @@ using Jellyfin.Data.Events.Users;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
 using Jellyfin.Plugin.SmartLists.Core.Enums;
 using Jellyfin.Plugin.SmartLists.Core.Models;
+using Jellyfin.Plugin.SmartLists.Core.QueryEngine;
 using Jellyfin.Plugin.SmartLists.Services.Playlists;
 using Jellyfin.Plugin.SmartLists.Services.Abstractions;
 using Jellyfin.Plugin.SmartLists.Utilities;
@@ -149,28 +150,33 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var playlists = await _playlistStore.GetAllAsync();
                 var playlistCacheEntries = 0;
 
-                foreach (var playlist in playlists)
-                {
-                    if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
-                    {
-                        AddPlaylistToRuleCache(playlist);
-                        playlistCacheEntries++;
-                    }
-                }
-
                 var collections = await _collectionStore.GetAllAsync();
                 var collectionCacheEntries = 0;
 
-                foreach (var collection in collections)
+                // Protect cache mutations with lock to prevent race conditions with concurrent reads
+                lock (_cacheInvalidationLock)
                 {
-                    if (collection.Enabled && collection.AutoRefresh != AutoRefreshMode.Never)
+                    foreach (var playlist in playlists)
                     {
-                        AddCollectionToRuleCache(collection);
-                        collectionCacheEntries++;
+                        if (playlist.Enabled && playlist.AutoRefresh != AutoRefreshMode.Never)
+                        {
+                            AddPlaylistToRuleCache(playlist);
+                            playlistCacheEntries++;
+                        }
                     }
+
+                    foreach (var collection in collections)
+                    {
+                        if (collection.Enabled && collection.AutoRefresh != AutoRefreshMode.Never)
+                        {
+                            AddCollectionToRuleCache(collection);
+                            collectionCacheEntries++;
+                        }
+                    }
+
+                    _cacheInitialized = true;
                 }
 
-                _cacheInitialized = true;
                 _logger.LogInformation("Auto-refresh cache initialized: {PlaylistCount} playlists, {CollectionCount} collections, {MediaTypeCount} media types, {RuleTypeCount} field-based entries",
                     playlistCacheEntries, collectionCacheEntries, _mediaTypeToPlaylistsCache.Count + _mediaTypeToCollectionsCache.Count, 
                     _ruleTypeToPlaylistsCache.Count + _ruleTypeToCollectionsCache.Count);
@@ -456,7 +462,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         readyToProcess.Count, _batchDelay.TotalSeconds);
 
                     // Process the batch in background - separate playlists and collections
-                    _ = Task.Run(async () => await ProcessListRefreshes(readyToProcess, isUserDataRefresh: false));
+                    _ = Task.Run(async () => await ProcessListRefreshes(readyToProcess));
                 }
             }
             catch (Exception ex)
@@ -759,7 +765,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         if (string.IsNullOrEmpty(expression.MemberName)) continue;
 
                         // Skip user-specific fields for collections
-                        if (Core.QueryEngine.FieldDefinitions.UserDataFields.Contains(expression.MemberName))
+                        if (FieldDefinitions.UserDataFields.Contains(expression.MemberName))
                         {
                             continue;
                         }
@@ -834,10 +840,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 // Use the simple media type cache to get all playlists for this media type
                 // This is much more efficient than looping through all possible fields
-                if (_mediaTypeToPlaylistsCache.TryGetValue(mediaType, out var playlistIds))
+                // Protect read operations with lock to prevent race conditions with concurrent mutations
+                lock (_cacheInvalidationLock)
                 {
-                    // Snapshot to avoid concurrent modification during enumeration
-                    affectedPlaylists.UnionWith(playlistIds.ToArray());
+                    if (_mediaTypeToPlaylistsCache.TryGetValue(mediaType, out var playlistIds))
+                    {
+                        // Snapshot to avoid concurrent modification during enumeration
+                        affectedPlaylists.UnionWith(playlistIds.ToArray());
+                    }
                 }
 
                 // Apply filtering based on change type and auto-refresh mode
@@ -937,9 +947,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 }
 
                 // Use the simple media type cache to get all collections for this media type
-                if (_mediaTypeToCollectionsCache.TryGetValue(mediaType, out var collectionIds))
+                // Protect read operations with lock to prevent race conditions with concurrent mutations
+                lock (_cacheInvalidationLock)
                 {
-                    affectedCollections.UnionWith(collectionIds.ToArray());
+                    if (_mediaTypeToCollectionsCache.TryGetValue(mediaType, out var collectionIds))
+                    {
+                        affectedCollections.UnionWith(collectionIds.ToArray());
+                    }
                 }
 
                 // Apply filtering based on change type and auto-refresh mode
@@ -1140,11 +1154,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             return changeType switch
             {
                 LibraryChangeType.Added =>
+                    // Added events trigger OnLibraryChanges collections (items being added to library)
                     collection.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+
                 LibraryChangeType.Removed =>
-                    false, // Jellyfin auto-removes items from collections
+                    // Removed events never trigger refreshes - Jellyfin automatically removes items from collections
+                    // No collection refresh needed regardless of AutoRefreshMode setting
+                    false,
+
                 LibraryChangeType.Updated =>
-                    collection.AutoRefresh >= AutoRefreshMode.OnLibraryChanges,
+                    // Updated events (metadata changes) only trigger OnAllChanges collections
+                    // OnLibraryChanges is specifically for "when items are added", not for updates to existing items
+                    // This matches playlist semantics for consistency
+                    collection.AutoRefresh >= AutoRefreshMode.OnAllChanges,
+
                 _ => false
             };
         }
@@ -1229,7 +1252,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
 
 
-        private async Task ProcessListRefreshes(List<string> listIds, bool isUserDataRefresh)
+        private async Task ProcessListRefreshes(List<string> listIds)
         {
             if (_disposed) return;
 
@@ -1267,11 +1290,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 // Process playlists
                 if (playlistIds.Any())
                 {
-                    await ProcessPlaylistRefreshes(playlistIds, isUserDataRefresh).ConfigureAwait(false);
+                    await ProcessPlaylistRefreshes(playlistIds).ConfigureAwait(false);
                 }
 
-                // Process collections (collections don't use user data, so skip if isUserDataRefresh)
-                if (collectionIds.Any() && !isUserDataRefresh)
+                // Process collections
+                if (collectionIds.Any())
                 {
                     await ProcessCollectionRefreshes(collectionIds).ConfigureAwait(false);
                 }
@@ -1282,20 +1305,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
         }
 
-        private async Task ProcessPlaylistRefreshes(List<string> playlistIds, bool isUserDataRefresh)
+        private async Task ProcessPlaylistRefreshes(List<string> playlistIds)
         {
             if (_disposed) return;
 
             try
             {
-                if (isUserDataRefresh)
-                {
-                    _logger.LogInformation("Auto-refreshing {PlaylistCount} smart playlists due to playback status changes", playlistIds.Count);
-                }
-                else
-                {
-                    _logger.LogInformation("Auto-refreshing {PlaylistCount} smart playlists due to library changes", playlistIds.Count);
-                }
+                _logger.LogInformation("Auto-refreshing {PlaylistCount} smart playlists", playlistIds.Count);
 
                 // Load all playlists first
                 var playlists = new List<SmartPlaylistDto>();
@@ -1521,6 +1537,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 if (!scheduledPlaylists.Any() && !scheduledCollections.Any())
                 {
                     _logger.LogDebug("No lists with custom schedules found");
+                    RescheduleTimer();
                     return;
                 }
 
