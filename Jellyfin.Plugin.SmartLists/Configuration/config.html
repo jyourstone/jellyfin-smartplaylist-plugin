@@ -19,6 +19,7 @@
                 <div data-role="controlgroup" data-type="horizontal" class="localnav">
                     <a class="emby-button" href="#" data-role="button" data-tab="create">Create List</a>
                     <a class="emby-button" href="#" data-role="button" data-tab="manage">Manage Lists</a>
+                    <a class="emby-button" href="#" data-role="button" data-tab="status">Status</a>
                     <a class="emby-button" href="#" data-role="button" data-tab="settings">Settings</a>
                 </div>
 
@@ -351,6 +352,14 @@
                             </div>
                         </div>
 
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
+                            <label class="inputLabel" for="processingBatchSize">Processing Batch Size</label>
+                            <input type="number" id="processingBatchSize" class="emby-input" min="1" step="1">
+                            <div class="fieldDescription">
+                                Number of items processed in each batch during list refreshes. Smaller batches provide more frequent progress updates on the Status page, while larger batches improve processing efficiency. Default: 300. Recommended: 200-500 for libraries with 1,000-20,000 items.
+                            </div>
+                        </div>
+
                         <h2 class="sectionTitle" style="margin-top: 2em;">List Naming</h2>
                         
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
@@ -400,6 +409,44 @@
                         
                         <div class="fieldDescription" style="margin-top: 1em; padding: 0.75em; background: rgba(255,255,255,0.05); border-radius: 1px;">
                             <strong>Note:</strong> After saving settings, refresh your browser to see the new default values in the "Create List" tab.
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Status Tab -->
+                <div id="status-tab" class="page-content hide" data-tab-content="status">
+                    <form style="margin-top:2em;">
+                        <div class="inputContainer" style="margin-bottom: 2em;">
+                            <button type="button" is="emby-button" id="refresh-status-btn" class="emby-button raised block">Refresh</button>
+                        </div>
+                        
+                        <div class="inputContainer" style="margin-bottom: 2em;">
+                            <h3 class="sectionTitle">Ongoing Operations</h3>
+                            <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
+                                <div id="ongoing-operations-container">
+                                    <p style="color: #aaa;">No ongoing refresh operations.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="inputContainer" style="margin-bottom: 2em;">
+                            <h3 class="sectionTitle">Statistics</h3>
+                            <div class="fieldDescription" style="margin-bottom: 1em;">Statistics are tracked since the last server restart. Historical data is not persisted across restarts.</div>
+                            <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
+                                <div id="statistics-container">
+                                    <p style="color: #aaa;">No statistics available yet. Statistics will appear after refreshing lists.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="inputContainer" style="margin-bottom: 2em;">
+                            <h3 class="sectionTitle">Refresh History</h3>
+                            <div class="fieldDescription" style="margin-bottom: 1em;">Shows the last refresh for each list since the last server restart.</div>
+                            <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
+                                <div id="refresh-history-container">
+                                    <p style="color: #aaa;">No refresh history available. History will appear after refreshing lists.</p>
+                                </div>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -469,6 +516,8 @@
         <script src="configurationpage?name=config-filters.js"></script>
         <!-- Bulk actions -->
         <script src="configurationpage?name=config-bulk-actions.js"></script>
+        <!-- Status page -->
+        <script src="configurationpage?name=config-status.js"></script>
         <!-- API calls -->
         <script src="configurationpage?name=config-api.js"></script>
         <!-- Initialization (must load last) -->

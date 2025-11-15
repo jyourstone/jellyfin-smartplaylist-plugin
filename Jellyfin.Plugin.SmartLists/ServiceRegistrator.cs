@@ -20,6 +20,7 @@ namespace Jellyfin.Plugin.SmartLists
         {
             serviceCollection.AddHostedService<AutoRefreshHostedService>();
             serviceCollection.AddScoped<IManualRefreshService, ManualRefreshService>();
+            serviceCollection.AddSingleton<RefreshStatusService>();
         }
     }
 }

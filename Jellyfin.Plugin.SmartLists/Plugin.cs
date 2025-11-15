@@ -118,6 +118,12 @@ namespace Jellyfin.Plugin.SmartLists
                     Name = "config-bulk-actions.js",
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-bulk-actions.js",
                 },
+                // Status page
+                new PluginPageInfo
+                {
+                    Name = "config-status.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-status.js",
+                },
                 // API calls
                 new PluginPageInfo
                 {

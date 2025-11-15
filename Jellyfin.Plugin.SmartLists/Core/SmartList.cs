@@ -583,7 +583,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
         // Returns the ID's of the items, if order is provided the IDs are sorted.
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager? userDataManager = null, ILogger? logger = null)
+            User user, IUserDataManager? userDataManager = null, ILogger? logger = null, Action<int, int>? progressCallback = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -819,10 +819,27 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, itemsArray, similarityComparisonFields, libraryManager, logger);
                 }
 
-                // OPTIMIZATION: Process items in chunks for large libraries to prevent memory issues
-                const int chunkSize = 1000; // Process 1000 items at a time
+                // CRITICAL: Create RefreshCache once for the entire playlist filtering to enable caching across chunks
+                // This provides significant performance improvement for large playlists by caching expensive operations
+                // like People lookups, Collections lookups, etc. across all chunks
+                var refreshCache = new OperandFactory.RefreshCache();
+                logger?.LogDebug("Created RefreshCache for playlist '{PlaylistName}' - will be shared across all chunks for optimal performance", Name);
+
+                // OPTIMIZATION: Process items in batches for large libraries to prevent memory issues
+                // Get batch size from configuration, default to 300 if 0 or invalid
+                var config = Plugin.Instance?.Configuration;
+                var batchSize = config?.ProcessingBatchSize ?? 300;
+                if (batchSize <= 0)
+                {
+                    batchSize = 300; // Default to 300 if invalid
+                }
+                var chunkSize = batchSize;
+                
                 // itemsArray already materialized above to avoid double enumeration
                 var totalItems = itemsArray.Length;
+
+                // Report initial progress
+                progressCallback?.Invoke(0, totalItems);
 
                 if (totalItems > chunkSize)
                 {
@@ -842,9 +859,16 @@ namespace Jellyfin.Plugin.SmartLists.Core
                                 (chunkStart / chunkSize) + 1, (totalItems + chunkSize - 1) / chunkSize, chunkStart + 1, chunkEnd);
                         }
 
+                        // Report progress at the start of each chunk (before processing)
+                        progressCallback?.Invoke(chunkStart, totalItems);
+
+                        // Process chunk
                         var chunkResults = ProcessItemChunk(chunk, libraryManager, user, userDataManager, logger,
-                            needsAudioLanguages, needsAudioQuality, needsVideoQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsParentSeriesStudios, needsParentSeriesGenres, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, compiledRules, hasAnyRules, hasNonExpensiveRules);
+                            needsAudioLanguages, needsAudioQuality, needsVideoQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsParentSeriesStudios, needsParentSeriesGenres, needsSimilarTo, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, compiledRules, hasAnyRules, hasNonExpensiveRules, refreshCache);
                         results.AddRange(chunkResults);
+                        
+                        // Report progress after chunk is complete
+                        progressCallback?.Invoke(chunkEnd, totalItems);
 
                         // OPTIMIZATION: Allow other operations to run between chunks for large libraries
                         if (totalItems > chunkSize * 2)
@@ -1844,7 +1868,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager? userDataManager, ILogger? logger, bool needsAudioLanguages, bool needsAudioQuality, bool needsVideoQuality, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsParentSeriesStudios, bool needsParentSeriesGenres, bool needsSimilarTo, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, OperandFactory.ReferenceMetadata? referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules)
+            List<string> additionalUserIds, OperandFactory.ReferenceMetadata? referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules, OperandFactory.RefreshCache refreshCache)
         {
             var results = new List<BaseItem>();
 
@@ -1858,10 +1882,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
                 if (needsAudioLanguages || needsAudioQuality || needsVideoQuality || needsPeople || needsCollections || needsNextUnwatched || needsSeriesName || needsParentSeriesTags || needsParentSeriesStudios || needsParentSeriesGenres || needsSimilarTo)
                 {
-                    // Create per-refresh cache for performance optimization within this chunk
-                    var refreshCache = new OperandFactory.RefreshCache();
-
-                    // referenceMetadata is provided by caller (built once per filter run, not per chunk)
+                    // Use the shared RefreshCache passed from FilterPlaylistItems for optimal performance across chunks
+                    // referenceMetadata is also provided by caller (built once per filter run, not per chunk)
 
                     // Optimization: Separate rules into cheap and expensive categories
                     var cheapCompiledRules = new List<List<Func<Operand, bool>>>();
@@ -2009,6 +2031,12 @@ namespace Jellyfin.Plugin.SmartLists.Core
                                     bool matches = false;
                                     if (!hasAnyRules)
                                     {
+                                        matches = true;
+                                    }
+                                    else if (compiledRules.All(set => set?.Count == 0))
+                                    {
+                                        // Special case: Only SimilarTo or IncludeCollectionOnly rules (no compiled rules)
+                                        // In this case, start with matches = true and let similarity filter decide
                                         matches = true;
                                     }
                                     else
@@ -2268,6 +2296,12 @@ namespace Jellyfin.Plugin.SmartLists.Core
                                     {
                                         matches = true;
                                     }
+                                    else if (compiledRules.All(set => set?.Count == 0))
+                                    {
+                                        // Special case: Only SimilarTo or IncludeCollectionOnly rules (no compiled rules)
+                                        // In this case, start with matches = true and let similarity filter decide
+                                        matches = true;
+                                    }
                                     else
                                     {
                                         matches = EvaluateLogicGroups(compiledRules, fullOperand);
@@ -2404,6 +2438,12 @@ namespace Jellyfin.Plugin.SmartLists.Core
                             bool matches = false;
                             if (!hasAnyRules)
                             {
+                                matches = true;
+                            }
+                            else if (compiledRules.All(set => set?.Count == 0))
+                            {
+                                // Special case: Only SimilarTo or IncludeCollectionOnly rules (no compiled rules)
+                                // In this case, start with matches = true and let similarity filter decide
                                 matches = true;
                             }
                             else

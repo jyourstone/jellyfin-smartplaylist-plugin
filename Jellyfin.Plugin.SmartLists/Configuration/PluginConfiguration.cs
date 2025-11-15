@@ -91,5 +91,13 @@ namespace Jellyfin.Plugin.SmartLists.Configuration
         /// Default: 0 (Auto)
         /// </summary>
         public int ParallelConcurrencyLimit { get; set; } = 0;
+
+        /// <summary>
+        /// Gets or sets the processing batch size for list refreshes.
+        /// Items are processed in batches of this size for memory management and progress reporting.
+        /// 0 or invalid = Default to 300
+        /// Default: 300
+        /// </summary>
+        public int ProcessingBatchSize { get; set; } = 300;
     }
 }

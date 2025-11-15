@@ -65,6 +65,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         /// <param name="user">The user for this playlist (already resolved)</param>
         /// <param name="allUserMedia">All media items for the user (can be cached)</param>
         /// <param name="saveCallback">Optional callback to save the DTO when JellyfinPlaylistId is updated</param>
+        /// <param name="progressCallback">Optional callback to report progress (processed items, total items)</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Tuple of (success, message, jellyfinPlaylistId)</returns>
         public async Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(
@@ -72,13 +73,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             User user,
             BaseItem[] allUserMedia,
             Func<SmartPlaylistDto, Task>? saveCallback = null,
+            Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);
             ArgumentNullException.ThrowIfNull(user);
             ArgumentNullException.ThrowIfNull(allUserMedia);
 
-            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, cancellationToken);
+            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, progressCallback, cancellationToken);
 
             // Update LastRefreshed timestamp for successful refreshes (any trigger)
             if (success)
@@ -107,6 +109,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             BaseItem[] allUserMedia,
             ILogger logger,
             Func<SmartPlaylistDto, Task>? saveCallback = null,
+            Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
         {
             try
@@ -130,7 +133,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 logger.LogDebug("Found {MediaCount} total media items for user {User}", allUserMedia.Length, user.Username);
 
-                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, logger).ToArray();
+                // Report initial total items count
+                progressCallback?.Invoke(0, allUserMedia.Length);
+
+                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, logger, progressCallback).ToArray();
                 logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items",
                     dto.Name, newItems.Length, allUserMedia.Length);
 
@@ -272,7 +278,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             }
         }
 
-        public async Task<(bool Success, string Message, string Id)> RefreshAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string Id)> RefreshAsync(SmartPlaylistDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);
 
@@ -310,7 +316,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 var allUserMedia = GetAllUserMedia(user, dto.MediaTypes, dto).ToArray();
 
-                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, cancellationToken);
+                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, progressCallback, cancellationToken);
 
                 // Update LastRefreshed timestamp for successful refreshes (any trigger)
                 if (success)
@@ -333,7 +339,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             }
         }
 
-        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(SmartPlaylistDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);
 
@@ -347,7 +353,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     try
                     {
                         _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
-                        var (success, message, playlistId) = await RefreshAsync(dto, cancellationToken);
+                        var (success, message, playlistId) = await RefreshAsync(dto, progressCallback, cancellationToken);
                         return (success, message, playlistId);
                     }
                     finally

@@ -33,6 +33,8 @@
     <EmbeddedResource Include="Configuration\config-filters.js" />
     <!-- Bulk actions -->
     <EmbeddedResource Include="Configuration\config-bulk-actions.js" />
+    <!-- Status page -->
+    <EmbeddedResource Include="Configuration\config-status.js" />
     <!-- API calls -->
     <EmbeddedResource Include="Configuration\config-api.js" />
     <!-- Initialization (must load last) -->

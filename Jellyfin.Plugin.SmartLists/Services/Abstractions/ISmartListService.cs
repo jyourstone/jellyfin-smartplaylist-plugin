@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.SmartLists.Core.Models;
@@ -14,13 +15,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
         /// Refreshes a single smart list
         /// </summary>
         Task<(bool Success, string Message, string Id)> RefreshAsync(
-            TDto dto, CancellationToken cancellationToken = default);
+            TDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Refreshes a single smart list with timeout protection
         /// </summary>
         Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(
-            TDto dto, CancellationToken cancellationToken = default);
+            TDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Deletes a smart list

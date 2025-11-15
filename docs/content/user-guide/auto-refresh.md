@@ -82,6 +82,9 @@ Perfect for randomized lists:
 !!! note "Refresh Time"
     A full refresh of all lists can take some time depending on how many media items and lists you have. Large libraries with many lists may take several minutes or even hours to complete, depending on the hardware. Individual list refreshes are typically faster.
 
+!!! tip "Monitor Refresh Progress"
+    When you click "Refresh All Lists", you'll be automatically redirected to the **Status** page where you can monitor the progress of all refresh operations in real-time. The Status page shows ongoing operations with progress bars, estimated time remaining, and detailed refresh history. See the [Configuration](configuration.md#3-status) guide for more details.
+
 ## Performance Considerations
 
 ### Auto-Refresh Settings

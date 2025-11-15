@@ -62,7 +62,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             _providerManager = providerManager;
         }
 
-        public async Task<(bool Success, string Message, string Id)> RefreshAsync(SmartCollectionDto dto, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string Id)> RefreshAsync(SmartCollectionDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);
 
@@ -141,8 +141,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 _logger.LogDebug("Processing collection {CollectionName} with {RuleSetCount} rule sets (Owner: {OwnerUser})", 
                     dto.Name, dto.ExpressionSets?.Count ?? 0, ownerUser.Username);
                 
+                // Report initial total items count
+                progressCallback?.Invoke(0, allMedia.Length);
+                
                 // Use owner's user data manager for user-specific filtering (IsPlayed, IsFavorite, etc.)
-                var newItems = smartCollection.FilterPlaylistItems(allMedia, _libraryManager, ownerUser, _userDataManager, _logger).ToArray();
+                var newItems = smartCollection.FilterPlaylistItems(allMedia, _libraryManager, ownerUser, _userDataManager, _logger, progressCallback).ToArray();
                 _logger.LogDebug("Collection {CollectionName} filtered to {FilteredCount} items from {TotalCount} total items",
                     dto.Name, newItems.Length, allMedia.Length);
 
@@ -265,7 +268,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             }
         }
 
-        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(SmartCollectionDto dto, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(SmartCollectionDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);
 
@@ -279,7 +282,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     try
                     {
                         _logger.LogDebug("Acquired refresh lock for single collection: {CollectionName}", dto.Name);
-                        var (success, message, collectionId) = await RefreshAsync(dto, cancellationToken);
+                        var (success, message, collectionId) = await RefreshAsync(dto, progressCallback, cancellationToken);
                         return (success, message, collectionId);
                     }
                     finally

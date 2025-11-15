@@ -9,6 +9,9 @@ SmartLists features a modern web-based configuration interface through the plugi
     <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" target="_blank" style="cursor: pointer;">
         <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" width="240"/>
     </a>
+    <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_status.png" target="_blank" style="cursor: pointer;">
+        <img alt="Status page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_status.png" width="240"/>
+    </a>
     <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" target="_blank" style="cursor: pointer;">
         <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" width="240"/>
     </a>
@@ -57,7 +60,7 @@ SmartLists automatically generates cover images for collections based on the med
 
 ## Web Interface Overview
 
-The web interface is organized into three tabs:
+The web interface is organized into four tabs:
 
 ### 1. Create List
 
@@ -87,7 +90,37 @@ View and edit all of your existing smart playlists and collections:
 - **Quick Actions**: Edit, clone, refresh, or delete individual lists with confirmation dialogs
 - **Smart Selection**: Select all, expand all, or clear selections with intuitive controls
 
-### 3. Settings
+### 3. Status
+
+Monitor refresh operations and view statistics:
+
+- **Ongoing Operations**: View all currently running refresh operations with real-time progress
+  - See which lists are being refreshed
+  - Monitor progress with progress bars showing items processed vs. total items
+  - View estimated time remaining for each operation
+  - Track elapsed time and trigger type (Manual, Auto, or Scheduled)
+- **Statistics**: View refresh statistics since the last server restart
+  - Total number of lists tracked
+  - Number of ongoing operations
+  - Last refresh time across all lists
+  - Average refresh duration
+  - Count of successful and failed refreshes
+- **Refresh History**: View the last refresh for each list
+  - See when each list was last refreshed
+  - View refresh duration and item counts
+  - Check success/failure status
+  - See which trigger type initiated each refresh
+
+!!! note "Statistics Scope"
+    Statistics and refresh history are tracked in-memory and reset when the Jellyfin server is restarted. Historical data is not persisted across server restarts.
+
+!!! tip "Auto-Refresh"
+    The status page automatically refreshes every 2 seconds when operations are active, and every 30 seconds when idle. You can also manually refresh using the "Refresh" button at the top of the page.
+
+!!! tip "Quick Access"
+    When you click "Refresh All Lists" in the Settings tab, you'll be automatically redirected to the Status page to monitor the progress of all refresh operations in real-time.
+
+### 4. Settings
 
 Configure global settings for the plugin:
 
@@ -155,6 +188,26 @@ Control how many threads are used during individual list refreshes:
     - **Increase** if you have large lists and a powerful multi-core CPU
     - **Decrease** if you experience high CPU usage or system slowdowns during list refreshes
     - **Set to 1** if you need to debug list refresh issues or have very limited system resources
+
+### Processing Batch Size
+
+Control how many items are processed in each batch during list refreshes:
+
+- **Default**: `300` items per batch
+- **Recommended**: `200-500` for libraries with 1,000-20,000 items
+- **Smaller batches** (100-200): Provide more frequent progress updates on the Status page, useful for monitoring refresh progress in real-time
+- **Larger batches** (400-500): Improve processing efficiency and reduce overhead, better for very large libraries
+
+**How it works:**
+- Items are processed sequentially in batches (one batch at a time)
+- Within each batch, items are processed in parallel using multiple threads (controlled by Parallel Concurrency Limit)
+- Progress is reported after each batch completes, so smaller batches = more frequent updates
+- The batch size affects both processing efficiency and the granularity of progress reporting on the Status page
+
+!!! tip "When to Adjust"
+    - **Decrease** (100-200) if you want more frequent progress updates on the Status page
+    - **Increase** (400-500) if you have very large libraries (10,000+ items) and want maximum processing efficiency
+    - **Default (300)** is optimal for most use cases, providing a good balance between efficiency and progress reporting
 
 ## Manual Configuration (Advanced Users)
 

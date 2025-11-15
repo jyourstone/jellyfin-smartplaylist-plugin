@@ -87,7 +87,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         IUserDataManager userDataManager,
         IProviderManager providerManager,
         ILogger<ManualRefreshService> logger,
-        Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) : IManualRefreshService
+        Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
+        RefreshStatusService refreshStatusService) : IManualRefreshService
     {
         // Note: Manual refresh now uses the shared PlaylistService lock to prevent concurrent operations
         private readonly IUserManager _userManager = userManager;
@@ -99,6 +100,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly IProviderManager _providerManager = providerManager;
         private readonly ILogger<ManualRefreshService> _logger = logger;
         private readonly Microsoft.Extensions.Logging.ILoggerFactory _loggerFactory = loggerFactory;
+        private readonly RefreshStatusService _refreshStatusService = refreshStatusService;
 
         /// <summary>
         /// Gets the user for a playlist, handling migration from old User field to new UserId field.
@@ -316,6 +318,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var successCount = 0;
                 var failureCount = 0;
 
+                // Calculate total count of all playlists for batch tracking
+                var totalPlaylistCount = playlistsByUser.Values.Sum(userPlaylistPairs => userPlaylistPairs.Count);
+                var currentPlaylistIndex = 0;
+
                 foreach (var (userId, userPlaylistPairs) in playlistsByUser)
                 {
                     var user = userPlaylistPairs.First().user;
@@ -331,6 +337,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                     foreach (var dto in userPlaylists)
                     {
+                        // Increment current index for batch tracking (1-based for display)
+                        // Do this before validation so skipped playlists are still counted in batch progress
+                        currentPlaylistIndex++;
+                        
                         var playlistStopwatch = Stopwatch.StartNew();
                         try
                         {
@@ -366,14 +376,40 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items",
                                 dto.Name, mediaTypesKey, playlistSpecificMedia.Length);
 
+                            // Start tracking refresh operation with batch information
+                            var listId = dto.Id ?? Guid.NewGuid().ToString();
+                            _refreshStatusService.StartOperation(
+                                listId,
+                                dto.Name,
+                                Core.Enums.SmartListType.Playlist,
+                                Core.Enums.RefreshTriggerType.Manual,
+                                playlistSpecificMedia.Length,
+                                batchCurrentIndex: currentPlaylistIndex,
+                                batchTotalCount: totalPlaylistCount);
+
+                            // Create progress callback
+                            Action<int, int>? progressCallback = (processed, total) =>
+                            {
+                                _refreshStatusService.UpdateProgress(listId, processed, total);
+                            };
+
                             var refreshResult = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                 dto,
                                 user,
                                 playlistSpecificMedia, // Use properly filtered and cached media
                                 async (updatedDto) => await plStore.SaveAsync(updatedDto),
+                                progressCallback,
                                 cancellationToken);
 
                             playlistStopwatch.Stop();
+                            
+                            // Complete status tracking
+                            _refreshStatusService.CompleteOperation(
+                                listId,
+                                refreshResult.Success,
+                                refreshResult.Success ? null : refreshResult.Message,
+                                dto.ItemCount);
+                            
                             if (refreshResult.Success)
                             {
                                 // Save the playlist to persist LastRefreshed timestamp (same as legacy tasks)
@@ -400,6 +436,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         catch (Exception ex)
                         {
                             playlistStopwatch.Stop();
+                            
+                            // Complete status tracking with error
+                            var listId = dto.Id ?? Guid.NewGuid().ToString();
+                            _refreshStatusService.CompleteOperation(
+                                listId,
+                                false,
+                                ex.Message,
+                                null);
+                            
                             failureCount++;
                             processedCount++;
                             _logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
@@ -649,6 +694,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var processedCount = 0;
                 var successCount = 0;
                 var failureCount = 0;
+                var totalCollectionCount = enabledCollections.Count;
+                var currentCollectionIndex = 0;
 
                 foreach (var dto in enabledCollections)
                 {
@@ -657,9 +704,38 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
-                        var (success, message, collectionId) = await collectionService.RefreshAsync(dto, cancellationToken).ConfigureAwait(false);
+                        // Increment current index for batch tracking (1-based for display)
+                        currentCollectionIndex++;
+
+                        // Start tracking refresh operation with batch information
+                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        // We don't know total items yet, will be updated via progress callback
+                        _refreshStatusService.StartOperation(
+                            listId,
+                            dto.Name,
+                            Core.Enums.SmartListType.Collection,
+                            Core.Enums.RefreshTriggerType.Manual,
+                            0,
+                            batchCurrentIndex: currentCollectionIndex,
+                            batchTotalCount: totalCollectionCount);
+
+                        // Create progress callback
+                        Action<int, int>? progressCallback = (processed, total) =>
+                        {
+                            _refreshStatusService.UpdateProgress(listId, processed, total);
+                        };
+
+                        var (success, message, collectionId) = await collectionService.RefreshAsync(dto, progressCallback, cancellationToken).ConfigureAwait(false);
 
                         collectionStopwatch.Stop();
+                        
+                        // Complete status tracking
+                        _refreshStatusService.CompleteOperation(
+                            listId,
+                            success,
+                            success ? null : message,
+                            dto.ItemCount);
+                        
                         if (success)
                         {
                             // Save the collection to persist LastRefreshed timestamp
@@ -686,6 +762,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     catch (Exception ex)
                     {
                         collectionStopwatch.Stop();
+                        
+                        // Complete status tracking with error
+                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        _refreshStatusService.CompleteOperation(
+                            listId,
+                            false,
+                            ex.Message,
+                            null);
+                        
                         failureCount++;
                         processedCount++;
                         _logger.LogError(ex, "Error processing collection {CollectionName} after {ElapsedTime}ms", dto.Name, collectionStopwatch.ElapsedMilliseconds);
@@ -751,12 +836,37 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             ArgumentNullException.ThrowIfNull(playlist);
 
+            var listId = playlist.Id ?? Guid.NewGuid().ToString();
+
             try
             {
                 _logger.LogInformation("Starting manual refresh of single playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
 
+                // Start tracking refresh operation
+                // We don't know total items yet, will be updated via progress callback
+                _refreshStatusService.StartOperation(
+                    listId,
+                    playlist.Name,
+                    Core.Enums.SmartListType.Playlist,
+                    Core.Enums.RefreshTriggerType.Manual,
+                    0);
+
                 var playlistService = GetPlaylistService();
-                var (success, message, playlistId) = await playlistService.RefreshWithTimeoutAsync(playlist, cancellationToken);
+                
+                // Create progress callback
+                Action<int, int>? progressCallback = (processed, total) =>
+                {
+                    _refreshStatusService.UpdateProgress(listId, processed, total);
+                };
+                
+                var (success, message, playlistId) = await playlistService.RefreshWithTimeoutAsync(playlist, progressCallback, cancellationToken);
+
+                // Complete status tracking
+                _refreshStatusService.CompleteOperation(
+                    listId,
+                    success,
+                    success ? null : message,
+                    playlist.ItemCount);
 
                 if (success)
                 {
@@ -773,11 +883,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
             catch (OperationCanceledException)
             {
+                _refreshStatusService.CompleteOperation(listId, false, "Refresh operation was cancelled", null);
                 _logger.LogInformation("Single playlist refresh was cancelled for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
                 return (false, "Refresh operation was cancelled", string.Empty);
             }
             catch (Exception ex)
             {
+                _refreshStatusService.CompleteOperation(listId, false, ex.Message, null);
                 _logger.LogError(ex, "Error during single playlist refresh for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
                 return (false, $"Error during playlist refresh: {ex.Message}", string.Empty);
             }

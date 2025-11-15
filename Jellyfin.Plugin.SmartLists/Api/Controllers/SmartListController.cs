@@ -47,7 +47,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         ICollectionManager collectionManager,
         IUserDataManager userDataManager,
         IProviderManager providerManager,
-        IManualRefreshService manualRefreshService) : ControllerBase
+        IManualRefreshService manualRefreshService,
+        RefreshStatusService refreshStatusService) : ControllerBase
     {
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
         private readonly IUserManager _userManager = userManager;
@@ -57,6 +58,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         private readonly IUserDataManager _userDataManager = userDataManager;
         private readonly IProviderManager _providerManager = providerManager;
         private readonly IManualRefreshService _manualRefreshService = manualRefreshService;
+        private readonly RefreshStatusService _refreshStatusService = refreshStatusService;
 
         private Services.Playlists.PlaylistStore GetPlaylistStore()
         {
@@ -2330,6 +2332,144 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             {
                 logger.LogError(ex, "Error getting schedule timer status");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error getting schedule timer status");
+            }
+        }
+
+        /// <summary>
+        /// Get refresh status including ongoing operations, history, and statistics
+        /// </summary>
+        [HttpGet("Status")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public IActionResult GetRefreshStatus()
+        {
+            try
+            {
+                if (_refreshStatusService == null)
+                {
+                    logger.LogWarning("RefreshStatusService is null in GetRefreshStatus");
+                    return StatusCode(StatusCodes.Status500InternalServerError, "RefreshStatusService is not available");
+                }
+
+                var ongoing = _refreshStatusService.GetOngoingOperations().Select(op => new
+                {
+                    listId = op.ListId,
+                    listName = op.ListName,
+                    listType = op.ListType.ToString(),
+                    triggerType = op.TriggerType.ToString(),
+                    startTime = op.StartTime.ToString("o"),
+                    totalItems = op.TotalItems,
+                    processedItems = op.ProcessedItems,
+                    estimatedTimeRemaining = op.EstimatedTimeRemaining?.TotalSeconds,
+                    elapsedTime = op.ElapsedTime.TotalSeconds,
+                    errorMessage = op.ErrorMessage,
+                    batchCurrentIndex = op.BatchCurrentIndex,
+                    batchTotalCount = op.BatchTotalCount
+                }).ToList();
+
+                var history = _refreshStatusService.GetRefreshHistory().Select(h => new
+                {
+                    listId = h.ListId,
+                    listName = h.ListName,
+                    listType = h.ListType.ToString(),
+                    triggerType = h.TriggerType.ToString(),
+                    startTime = h.StartTime.ToString("o"),
+                    endTime = h.EndTime?.ToString("o"),
+                    duration = h.Duration.TotalSeconds,
+                    success = h.Success,
+                    errorMessage = h.ErrorMessage,
+                    itemCount = h.ItemCount
+                }).ToList();
+
+                var statistics = _refreshStatusService.GetStatistics();
+
+                return Ok(new
+                {
+                    ongoingOperations = ongoing,
+                    history = history,
+                    statistics = new
+                    {
+                        totalLists = statistics.TotalLists,
+                        ongoingOperationsCount = statistics.OngoingOperationsCount,
+                        lastRefreshTime = statistics.LastRefreshTime?.ToString("o"),
+                        averageRefreshDuration = statistics.AverageRefreshDuration?.TotalSeconds,
+                        successfulRefreshes = statistics.SuccessfulRefreshes,
+                        failedRefreshes = statistics.FailedRefreshes
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error getting refresh status");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error getting refresh status");
+            }
+        }
+
+        /// <summary>
+        /// Get refresh history (last refresh per list)
+        /// </summary>
+        [HttpGet("Status/History")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public IActionResult GetRefreshHistory()
+        {
+            try
+            {
+                var history = _refreshStatusService.GetRefreshHistory().Select(h => new
+                {
+                    listId = h.ListId,
+                    listName = h.ListName,
+                    listType = h.ListType.ToString(),
+                    triggerType = h.TriggerType.ToString(),
+                    startTime = h.StartTime.ToString("o"),
+                    endTime = h.EndTime?.ToString("o"),
+                    duration = h.Duration.TotalSeconds,
+                    success = h.Success,
+                    errorMessage = h.ErrorMessage,
+                    itemCount = h.ItemCount
+                }).ToList();
+
+                return Ok(history);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error getting refresh history");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error getting refresh history");
+            }
+        }
+
+        /// <summary>
+        /// Get ongoing refresh operations
+        /// </summary>
+        [HttpGet("Status/Ongoing")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public IActionResult GetOngoingOperations()
+        {
+            try
+            {
+                var ongoing = _refreshStatusService.GetOngoingOperations().Select(op => new
+                {
+                    listId = op.ListId,
+                    listName = op.ListName,
+                    listType = op.ListType.ToString(),
+                    triggerType = op.TriggerType.ToString(),
+                    startTime = op.StartTime.ToString("o"),
+                    totalItems = op.TotalItems,
+                    processedItems = op.ProcessedItems,
+                    estimatedTimeRemaining = op.EstimatedTimeRemaining?.TotalSeconds,
+                    elapsedTime = op.ElapsedTime.TotalSeconds,
+                    errorMessage = op.ErrorMessage,
+                    batchCurrentIndex = op.BatchCurrentIndex,
+                    batchTotalCount = op.BatchTotalCount
+                }).ToList();
+
+                return Ok(ongoing);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error getting ongoing operations");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error getting ongoing operations");
             }
         }
 

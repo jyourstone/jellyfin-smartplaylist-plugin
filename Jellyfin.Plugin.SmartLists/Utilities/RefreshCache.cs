@@ -51,11 +51,13 @@ namespace Jellyfin.Plugin.SmartLists
         /// </summary>
         /// <param name="playlists">Playlists to refresh</param>
         /// <param name="updateLastRefreshTime">Whether to update LastRefreshed timestamp</param>
+        /// <param name="batchProgressCallback">Optional callback invoked before processing each playlist (playlist ID)</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Results for each playlist</returns>
         public async Task<List<PlaylistRefreshResult>> RefreshPlaylistsWithCacheAsync(
             List<SmartPlaylistDto> playlists,
             bool updateLastRefreshTime = false,
+            Action<string>? batchProgressCallback = null,
             CancellationToken cancellationToken = default)
         {
             var results = new List<PlaylistRefreshResult>();
@@ -168,7 +170,7 @@ namespace Jellyfin.Plugin.SmartLists
 
                     // Use the same advanced caching as legacy tasks
                     var userResults = await ProcessUserPlaylistsWithAdvancedCachingAsync(
-                        user, userPlaylists, relevantUserMedia, updateLastRefreshTime, cancellationToken);
+                        user, userPlaylists, relevantUserMedia, updateLastRefreshTime, batchProgressCallback, cancellationToken);
 
                     results.AddRange(userResults);
                 }
@@ -260,6 +262,7 @@ namespace Jellyfin.Plugin.SmartLists
             List<SmartPlaylistDto> userPlaylists,
             BaseItem[] relevantUserMedia,
             bool updateLastRefreshTime,
+            Action<string>? batchProgressCallback,
             CancellationToken cancellationToken)
         {
             var results = new List<PlaylistRefreshResult>();
@@ -274,6 +277,9 @@ namespace Jellyfin.Plugin.SmartLists
 
                 try
                 {
+                    // Invoke batch progress callback before processing this playlist
+                    batchProgressCallback?.Invoke(playlist.Id ?? string.Empty);
+
                     _logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached media ({MediaCount} items)",
                         playlist.Name, playlist.ExpressionSets?.Count ?? 0, relevantUserMedia.Length);
 
@@ -313,6 +319,7 @@ namespace Jellyfin.Plugin.SmartLists
                         user,
                         playlistSpecificMedia,
                         async (updatedDto) => await _playlistStore.SaveAsync(updatedDto),
+                        null,
                         cancellationToken);
 
                     if (success && updateLastRefreshTime)

@@ -541,6 +541,14 @@
             }
         }
 
+        // Initialize status page when switching to status tab
+        if (tabId === 'status') {
+            if (window.SmartLists && window.SmartLists.Status) {
+                window.SmartLists.Status.initializeStatusPage();
+                window.SmartLists.Status.loadStatusPage();
+            }
+        }
+
         // Update URL
         SmartLists.updateUrl(tabId);
     };
@@ -597,6 +605,19 @@
                 
                 // Use shared tab switching helper (includes URL update)
                 setActiveTab(tabId);
+                
+                // Initialize status page when status tab is clicked
+                if (tabId === 'status' && window.SmartLists && window.SmartLists.Status) {
+                    window.SmartLists.Status.initializeStatusPage();
+                    window.SmartLists.Status.loadStatusPage();
+                } else if (tabId !== 'status' && window.SmartLists && window.SmartLists.Status) {
+                    // Stop polling when leaving status tab
+                    window.SmartLists.Status.stopPolling();
+                    // Also stop aggressive polling if it's running
+                    if (window.SmartLists.Status.stopAggressivePolling) {
+                        window.SmartLists.Status.stopAggressivePolling();
+                    }
+                }
             }, SmartLists.getEventListenerOptions(navSignal));
         });
         
@@ -974,6 +995,12 @@
                 parallelConcurrencyEl.value = config.ParallelConcurrencyLimit !== undefined && config.ParallelConcurrencyLimit !== null ? config.ParallelConcurrencyLimit : 0;
             }
             
+            // Load processing batch size setting
+            const processingBatchSizeEl = page.querySelector('#processingBatchSize');
+            if (processingBatchSizeEl) {
+                processingBatchSizeEl.value = config.ProcessingBatchSize !== undefined && config.ProcessingBatchSize !== null && config.ProcessingBatchSize > 0 ? config.ProcessingBatchSize : 300;
+            }
+            
             // Load schedule configuration values
             const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
             if (defaultScheduleTriggerElement) {
@@ -1139,6 +1166,15 @@
                 config.ParallelConcurrencyLimit = isNaN(parsedValue) ? 0 : parsedValue;
             }
             
+            // Save processing batch size setting
+            const processingBatchSizeInput = page.querySelector('#processingBatchSize').value;
+            if (processingBatchSizeInput === '') {
+                config.ProcessingBatchSize = 300;
+            } else {
+                const parsedValue = parseInt(processingBatchSizeInput, 10);
+                config.ProcessingBatchSize = (isNaN(parsedValue) || parsedValue <= 0) ? 300 : parsedValue;
+            }
+            
             apiClient.updatePluginConfiguration(SmartLists.getPluginId(), config).then(function() {
                 Dashboard.hideLoadingMsg();
                 SmartLists.showNotification('Configuration saved successfully.', 'success');
@@ -1156,50 +1192,34 @@
     };
 
     SmartLists.refreshAllPlaylists = function() {
-        Dashboard.showLoadingMsg();
+        const page = document.querySelector('.SmartListsConfigurationPage');
+            
+        // Redirect to status page immediately to show progress
+        if (page) {
+            SmartLists.switchToTab(page, 'status');
+                    
+            // Initialize and load status page if Status module is available
+            if (window.SmartLists && window.SmartLists.Status) {
+                window.SmartLists.Status.initializeStatusPage();
+                window.SmartLists.Status.loadStatusPage();
+                
+                // After a brief delay, refresh again to catch operations that just started
+                // Also enable aggressive polling for the first few seconds
+                setTimeout(function() {
+                    if (window.SmartLists && window.SmartLists.Status) {
+                        window.SmartLists.Status.loadStatusPage();
+                        window.SmartLists.Status.startAggressivePolling();
+                    }
+                }, 500);
+            }
+        }
         
+        // Start the refresh operation (fire and forget - status page will show progress)
         SmartLists.getApiClient().ajax({
             type: "POST",
             url: SmartLists.getApiClient().getUrl(SmartLists.ENDPOINTS.refreshDirect),
             contentType: 'application/json'
-        }).then(function(response) {
-            Dashboard.hideLoadingMsg();
-            
-            // Parse response if it's a Response object, otherwise use it directly
-            if (response && typeof response.json === 'function') {
-                return response.json().then(function(responseData) {
-                    // Get the message from the response if available
-                    let message = 'All lists have been refreshed successfully.';
-                    if (responseData && responseData.message) {
-                        message = responseData.message;
-                    }
-                    
-                    SmartLists.showNotification(message, 'success');
-                    
-                    // Auto-refresh the list to show updated LastRefreshed timestamps for both playlists and collections
-                    const page = document.querySelector('.SmartListsConfigurationPage');
-                    if (page && SmartLists.loadPlaylistList) {
-                        SmartLists.loadPlaylistList(page);
-                    }
-                });
-            } else {
-                // Response is already parsed or not a Response object
-                let message = 'All lists have been refreshed successfully.';
-                if (response && response.message) {
-                    message = response.message;
-                }
-                
-                SmartLists.showNotification(message, 'success');
-                
-                // Auto-refresh the list to show updated LastRefreshed timestamps for both playlists and collections
-                const page = document.querySelector('.SmartListsConfigurationPage');
-                if (page && SmartLists.loadPlaylistList) {
-                    SmartLists.loadPlaylistList(page);
-                }
-            }
         }).catch(async function(err) {
-            Dashboard.hideLoadingMsg();
-            
             // Extract error message using utility function
             const errorMessage = await SmartLists.extractErrorMessage(
                 err, 
