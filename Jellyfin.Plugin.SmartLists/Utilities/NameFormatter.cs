@@ -22,8 +22,6 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
         {
             try
             {
-                // TODO: Update to use Plugin.Instance when Plugin.cs is migrated
-                // For now, use default behavior
                 var config = Plugin.Instance?.Configuration;
                 if (config == null)
                 {

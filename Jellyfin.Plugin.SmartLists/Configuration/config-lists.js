@@ -1345,16 +1345,23 @@
         container.innerHTML = '<p>Loading playlists...</p>';
         
         try {
-            const playlists = await apiClient.ajax({
+            // Note: apiClient.ajax() returns a fetch Response object (not parsed JSON)
+            // So we need to check .ok and call .json() to get the actual data
+            const response = await apiClient.ajax({
                 type: "GET",
                 url: apiClient.getUrl(SmartLists.ENDPOINTS.base),
                 contentType: 'application/json'
             });
             
-            // Validate that playlists is an array
+            if (!response.ok) { 
+                throw new Error('HTTP ' + response.status + ': ' + response.statusText); 
+            }
+            
+            const playlists = await response.json();
             let processedPlaylists = playlists;
+            // Ensure playlists is an array
             if (!Array.isArray(processedPlaylists)) {
-                console.warn('API returned non-array playlists data, converting to empty array. Received:', typeof processedPlaylists);
+                console.warn('API returned non-array playlists data, converting to empty array');
                 processedPlaylists = [];
             }
             
@@ -1362,7 +1369,7 @@
             // This is a simple heuristic - if there are JSON files but fewer playlists loaded
             // Note: This won't be 100% accurate but gives users a heads up
             if (processedPlaylists.length > 0) {
-                console.log('SmartLists: Loaded ' + processedPlaylists.length + ' playlist(s) successfully');
+                console.log('SmartLists: Loaded ' + processedPlaylists.length + ' list(s) successfully');
             }
             
             // Store playlists data for filtering
@@ -1370,11 +1377,13 @@
             
             // Preload all users to populate cache for user name resolution
             try {
-                const users = await apiClient.ajax({
+                // Note: apiClient.ajax() returns a fetch Response object (not parsed JSON)
+                const usersResponse = await apiClient.ajax({
                     type: 'GET',
                     url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
                     contentType: 'application/json'
                 });
+                const users = await usersResponse.json();
                 
                 // Build cache from all users for user name resolution
                 if (Array.isArray(users)) {
@@ -1385,8 +1394,6 @@
                             userNameCache.set(normalizedId, user.Name);
                         }
                     });
-                } else {
-                    console.warn('API returned non-array users data. Received:', typeof users);
                 }
             } catch (err) {
                 console.error('Error preloading users:', err);
