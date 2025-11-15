@@ -1,22 +1,28 @@
 # Quick Start
 
-## Creating Your First Playlist
+## Creating Your First List
 
-1. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartPlaylist
-2. **Navigate to Create Playlist Tab**: Click on the "Create Playlist" tab
-3. **Configure Your Playlist**:
-   - Enter a name for your playlist
+1. **Access Plugin Settings**: Go to Dashboard → My Plugins → SmartLists
+2. **Navigate to Create List Tab**: Click on the "Create List" tab
+3. **Configure Your List**:
+   - Enter a name for your list
+   - Choose whether to create a Playlist or Collection
    - Select the media type(s) you want to include
    - Add rules to filter your content
-   - Choose sorting options
-   - Set the playlist owner (user)
+   - Choose sorting options (playlists only - collections don't support sorting)
+   - Set the list owner (for playlists) or reference user (for collections)
    - Configure other settings as needed
+
+!!! tip "Playlists vs Collections"
+    For a detailed explanation of the differences between Playlists and Collections, see the [Configuration Guide](../user-guide/configuration.md#playlists-vs-collections).
 
 ## Example: Unwatched Action Movies
 
 Here's a simple example to get you started:
 
-**Playlist Name**: "Unwatched Action Movies"
+**List Name**: "Unwatched Action Movies"
+
+**List Type**: Playlist
 
 **Media Type**: Movie
 

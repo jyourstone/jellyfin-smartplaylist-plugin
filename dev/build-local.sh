@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script builds the SmartPlaylist plugin and prepares it for local Docker-based testing.
+# This script builds the SmartLists plugin and prepares it for local Docker-based testing.
 # It will also restart the Jellyfin Docker container to apply the changes.
 
 set -e # Exit immediately if a command exits with a non-zero status.
@@ -9,14 +9,14 @@ set -e # Exit immediately if a command exits with a non-zero status.
 VERSION="10.11.0.0"
 OUTPUT_DIR="../build_output"
 
-echo "Building SmartPlaylist plugin version for local development..."
+echo "Building SmartLists plugin version for local development..."
 
 # Clean the previous build output
 rm -rf $OUTPUT_DIR
 mkdir -p $OUTPUT_DIR
 
 # Build the project
-dotnet build ../Jellyfin.Plugin.SmartPlaylist/Jellyfin.Plugin.SmartPlaylist.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
+dotnet build ../Jellyfin.Plugin.SmartLists/Jellyfin.Plugin.SmartLists.csproj --configuration Release -o $OUTPUT_DIR /p:Version=$VERSION /p:AssemblyVersion=$VERSION
 
 # Copy the dev meta.json file, as it's required by Jellyfin to load the plugin
 cp meta-dev.json $OUTPUT_DIR/meta.json

@@ -1,5 +1,5 @@
-site_name: Jellyfin SmartPlaylist Plugin
-site_description: A rebuilt and modernized plugin to create smart, rule-based playlists in Jellyfin
+site_name: Jellyfin SmartLists Plugin
+site_description: Create smart, rule-based playlists and collections in Jellyfin.
 site_url: https://github.com/jyourstone/jellyfin-smartplaylist-plugin
 
 repo_name: jyourstone/jellyfin-smartplaylist-plugin

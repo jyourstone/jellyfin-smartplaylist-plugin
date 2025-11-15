@@ -2,7 +2,7 @@
     "Serilog": {
       "MinimumLevel": {
         "Override": {
-          "Jellyfin.Plugin.SmartPlaylist": "Debug"
+          "Jellyfin.Plugin.SmartLists": "Debug"
         }
       }
     }
