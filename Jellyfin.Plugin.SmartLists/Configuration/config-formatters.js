@@ -356,7 +356,14 @@
         // New format: SortOptions array
         if (playlist.Order.SortOptions && playlist.Order.SortOptions.length > 0) {
             return playlist.Order.SortOptions.map(function(opt) {
-                return opt.SortBy + ' ' + opt.SortOrder;
+                var displaySortBy = opt.SortBy;
+                // Format "Name (Ignore Articles)" and "SeriesName (Ignore Articles)" for display
+                if (displaySortBy === 'Name (Ignore Articles)') {
+                    displaySortBy = 'Name (Ignore Article \'The\')';
+                } else if (displaySortBy === 'SeriesName (Ignore Articles)') {
+                    displaySortBy = 'Series Name (Ignore Article \'The\')';
+                }
+                return displaySortBy + ' ' + opt.SortOrder;
             }).join(' → ');
         }
         

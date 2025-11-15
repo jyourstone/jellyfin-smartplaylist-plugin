@@ -137,7 +137,7 @@
                 maxItems = 0; // Empty = no limit
             } else {
                 const parsedValue = parseInt(maxItemsInput, 10);
-                maxItems = isNaN(parsedValue) ? 500 : parsedValue;
+                maxItems = (isNaN(parsedValue) || parsedValue < 0) ? 0 : parsedValue;
             }
 
             // Handle maxPlayTimeMinutes with helper function
@@ -147,7 +147,7 @@
                 maxPlayTimeMinutes = 0;
             } else {
                 const parsedValue = parseInt(maxPlayTimeMinutesInput, 10);
-                maxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
+                maxPlayTimeMinutes = (isNaN(parsedValue) || parsedValue < 0) ? 0 : parsedValue;
             }
             
             // Get selected user ID from dropdown (required for both playlists and collections)

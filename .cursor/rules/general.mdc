@@ -193,3 +193,69 @@ Adding new expensive fields:
 ## Music Fields
 
 **Artists** (track-level) and **AlbumArtists** (album-level) are separate from **People** field (movies/TV only). These are **cheap operations** (simple property access via reflection), not expensive like People (database queries) or AudioLanguages (media stream analysis). They are NOT included in expensive field optimization logic.
+
+## Adding New Sort Options
+
+When adding new sort options to the plugin, you must update **THREE critical locations** in `Core/SmartList.cs` to ensure they work correctly with multiple sorts:
+
+### 1. Create Order Classes (around line 2960+)
+Create both Ascending and Descending order classes that inherit from `PropertyOrder<T>`:
+
+```csharp
+public class YourNewOrder : PropertyOrder<string>
+{
+    public override string Name => "YourNew Ascending";
+    protected override bool IsDescending => false;
+    protected override string GetSortValue(BaseItem item)
+    {
+        // Extract and return the sort value
+        return item.SomeProperty ?? "";
+    }
+    protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+}
+
+public class YourNewOrderDesc : PropertyOrder<string>
+{
+    public override string Name => "YourNew Descending";
+    protected override bool IsDescending => true;
+    // Same GetSortValue implementation
+}
+```
+
+### 2. Add to OrderMap Dictionary (around line 2450)
+Register both orders in the `OrderFactory.OrderMap` dictionary:
+
+```csharp
+{ "YourNew Ascending", () => new YourNewOrder() },
+{ "YourNew Descending", () => new YourNewOrderDesc() },
+```
+
+### 3. Add to CreateSortKey Method (around line 1465+) ⚠️ CRITICAL
+**This is easy to forget but essential for multiple sorts to work!**
+
+Add a handler in the `CreateSortKey` method to create comparable sort keys:
+
+```csharp
+if (order is YourNewOrder || order is YourNewOrderDesc)
+{
+    return item.SomeProperty ?? "";
+}
+```
+
+Without this, the multi-sort logic in `ApplyMultipleOrders` cannot create proper sort keys, and secondary/tertiary sorts will be ignored.
+
+### 4. Add to IsDescendingOrder Method (around line 1730)
+Add the descending variant to the `IsDescendingOrder` check:
+
+```csharp
+order is YourNewOrderDesc ||
+```
+
+### Example: SeriesName with "Ignore Articles"
+When we added `SeriesName (Ignore Articles)`, we created:
+- Classes: `SeriesNameIgnoreArticlesOrder` and `SeriesNameIgnoreArticlesOrderDesc`
+- OrderMap entries for both ascending and descending
+- CreateSortKey handler that calls `OrderUtilities.StripLeadingArticles(seriesName)`
+- IsDescendingOrder entry for the descending variant
+
+**Missing step #3 causes multiple sorts to fail silently** - the first sort works, but secondary sorts are ignored.

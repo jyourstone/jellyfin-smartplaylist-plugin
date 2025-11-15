@@ -1594,6 +1594,25 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 }
                 return "";
             }
+            
+            if (order is SeriesNameIgnoreArticlesOrder || order is SeriesNameIgnoreArticlesOrderDesc)
+            {
+                try
+                {
+                    var seriesNameProperty = item.GetType().GetProperty("SeriesName");
+                    if (seriesNameProperty != null)
+                    {
+                        var value = seriesNameProperty.GetValue(item);
+                        if (value is string seriesName)
+                            return OrderUtilities.StripLeadingArticles(seriesName ?? "");
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+                return "";
+            }
 
             // For album name
             if (order is AlbumNameOrder || order is AlbumNameOrderDesc)
@@ -1719,6 +1738,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                    order is LastPlayedOrderDesc ||
                    order is RuntimeOrderDesc ||
                    order is SeriesNameOrderDesc ||
+                   order is SeriesNameIgnoreArticlesOrderDesc ||
                    order is AlbumNameOrderDesc ||
                    order is ArtistOrderDesc ||
                    order is SeasonNumberOrderDesc ||
@@ -2468,6 +2488,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
             { "Runtime Descending", () => new RuntimeOrderDesc() },
             { "SeriesName Ascending", () => new SeriesNameOrder() },
             { "SeriesName Descending", () => new SeriesNameOrderDesc() },
+            { "SeriesName (Ignore Articles) Ascending", () => new SeriesNameIgnoreArticlesOrder() },
+            { "SeriesName (Ignore Articles) Descending", () => new SeriesNameIgnoreArticlesOrderDesc() },
             { "AlbumName Ascending", () => new AlbumNameOrder() },
             { "AlbumName Descending", () => new AlbumNameOrderDesc() },
             { "Artist Ascending", () => new ArtistOrder() },
@@ -3538,6 +3560,62 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     var value = seriesNameProperty.GetValue(item);
                     if (value is string seriesName)
                         return seriesName ?? "";
+                }
+            }
+            catch
+            {
+                // Ignore errors and return empty string
+            }
+            return "";
+        }
+    }
+
+    public class SeriesNameIgnoreArticlesOrder : PropertyOrder<string>
+    {
+        public override string Name => "SeriesName (Ignore Articles) Ascending";
+        protected override bool IsDescending => false;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+
+        protected override string GetSortValue(BaseItem item)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            try
+            {
+                // SeriesName property for episodes
+                var seriesNameProperty = item.GetType().GetProperty("SeriesName");
+                if (seriesNameProperty != null)
+                {
+                    var value = seriesNameProperty.GetValue(item);
+                    if (value is string seriesName)
+                        return OrderUtilities.StripLeadingArticles(seriesName ?? "");
+                }
+            }
+            catch
+            {
+                // Ignore errors and return empty string
+            }
+            return "";
+        }
+    }
+
+    public class SeriesNameIgnoreArticlesOrderDesc : PropertyOrder<string>
+    {
+        public override string Name => "SeriesName (Ignore Articles) Descending";
+        protected override bool IsDescending => true;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+
+        protected override string GetSortValue(BaseItem item)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            try
+            {
+                // SeriesName property for episodes
+                var seriesNameProperty = item.GetType().GetProperty("SeriesName");
+                if (seriesNameProperty != null)
+                {
+                    var value = seriesNameProperty.GetValue(item);
+                    if (value is string seriesName)
+                        return OrderUtilities.StripLeadingArticles(seriesName ?? "");
                 }
             }
             catch

@@ -160,12 +160,25 @@
         
         const defaultSortBySetting = page.querySelector('#defaultSortBy');
         const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
+        const defaultIgnoreArticlesContainer = page.querySelector('#defaultIgnoreArticlesContainer');
+        const defaultIgnoreArticlesCheckbox = page.querySelector('#defaultIgnoreArticles');
         
         if (defaultSortBySetting && defaultSortBySetting.children.length === 0) {
             SmartLists.populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, 'Name'); 
         }
         if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
             SmartLists.populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, 'Ascending'); 
+        }
+        
+        // Add event listener to show/hide ignore articles checkbox based on sort selection
+        if (defaultSortBySetting && defaultIgnoreArticlesContainer) {
+            defaultSortBySetting.addEventListener('change', function() {
+                const showCheckbox = (this.value === 'Name' || this.value === 'SeriesName');
+                defaultIgnoreArticlesContainer.style.display = showCheckbox ? '' : 'none';
+                if (!showCheckbox && defaultIgnoreArticlesCheckbox) {
+                    defaultIgnoreArticlesCheckbox.checked = false;
+                }
+            });
         }
         
         // Add default sort option when creating a new playlist (not in edit mode)
@@ -187,11 +200,7 @@
         }
         
         // Populate playlist naming configuration fields
-        const playlistNamePrefix = page.querySelector('#playlistNamePrefix');
         const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
-        if (playlistNamePrefix && playlistNamePrefix.value === '') {
-            playlistNamePrefix.value = '';
-        }
         if (playlistNameSuffix && playlistNameSuffix.value === '') {
             playlistNameSuffix.value = '[Smart]';
         }
@@ -918,6 +927,8 @@
         SmartLists.getApiClient().getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
             const defaultSortByEl = page.querySelector('#defaultSortBy');
             const defaultSortOrderEl = page.querySelector('#defaultSortOrder');
+            const defaultIgnoreArticlesCheckbox = page.querySelector('#defaultIgnoreArticles');
+            const defaultIgnoreArticlesContainer = page.querySelector('#defaultIgnoreArticlesContainer');
             const defaultListTypeEl = page.querySelector('#defaultListType');
             const defaultMakePublicEl = page.querySelector('#defaultMakePublic');
             const defaultMaxItemsEl = page.querySelector('#defaultMaxItems');
@@ -926,8 +937,28 @@
             const playlistNamePrefixEl = page.querySelector('#playlistNamePrefix');
             const playlistNameSuffixEl = page.querySelector('#playlistNameSuffix');
             
-            if (defaultSortByEl) defaultSortByEl.value = config.DefaultSortBy || 'Name';
+            // Handle backwards compatibility for DefaultSortBy with "(Ignore Articles)"
+            let sortBy = config.DefaultSortBy || 'Name';
+            let ignoreArticles = false;
+            
+            if (sortBy === 'Name (Ignore Articles)') {
+                sortBy = 'Name';
+                ignoreArticles = true;
+            } else if (sortBy === 'SeriesName (Ignore Articles)') {
+                sortBy = 'SeriesName';
+                ignoreArticles = true;
+            }
+            
+            if (defaultSortByEl) defaultSortByEl.value = sortBy;
             if (defaultSortOrderEl) defaultSortOrderEl.value = config.DefaultSortOrder || 'Ascending';
+            if (defaultIgnoreArticlesCheckbox) defaultIgnoreArticlesCheckbox.checked = ignoreArticles;
+            
+            // Show/hide ignore articles checkbox based on current sort selection
+            if (defaultIgnoreArticlesContainer) {
+                const showCheckbox = (sortBy === 'Name' || sortBy === 'SeriesName');
+                defaultIgnoreArticlesContainer.style.display = showCheckbox ? '' : 'none';
+            }
+            
             if (defaultListTypeEl) defaultListTypeEl.value = config.DefaultListType || 'Playlist';
             if (defaultMakePublicEl) defaultMakePublicEl.checked = config.DefaultMakePublic || false;
             if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
@@ -1002,7 +1033,15 @@
         Dashboard.showLoadingMsg();
         const apiClient = SmartLists.getApiClient();
         apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
-            config.DefaultSortBy = page.querySelector('#defaultSortBy').value;
+            // Handle DefaultSortBy with ignore articles checkbox
+            let sortBy = page.querySelector('#defaultSortBy').value;
+            const ignoreArticlesCheckbox = page.querySelector('#defaultIgnoreArticles');
+            
+            if ((sortBy === 'Name' || sortBy === 'SeriesName') && ignoreArticlesCheckbox && ignoreArticlesCheckbox.checked) {
+                sortBy = sortBy + ' (Ignore Articles)';
+            }
+            
+            config.DefaultSortBy = sortBy;
             config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
             config.DefaultListType = page.querySelector('#defaultListType').value;
             config.DefaultMakePublic = page.querySelector('#defaultMakePublic').checked;

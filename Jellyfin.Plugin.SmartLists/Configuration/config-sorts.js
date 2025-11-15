@@ -63,6 +63,57 @@
         return separator;
     };
     
+    // Helper function to create "Ignore Article" checkbox
+    SmartLists.createIgnoreArticleCheckbox = function(sortId, checked) {
+        const container = document.createElement('div');
+        container.className = 'sort-field-container ignore-article-container';
+        container.style.minWidth = '200px';
+        container.style.alignItems = 'center';
+        container.style.flexDirection = 'column';
+        
+        // Create checkbox with label
+        const checkboxLabel = document.createElement('label');
+        checkboxLabel.className = 'emby-checkbox-label';
+        checkboxLabel.style.display = 'flex';
+        checkboxLabel.style.alignItems = 'center';
+        checkboxLabel.style.cursor = 'pointer';
+        checkboxLabel.style.marginTop = '0.5em';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = 'sort-ignore-articles-' + sortId;
+        checkbox.className = 'emby-checkbox';
+        checkbox.checked = checked || false;
+        
+        const checkboxText = document.createElement('span');
+        checkboxText.className = 'checkboxLabel';
+        checkboxText.textContent = 'Ignore Article \'The\'';
+        checkboxText.style.fontSize = '0.9em';
+        checkboxText.style.paddingLeft = '0.1em';
+        
+        const checkboxOutline = document.createElement('span');
+        checkboxOutline.className = 'checkboxOutline';
+        
+        const checkedIcon = document.createElement('span');
+        checkedIcon.className = 'material-icons checkboxIcon checkboxIcon-checked check';
+        checkedIcon.setAttribute('aria-hidden', 'true');
+        
+        const uncheckedIcon = document.createElement('span');
+        uncheckedIcon.className = 'material-icons checkboxIcon checkboxIcon-unchecked';
+        uncheckedIcon.setAttribute('aria-hidden', 'true');
+        
+        checkboxOutline.appendChild(checkedIcon);
+        checkboxOutline.appendChild(uncheckedIcon);
+        
+        checkboxLabel.appendChild(checkbox);
+        checkboxLabel.appendChild(checkboxText);
+        checkboxLabel.appendChild(checkboxOutline);
+        
+        container.appendChild(checkboxLabel);
+        
+        return { container: container, checkbox: checkbox };
+    };
+    
     // Helper function to sync Sort Order UI based on Sort By value
     SmartLists.syncSortOrderUI = function(sortByValue, sortOrderContainer, sortOrderSelect) {
         if (!sortOrderContainer || !sortOrderSelect) return;
@@ -123,7 +174,7 @@
             return hasSimilarToRule === true;
         }
         
-        // Always show: Name, Name (Ignore Articles), ProductionYear, CommunityRating, 
+        // Always show: Name, ProductionYear, CommunityRating, 
         // DateCreated, ReleaseDate, PlayCount (owner), LastPlayed (owner), Random, NoOrder
         return true;
     };
@@ -140,6 +191,18 @@
     
     SmartLists.createSortBox = function(page, sortData) {
         const sortId = 'sort-' + Date.now() + '-' + Math.random();
+        
+        // Parse sortData to handle "Name (Ignore Articles)" and "SeriesName (Ignore Articles)" backwards compatibility
+        let actualSortBy = sortData ? sortData.SortBy : 'Name';
+        let ignoreArticles = false;
+        
+        if (actualSortBy === 'Name (Ignore Articles)') {
+            actualSortBy = 'Name';
+            ignoreArticles = true;
+        } else if (actualSortBy === 'SeriesName (Ignore Articles)') {
+            actualSortBy = 'SeriesName';
+            ignoreArticles = true;
+        }
         
         // Create box container
         const box = SmartLists.createStyledElement('div', 'sort-box', SmartLists.STYLES.sortBox);
@@ -160,7 +223,7 @@
             return {
                 value: opt.value,
                 label: opt.label,
-                selected: sortData ? (opt.value === sortData.SortBy) : (opt.value === 'Name')
+                selected: opt.value === actualSortBy
             };
         });
         SmartLists.populateSelectElement(sortByField.input, sortByOptions);
@@ -178,6 +241,12 @@
         SmartLists.populateSelectElement(sortOrderField.input, sortOrderOptions);
         fieldsContainer.appendChild(sortOrderField.container);
         
+        // Ignore Articles checkbox (visible for Name and SeriesName)
+        const ignoreArticlesField = SmartLists.createIgnoreArticleCheckbox(sortId, ignoreArticles);
+        const shouldShowCheckbox = (actualSortBy === 'Name' || actualSortBy === 'SeriesName');
+        ignoreArticlesField.container.style.display = shouldShowCheckbox ? '' : 'none';
+        fieldsContainer.appendChild(ignoreArticlesField.container);
+        
         // Remove button
         const removeBtn = SmartLists.createStyledElement('button', 'sort-remove-btn', SmartLists.STYLES.sortRemoveBtn);
         removeBtn.type = 'button';
@@ -190,14 +259,20 @@
         
         box.appendChild(fieldsContainer);
         
-        // Add event listener to sync Sort Order UI when Sort By changes
+        // Add event listener to sync Sort Order UI and checkbox visibility when Sort By changes
         sortByField.input.addEventListener('change', function() {
             SmartLists.syncSortOrderUI(this.value, sortOrderField.container, sortOrderField.input);
+            // Show/hide ignore articles checkbox based on Sort By value
+            const showCheckbox = (this.value === 'Name' || this.value === 'SeriesName');
+            ignoreArticlesField.container.style.display = showCheckbox ? '' : 'none';
+            // Reset checkbox when switching away from Name/SeriesName
+            if (!showCheckbox) {
+                ignoreArticlesField.checkbox.checked = false;
+            }
         });
         
         // Initialize Sort Order UI based on current Sort By value
-        const initialSortBy = sortData ? sortData.SortBy : 'Name';
-        SmartLists.syncSortOrderUI(initialSortBy, sortOrderField.container, sortOrderField.input);
+        SmartLists.syncSortOrderUI(actualSortBy, sortOrderField.container, sortOrderField.input);
         
         return box;
     };
@@ -299,11 +374,17 @@
         boxes.forEach(function(box) {
             const sortBySelect = box.querySelector('[id^="sort-by-"]');
             const sortOrderSelect = box.querySelector('[id^="sort-order-"]');
+            const ignoreArticlesCheckbox = box.querySelector('[id^="sort-ignore-articles-"]');
             
             if (!sortBySelect || !sortBySelect.value) return; // Skip if no sort by selected
             
-            const sortBy = sortBySelect.value;
+            let sortBy = sortBySelect.value;
             const sortOrder = (sortBy === 'Random' || sortBy === 'NoOrder') ? 'Ascending' : (sortOrderSelect ? sortOrderSelect.value : 'Ascending');
+            
+            // Handle "Ignore Articles" checkbox - convert to "(Ignore Articles)" for backwards compatibility
+            if ((sortBy === 'Name' || sortBy === 'SeriesName') && ignoreArticlesCheckbox && ignoreArticlesCheckbox.checked) {
+                sortBy = sortBy + ' (Ignore Articles)';
+            }
             
             sorts.push({
                 SortBy: sortBy,

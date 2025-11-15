@@ -46,7 +46,6 @@
     // Constants for sort options (used throughout the application)
     SmartLists.SORT_OPTIONS = [
         { value: 'Name', label: 'Name' },
-        { value: 'Name (Ignore Articles)', label: 'Name (Ignore Article \'The\')' },
         { value: 'ProductionYear', label: 'Production Year' },
         { value: 'CommunityRating', label: 'Community Rating' },
         { value: 'DateCreated', label: 'Date Created' },
