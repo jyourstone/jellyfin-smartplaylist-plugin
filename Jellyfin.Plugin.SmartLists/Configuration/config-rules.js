@@ -3,6 +3,9 @@
 
     // ===== OPERATOR OPTIONS MANAGEMENT =====
     SmartLists.updateOperatorOptions = function(fieldValue, operatorSelect) {
+        // Capture the previous operator value before clearing
+        const previousOperator = operatorSelect.value;
+        
         operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
         let allowedOperators = [];
         
@@ -59,8 +62,14 @@
             option.textContent = opt.Label;
             operatorSelect.appendChild(option);
         });
-        if (fieldValue === 'ItemType' || SmartLists.FIELD_TYPES.BOOLEAN_FIELDS.indexOf(fieldValue) !== -1) {
+        
+        // Restore previous operator if it's still valid, otherwise set default
+        if (previousOperator && allowedOperators.some(function(op) { return op.Value === previousOperator; })) {
+            operatorSelect.value = previousOperator;
+        } else if (fieldValue === 'ItemType' || SmartLists.FIELD_TYPES.BOOLEAN_FIELDS.indexOf(fieldValue) !== -1) {
             operatorSelect.value = 'Equal';
+        } else {
+            operatorSelect.value = '';
         }
     };
 

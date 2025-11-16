@@ -108,7 +108,7 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
         public static string StripPrefixAndSuffixWithSettings(string formattedName, string prefix, string suffix)
         {
             if (string.IsNullOrEmpty(formattedName))
-                return formattedName;
+                return formattedName ?? string.Empty;
 
             var result = formattedName;
 

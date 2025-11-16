@@ -1,5 +1,6 @@
 # EditorConfig for SmartLists Plugin
-# Minimal suppressions for Recommended analysis mode
+# Suppressions for Recommended analysis mode
+# Note: Some suppressions are necessary for plugin compatibility and code style preferences
 
 root = true
 
@@ -84,13 +85,14 @@ dotnet_diagnostic.SA1623.severity = none
 dotnet_diagnostic.SA1625.severity = none
 dotnet_diagnostic.SA1629.severity = none
 
-# Code Analysis: Performance and design (non-critical for plugin)
-dotnet_diagnostic.CA1001.severity = none
-dotnet_diagnostic.CA1305.severity = none
+# Code Analysis: Performance and design
+# CA1001: Disposable pattern - Keep active to catch resource leaks
+# CA1305: IFormatProvider - Keep active to catch globalization issues
+# CA1825: Zero-length array allocations - Keep active to catch performance anti-patterns
+# Other CA rules suppressed for plugin compatibility or non-critical issues
 dotnet_diagnostic.CA1716.severity = none
 dotnet_diagnostic.CA1805.severity = none
 dotnet_diagnostic.CA1816.severity = none
-dotnet_diagnostic.CA1825.severity = none
 dotnet_diagnostic.CA1836.severity = none
 dotnet_diagnostic.CA1848.severity = none
 dotnet_diagnostic.CA1859.severity = none

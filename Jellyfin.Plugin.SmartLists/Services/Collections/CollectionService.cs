@@ -456,7 +456,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 {
                     _logger.LogInformation("Deleting Jellyfin collection '{CollectionName}' (ID: {CollectionId})",
                         existingCollection.Name, existingCollection.Id);
-                    _libraryManager.DeleteItem(existingCollection, new DeleteOptions { DeleteFileLocation = true }, true);
+                    // DeleteFileLocation = false to ensure we only delete the BoxSet entity and its metadata,
+                    // not the underlying media items that are part of the collection
+                    _libraryManager.DeleteItem(existingCollection, new DeleteOptions { DeleteFileLocation = false }, true);
                     
                     // Trigger library scan to update UI
                     LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);

@@ -10,8 +10,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
     {
         /// <summary>
         /// Gets the list of expressions in this set.
+        /// May be null during JSON deserialization of legacy data.
         /// </summary>
-        public List<Expression> Expressions { get; init; } = [];
+        public List<Expression>? Expressions { get; init; } = [];
     }
 }
 

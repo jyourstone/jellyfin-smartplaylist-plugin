@@ -144,7 +144,30 @@
         
         try {
             // Check if this is a Response object (from fetch API)
-            if (err && typeof err.json === 'function') {
+            if (err && typeof err.text === 'function') {
+                // Response body is a single-use stream - must call .text() first, then parse JSON
+                try {
+                    const textContent = await err.text();
+                    if (textContent) {
+                        // Try to parse as JSON first
+                        try {
+                            const errorData = JSON.parse(textContent);
+                            if (errorData.message) {
+                                return errorData.message;
+                            } else if (typeof errorData === 'string') {
+                                return errorData;
+                            }
+                        } catch (parseError) {
+                            // If JSON parsing fails, use the raw text
+                            return textContent;
+                        }
+                    }
+                } catch (textError) {
+                    console.log('Could not extract error text:', textError);
+                }
+            }
+            // Legacy check for Response with json method (shouldn't happen, but defensive)
+            else if (err && typeof err.json === 'function') {
                 try {
                     const errorData = await err.json();
                     if (errorData.message) {
@@ -153,15 +176,7 @@
                         return errorData;
                     }
                 } catch (parseError) {
-                    // If JSON parsing fails, try to get text
-                    try {
-                        const textContent = await err.text();
-                        if (textContent) {
-                            return textContent;
-                        }
-                    } catch (textError) {
-                        console.log('Could not extract error text:', textError);
-                    }
+                    console.log('Could not parse error JSON:', parseError);
                 }
             }
             // Check if the error has response text (legacy error format)

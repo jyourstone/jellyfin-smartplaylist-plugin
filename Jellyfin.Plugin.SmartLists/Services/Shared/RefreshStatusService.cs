@@ -220,19 +220,53 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
-        /// Gets all ongoing operations
+        /// Gets all ongoing operations (returns copies to prevent external mutation)
+        /// Note: ElapsedTime is calculated from the original Stopwatch, so copies will show the same elapsed time
         /// </summary>
         public List<RefreshOperation> GetOngoingOperations()
         {
-            return _ongoingOperations.Values.ToList();
+            // Create copies to prevent external mutation of tracked state
+            // Note: RefreshOperation has a private Stopwatch, so we create new instances with copied properties
+            // The ElapsedTime property will be calculated from a new Stopwatch, but that's acceptable for read-only views
+            return _ongoingOperations.Values.Select(op =>
+            {
+                var copy = new RefreshOperation
+                {
+                    ListId = op.ListId,
+                    ListName = op.ListName,
+                    ListType = op.ListType,
+                    TriggerType = op.TriggerType,
+                    StartTime = op.StartTime,
+                    TotalItems = op.TotalItems,
+                    ProcessedItems = op.ProcessedItems,
+                    EstimatedTimeRemaining = op.EstimatedTimeRemaining,
+                    ErrorMessage = op.ErrorMessage,
+                    BatchCurrentIndex = op.BatchCurrentIndex,
+                    BatchTotalCount = op.BatchTotalCount
+                };
+                // Update progress to sync the internal state (this will recalculate EstimatedTimeRemaining)
+                copy.UpdateProgress(op.ProcessedItems, op.TotalItems);
+                return copy;
+            }).ToList();
         }
 
         /// <summary>
-        /// Gets refresh history (last refresh per list)
+        /// Gets refresh history (last refresh per list) (returns copies to prevent external mutation)
         /// </summary>
         public List<RefreshHistoryEntry> GetRefreshHistory()
         {
-            return _refreshHistory.Values.ToList();
+            return _refreshHistory.Values.Select(entry => new RefreshHistoryEntry
+            {
+                ListId = entry.ListId,
+                ListName = entry.ListName,
+                ListType = entry.ListType,
+                TriggerType = entry.TriggerType,
+                StartTime = entry.StartTime,
+                EndTime = entry.EndTime,
+                Duration = entry.Duration,
+                Success = entry.Success,
+                ErrorMessage = entry.ErrorMessage
+            }).ToList();
         }
 
         /// <summary>

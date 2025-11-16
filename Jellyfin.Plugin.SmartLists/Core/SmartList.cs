@@ -3101,7 +3101,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     if (playCountValue is int pc)
                         return pc;
                     if (playCountValue != null)
-                        return Convert.ToInt32(playCountValue);
+                        return Convert.ToInt32(playCountValue, System.Globalization.CultureInfo.InvariantCulture);
                 }
                 return 0;
             }
@@ -3131,7 +3131,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     if (playCountValue is int pc)
                         return pc;
                     if (playCountValue != null)
-                        return Convert.ToInt32(playCountValue);
+                        return Convert.ToInt32(playCountValue, System.Globalization.CultureInfo.InvariantCulture);
                 }
                 return 0;
             }

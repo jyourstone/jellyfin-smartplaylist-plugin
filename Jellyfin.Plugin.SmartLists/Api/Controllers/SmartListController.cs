@@ -2061,7 +2061,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
 
                 zipStream.Position = 0;
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture);
                 var zipFileName = $"smartlists_export_{timestamp}.zip";
 
                 logger.LogInformation("Exported {PlaylistCount} smart playlists to {FileName}", filePaths.Length, zipFileName);

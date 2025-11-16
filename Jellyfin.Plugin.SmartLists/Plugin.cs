@@ -27,6 +27,7 @@ namespace Jellyfin.Plugin.SmartLists
         public void Dispose()
         {
             AppDomain.CurrentDomain.AssemblyResolve -= OnAssemblyResolve;
+            Instance = null;
         }
 
         public override Guid Id => Guid.Parse("A0A2A7B2-747A-4113-8B39-757A9D267C79");

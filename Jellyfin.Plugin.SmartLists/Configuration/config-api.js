@@ -101,7 +101,7 @@
             console.error('Error loading users:', err);
             userSelect.innerHTML = '<option value="">Error loading users</option>';
             SmartLists.showNotification('Failed to load users. Using fallback.');
-            throw err;
+            return Promise.resolve();
         });
     };
     

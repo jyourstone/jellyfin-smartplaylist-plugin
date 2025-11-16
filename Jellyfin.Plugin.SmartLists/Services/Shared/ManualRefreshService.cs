@@ -622,40 +622,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 _logger.LogInformation("Refreshing all playlists...");
                 playlistResult = await RefreshAllPlaylistsAsync(batchOffset: 0, totalBatchCount: totalListsCount, cancellationToken).ConfigureAwait(false);
 
-                if (!playlistResult.Success)
-                {
-                    _logger.LogWarning("Playlist refresh failed: {LogMessage}", playlistResult.LogMessage);
-                    return new RefreshResult
-                    {
-                        Success = false,
-                        NotificationMessage = playlistResult.NotificationMessage,
-                        LogMessage = playlistResult.LogMessage,
-                        SuccessCount = playlistResult.SuccessCount,
-                        FailureCount = playlistResult.FailureCount
-                    };
-                }
-
                 // Refresh collections with unified batch tracking (offset by playlist count)
+                // Always attempt both, even if playlists had failures
                 _logger.LogInformation("Refreshing all collections...");
                 collectionResult = await RefreshAllCollectionsAsync(batchOffset: enabledPlaylists.Count, totalBatchCount: totalListsCount, cancellationToken).ConfigureAwait(false);
-
-                if (!collectionResult.Success)
-                {
-                    _logger.LogWarning("Collection refresh failed: {LogMessage}", collectionResult.LogMessage);
-                    return new RefreshResult
-                    {
-                        Success = false,
-                        NotificationMessage = collectionResult.NotificationMessage,
-                        LogMessage = collectionResult.LogMessage,
-                        SuccessCount = collectionResult.SuccessCount,
-                        FailureCount = collectionResult.FailureCount
-                    };
-                }
 
                 overallStopwatch.Stop();
                 var elapsedTime = FormatElapsedTime(overallStopwatch.ElapsedMilliseconds);
                 
-                // Check if there were any actual failures
+                // Check if there were any actual failures (based on failure count, not Success flag)
                 var playlistHasFailures = HasActualFailures(playlistResult);
                 var collectionHasFailures = HasActualFailures(collectionResult);
                 

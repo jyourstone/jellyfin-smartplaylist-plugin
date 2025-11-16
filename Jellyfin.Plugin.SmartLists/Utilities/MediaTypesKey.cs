@@ -22,10 +22,10 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
 
         public static MediaTypesKey Create(List<string> mediaTypes)
         {
-            return Create(mediaTypes, null!);
+            return Create(mediaTypes, null);
         }
 
-        public static MediaTypesKey Create(List<string> mediaTypes, SmartPlaylistDto dto)
+        public static MediaTypesKey Create(List<string> mediaTypes, SmartPlaylistDto? dto)
         {
             if (mediaTypes == null || mediaTypes.Count == 0)
             {

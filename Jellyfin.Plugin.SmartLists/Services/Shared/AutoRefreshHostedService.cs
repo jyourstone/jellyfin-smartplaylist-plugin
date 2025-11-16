@@ -18,7 +18,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
     /// <summary>
     /// Hosted service that initializes the AutoRefreshService when Jellyfin starts.
     /// </summary>
-    public class AutoRefreshHostedService : IHostedService
+    public class AutoRefreshHostedService : IHostedService, IDisposable
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<AutoRefreshHostedService> _logger;
@@ -94,6 +94,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
 
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Disposes the hosted service and cleans up resources.
+        /// </summary>
+        public void Dispose()
+        {
+            _autoRefreshService?.Dispose();
+            _autoRefreshService = null;
         }
     }
 }

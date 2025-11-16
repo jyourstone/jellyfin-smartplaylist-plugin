@@ -604,9 +604,15 @@
                 const details = card.querySelector('.playlist-details');
                 const actions = card.querySelector('.playlist-actions');
                 const icon = card.querySelector('.playlist-expand-icon');
-                details.style.display = 'block';
-                actions.style.display = 'block';
-                icon.textContent = '▼';
+                if (details) {
+                    details.style.display = 'block';
+                }
+                if (actions) {
+                    actions.style.display = 'block';
+                }
+                if (icon) {
+                    icon.textContent = '▼';
+                }
                 card.setAttribute('data-expanded', 'true');
             } else {
                 // Ensure collapsed state (default)

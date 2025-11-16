@@ -529,7 +529,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             // Try to convert to int if it's some other numeric type
             try
             {
-                return Convert.ToInt32(value);
+                return Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
             }
             catch
             {
@@ -702,7 +702,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     }
                 }
 
-                logger?.LogDebug("Extracted framerate for item {Name}: {Framerate}", baseItem.Name, operand.Framerate?.ToString() ?? "null");
+                logger?.LogDebug("Extracted framerate for item {Name}: {Framerate}", baseItem.Name, operand.Framerate?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null");
             }
             catch (Exception ex)
             {
