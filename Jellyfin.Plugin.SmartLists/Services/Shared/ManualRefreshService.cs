@@ -248,8 +248,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var (lockAcquired, lockHandle) = await Services.Playlists.PlaylistService.TryAcquireRefreshLockAsync(cancellationToken);
             if (!lockAcquired)
             {
-                var message = "A playlist refresh is already in progress. Please try again shortly.";
-                _logger.LogInformation("Manual refresh request rejected - another refresh is already in progress");
+                var message = "A refresh is already in progress. Please try again shortly.";
+                _logger.LogInformation("Manual playlist refresh request rejected - another refresh is already in progress");
                 return new RefreshResult
                 {
                     Success = false,
@@ -564,8 +564,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     return new RefreshResult
                     {
                         Success = false,
-                        NotificationMessage = $"Playlist refresh failed: {playlistResult.NotificationMessage}",
-                        LogMessage = $"Playlist refresh failed: {playlistResult.LogMessage}"
+                        NotificationMessage = playlistResult.NotificationMessage,
+                        LogMessage = playlistResult.LogMessage
                     };
                 }
 
@@ -579,8 +579,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     return new RefreshResult
                     {
                         Success = false,
-                        NotificationMessage = $"Collection refresh failed: {collectionResult.NotificationMessage}",
-                        LogMessage = $"Collection refresh failed: {collectionResult.LogMessage}"
+                        NotificationMessage = collectionResult.NotificationMessage,
+                        LogMessage = collectionResult.LogMessage
                     };
                 }
 
@@ -688,7 +688,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             // Try to acquire lock with immediate failure (no waiting)
             if (!refreshLock.Wait(0, cancellationToken))
             {
-                var message = "A collection refresh is already in progress. Please try again shortly.";
+                var message = "A refresh is already in progress. Please try again shortly.";
                 _logger.LogInformation("Manual collection refresh request rejected - another refresh is already in progress");
                 return new RefreshResult
                 {

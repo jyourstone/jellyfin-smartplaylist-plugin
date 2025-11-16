@@ -1263,7 +1263,7 @@
                 'An unexpected error occurred, check the logs for more details.'
             );
             
-            SmartLists.showNotification('Failed to refresh all playlists: ' + errorMessage, 'error');
+            SmartLists.showNotification('Failed to refresh all lists: ' + errorMessage, 'error');
         });
     };
 

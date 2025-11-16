@@ -305,41 +305,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             }
         }
 
-        public Task<(bool Success, string Message)> TryRefreshAllAsync(CancellationToken cancellationToken = default)
-        {
-            // Immediate return for manual refresh all
-            _logger.LogDebug("Attempting to acquire refresh lock for all collections (immediate return)");
-
-            try
-            {
-                if (_refreshOperationLock.Wait(0, cancellationToken))
-                {
-                    try
-                    {
-                        _logger.LogDebug("Acquired refresh lock for all collections - delegating to scheduled task");
-                        // Don't actually do the refresh here - just trigger the scheduled task
-                        // The scheduled task will handle the actual refresh with proper batching and optimization
-                        return Task.FromResult((true, "Collection refresh started successfully"));
-                    }
-                    finally
-                    {
-                        _refreshOperationLock.Release();
-                        _logger.LogDebug("Released refresh lock for all collections");
-                    }
-                }
-                else
-                {
-                    _logger.LogDebug("Refresh lock already held - refresh already in progress");
-                    return Task.FromResult((false, "Collection refresh is already in progress. Please try again in a moment."));
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogDebug("Refresh operation cancelled for all collections");
-                return Task.FromResult((false, "Refresh operation was cancelled."));
-            }
-        }
-
         public Task DeleteAsync(SmartCollectionDto dto, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);

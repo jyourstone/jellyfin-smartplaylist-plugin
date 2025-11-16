@@ -32,12 +32,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
         /// Disables a smart list (deletes the underlying Jellyfin entity)
         /// </summary>
         Task DisableAsync(TDto dto, CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Attempts to refresh all smart lists of this type
-        /// </summary>
-        Task<(bool Success, string Message)> TryRefreshAllAsync(
-            CancellationToken cancellationToken = default);
     }
 }
 

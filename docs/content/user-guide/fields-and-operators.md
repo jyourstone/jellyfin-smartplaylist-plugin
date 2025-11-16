@@ -93,10 +93,31 @@ When using the **Next Unwatched** field, you can configure:
 
 ### Collections Options
 
-When using the **Collections** field, you can configure:
+The **Collections** field allows you to filter items based on which Jellyfin collections they belong to. The behavior differs depending on whether you're creating a Playlist or a Collection:
 
-- **Include collection only** (Collections only, default: No) - When enabled, only the collection itself is included, not the media items within it. This is useful for collections that contain other collections. When disabled, media items from the collection are included as normal.
-- **Include episodes within series** (default: No) - When enabled, individual episodes from series in collections are included. When disabled, only the series themselves are included in the collection match. This option is hidden when "Include collection only" is enabled.
+**For Playlists:**
+- Items *from within* the specified collections are always fetched and added to the playlist
+- Playlists cannot contain collection objects themselves (Jellyfin limitation)
+- Example: A playlist with "Collections contains Marvel" will include all movies/episodes from your Marvel collection
+
+**For Collections:**
+- By default, items *from within* the specified collections are fetched (same as playlists)
+- Optionally, you can include the collection objects themselves instead (see options below)
+- Example: A collection with "Collections contains Marvel" can either contain the movies from Marvel collection, or the Marvel collection object itself
+
+**Available Options:**
+
+- **Include collection only** (Collections only, default: No) - When enabled, the collection object itself is included instead of its contents. This allows you to create "collections of collections" (meta-collections). **Important:** When this option is enabled, your selected media types are ignored for this rule, since you're fetching collection objects rather than media items.
+- **Include episodes within series** (Playlists with Episode media type, default: No) - When enabled, individual episodes from series in collections are included. When disabled, only the series themselves are included in the collection match. This option is hidden when "Include collection only" is enabled.
+
+!!! important "Self-Reference Prevention"
+    A smart collection will **never include itself** in its results, even if it matches the rule criteria. This prevents circular references and infinite loops.
+    
+    **Example:** If you create a smart collection called "Marvel Collection" (or "My Marvel Collection - Smart" with a prefix/suffix) and use the rule "Collections contains Marvel", the system will:
+    - ✅ Include other collections that match "Marvel" (e.g., a regular Jellyfin collection named "Marvel")
+    - ❌ **Exclude itself** from the results, even though it technically matches the pattern
+    
+    The system compares the base names (after removing any configured prefix/suffix) to detect and prevent self-reference. This means you can safely create smart collections with names that match your collection rules without worrying about them including themselves.
 
 ### Episode-Specific Collection Field Options
 

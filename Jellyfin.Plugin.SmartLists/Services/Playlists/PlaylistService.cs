@@ -384,41 +384,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             }
         }
 
-        public Task<(bool Success, string Message)> TryRefreshAllAsync(CancellationToken cancellationToken = default)
-        {
-            // Option B: Immediate return for manual refresh all
-            _logger.LogDebug("Attempting to acquire refresh lock for all playlists (immediate return)");
-
-            try
-            {
-                if (_refreshOperationLock.Wait(0, cancellationToken))
-                {
-                    try
-                    {
-                        _logger.LogDebug("Acquired refresh lock for all playlists - delegating to scheduled task");
-                        // Don't actually do the refresh here - just trigger the scheduled task
-                        // The scheduled task will handle the actual refresh with proper batching and optimization
-                        return Task.FromResult((true, "Playlist refresh started successfully"));
-                    }
-                    finally
-                    {
-                        _refreshOperationLock.Release();
-                        _logger.LogDebug("Released refresh lock for all playlists");
-                    }
-                }
-                else
-                {
-                    _logger.LogDebug("Refresh lock already held - refresh already in progress");
-                    return Task.FromResult((false, "Playlist refresh is already in progress. Please try again in a moment."));
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogDebug("Refresh operation cancelled for all playlists");
-                return Task.FromResult((false, "Refresh operation was cancelled."));
-            }
-        }
-
         /// <summary>
         /// Acquires the global refresh lock for use by the scheduled task.
         /// This should be called by the scheduled task to ensure exclusive access.
