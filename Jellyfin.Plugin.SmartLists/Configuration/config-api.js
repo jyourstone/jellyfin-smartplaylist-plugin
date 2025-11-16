@@ -1,11 +1,5 @@
 (function(SmartLists) {
     'use strict';
-    
-    // Initialize namespace if it doesn't exist
-    if (!SmartLists) {
-        window.SmartLists = {};
-        SmartLists = window.SmartLists;
-    }
        
     SmartLists.handleApiError = function(err, defaultMessage) {
         // Guard against null/undefined defaultMessage
@@ -209,25 +203,31 @@
             return;
         }
         
+        // Check if element exists before proceeding
+        const userSelect = page.querySelector('#playlistUser');
+        if (!userSelect) {
+            console.warn('SmartLists.setUserIdValueWithRetry: #playlistUser element not found');
+            // Nothing to set on this page; stop immediately
+            return;
+        }
+        
         // Function to set the User value
         const setUserIdValue = function() {
             const userSelect = page.querySelector('#playlistUser');
             
             if (!userSelect) {
-                console.warn('SmartLists.setUserIdValueWithRetry: #playlistUser element not found');
-                return;
+                // Element no longer exists; stop retrying
+                return true;
             }
             
-            if (userSelect) {
-                // Check if the option exists in the dropdown
-                const optionExists = Array.from(userSelect.options).some(function(opt) {
-                    return opt.value === userIdString;
-                });
-                if (optionExists) {
-                    SmartLists.setElementValue(page, '#playlistUser', userIdString);
-                    userSelect.value = userIdString;
-                    return true;
-                }
+            // Check if the option exists in the dropdown
+            const optionExists = Array.from(userSelect.options).some(function(opt) {
+                return opt.value === userIdString;
+            });
+            if (optionExists) {
+                SmartLists.setElementValue(page, '#playlistUser', userIdString);
+                userSelect.value = userIdString;
+                return true;
             }
             return false;
         };

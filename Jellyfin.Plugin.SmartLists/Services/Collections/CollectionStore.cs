@@ -21,12 +21,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
     {
         private readonly ISmartListFileSystem _fileSystem;
         private readonly ILogger<CollectionStore>? _logger;
-        private static readonly JsonSerializerOptions JsonOptions = new()
-        {
-            WriteIndented = true,
-            // Support polymorphic deserialization based on Type field
-            Converters = { new JsonStringEnumConverter() }
-        };
 
         public CollectionStore(ISmartListFileSystem fileSystem, ILogger<CollectionStore>? logger = null)
         {
@@ -104,7 +98,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             {
                 await using (var writer = File.Create(tempPath))
                 {
-                    await JsonSerializer.SerializeAsync(writer, smartCollection, JsonOptions).ConfigureAwait(false);
+                    await JsonSerializer.SerializeAsync(writer, smartCollection, SmartListFileSystem.SharedJsonOptions).ConfigureAwait(false);
                     await writer.FlushAsync().ConfigureAwait(false);
                 }
 
@@ -212,7 +206,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             }
 
             // Now deserialize as collection since we've confirmed it's a collection
-            var dto = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, JsonOptions);
+            var dto = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, SmartListFileSystem.SharedJsonOptions);
             return dto;
         }
     }

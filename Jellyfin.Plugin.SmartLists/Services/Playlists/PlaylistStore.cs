@@ -21,12 +21,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
     {
         private readonly ISmartListFileSystem _fileSystem;
         private readonly ILogger<PlaylistStore>? _logger;
-        private static readonly JsonSerializerOptions JsonOptions = new()
-        {
-            WriteIndented = true,
-            // Support polymorphic deserialization based on Type field
-            Converters = { new JsonStringEnumConverter() }
-        };
 
         public PlaylistStore(ISmartListFileSystem fileSystem, ILogger<PlaylistStore>? logger = null)
         {
@@ -103,7 +97,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             {
                 await using (var writer = File.Create(tempPath))
                 {
-                    await JsonSerializer.SerializeAsync(writer, smartPlaylist, JsonOptions).ConfigureAwait(false);
+                    await JsonSerializer.SerializeAsync(writer, smartPlaylist, SmartListFileSystem.SharedJsonOptions).ConfigureAwait(false);
                     await writer.FlushAsync().ConfigureAwait(false);
                 }
 
@@ -175,7 +169,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         private async Task<SmartPlaylistDto?> LoadPlaylistAsync(string filePath)
         {
             await using var reader = File.OpenRead(filePath);
-            var dto = await JsonSerializer.DeserializeAsync<SmartPlaylistDto>(reader, JsonOptions).ConfigureAwait(false);
+            var dto = await JsonSerializer.DeserializeAsync<SmartPlaylistDto>(reader, SmartListFileSystem.SharedJsonOptions).ConfigureAwait(false);
 
             // Only return playlists - if this is a collection, return null
             if (dto == null)

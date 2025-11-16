@@ -2,7 +2,6 @@
     'use strict';
 
     let statusPollingInterval = null;
-    let isPolling = false;
     let aggressivePollingInterval = null;
     let aggressivePollingTimeout = null;
 
@@ -308,7 +307,6 @@
         statusPollingInterval = setInterval(() => {
             fetchStatusData();
         }, interval);
-        isPolling = true;
     }
 
     /**
@@ -319,7 +317,6 @@
             clearInterval(statusPollingInterval);
             statusPollingInterval = null;
         }
-        isPolling = false;
     }
 
     /**
@@ -327,7 +324,8 @@
      * This helps catch operations that just began
      */
     function startAggressivePolling() {
-        // Stop any existing aggressive polling
+        // Stop any existing polling before starting aggressive mode
+        stopPolling();
         stopAggressivePolling();
         
         // Poll every 1 second

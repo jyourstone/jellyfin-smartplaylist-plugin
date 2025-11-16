@@ -32,6 +32,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
     /// </summary>
     public class SmartListFileSystem : ISmartListFileSystem
     {
+        /// <summary>
+        /// Shared JSON serializer options used across all smart list stores
+        /// Ensures consistent serialization behavior (enum handling, indentation, etc.)
+        /// </summary>
+        public static readonly JsonSerializerOptions SharedJsonOptions = new()
+        {
+            WriteIndented = true,
+            Converters = { new JsonStringEnumConverter() }
+        };
+
         private readonly string _legacyBasePath;
         private readonly ILogger<SmartListFileSystem>? _logger;
 
@@ -178,12 +188,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var playlists = new List<SmartPlaylistDto>();
             var collections = new List<SmartCollectionDto>();
 
-            var jsonOptions = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Converters = { new JsonStringEnumConverter() }
-            };
-
             foreach (var filePath in filePaths)
             {
                 try
@@ -195,7 +199,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     if (!jsonDoc.RootElement.TryGetProperty("Type", out var typeElement))
                     {
                         // Legacy file without Type field - default to Playlist
-                        var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, jsonOptions);
+                        var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, SharedJsonOptions);
                         if (playlist != null)
                         {
                             playlist.Type = SmartListType.Playlist;
@@ -210,7 +214,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     // Deserialize to the correct type based on the Type field
                     if (listType == SmartListType.Playlist)
                     {
-                        var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, jsonOptions);
+                        var playlist = JsonSerializer.Deserialize<SmartPlaylistDto>(jsonContent, SharedJsonOptions);
                         if (playlist != null)
                         {
                             // Ensure type is set
@@ -220,7 +224,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                     else if (listType == SmartListType.Collection)
                     {
-                        var collection = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, jsonOptions);
+                        var collection = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, SharedJsonOptions);
                         if (collection != null)
                         {
                             // Ensure type is set
