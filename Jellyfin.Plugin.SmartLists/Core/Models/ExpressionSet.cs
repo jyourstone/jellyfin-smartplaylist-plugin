@@ -5,7 +5,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
 {
     public class ExpressionSet
     {
-        public List<Expression> Expressions { get; set; } = [];
+        public List<Expression> Expressions { get; init; } = [];
     }
 }
 

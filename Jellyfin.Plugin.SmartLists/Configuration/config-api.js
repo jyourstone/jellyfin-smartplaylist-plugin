@@ -8,10 +8,13 @@
     }
        
     SmartLists.handleApiError = function(err, defaultMessage) {
+        // Guard against null/undefined defaultMessage
+        const baseMessage = defaultMessage || 'An error occurred';
+        
         // Try to extract meaningful error message from server response
         if (err && typeof err.text === 'function') {
             return err.text().then(function(serverMessage) {
-                let friendlyMessage = defaultMessage;
+                let friendlyMessage = baseMessage;
                 try {
                     const parsedMessage = JSON.parse(serverMessage);
                     
@@ -27,27 +30,27 @@
                             }
                         }
                         if (fieldErrors.length > 0) {
-                            friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + fieldErrors.join('; ');
+                            friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + fieldErrors.join('; ');
                         } else if (parsedMessage.detail) {
-                            friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + parsedMessage.detail;
+                            friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + parsedMessage.detail;
                         }
                     }
                     // Handle ProblemDetails format (has 'detail' property)
                     else if (parsedMessage && parsedMessage.detail) {
-                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + parsedMessage.detail;
+                        friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + parsedMessage.detail;
                     }
                     // Handle other JSON error formats
                     else if (parsedMessage && parsedMessage.message) {
-                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + parsedMessage.message;
+                        friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + parsedMessage.message;
                     } else if (parsedMessage && parsedMessage.title) {
-                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + parsedMessage.title;
+                        friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + parsedMessage.title;
                     } else if (serverMessage && serverMessage.trim()) {
                         // Remove quotes and Unicode escapes, then add context
                         const cleanMessage = serverMessage
                             .replace(/"/g, '')
                             .replace(/\\u0027/g, "'")
                             .replace(/\\u0022/g, '"');
-                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                        friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + cleanMessage;
                     }
                 } catch (e) {
                     if (serverMessage && serverMessage.trim()) {
@@ -56,15 +59,18 @@
                             .replace(/"/g, '')
                             .replace(/\\u0027/g, "'")
                             .replace(/\\u0022/g, '"');
-                        friendlyMessage = defaultMessage.replace(/\.$/, '') + ': ' + cleanMessage;
+                        friendlyMessage = baseMessage.replace(/\.$/, '') + ': ' + cleanMessage;
                     }
                 }
                 SmartLists.showNotification(friendlyMessage);
+                return Promise.resolve();
             }).catch(function() {
-                SmartLists.showNotification(defaultMessage + ' HTTP ' + (err.status || 'Unknown'));
+                SmartLists.showNotification(baseMessage + ' HTTP ' + (err.status || 'Unknown'));
+                return Promise.resolve();
             });
         } else {
-            SmartLists.showNotification(defaultMessage + ' ' + ((err && err.message) ? err.message : 'Unknown error'));
+            SmartLists.showNotification(baseMessage + ' ' + ((err && err.message) ? err.message : 'Unknown error'));
+            return Promise.resolve();
         }
     };
     
@@ -258,8 +264,22 @@
             })
             .then(async function(response) {
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Export failed');
+                    let errorMessage = 'Export failed';
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorData.detail || errorMessage;
+                    } catch (e) {
+                        // Fallback to text if JSON parsing fails
+                        try {
+                            const errorText = await response.text();
+                            if (errorText && errorText.trim()) {
+                                errorMessage = errorText;
+                            }
+                        } catch (textError) {
+                            // Ignore text parsing errors, use default message
+                        }
+                    }
+                    throw new Error(errorMessage);
                 }
                 
                 // Get filename from Content-Disposition header BEFORE consuming the blob
@@ -344,9 +364,22 @@
         })
         .then(async function(response) {
             if (!response.ok) {
-                return response.json().then(function(errorData) {
-                    throw new Error(errorData.message || 'Import failed');
-                });
+                let errorMessage = 'Import failed';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.message || errorData.detail || errorMessage;
+                } catch (e) {
+                    // Fallback to text if JSON parsing fails
+                    try {
+                        const errorText = await response.text();
+                        if (errorText && errorText.trim()) {
+                            errorMessage = errorText;
+                        }
+                    } catch (textError) {
+                        // Ignore text parsing errors, use default message
+                    }
+                }
+                throw new Error(errorMessage);
             }
             return response.json();
         })

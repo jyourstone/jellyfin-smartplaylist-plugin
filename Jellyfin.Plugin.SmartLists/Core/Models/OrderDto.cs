@@ -16,7 +16,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
 
         // New multiple sort options format
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public List<SortOption> SortOptions { get; set; } = [];
+        public List<SortOption>? SortOptions { get; set; }
     }
 }
 

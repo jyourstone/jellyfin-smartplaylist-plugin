@@ -15,7 +15,8 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
         /// </summary>
         /// <param name="libraryManager">The library manager instance</param>
         /// <param name="logger">Optional logger for diagnostics</param>
-        public static void QueueLibraryScan(ILibraryManager libraryManager, ILogger? logger = null)
+        /// <returns>True if the scan was successfully queued, false otherwise</returns>
+        public static bool QueueLibraryScan(ILibraryManager libraryManager, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(libraryManager);
             
@@ -27,15 +28,24 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
                 {
                     queueScanMethod.Invoke(libraryManager, null);
                     logger?.LogDebug("Queued library scan");
+                    return true;
                 }
                 else
                 {
                     logger?.LogWarning("QueueLibraryScan method not found on ILibraryManager");
+                    return false;
                 }
+            }
+            catch (TargetInvocationException ex)
+            {
+                // Unwrap TargetInvocationException to get the actual inner exception
+                logger?.LogWarning(ex.InnerException ?? ex, "Failed to trigger library scan");
+                return false;
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Failed to trigger library scan");
+                return false;
             }
         }
     }

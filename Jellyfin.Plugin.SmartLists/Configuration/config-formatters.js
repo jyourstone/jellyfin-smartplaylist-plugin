@@ -394,8 +394,9 @@
                     displaySortBy = 'Series Name (Ignore Article \'The\')';
                 }
                 // Random and NoOrder don't have meaningful order, so don't show "Ascending"
-                if (displaySortBy === 'Random' || displaySortBy === 'No Order') {
-                    return displaySortBy;
+                // Normalize "NoOrder" to "No Order" for display consistency
+                if (displaySortBy === 'Random' || displaySortBy === 'NoOrder' || displaySortBy === 'No Order') {
+                    return displaySortBy === 'NoOrder' ? 'No Order' : displaySortBy;
                 }
                 return displaySortBy + ' ' + opt.SortOrder;
             }).join(' → ');

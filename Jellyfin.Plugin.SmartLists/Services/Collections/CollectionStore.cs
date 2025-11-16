@@ -9,6 +9,7 @@ using Jellyfin.Plugin.SmartLists.Core.Enums;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Abstractions;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Collections
 {
@@ -19,6 +20,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
     public class CollectionStore : ISmartListStore<SmartCollectionDto>
     {
         private readonly ISmartListFileSystem _fileSystem;
+        private readonly ILogger<CollectionStore>? _logger;
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             WriteIndented = true,
@@ -26,9 +28,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             Converters = { new JsonStringEnumConverter() }
         };
 
-        public CollectionStore(ISmartListFileSystem fileSystem)
+        public CollectionStore(ISmartListFileSystem fileSystem, ILogger<CollectionStore>? logger = null)
         {
             _fileSystem = fileSystem;
+            _logger = logger;
         }
 
         public async Task<SmartCollectionDto?> GetByIdAsync(Guid id)
@@ -51,9 +54,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         return collection;
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     // File exists but couldn't be loaded, fall back to scanning all files
+                    _logger?.LogDebug(ex, "Failed to load collection from direct path {FilePath}, falling back to scan", filePath);
                 }
             }
 
@@ -194,24 +198,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 return null;
             }
 
-            // Determine type from JSON
-            Core.Enums.SmartListType listType;
-            if (typeElement.ValueKind == JsonValueKind.String)
-            {
-                var typeString = typeElement.GetString();
-                if (!Enum.TryParse<Core.Enums.SmartListType>(typeString, ignoreCase: true, out var parsedType))
-                {
-                    // Invalid type string - return null
-                    return null;
-                }
-                listType = parsedType;
-            }
-            else if (typeElement.ValueKind == JsonValueKind.Number)
-            {
-                var typeValue = typeElement.GetInt32();
-                listType = typeValue == 1 ? Core.Enums.SmartListType.Collection : Core.Enums.SmartListType.Playlist;
-            }
-            else
+            // Determine type from JSON using shared helper
+            if (!SmartListFileSystem.TryGetSmartListType(typeElement, out var listType))
             {
                 // Invalid type format - return null
                 return null;

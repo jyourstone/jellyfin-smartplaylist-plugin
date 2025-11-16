@@ -104,7 +104,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                             return OrderFactory.CreateOrder(so.SortBy);
                         }
                         // For all other sorts, append the sort order
-                        return OrderFactory.CreateOrder($"{so.SortBy} {so.SortOrder}");
+                        return OrderFactory.CreateOrder($"{so.SortBy} {so.SortOrder.ToString()}");
                     })
                     .Where(o => o != null)
                     .ToList();

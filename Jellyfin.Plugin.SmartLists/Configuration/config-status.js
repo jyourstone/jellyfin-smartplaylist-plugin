@@ -121,7 +121,7 @@
                         <div>
                             <strong>${escapeHtml(op.listName)}</strong>
                             <span style="margin-left: 0.5em; font-size: 0.9em; color: #aaa;">
-                                (${op.listType}) - ${op.triggerType}
+                                (${escapeHtml(String(op.listType))}) - ${escapeHtml(String(op.triggerType))}
                             </span>
                         </div>
                         <div style="font-size: 0.9em; color: #aaa;">
@@ -238,8 +238,8 @@
 
             html += '<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">';
             html += `<td style="padding: 0.75em;">${escapeHtml(entry.listName)}</td>`;
-            html += `<td style="padding: 0.75em;">${entry.listType}</td>`;
-            html += `<td style="padding: 0.75em;">${entry.triggerType}</td>`;
+            html += `<td style="padding: 0.75em;">${escapeHtml(String(entry.listType))}</td>`;
+            html += `<td style="padding: 0.75em;">${escapeHtml(String(entry.triggerType))}</td>`;
             html += `<td style="padding: 0.75em; color: ${statusColor};">${statusText}</td>`;
             html += `<td style="padding: 0.75em;">${duration}</td>`;
             html += `<td style="padding: 0.75em;">${endTime}</td>`;

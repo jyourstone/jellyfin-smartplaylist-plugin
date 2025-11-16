@@ -1796,7 +1796,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         private bool IsDailyDue(Schedule schedule, DateTime now, string playlistName)
         {
-            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            if (schedule.Time == null)
+            {
+                _logger.LogWarning("Daily schedule for '{PlaylistName}' is missing required Time property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            var scheduledTime = schedule.Time.Value;
             var localNow = now.ToLocalTime();
 
             var todayScheduled = new DateTime(localNow.Year, localNow.Month, localNow.Day, scheduledTime.Hours, scheduledTime.Minutes, 0, DateTimeKind.Local);
@@ -1818,8 +1824,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         private bool IsWeeklyDue(Schedule schedule, DateTime now, string playlistName)
         {
-            var scheduledDay = schedule.DayOfWeek ?? DayOfWeek.Sunday;
-            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            if (schedule.DayOfWeek == null)
+            {
+                _logger.LogWarning("Weekly schedule for '{PlaylistName}' is missing required DayOfWeek property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            if (schedule.Time == null)
+            {
+                _logger.LogWarning("Weekly schedule for '{PlaylistName}' is missing required Time property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            var scheduledDay = schedule.DayOfWeek.Value;
+            var scheduledTime = schedule.Time.Value;
             var localNow = now.ToLocalTime();
 
             if (localNow.DayOfWeek != scheduledDay)
@@ -1838,8 +1856,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         private bool IsMonthlyDue(Schedule schedule, DateTime now, string playlistName)
         {
-            var scheduledDayOfMonth = schedule.DayOfMonth ?? 1;
-            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            if (schedule.DayOfMonth == null)
+            {
+                _logger.LogWarning("Monthly schedule for '{PlaylistName}' is missing required DayOfMonth property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            if (schedule.Time == null)
+            {
+                _logger.LogWarning("Monthly schedule for '{PlaylistName}' is missing required Time property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            var scheduledDayOfMonth = schedule.DayOfMonth.Value;
+            var scheduledTime = schedule.Time.Value;
             var localNow = now.ToLocalTime();
 
             var daysInCurrentMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
@@ -1861,9 +1891,27 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         private bool IsYearlyDue(Schedule schedule, DateTime now, string playlistName)
         {
-            var scheduledMonth = Math.Clamp(schedule.Month ?? 1, 1, 12); // Clamp to valid month range
-            var scheduledDayOfMonth = Math.Max(1, schedule.DayOfMonth ?? 1); // At least day 1
-            var scheduledTime = schedule.Time ?? TimeSpan.FromHours(3);
+            if (schedule.Month == null)
+            {
+                _logger.LogWarning("Yearly schedule for '{PlaylistName}' is missing required Month property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            if (schedule.DayOfMonth == null)
+            {
+                _logger.LogWarning("Yearly schedule for '{PlaylistName}' is missing required DayOfMonth property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            if (schedule.Time == null)
+            {
+                _logger.LogWarning("Yearly schedule for '{PlaylistName}' is missing required Time property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            var scheduledMonth = Math.Clamp(schedule.Month.Value, 1, 12); // Clamp to valid month range
+            var scheduledDayOfMonth = Math.Max(1, schedule.DayOfMonth.Value); // At least day 1
+            var scheduledTime = schedule.Time.Value;
             var localNow = now.ToLocalTime();
 
             if (localNow.Month != scheduledMonth)
@@ -1890,14 +1938,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         private bool IsIntervalDue(Schedule schedule, DateTime now, string playlistName)
         {
-            var interval = schedule.Interval ?? TimeSpan.FromHours(24);
+            if (schedule.Interval == null)
+            {
+                _logger.LogWarning("Interval schedule for '{PlaylistName}' is missing required Interval property. Schedule will be skipped.", playlistName);
+                return false;
+            }
+            
+            var interval = schedule.Interval.Value;
             
             // Guard against invalid intervals
             if (interval <= TimeSpan.Zero)
             {
-                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Defaulting to 24h.",
+                _logger.LogWarning("Invalid interval '{Interval}' for playlist '{PlaylistName}'. Schedule will be skipped.",
                     interval, playlistName);
-                interval = TimeSpan.FromHours(24);
+                return false;
             }
 
             // For intervals, we use UTC time since intervals are about absolute time periods

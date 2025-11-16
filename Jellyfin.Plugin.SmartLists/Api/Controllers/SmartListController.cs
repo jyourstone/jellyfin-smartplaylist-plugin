@@ -1853,10 +1853,22 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "ID is validated as GUID before use, preventing path injection")]
         public async Task<ActionResult> TriggerSingleListRefresh([FromRoute, Required] string id)
         {
+            string? listName = null;
+            Core.Enums.SmartListType? listType = null;
+            
             try
             {
                 if (!Guid.TryParse(id, out var guidId))
                 {
+                    // Track error in status service
+                    _refreshStatusService?.StartOperation(
+                        id,
+                        $"List ({id})",
+                        Core.Enums.SmartListType.Playlist,
+                        Core.Enums.RefreshTriggerType.Manual,
+                        0);
+                    _refreshStatusService?.CompleteOperation(id, false, "Invalid list ID format");
+                    
                     return BadRequest("Invalid list ID format");
                 }
 
@@ -1865,6 +1877,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var playlist = await playlistStore.GetByIdAsync(guidId);
                 if (playlist != null)
                 {
+                    listName = playlist.Name;
+                    listType = Core.Enums.SmartListType.Playlist;
+                    
                     var (success, message, jellyfinPlaylistId) = await _manualRefreshService.RefreshSinglePlaylistAsync(playlist);
 
                     if (success)
@@ -1888,6 +1903,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var collection = await collectionStore.GetByIdAsync(guidId);
                 if (collection != null)
                 {
+                    listName = collection.Name;
+                    listType = Core.Enums.SmartListType.Collection;
+                    
                     var (success, message, jellyfinCollectionId) = await _manualRefreshService.RefreshSingleCollectionAsync(collection);
 
                     if (success)
@@ -1906,11 +1924,33 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     }
                 }
 
+                // List not found - track error in status service
+                _refreshStatusService?.StartOperation(
+                    id,
+                    $"List ({id})",
+                    Core.Enums.SmartListType.Playlist,
+                    Core.Enums.RefreshTriggerType.Manual,
+                    0);
+                _refreshStatusService?.CompleteOperation(id, false, "Smart list not found");
+                
                 return NotFound("Smart list not found");
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error refreshing single smart list {ListId}", id);
+                
+                // Track error in status service if not already tracked
+                if (!_refreshStatusService?.HasOngoingOperation(id) ?? true)
+                {
+                    _refreshStatusService?.StartOperation(
+                        id,
+                        listName ?? $"List ({id})",
+                        listType ?? Core.Enums.SmartListType.Playlist,
+                        Core.Enums.RefreshTriggerType.Manual,
+                        0);
+                }
+                _refreshStatusService?.CompleteOperation(id, false, $"Error refreshing smart list: {ex.Message}");
+                
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error refreshing smart list");
             }
         }

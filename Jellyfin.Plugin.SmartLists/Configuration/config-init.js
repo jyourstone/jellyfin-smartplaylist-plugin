@@ -1370,6 +1370,14 @@
             page._mediaTypeAbortController = null;
         }
         
+        // Stop status polling timers
+        if (window.SmartLists && window.SmartLists.Status) {
+            window.SmartLists.Status.stopPolling();
+            if (window.SmartLists.Status.stopAggressivePolling) {
+                window.SmartLists.Status.stopAggressivePolling();
+            }
+        }
+        
         // Clean up notification timer
         if (SmartLists.clearNotification) {
             SmartLists.clearNotification();

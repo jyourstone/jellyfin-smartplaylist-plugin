@@ -114,7 +114,8 @@
                             }
                             
                             // Search in target value (coerce to string to handle numbers/booleans)
-                            if (expression.TargetValue && String(expression.TargetValue).toLowerCase().indexOf(searchTerm) !== -1) {
+                            // Check for null/undefined explicitly to allow searching for 0 or false
+                            if (expression.TargetValue != null && String(expression.TargetValue).toLowerCase().indexOf(searchTerm) !== -1) {
                                 return true;
                             }
                         }

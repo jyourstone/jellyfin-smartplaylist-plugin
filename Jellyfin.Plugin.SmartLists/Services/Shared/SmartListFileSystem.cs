@@ -138,6 +138,37 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
+        /// Tries to extract SmartListType from a JSON element.
+        /// Handles both string and numeric type values for backward compatibility.
+        /// </summary>
+        /// <param name="typeElement">The JSON element containing the Type field</param>
+        /// <param name="listType">The parsed SmartListType, or Playlist if parsing fails</param>
+        /// <returns>True if the type element was successfully parsed, false otherwise</returns>
+        public static bool TryGetSmartListType(JsonElement typeElement, out SmartListType listType)
+        {
+            if (typeElement.ValueKind == JsonValueKind.String)
+            {
+                var typeString = typeElement.GetString();
+                if (Enum.TryParse<SmartListType>(typeString, ignoreCase: true, out var parsedType))
+                {
+                    listType = parsedType;
+                    return true;
+                }
+            }
+            else if (typeElement.ValueKind == JsonValueKind.Number)
+            {
+                var typeValue = typeElement.GetInt32();
+                // Legacy numeric format: 1 = Collection, 0 or other = Playlist
+                listType = typeValue == 1 ? SmartListType.Collection : SmartListType.Playlist;
+                return true;
+            }
+
+            // Invalid type format - default to Playlist for backward compatibility
+            listType = SmartListType.Playlist;
+            return false;
+        }
+
+        /// <summary>
         /// Reads all smart list files once and returns them grouped by type.
         /// This is more efficient than having each store read files separately.
         /// </summary>
@@ -173,31 +204,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         continue;
                     }
 
-                    // Determine type from JSON
-                    SmartListType listType;
-                    if (typeElement.ValueKind == JsonValueKind.String)
-                    {
-                        var typeString = typeElement.GetString();
-                        if (Enum.TryParse<SmartListType>(typeString, ignoreCase: true, out var parsedType))
-                        {
-                            listType = parsedType;
-                        }
-                        else
-                        {
-                            // Invalid type, default to Playlist for backward compatibility
-                            listType = SmartListType.Playlist;
-                        }
-                    }
-                    else if (typeElement.ValueKind == JsonValueKind.Number)
-                    {
-                        var typeValue = typeElement.GetInt32();
-                        listType = typeValue == 1 ? SmartListType.Collection : SmartListType.Playlist;
-                    }
-                    else
-                    {
-                        // Invalid type format, default to Playlist
-                        listType = SmartListType.Playlist;
-                    }
+                    // Determine type from JSON using shared helper
+                    TryGetSmartListType(typeElement, out var listType);
 
                     // Deserialize to the correct type based on the Type field
                     if (listType == SmartListType.Playlist)

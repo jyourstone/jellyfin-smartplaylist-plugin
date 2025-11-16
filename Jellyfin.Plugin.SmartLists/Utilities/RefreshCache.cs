@@ -78,10 +78,6 @@ namespace Jellyfin.Plugin.SmartLists
 
             try
             {
-                // Create per-invocation cache dictionaries for thread safety
-                var userMediaCache = new Dictionary<Guid, BaseItem[]>();
-                var userCacheStats = new Dictionary<Guid, (int mediaCount, int playlistCount)>();
-
                 // Handle playlists with missing/invalid User first
                 // Helper predicate to check if a playlist has a valid user ID
                 static bool IsValidUserId(SmartPlaylistDto p) => 
@@ -122,34 +118,11 @@ namespace Jellyfin.Plugin.SmartLists
                     return results; // Will contain failure results for invalid UserIds if any,
                 }
 
-                // Build user media cache ONCE for all playlists
-                await BuildUserMediaCacheAsync(playlistsByUser, userMediaCache, userCacheStats);
-
-                // Process playlists using cached media
+                // Process playlists using per-media-type caching
                 foreach (var kvp in playlistsByUser)
                 {
                     var userId = kvp.Key;
                     var userPlaylists = kvp.Value;
-
-                    // Use TryGetValue to avoid double lookup and handle missing cache entries
-                    if (!userMediaCache.TryGetValue(userId, out var relevantUserMedia))
-                    {
-                        _logger.LogWarning("No cached media found for user {UserId}, adding failure results for {PlaylistCount} playlists", userId, userPlaylists.Count);
-
-                        // Add failure results for all playlists of this user instead of silently dropping them
-                        foreach (var playlist in userPlaylists)
-                        {
-                            results.Add(new PlaylistRefreshResult
-                            {
-                                PlaylistId = playlist.Id ?? string.Empty,
-                                PlaylistName = playlist.Name,
-                                Success = false,
-                                Message = $"User {userId} not found or cache missing",
-                                JellyfinPlaylistId = string.Empty,
-                            });
-                        }
-                        continue;
-                    }
 
                     var user = _userManager.GetUserById(userId);
                     if (user == null)
@@ -171,25 +144,23 @@ namespace Jellyfin.Plugin.SmartLists
                         continue;
                     }
 
-                    _logger.LogDebug("Processing {PlaylistCount} playlists for user {Username} using cached media ({MediaCount} items)",
-                        userPlaylists.Count, user.Username, relevantUserMedia.Length);
+                    _logger.LogDebug("Processing {PlaylistCount} playlists for user {Username}",
+                        userPlaylists.Count, user.Username);
 
-                    // Use the same advanced caching as legacy tasks
+                    // Use the same advanced caching as legacy tasks (per-media-type caching)
                     var userResults = await ProcessUserPlaylistsWithAdvancedCachingAsync(
-                        user, userPlaylists, relevantUserMedia, updateLastRefreshTime, batchProgressCallback, cancellationToken);
+                        user, userPlaylists, updateLastRefreshTime, batchProgressCallback, cancellationToken);
 
                     results.AddRange(userResults);
                 }
 
                 totalStopwatch.Stop();
 
-                // Log cache effectiveness summary
-                var totalProcessedPlaylists = userCacheStats.Values.Sum(s => s.playlistCount);
-                var totalCachedItems = userCacheStats.Values.Sum(s => s.mediaCount);
+                // Log summary
                 var successCount = results.Count(r => r.Success);
 
-                _logger.LogInformation("Cached refresh completed in {ElapsedTime}ms: {SuccessCount}/{TotalCount} playlists processed using {CachedItemCount} cached media items across {UserCount} users",
-                    totalStopwatch.ElapsedMilliseconds, successCount, totalProcessedPlaylists, totalCachedItems, userCacheStats.Count);
+                _logger.LogInformation("Cached refresh completed in {ElapsedTime}ms: {SuccessCount}/{TotalCount} playlists processed",
+                    totalStopwatch.ElapsedMilliseconds, successCount, playlists.Count);
 
                 return results;
             }
@@ -217,56 +188,9 @@ namespace Jellyfin.Plugin.SmartLists
             }
         }
 
-        private Task BuildUserMediaCacheAsync(
-            Dictionary<Guid, List<SmartPlaylistDto>> playlistsByUser,
-            Dictionary<Guid, BaseItem[]> userMediaCache,
-            Dictionary<Guid, (int mediaCount, int playlistCount)> userCacheStats)
-        {
-            foreach (var kvp in playlistsByUser)
-            {
-                var userId = kvp.Key;
-                var userPlaylists = kvp.Value;
-                var user = _userManager.GetUserById(userId);
-                if (user == null)
-                {
-                    _logger.LogWarning("User {UserId} not found, skipping {PlaylistCount} playlists", userId, userPlaylists.Count);
-                    continue;
-                }
-
-                // Check if any playlist actually needs "all media" (expensive operation)
-                var needsAllMedia = userPlaylists.Any(p => p.MediaTypes == null || p.MediaTypes.Count == 0);
-
-                if (needsAllMedia)
-                {
-                    // Build cache for this user's media (expensive operations happen HERE only)
-                    var mediaFetchStopwatch = Stopwatch.StartNew();
-                    var relevantUserMedia = GetRelevantUserMedia(user);
-                    mediaFetchStopwatch.Stop();
-
-                    userMediaCache[userId] = relevantUserMedia;
-                    userCacheStats[userId] = (relevantUserMedia.Length, userPlaylists.Count);
-
-                    _logger.LogDebug("Cached {MediaCount} items for user {Username} ({UserId}) in {ElapsedTime}ms - will be shared across {PlaylistCount} playlists",
-                        relevantUserMedia.Length, user.Username, userId, mediaFetchStopwatch.ElapsedMilliseconds, userPlaylists.Count);
-                }
-                else
-                {
-                    // Skip expensive all-media fetch since no playlist needs it
-                    userMediaCache[userId] = new BaseItem[0]; // Empty array as sentinel
-                    userCacheStats[userId] = (0, userPlaylists.Count); // No media fetched
-
-                    _logger.LogDebug("Skipped expensive media fetch for user {Username} ({UserId}) - no playlists require all media (will use per-media-type caching)",
-                        user.Username, userId);
-                }
-            }
-
-            return Task.CompletedTask;
-        }
-
         private async Task<List<PlaylistRefreshResult>> ProcessUserPlaylistsWithAdvancedCachingAsync(
             User user,
             List<SmartPlaylistDto> userPlaylists,
-            BaseItem[] relevantUserMedia,
             bool updateLastRefreshTime,
             Action<string>? batchProgressCallback,
             CancellationToken cancellationToken)
@@ -286,8 +210,8 @@ namespace Jellyfin.Plugin.SmartLists
                     // Invoke batch progress callback before processing this playlist
                     batchProgressCallback?.Invoke(playlist.Id ?? string.Empty);
 
-                    _logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets using cached media ({MediaCount} items)",
-                        playlist.Name, playlist.ExpressionSets?.Count ?? 0, relevantUserMedia.Length);
+                    _logger.LogDebug("Processing playlist {PlaylistName} with {RuleSetCount} rule sets",
+                        playlist.Name, playlist.ExpressionSets?.Count ?? 0);
 
                     // OPTIMIZATION: Get media specifically for this playlist's media types using cache
                     var mediaTypesForClosure = playlist.MediaTypes?.ToList() ?? new List<string>();
@@ -304,8 +228,8 @@ namespace Jellyfin.Plugin.SmartLists
                         }, LazyThreadSafetyMode.ExecutionAndPublication)
                     ).Value;
 
-                    _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items",
-                        playlist.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
+                    _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items",
+                        playlist.Name, mediaTypesKey, playlistSpecificMedia.Length);
 
                     // Use interface method instead of casting
                     var (success, message, jellyfinPlaylistId) = await _playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
@@ -364,28 +288,6 @@ namespace Jellyfin.Plugin.SmartLists
 
             return results;
         }
-
-        private BaseItem[] GetRelevantUserMedia(User user)
-        {
-            // Get all supported media types that might be needed by any playlist
-            // Use the centralized MediaTypes constants to ensure completeness
-            var allUserMedia = new List<BaseItem>();
-
-            // Get all supported BaseItemKind types from the MediaTypes constants
-            var supportedItemTypes = Core.Constants.MediaTypes.MediaTypeToBaseItemKind.Values.ToArray();
-
-            // Single query to get all supported media types at once (more efficient)
-            allUserMedia.AddRange(_libraryManager.GetItemList(new InternalItemsQuery(user)
-            {
-                IncludeItemTypes = supportedItemTypes,
-                IsVirtualItem = false,
-                Recursive = true,
-            }));
-
-            return allUserMedia.ToArray();
-        }
-
-        // ClearCache method removed - no longer needed with per-invocation cache dictionaries
     }
 
     /// <summary>

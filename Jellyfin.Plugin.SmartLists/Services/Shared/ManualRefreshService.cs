@@ -41,6 +41,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// Detailed log message for debugging and logging purposes.
         /// </summary>
         public string LogMessage { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Number of successful refresh operations.
+        /// </summary>
+        public int SuccessCount { get; set; }
+
+        /// <summary>
+        /// Number of failed refresh operations.
+        /// </summary>
+        public int FailureCount { get; set; }
     }
 
     /// <summary>
@@ -171,32 +181,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
-        /// Checks if a refresh result message indicates actual failures (failure count > 0).
-        /// Message format: "Direct refresh completed: X successful, Y failed out of Z processed..."
+        /// Checks if a refresh result indicates actual failures (failure count > 0).
         /// </summary>
-        /// <param name="message">The result message to check.</param>
-        /// <returns>True if there are actual failures (Y > 0), false otherwise.</returns>
-        private static bool HasActualFailures(string message)
+        /// <param name="result">The refresh result to check.</param>
+        /// <returns>True if there are actual failures (FailureCount > 0), false otherwise.</returns>
+        private static bool HasActualFailures(RefreshResult result)
         {
-            if (string.IsNullOrEmpty(message))
-            {
-                return false;
-            }
-
-            // Look for pattern: "X successful, Y failed" where Y is the failure count
-            // Use regex to extract the number before "failed"
-            var match = Regex.Match(
-                message,
-                @"(\d+)\s+failed",
-                RegexOptions.IgnoreCase);
-
-            if (match.Success && int.TryParse(match.Groups[1].Value, out var failureCount))
-            {
-                return failureCount > 0;
-            }
-
-            // If we can't parse the message, assume no failures (safer default)
-            return false;
+            return result?.FailureCount > 0;
         }
 
         /// <summary>
@@ -259,7 +250,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = message,
-                    LogMessage = message
+                    LogMessage = message,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
 
@@ -286,7 +279,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         Success = true,
                         NotificationMessage = message,
-                        LogMessage = earlyLogMessage
+                        LogMessage = earlyLogMessage,
+                        SuccessCount = 0,
+                        FailureCount = 0
                     };
                 }
 
@@ -304,6 +299,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 // Pre-resolve users and group playlists by user
                 var resolvedPlaylists = new List<(SmartPlaylistDto dto, User user)>();
+                var playlistsWithoutUser = new List<SmartPlaylistDto>();
 
                 foreach (var dto in enabledPlaylists)
                 {
@@ -314,8 +310,27 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                     else
                     {
-                        _logger.LogWarning("User not found for playlist '{PlaylistName}'. Skipping.", dto.Name);
+                        _logger.LogWarning("User not found for playlist '{PlaylistName}'. Will track as failure.", dto.Name);
+                        playlistsWithoutUser.Add(dto);
                     }
+                }
+
+                // Track playlists without users as failures
+                foreach (var dto in playlistsWithoutUser)
+                {
+                    var listId = dto.Id ?? Guid.NewGuid().ToString();
+                    _refreshStatusService?.StartOperation(
+                        listId,
+                        dto.Name,
+                        Core.Enums.SmartListType.Playlist,
+                        Core.Enums.RefreshTriggerType.Manual,
+                        0,
+                        batchCurrentIndex: batchOffset + resolvedPlaylists.Count + playlistsWithoutUser.IndexOf(dto) + 1,
+                        batchTotalCount: totalBatchCount ?? (enabledPlaylists.Count));
+                    _refreshStatusService?.CompleteOperation(
+                        listId,
+                        false,
+                        "User not found for playlist");
                 }
 
                 // Group by user for efficient media caching
@@ -327,13 +342,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     playlistsByUser.Count, resolvedPlaylists.Count);
 
                 // Process playlists with proper MediaTypes filtering
-                var processedCount = 0;
+                // Start counts with playlists that already failed (no user)
+                var processedCount = playlistsWithoutUser.Count;
                 var successCount = 0;
-                var failureCount = 0;
+                var failureCount = playlistsWithoutUser.Count;
 
                 // Calculate total count of all playlists for batch tracking
-                // Use unified batch count if provided (for "Refresh All Lists"), otherwise use playlist-only count
-                var totalPlaylistCount = playlistsByUser.Values.Sum(userPlaylistPairs => userPlaylistPairs.Count);
+                // Include playlists without users in the total count so they're all tracked
+                var totalPlaylistCount = playlistsByUser.Values.Sum(userPlaylistPairs => userPlaylistPairs.Count) + playlistsWithoutUser.Count;
                 var batchTotalCount = totalBatchCount ?? totalPlaylistCount;
                 var currentPlaylistIndex = batchOffset; // Start from offset if provided
 
@@ -365,10 +381,23 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
+                            // Start tracking refresh operation early, before any operations that might fail
+                            // This ensures failures are always reported to the status service
+                            _refreshStatusService?.StartOperation(
+                                listId,
+                                dto.Name,
+                                Core.Enums.SmartListType.Playlist,
+                                Core.Enums.RefreshTriggerType.Manual,
+                                0, // Will update with actual count after media fetch
+                                batchCurrentIndex: currentPlaylistIndex,
+                                batchTotalCount: batchTotalCount);
+                            operationStarted = true;
+
                             // Validate that the playlist user is valid
                             if (user.Id == Guid.Empty)
                             {
                                 _logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
+                                _refreshStatusService?.CompleteOperation(listId, false, "Invalid user ID");
                                 failureCount++;
                                 processedCount++;
                                 continue;
@@ -395,21 +424,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items",
                                 dto.Name, mediaTypesKey, playlistSpecificMedia.Length);
 
-                            // Start tracking refresh operation with batch information
-                            _refreshStatusService.StartOperation(
-                                listId,
-                                dto.Name,
-                                Core.Enums.SmartListType.Playlist,
-                                Core.Enums.RefreshTriggerType.Manual,
-                                playlistSpecificMedia.Length,
-                                batchCurrentIndex: currentPlaylistIndex,
-                                batchTotalCount: batchTotalCount);
-                            operationStarted = true;
+                            // Update operation with actual media count now that we have it
+                            _refreshStatusService?.UpdateProgress(listId, 0, playlistSpecificMedia.Length);
 
                             // Create progress callback
                             Action<int, int>? progressCallback = (processed, total) =>
                             {
-                                _refreshStatusService.UpdateProgress(listId, processed, total);
+                                _refreshStatusService?.UpdateProgress(listId, processed, total);
                             };
 
                             // Track if this is a new playlist (JellyfinPlaylistId was empty before refresh)
@@ -426,7 +447,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             playlistStopwatch.Stop();
                             
                             // Complete status tracking
-                            _refreshStatusService.CompleteOperation(
+                            _refreshStatusService?.CompleteOperation(
                                 listId,
                                 refreshResult.Success,
                                 refreshResult.Success ? null : refreshResult.Message);
@@ -460,7 +481,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             // Only complete operation if it was started
                             if (operationStarted)
                             {
-                                _refreshStatusService.CompleteOperation(
+                                _refreshStatusService?.CompleteOperation(
                                     listId,
                                     false,
                                     "Refresh operation was cancelled");
@@ -476,7 +497,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             // Only complete operation if it was started
                             if (operationStarted)
                             {
-                                _refreshStatusService.CompleteOperation(
+                                _refreshStatusService?.CompleteOperation(
                                     listId,
                                     false,
                                     ex.Message);
@@ -507,9 +528,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 return new RefreshResult
                 {
-                    Success = true,
+                    Success = failureCount == 0,
                     NotificationMessage = notificationMessage,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = successCount,
+                    FailureCount = failureCount
                 };
             }
             catch (OperationCanceledException)
@@ -522,7 +545,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = message,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
             catch (Exception ex)
@@ -535,7 +560,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = notificationMessage,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
             finally
@@ -602,7 +629,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         Success = false,
                         NotificationMessage = playlistResult.NotificationMessage,
-                        LogMessage = playlistResult.LogMessage
+                        LogMessage = playlistResult.LogMessage,
+                        SuccessCount = playlistResult.SuccessCount,
+                        FailureCount = playlistResult.FailureCount
                     };
                 }
 
@@ -617,7 +646,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         Success = false,
                         NotificationMessage = collectionResult.NotificationMessage,
-                        LogMessage = collectionResult.LogMessage
+                        LogMessage = collectionResult.LogMessage,
+                        SuccessCount = collectionResult.SuccessCount,
+                        FailureCount = collectionResult.FailureCount
                     };
                 }
 
@@ -625,8 +656,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var elapsedTime = FormatElapsedTime(overallStopwatch.ElapsedMilliseconds);
                 
                 // Check if there were any actual failures
-                var playlistHasFailures = HasActualFailures(playlistResult.LogMessage);
-                var collectionHasFailures = HasActualFailures(collectionResult.LogMessage);
+                var playlistHasFailures = HasActualFailures(playlistResult);
+                var collectionHasFailures = HasActualFailures(collectionResult);
                 
                 string notificationMessage;
                 string logMessage;
@@ -647,9 +678,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 return new RefreshResult
                 {
-                    Success = true,
+                    Success = !playlistHasFailures && !collectionHasFailures,
                     NotificationMessage = notificationMessage,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = playlistResult.SuccessCount + collectionResult.SuccessCount,
+                    FailureCount = playlistResult.FailureCount + collectionResult.FailureCount
                 };
             }
             catch (OperationCanceledException)
@@ -662,7 +695,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = message,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
             catch (Exception ex)
@@ -675,7 +710,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = notificationMessage,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
         }
@@ -705,7 +742,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = message,
-                    LogMessage = message
+                    LogMessage = message,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
 
@@ -731,7 +770,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         Success = true,
                         NotificationMessage = message,
-                        LogMessage = earlyLogMessage
+                        LogMessage = earlyLogMessage,
+                        SuccessCount = 0,
+                        FailureCount = 0
                     };
                 }
 
@@ -769,9 +810,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         // Increment current index for batch tracking (1-based for display)
                         currentCollectionIndex++;
 
-                        // Start tracking refresh operation with batch information
-                        // We don't know total items yet, will be updated via progress callback
-                        _refreshStatusService.StartOperation(
+                        // Start tracking refresh operation early, before any operations that might fail
+                        // This ensures failures are always reported to the status service
+                        _refreshStatusService?.StartOperation(
                             listId,
                             dto.Name,
                             Core.Enums.SmartListType.Collection,
@@ -787,7 +828,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         // Create progress callback
                         Action<int, int>? progressCallback = (processed, total) =>
                         {
-                            _refreshStatusService.UpdateProgress(listId, processed, total);
+                            _refreshStatusService?.UpdateProgress(listId, processed, total);
                         };
 
                         var (success, message, collectionId) = await collectionService.RefreshAsync(dto, progressCallback, cancellationToken).ConfigureAwait(false);
@@ -795,7 +836,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         collectionStopwatch.Stop();
                         
                         // Complete status tracking
-                        _refreshStatusService.CompleteOperation(
+                        _refreshStatusService?.CompleteOperation(
                             listId,
                             success,
                             success ? null : message);
@@ -825,7 +866,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         // Only complete operation if it was started
                         if (operationStarted)
                         {
-                            _refreshStatusService.CompleteOperation(
+                            _refreshStatusService?.CompleteOperation(
                                 listId,
                                 false,
                                 "Refresh operation was cancelled");
@@ -841,7 +882,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         // Only complete operation if it was started
                         if (operationStarted)
                         {
-                            _refreshStatusService.CompleteOperation(
+                            _refreshStatusService?.CompleteOperation(
                                 listId,
                                 false,
                                 ex.Message);
@@ -871,9 +912,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 return new RefreshResult
                 {
-                    Success = true,
+                    Success = failureCount == 0,
                     NotificationMessage = notificationMessage,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = successCount,
+                    FailureCount = failureCount
                 };
             }
             catch (OperationCanceledException)
@@ -886,7 +929,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = message,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
             catch (Exception ex)
@@ -899,7 +944,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     Success = false,
                     NotificationMessage = notificationMessage,
-                    LogMessage = logMessage
+                    LogMessage = logMessage,
+                    SuccessCount = 0,
+                    FailureCount = 0
                 };
             }
             finally
