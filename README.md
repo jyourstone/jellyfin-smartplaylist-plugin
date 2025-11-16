@@ -37,13 +37,16 @@ This plugin allows you to create dynamic playlists and collections based on a se
 
 ## ⚙️ Configuration Interface
 
-SmartLists features a modern web-based configuration interface with three main tabs:
+SmartLists features a modern web-based configuration interface with four main tabs:
 
 <div align="center">
     <p>
-        <img alt="Create list page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create.png" width="270" style="margin-right: 10px;"/>
-        <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" width="270" style="margin-right: 10px;"/>
-        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" width="270"/>
+        <img alt="Create list page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
+        <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
+    </p>
+    <p>
+        <img alt="Status page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_status.png" width="400" style="margin-right: 10px;"/>
+        <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" width="400"/>
     </p>
 </div>
 
