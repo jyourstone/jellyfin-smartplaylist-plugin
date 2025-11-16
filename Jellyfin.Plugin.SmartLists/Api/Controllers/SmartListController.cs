@@ -514,7 +514,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                 logger.LogDebug("Calling RefreshWithTimeoutAsync for {PlaylistName}", playlist.Name);
                 var playlistService = GetPlaylistService();
-                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(createdPlaylist);
+                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(
+                    createdPlaylist, 
+                    progressCallback: null,
+                    refreshStatusService: _refreshStatusService,
+                    triggerType: Core.Enums.RefreshTriggerType.Manual,
+                    cancellationToken: default);
 
                 // If refresh was successful, save the Jellyfin playlist ID
                 if (success && !string.IsNullOrEmpty(jellyfinPlaylistId))
@@ -758,7 +763,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                 logger.LogDebug("Calling RefreshWithTimeoutAsync for {CollectionName}", collection.Name);
                 var collectionService = GetCollectionService();
-                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(createdCollection);
+                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(
+                    createdCollection, 
+                    progressCallback: null,
+                    refreshStatusService: _refreshStatusService,
+                    triggerType: Core.Enums.RefreshTriggerType.Manual,
+                    cancellationToken: default);
 
                 // If refresh was successful, save the Jellyfin collection ID
                 if (success && !string.IsNullOrEmpty(jellyfinCollectionId))
@@ -837,7 +847,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         
                         // Create the new Jellyfin collection first (this populates JellyfinCollectionId)
                         var collectionService = GetCollectionService();
-                        var refreshResult = await collectionService.RefreshWithTimeoutAsync(collectionDto);
+                        var refreshResult = await collectionService.RefreshWithTimeoutAsync(
+                            collectionDto,
+                            progressCallback: null,
+                            refreshStatusService: _refreshStatusService,
+                            triggerType: Core.Enums.RefreshTriggerType.Manual,
+                            cancellationToken: default);
                         
                         if (!refreshResult.Success)
                         {
@@ -886,7 +901,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         
                         // Create the new Jellyfin playlist first (this populates JellyfinPlaylistId)
                         var playlistService = GetPlaylistService();
-                        var refreshResult = await playlistService.RefreshWithTimeoutAsync(playlistDto);
+                        var refreshResult = await playlistService.RefreshWithTimeoutAsync(
+                            playlistDto,
+                            progressCallback: null,
+                            refreshStatusService: _refreshStatusService,
+                            triggerType: Core.Enums.RefreshTriggerType.Manual,
+                            cancellationToken: default);
                         
                         if (!refreshResult.Success)
                         {
@@ -1044,7 +1064,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                 // Immediately update the Jellyfin playlist using the single playlist service with timeout
                 var playlistService = GetPlaylistService();
-                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(updatedPlaylist);
+                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(
+                    updatedPlaylist, 
+                    progressCallback: null,
+                    refreshStatusService: _refreshStatusService,
+                    triggerType: Core.Enums.RefreshTriggerType.Manual,
+                    cancellationToken: default);
 
                 // If refresh was successful, save the Jellyfin playlist ID
                 if (success && !string.IsNullOrEmpty(jellyfinPlaylistId))
@@ -1229,7 +1254,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                 // Immediately update the Jellyfin collection using the single collection service with timeout
                 var collectionService = GetCollectionService();
-                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(updatedCollection);
+                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(
+                    updatedCollection, 
+                    progressCallback: null,
+                    refreshStatusService: _refreshStatusService,
+                    triggerType: Core.Enums.RefreshTriggerType.Manual,
+                    cancellationToken: default);
 
                 // If refresh was successful, save the Jellyfin collection ID
                 if (success && !string.IsNullOrEmpty(jellyfinCollectionId))
@@ -1615,49 +1645,26 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var originalEnabledState = playlist.Enabled;
                     playlist.Enabled = true;
 
-                    var listId = playlist.Id ?? Guid.NewGuid().ToString();
-                    bool operationStarted = false;
-                    IDisposable? lockHandle = null;
-
                     try
                     {
-                        // Try to acquire the refresh lock
                         var playlistService = GetPlaylistService();
-                        var (lockAcquired, acquiredLockHandle) = await Services.Playlists.PlaylistService.TryAcquireRefreshLockAsync();
-                        if (!lockAcquired)
-                        {
-                            logger.LogWarning("Failed to enable playlist {PlaylistName}: Refresh lock could not be acquired", playlist.Name);
-                            playlist.Enabled = originalEnabledState;
-                            return StatusCode(StatusCodes.Status409Conflict, "A refresh is already in progress. Please try again shortly.");
-                        }
-                        lockHandle = acquiredLockHandle;
-
-                        // Start status tracking
-                        operationStarted = true;
-                        _refreshStatusService.StartOperation(
-                            listId,
-                            playlist.Name,
-                            Core.Enums.SmartListType.Playlist,
-                            Core.Enums.RefreshTriggerType.Manual,
-                            0);
-
-                        // Create progress callback
-                        Action<int, int>? progressCallback = (processed, total) =>
-                        {
-                            _refreshStatusService.UpdateProgress(listId, processed, total);
-                        };
-
-                        // Call RefreshAsync directly since we already hold the lock
-                        var (success, message, jellyfinPlaylistId) = await playlistService.RefreshAsync(playlist, progressCallback);
-
-                        // Complete status tracking
-                        _refreshStatusService.CompleteOperation(
-                            listId,
-                            success,
-                            success ? null : message);
+                        var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(
+                            playlist,
+                            progressCallback: null,
+                            refreshStatusService: _refreshStatusService,
+                            triggerType: Core.Enums.RefreshTriggerType.Manual,
+                            cancellationToken: default);
 
                         if (!success)
                         {
+                            // Check if it's a lock conflict
+                            if (message.Contains("already in progress"))
+                            {
+                                logger.LogWarning("Failed to enable playlist {PlaylistName}: Refresh lock could not be acquired", playlist.Name);
+                                playlist.Enabled = originalEnabledState;
+                                return StatusCode(StatusCodes.Status409Conflict, "A refresh is already in progress. Please try again shortly.");
+                            }
+
                             logger.LogWarning("Failed to enable playlist {PlaylistName}: {Message}", playlist.Name, message);
                             playlist.Enabled = originalEnabledState;
                             throw new InvalidOperationException(message);
@@ -1682,17 +1689,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     }
                     catch (Exception jellyfinEx)
                     {
-                        if (operationStarted)
-                        {
-                            _refreshStatusService.CompleteOperation(listId, false, jellyfinEx.Message);
-                        }
                         playlist.Enabled = originalEnabledState;
                         logger.LogError(jellyfinEx, "Failed to enable Jellyfin playlist for {PlaylistId} - {PlaylistName}", id, playlist.Name);
                         throw;
-                    }
-                    finally
-                    {
-                        lockHandle?.Dispose();
                     }
                 }
 
@@ -1704,49 +1703,26 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var originalEnabledState = collection.Enabled;
                     collection.Enabled = true;
 
-                    var listId = collection.Id ?? Guid.NewGuid().ToString();
-                    bool operationStarted = false;
-                    IDisposable? lockHandle = null;
-
                     try
                     {
-                        // Try to acquire the refresh lock
                         var collectionService = GetCollectionService();
-                        var (lockAcquired, acquiredLockHandle) = await Services.Collections.CollectionService.TryAcquireRefreshLockAsync();
-                        if (!lockAcquired)
-                        {
-                            logger.LogWarning("Failed to enable collection {CollectionName}: Refresh lock could not be acquired", collection.Name);
-                            collection.Enabled = originalEnabledState;
-                            return StatusCode(StatusCodes.Status409Conflict, "A refresh is already in progress. Please try again shortly.");
-                        }
-                        lockHandle = acquiredLockHandle;
-
-                        // Start status tracking
-                        operationStarted = true;
-                        _refreshStatusService.StartOperation(
-                            listId,
-                            collection.Name,
-                            Core.Enums.SmartListType.Collection,
-                            Core.Enums.RefreshTriggerType.Manual,
-                            0);
-
-                        // Create progress callback
-                        Action<int, int>? progressCallback = (processed, total) =>
-                        {
-                            _refreshStatusService.UpdateProgress(listId, processed, total);
-                        };
-
-                        // Call RefreshAsync directly since we already hold the lock
-                        var (success, message, jellyfinCollectionId) = await collectionService.RefreshAsync(collection, progressCallback);
-
-                        // Complete status tracking
-                        _refreshStatusService.CompleteOperation(
-                            listId,
-                            success,
-                            success ? null : message);
+                        var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(
+                            collection,
+                            progressCallback: null,
+                            refreshStatusService: _refreshStatusService,
+                            triggerType: Core.Enums.RefreshTriggerType.Manual,
+                            cancellationToken: default);
 
                         if (!success)
                         {
+                            // Check if it's a lock conflict
+                            if (message.Contains("already in progress"))
+                            {
+                                logger.LogWarning("Failed to enable collection {CollectionName}: Refresh lock could not be acquired", collection.Name);
+                                collection.Enabled = originalEnabledState;
+                                return StatusCode(StatusCodes.Status409Conflict, "A refresh is already in progress. Please try again shortly.");
+                            }
+
                             logger.LogWarning("Failed to enable collection {CollectionName}: {Message}", collection.Name, message);
                             collection.Enabled = originalEnabledState;
                             throw new InvalidOperationException(message);
@@ -1765,17 +1741,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     }
                     catch (Exception jellyfinEx)
                     {
-                        if (operationStarted)
-                        {
-                            _refreshStatusService.CompleteOperation(listId, false, jellyfinEx.Message);
-                        }
                         collection.Enabled = originalEnabledState;
                         logger.LogError(jellyfinEx, "Failed to enable Jellyfin collection for {CollectionId} - {CollectionName}", id, collection.Name);
                         throw;
-                    }
-                    finally
-                    {
-                        lockHandle?.Dispose();
                     }
                 }
 

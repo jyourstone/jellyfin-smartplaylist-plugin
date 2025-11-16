@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SmartLists.Core.Enums;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Abstractions;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
@@ -179,36 +180,51 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Method is part of instance interface implementation")]
         private async Task<SmartCollectionDto?> LoadCollectionAsync(string filePath)
         {
-            await using var reader = File.OpenRead(filePath);
-            var dto = await JsonSerializer.DeserializeAsync<SmartCollectionDto>(reader, JsonOptions).ConfigureAwait(false);
+            // Read JSON content to check Type field before deserialization
+            // This prevents legacy playlists (without Type field) from being misclassified as collections
+            // because SmartCollectionDto constructor initializes Type to Collection
+            var jsonContent = await File.ReadAllTextAsync(filePath).ConfigureAwait(false);
+            using var jsonDoc = JsonDocument.Parse(jsonContent);
 
-            // Only return collections - if this is a playlist or has wrong type, return null
-            if (dto == null)
+            // Check if Type field exists in JSON
+            if (!jsonDoc.RootElement.TryGetProperty("Type", out var typeElement))
+            {
+                // Legacy file without Type field - return null to let PlaylistStore handle it
+                // (legacy files default to Playlist for backward compatibility)
+                return null;
+            }
+
+            // Determine type from JSON
+            Core.Enums.SmartListType listType;
+            if (typeElement.ValueKind == JsonValueKind.String)
+            {
+                var typeString = typeElement.GetString();
+                if (!Enum.TryParse<Core.Enums.SmartListType>(typeString, ignoreCase: true, out var parsedType))
+                {
+                    // Invalid type string - return null
+                    return null;
+                }
+                listType = parsedType;
+            }
+            else if (typeElement.ValueKind == JsonValueKind.Number)
+            {
+                var typeValue = typeElement.GetInt32();
+                listType = typeValue == 1 ? Core.Enums.SmartListType.Collection : Core.Enums.SmartListType.Playlist;
+            }
+            else
+            {
+                // Invalid type format - return null
+                return null;
+            }
+
+            // Only deserialize if Type is explicitly Collection
+            if (listType != Core.Enums.SmartListType.Collection)
             {
                 return null;
             }
 
-            // If type is explicitly set to Playlist, this is not a collection - return null
-            if (dto.Type == Core.Enums.SmartListType.Playlist)
-            {
-                return null;
-            }
-
-            // If type is not set (default/legacy), we need to check if it's actually a collection
-            // For legacy files without Type, we can't determine if it's a collection or playlist
-            // So we return null to avoid duplicates (let PlaylistStore handle legacy files)
-            if (dto.Type == 0) // Default enum value
-            {
-                return null;
-            }
-
-            // Only accept explicit Collection type; ignore any other types (future-proofing)
-            // This prevents misclassifying new SmartListType values as collections
-            if (dto.Type != Core.Enums.SmartListType.Collection)
-            {
-                return null;
-            }
-
+            // Now deserialize as collection since we've confirmed it's a collection
+            var dto = JsonSerializer.Deserialize<SmartCollectionDto>(jsonContent, JsonOptions);
             return dto;
         }
     }

@@ -349,13 +349,40 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             }
         }
 
-        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(SmartPlaylistDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(
+            SmartPlaylistDto dto, 
+            Action<int, int>? progressCallback = null,
+            RefreshStatusService? refreshStatusService = null,
+            Core.Enums.RefreshTriggerType? triggerType = null,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(dto);
 
             // Use immediate return (0 timeout) instead of 5-second wait for consistent UX
             // This gives users instant feedback if a refresh is already in progress
             _logger.LogDebug("Attempting to acquire refresh lock for single playlist: {PlaylistName} (immediate return)", dto.Name);
+
+            // Start status tracking if RefreshStatusService is provided and status isn't already being tracked
+            var listId = dto.Id ?? Guid.NewGuid().ToString();
+            var shouldTrackStatus = refreshStatusService != null && triggerType.HasValue && !refreshStatusService.HasOngoingOperation(listId);
+            
+            if (shouldTrackStatus && refreshStatusService != null)
+            {
+                refreshStatusService.StartOperation(
+                    listId,
+                    dto.Name,
+                    Core.Enums.SmartListType.Playlist,
+                    triggerType!.Value,
+                    0); // Total items will be updated by progress callback
+
+                // Wrap progress callback to also update status service
+                var originalProgressCallback = progressCallback;
+                progressCallback = (processed, total) =>
+                {
+                    refreshStatusService.UpdateProgress(listId, processed, total);
+                    originalProgressCallback?.Invoke(processed, total);
+                };
+            }
 
             try
             {
@@ -365,6 +392,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     {
                         _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
                         var (success, message, playlistId) = await RefreshAsync(dto, progressCallback, cancellationToken);
+                        
+                        // Complete status tracking if we started it
+                        if (shouldTrackStatus)
+                        {
+                            refreshStatusService?.CompleteOperation(
+                                listId,
+                                success,
+                                success ? null : message);
+                        }
+                        
                         return (success, message, playlistId);
                     }
                     finally
@@ -376,13 +413,45 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 else
                 {
                     _logger.LogDebug("Refresh lock already held for single playlist: {PlaylistName}", dto.Name);
+                    
+                    // Complete status tracking if we started it (operation failed to start)
+                    if (shouldTrackStatus)
+                    {
+                        refreshStatusService?.CompleteOperation(
+                            listId,
+                            false,
+                            "Playlist refresh is already in progress, please try again in a moment.");
+                    }
+                    
                     return (false, "Playlist refresh is already in progress, please try again in a moment.", string.Empty);
                 }
             }
             catch (OperationCanceledException)
             {
                 _logger.LogDebug("Refresh operation cancelled for playlist: {PlaylistName}", dto.Name);
+                
+                // Complete status tracking if we started it
+                if (shouldTrackStatus)
+                {
+                    refreshStatusService?.CompleteOperation(
+                        listId,
+                        false,
+                        "Refresh operation was cancelled.");
+                }
+                
                 return (false, "Refresh operation was cancelled.", string.Empty);
+            }
+            catch (Exception ex)
+            {
+                // Complete status tracking if we started it (exception occurred)
+                if (shouldTrackStatus)
+                {
+                    refreshStatusService?.CompleteOperation(
+                        listId,
+                        false,
+                        ex.Message);
+                }
+                throw;
             }
         }
 

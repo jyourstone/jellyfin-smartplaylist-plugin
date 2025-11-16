@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartLists.Core.Models;
+using Jellyfin.Plugin.SmartLists.Services.Shared;
 using MediaBrowser.Controller.Entities;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
@@ -24,7 +25,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
         /// Refreshes a single smart list with timeout protection
         /// </summary>
         Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(
-            TDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default);
+            TDto dto, 
+            Action<int, int>? progressCallback = null,
+            RefreshStatusService? refreshStatusService = null,
+            Core.Enums.RefreshTriggerType? triggerType = null,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Deletes a smart list
