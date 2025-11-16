@@ -6,7 +6,7 @@
     </p>        
 </div>
 
-### ✨✨ NEW: Collections support! ✨✨
+### ✨✨ SmartPlaylist is now SmartLists with support for Collections! ✨✨
 
 Create smart, rule-based playlists and **collections** in Jellyfin.
 
