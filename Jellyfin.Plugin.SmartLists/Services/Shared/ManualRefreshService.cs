@@ -53,9 +53,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// Refresh all smart playlists manually.
         /// This method processes ALL playlists regardless of their ScheduleTrigger settings.
         /// </summary>
+        /// <param name="batchOffset">Offset for batch tracking (used when refreshing all lists together)</param>
+        /// <param name="totalBatchCount">Total count for unified batch tracking (used when refreshing all lists together)</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Refresh result with separate notification and log messages</returns>
-        Task<RefreshResult> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default);
+        Task<RefreshResult> RefreshAllPlaylistsAsync(int batchOffset = 0, int? totalBatchCount = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Refresh all smart lists (both playlists and collections) manually.
@@ -237,7 +239,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// regardless of their ScheduleTrigger settings, since this is a manual operation.
         /// This method uses immediate failure if another refresh is already in progress.
         /// </summary>
-        public async Task<RefreshResult> RefreshAllPlaylistsAsync(CancellationToken cancellationToken = default)
+        /// <param name="batchOffset">Offset for batch tracking (used when refreshing all lists together)</param>
+        /// <param name="totalBatchCount">Total count for unified batch tracking (used when refreshing all lists together)</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        public async Task<RefreshResult> RefreshAllPlaylistsAsync(int batchOffset = 0, int? totalBatchCount = null, CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -327,8 +332,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var failureCount = 0;
 
                 // Calculate total count of all playlists for batch tracking
+                // Use unified batch count if provided (for "Refresh All Lists"), otherwise use playlist-only count
                 var totalPlaylistCount = playlistsByUser.Values.Sum(userPlaylistPairs => userPlaylistPairs.Count);
-                var currentPlaylistIndex = 0;
+                var batchTotalCount = totalBatchCount ?? totalPlaylistCount;
+                var currentPlaylistIndex = batchOffset; // Start from offset if provided
 
                 foreach (var (userId, userPlaylistPairs) in playlistsByUser)
                 {
@@ -396,7 +403,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 Core.Enums.RefreshTriggerType.Manual,
                                 playlistSpecificMedia.Length,
                                 batchCurrentIndex: currentPlaylistIndex,
-                                batchTotalCount: totalPlaylistCount);
+                                batchTotalCount: batchTotalCount);
                             operationStarted = true;
 
                             // Create progress callback
@@ -569,9 +576,24 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 _logger.LogInformation("Starting manual refresh of all smart lists (playlists and collections)");
 
-                // Refresh playlists first
+                // Calculate total count of all lists upfront for unified batch tracking
+                var fileSystem = new SmartListFileSystem(_applicationPaths);
+                var plStore = new PlaylistStore(fileSystem);
+                var collectionStore = new Services.Collections.CollectionStore(fileSystem);
+
+                var allPlaylists = await plStore.GetAllAsync().ConfigureAwait(false);
+                var enabledPlaylists = allPlaylists.Where(dto => dto.Enabled).ToList();
+                
+                var allCollections = await collectionStore.GetAllAsync().ConfigureAwait(false);
+                var enabledCollections = allCollections.Where(dto => dto.Enabled).ToList();
+
+                var totalListsCount = enabledPlaylists.Count + enabledCollections.Count;
+                _logger.LogInformation("Found {PlaylistCount} enabled playlists and {CollectionCount} enabled collections (total: {TotalCount} lists)",
+                    enabledPlaylists.Count, enabledCollections.Count, totalListsCount);
+
+                // Refresh playlists first with unified batch tracking
                 _logger.LogInformation("Refreshing all playlists...");
-                playlistResult = await RefreshAllPlaylistsAsync(cancellationToken).ConfigureAwait(false);
+                playlistResult = await RefreshAllPlaylistsAsync(batchOffset: 0, totalBatchCount: totalListsCount, cancellationToken).ConfigureAwait(false);
 
                 if (!playlistResult.Success)
                 {
@@ -584,9 +606,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     };
                 }
 
-                // Refresh collections
+                // Refresh collections with unified batch tracking (offset by playlist count)
                 _logger.LogInformation("Refreshing all collections...");
-                collectionResult = await RefreshAllCollectionsAsync(cancellationToken).ConfigureAwait(false);
+                collectionResult = await RefreshAllCollectionsAsync(batchOffset: enabledPlaylists.Count, totalBatchCount: totalListsCount, cancellationToken).ConfigureAwait(false);
 
                 if (!collectionResult.Success)
                 {
@@ -663,7 +685,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// This method processes ALL collections regardless of their ScheduleTrigger settings, since this is a manual operation.
         /// This method uses immediate failure if another refresh is already in progress.
         /// </summary>
-        private async Task<RefreshResult> RefreshAllCollectionsAsync(CancellationToken cancellationToken = default)
+        /// <param name="batchOffset">Offset for batch tracking (used when refreshing all lists together)</param>
+        /// <param name="totalBatchCount">Total count for unified batch tracking (used when refreshing all lists together)</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        private async Task<RefreshResult> RefreshAllCollectionsAsync(int batchOffset = 0, int? totalBatchCount = null, CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -726,7 +751,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var successCount = 0;
                 var failureCount = 0;
                 var totalCollectionCount = enabledCollections.Count;
-                var currentCollectionIndex = 0;
+                // Use unified batch count if provided (for "Refresh All Lists"), otherwise use collection-only count
+                var batchTotalCount = totalBatchCount ?? totalCollectionCount;
+                var currentCollectionIndex = batchOffset; // Start from offset if provided
 
                 foreach (var dto in enabledCollections)
                 {
@@ -751,7 +778,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             Core.Enums.RefreshTriggerType.Manual,
                             0,
                             batchCurrentIndex: currentCollectionIndex,
-                            batchTotalCount: totalCollectionCount);
+                            batchTotalCount: batchTotalCount);
                         operationStarted = true;
 
                         // Get collection service
