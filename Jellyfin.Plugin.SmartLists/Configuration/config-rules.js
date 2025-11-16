@@ -9,9 +9,8 @@
         operatorSelect.innerHTML = '<option value="">-- Select Operator --</option>';
         let allowedOperators = [];
         
-        // Check if availableFields is loaded
+        // Check if availableFields is loaded - if not, return early (fields should be loaded before this is called)
         if (!SmartLists.availableFields || !SmartLists.availableFields.Operators) {
-            console.warn('availableFields.Operators not loaded yet, skipping operator options update');
             return;
         }
         

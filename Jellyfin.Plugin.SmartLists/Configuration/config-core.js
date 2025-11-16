@@ -109,32 +109,16 @@
         return false;
     };
     
-    // Enhanced HTML escaping function to prevent XSS vulnerabilities
+    // Simple text conversion (no escaping - admin area only)
     SmartLists.escapeHtml = function(text) {
-        if (text == null) return ''; // Only treat null/undefined as empty
-        
-        // Convert to string and handle common cases efficiently
-        const str = String(text);
-        
-        // Use standard HTML character escaping
-        return str
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#x27;')
-            .replace(/=/g, '&#x3D;');
+        if (text == null) return '';
+        return String(text);
     };
     
-    // Safe HTML attribute escaping for use in HTML attributes
+    // Simple text conversion for attributes (no escaping - admin area only)
     SmartLists.escapeHtmlAttribute = function(text) {
         if (text == null) return '';
-        return String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#x27;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+        return String(text);
     };
     
     // Extract error message from API error responses
