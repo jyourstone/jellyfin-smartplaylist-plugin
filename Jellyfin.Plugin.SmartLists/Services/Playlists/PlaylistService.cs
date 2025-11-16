@@ -729,7 +729,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         /// <returns>Enumerable of BaseItem matching the specified media types.</returns>
         public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes)
         {
-            return GetAllUserMedia(user, mediaTypes);
+            return GetAllUserMediaForPlaylist(user, mediaTypes, null);
         }
 
         public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto? dto = null)

@@ -130,7 +130,7 @@ Configure global settings for the plugin:
 - Configure custom prefix and suffix for list names
 - Set the default auto-refresh mode for new lists
 - Set the default custom schedule settings for new lists
-- Configure performance settings (parallel concurrency limit)
+- Configure performance settings
 - Export all lists to a ZIP file for backup or transfer
 - Import lists from a ZIP file with duplicate detection
 - Manually trigger a refresh for all smart lists
@@ -177,19 +177,6 @@ The Export/Import feature allows you to backup your smart list configurations or
 
 ## Performance Settings
 
-### Parallel Concurrency Limit
-
-Control how many threads are used during individual list refreshes:
-
-- **Auto-detect (default)**: Leave empty or set to `0` to automatically detect the optimal number of threads based on your CPU cores
-- **Custom limit**: Set a specific number to limit parallel processing within a list refresh (e.g., `4` for 4 threads processing items simultaneously)
-- **Disable parallelism**: Set to `1` to process list items sequentially (one at a time, useful for troubleshooting or low-resource systems)
-
-!!! tip "When to Adjust"
-    - **Increase** if you have large lists and a powerful multi-core CPU
-    - **Decrease** if you experience high CPU usage or system slowdowns during list refreshes
-    - **Set to 1** if you need to debug list refresh issues or have very limited system resources
-
 ### Processing Batch Size
 
 Control how many items are processed in each batch during list refreshes:
@@ -201,7 +188,6 @@ Control how many items are processed in each batch during list refreshes:
 
 **How it works:**
 - Items are processed sequentially in batches (one batch at a time)
-- Within each batch, items are processed in parallel using multiple threads (controlled by Parallel Concurrency Limit)
 - Progress is reported after each batch completes, so smaller batches = more frequent updates
 - The batch size affects both processing efficiency and the granularity of progress reporting on the Status page
 

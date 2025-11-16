@@ -1396,82 +1396,64 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var itemList = items.ToList();
-            logger?.LogDebug("Starting parallel people cache initialization for {Count} items", itemList.Count);
+            logger?.LogDebug("Preloading People cache for {Count} items sequentially", itemList.Count);
 
-            // Use plugin configuration for parallelism
-            var config = Plugin.Instance?.Configuration;
-            var maxConcurrency = ParallelismHelper.CalculateParallelConcurrency(config);
-
-            // Thread-safe dictionary for collecting results
-            var tempCache = new ConcurrentDictionary<Guid, CategorizedPeople>();
+            // Dictionary for collecting results
+            var tempCache = new Dictionary<Guid, CategorizedPeople>();
             var processedCount = 0;
-            var totalMs = 0L;
-            var lockObj = new object();
 
-            // Process items in parallel
-            System.Threading.Tasks.Parallel.ForEach(
-                itemList,
-                new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = maxConcurrency },
-                item =>
+            // Process items sequentially
+            foreach (var item in itemList)
+            {
+                try
                 {
-                    var itemStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-                    try
+                    // Cache the GetPeople method lookup
+                    var getPeopleMethod = _getPeopleMethodCache;
+                    if (getPeopleMethod == null)
                     {
-                        // Cache the GetPeople method lookup
-                        var getPeopleMethod = _getPeopleMethodCache;
-                        if (getPeopleMethod == null)
+                        lock (_getPeopleMethodLock)
                         {
-                            lock (_getPeopleMethodLock)
+                            if (_getPeopleMethodCache == null)
                             {
-                                if (_getPeopleMethodCache == null)
-                                {
-                                    _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
-                                }
-                                getPeopleMethod = _getPeopleMethodCache;
+                                _getPeopleMethodCache = libraryManager.GetType().GetMethod("GetPeople", [typeof(InternalPeopleQuery)]);
                             }
-                        }
-
-                        if (getPeopleMethod != null)
-                        {
-                            var peopleQuery = new InternalPeopleQuery
-                            {
-                                ItemId = item.Id,
-                            };
-
-                            var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
-
-                            if (result is IEnumerable<object> peopleEnum)
-                            {
-                                // Use the helper method to categorize people (DRY principle)
-                                var categorized = CategorizePeople(peopleEnum, logger);
-                                tempCache[item.Id] = categorized;
-                            }
-
-                            itemStopwatch.Stop();
-                            lock (lockObj)
-                            {
-                                processedCount++;
-                                totalMs += itemStopwatch.ElapsedMilliseconds;
-
-                                // Log progress every 100 items
-                                if (processedCount % 100 == 0)
-                                {
-                                    var avgMs = totalMs / processedCount;
-                                    logger?.LogDebug("People cache progress: {Processed}/{Total} items ({Avg}ms avg per item)",
-                                        processedCount, itemList.Count, avgMs);
-                                }
-                            }
+                            getPeopleMethod = _getPeopleMethodCache;
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        itemStopwatch.Stop();
-                        logger?.LogWarning(ex, "Failed to preload people for item {ItemId} after {Ms}ms", item.Id, itemStopwatch.ElapsedMilliseconds);
-                    }
-                });
 
-            // Transfer from concurrent dictionary to cache
+                    if (getPeopleMethod != null)
+                    {
+                        var peopleQuery = new InternalPeopleQuery
+                        {
+                            ItemId = item.Id,
+                        };
+
+                        var result = getPeopleMethod.Invoke(libraryManager, [peopleQuery]);
+
+                        if (result is IEnumerable<object> peopleEnum)
+                        {
+                            // Use the helper method to categorize people (DRY principle)
+                            var categorized = CategorizePeople(peopleEnum, logger);
+                            tempCache[item.Id] = categorized;
+                        }
+
+                        processedCount++;
+
+                        // Log progress every 100 items
+                        if (processedCount % 100 == 0)
+                        {
+                            logger?.LogDebug("People cache progress: {Processed}/{Total} items",
+                                processedCount, itemList.Count);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed to preload people for item {ItemId}", item.Id);
+                }
+            }
+
+            // Transfer from dictionary to cache
             foreach (var kvp in tempCache)
             {
                 cache.ItemPeople[kvp.Key] = kvp.Value;
@@ -1480,9 +1462,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             cache.PeopleCacheInitialized = true;
             stopwatch.Stop();
 
-            var avgTimeMs = processedCount > 0 ? totalMs / processedCount : 0;
-            logger?.LogDebug("People cache initialization completed in {TotalMs}ms for {Count} items (avg {AvgMs}ms per item, {Concurrency} parallel threads)",
-                stopwatch.ElapsedMilliseconds, itemList.Count, avgTimeMs, maxConcurrency);
+            logger?.LogDebug("People cache initialization completed in {TotalMs}ms for {Count} items",
+                stopwatch.ElapsedMilliseconds, itemList.Count);
         }
 
         /// <summary>

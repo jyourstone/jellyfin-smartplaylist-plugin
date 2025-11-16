@@ -1470,7 +1470,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 _refreshStatusService?.UpdateProgress(listId, processed, total);
                             };
 
-                            var (success, message, _) = await _collectionService.RefreshAsync(collection, progressCallback, CancellationToken.None).ConfigureAwait(false);
+                            var (success, message, _) = await _collectionService.RefreshWithTimeoutAsync(collection, progressCallback, CancellationToken.None).ConfigureAwait(false);
 
                             // Complete status tracking
                             _refreshStatusService?.CompleteOperation(

@@ -1013,12 +1013,6 @@
             if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
             if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
             
-            // Load parallel concurrency setting
-            const parallelConcurrencyEl = page.querySelector('#parallelConcurrencyLimit');
-            if (parallelConcurrencyEl) {
-                parallelConcurrencyEl.value = config.ParallelConcurrencyLimit !== undefined && config.ParallelConcurrencyLimit !== null ? config.ParallelConcurrencyLimit : 0;
-            }
-            
             // Load processing batch size setting
             const processingBatchSizeEl = page.querySelector('#processingBatchSize');
             if (processingBatchSizeEl) {
@@ -1180,15 +1174,6 @@
             
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value || '';
             config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value || '[Smart]';
-            
-            // Save parallel concurrency setting
-            const parallelConcurrencyInput = page.querySelector('#parallelConcurrencyLimit').value;
-            if (parallelConcurrencyInput === '') {
-                config.ParallelConcurrencyLimit = 0;
-            } else {
-                const parsedValue = parseInt(parallelConcurrencyInput, 10);
-                config.ParallelConcurrencyLimit = isNaN(parsedValue) ? 0 : parsedValue;
-            }
             
             // Save processing batch size setting
             const processingBatchSizeInput = page.querySelector('#processingBatchSize').value;

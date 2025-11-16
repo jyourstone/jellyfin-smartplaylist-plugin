@@ -837,7 +837,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         
                         // Create the new Jellyfin collection first (this populates JellyfinCollectionId)
                         var collectionService = GetCollectionService();
-                        var refreshResult = await collectionService.RefreshAsync(collectionDto);
+                        var refreshResult = await collectionService.RefreshWithTimeoutAsync(collectionDto);
                         
                         if (!refreshResult.Success)
                         {
@@ -886,7 +886,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         
                         // Create the new Jellyfin playlist first (this populates JellyfinPlaylistId)
                         var playlistService = GetPlaylistService();
-                        var refreshResult = await playlistService.RefreshAsync(playlistDto);
+                        var refreshResult = await playlistService.RefreshWithTimeoutAsync(playlistDto);
                         
                         if (!refreshResult.Success)
                         {

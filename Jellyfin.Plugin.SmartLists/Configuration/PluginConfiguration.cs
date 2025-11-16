@@ -83,14 +83,6 @@ namespace Jellyfin.Plugin.SmartLists.Configuration
         /// </summary>
         public TimeSpan DefaultScheduleInterval { get; set; } = TimeSpan.FromMinutes(15); // 15 minutes default
 
-        /// <summary>
-        /// Gets or sets the parallel concurrency limit for playlist refreshes and database queries.
-        /// 0 or negative = Auto (uses ProcessorCount - 3 for 4+ cores, sequential for 1-3 cores)
-        /// 1 = Force sequential processing (no parallelism)
-        /// 2+ = Use specified number of parallel threads
-        /// Default: 0 (Auto)
-        /// </summary>
-        public int ParallelConcurrencyLimit { get; set; } = 0;
 
         /// <summary>
         /// Gets or sets the processing batch size for list refreshes.

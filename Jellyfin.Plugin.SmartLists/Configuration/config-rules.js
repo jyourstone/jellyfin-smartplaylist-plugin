@@ -1832,9 +1832,11 @@
             }
             if (expression.MemberName === 'SimilarTo') {
                 // Restore similarity comparison fields if provided
-                // This is called from edit/clone flows where playlist data is available
+                // SimilarityComparisonFields is stored at the playlist/collection level, not per-expression
+                // The edit/clone flows set page._editingPlaylistSimilarityFields or page._cloningPlaylistSimilarityFields
+                // before calling populateRuleRow, so we read from the page state here
                 const similarityFields = page._editingPlaylistSimilarityFields || page._cloningPlaylistSimilarityFields;
-                if (similarityFields) {
+                if (similarityFields && Array.isArray(similarityFields) && similarityFields.length > 0) {
                     SmartLists.updateSimilarityOptionsVisibility(ruleRow, expression.MemberName, similarityFields);
                 }
             }

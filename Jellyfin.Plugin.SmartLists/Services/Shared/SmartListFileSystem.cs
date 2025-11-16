@@ -221,9 +221,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         }
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Skip invalid files and continue loading others
+                    // Skip invalid files and continue loading others, but log for diagnostics
+                    _logger?.LogWarning(ex, "Skipping invalid smart list file {FilePath}", filePath);
                 }
             }
 

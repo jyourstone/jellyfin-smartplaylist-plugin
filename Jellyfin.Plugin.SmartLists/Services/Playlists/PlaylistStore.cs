@@ -87,6 +87,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 throw new ArgumentException("Playlist ID must be a valid non-empty GUID", nameof(smartPlaylist));
             }
 
+            // Normalize ID to canonical GUID string for consistent file lookups
+            smartPlaylist.Id = parsedId.ToString();
             var fileName = smartPlaylist.Id;
             smartPlaylist.FileName = $"{fileName}.json";
 
