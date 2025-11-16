@@ -85,9 +85,21 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
 
             // Also check legacy directory for backward compatibility
+            // Filter out legacy files whose filename already exists in new directory to avoid duplicates
             if (Directory.Exists(_legacyBasePath))
             {
-                files.AddRange(Directory.GetFiles(_legacyBasePath, "*.json", SearchOption.AllDirectories));
+                var legacyFiles = Directory.GetFiles(_legacyBasePath, "*.json", SearchOption.AllDirectories);
+                var newDirectoryFileNames = files.Select(f => Path.GetFileName(f)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                
+                foreach (var legacyFile in legacyFiles)
+                {
+                    var legacyFileName = Path.GetFileName(legacyFile);
+                    // Only add legacy file if it doesn't exist in new directory
+                    if (!newDirectoryFileNames.Contains(legacyFileName))
+                    {
+                        files.Add(legacyFile);
+                    }
+                }
             }
 
             return files.ToArray();

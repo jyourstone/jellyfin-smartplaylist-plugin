@@ -10,10 +10,14 @@
     <!-- Version will be set dynamically during build from git tag -->
     <Version Condition="'$(Version)' == ''">0.0.0</Version>
     <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(Version).0</AssemblyVersion>
-    <PackageIcon>../images/logo.jpg</PackageIcon>
+    <PackageIcon>logo.jpg</PackageIcon>
     <!-- CodeAnalysisRuleSet is optional - only include if jellyfin.ruleset file exists -->
     <!-- <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet> -->
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\images\logo.jpg" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\config.html" />

@@ -39,6 +39,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             if (processedItems > 0 && TotalItems > 0)
             {
                 var elapsedMs = _stopwatch.ElapsedMilliseconds;
+                
+                // Guard against very small elapsed times to avoid infinity/NaN
+                if (elapsedMs <= 0)
+                {
+                    EstimatedTimeRemaining = null;
+                    return;
+                }
+                
                 var itemsPerMs = (double)processedItems / elapsedMs;
                 var remainingItems = TotalItems - processedItems;
 

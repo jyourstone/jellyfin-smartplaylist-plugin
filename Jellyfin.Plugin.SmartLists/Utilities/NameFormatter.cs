@@ -50,6 +50,12 @@ namespace Jellyfin.Plugin.SmartLists.Utilities
         /// <returns>The formatted playlist name</returns>
         public static string FormatPlaylistNameWithSettings(string baseName, string prefix, string suffix)
         {
+            // Guard against null baseName
+            if (baseName == null)
+            {
+                baseName = string.Empty;
+            }
+            
             var formatted = baseName;
             if (!string.IsNullOrEmpty(prefix))
             {

@@ -406,7 +406,7 @@
             const userIds = [];
             const seenIds = {};
             for (var i = 0; i < playlists.length; i++) {
-                const userId = playlists[i].User;  // User field contains the user ID
+                const userId = playlists[i].UserId;  // UserId field contains the user ID
                 if (userId && !seenIds[userId]) {
                     userIds.push(userId);
                     seenIds[userId] = true;

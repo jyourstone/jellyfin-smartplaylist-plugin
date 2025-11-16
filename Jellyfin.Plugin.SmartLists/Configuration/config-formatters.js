@@ -100,11 +100,20 @@
         } else {
             // For playlists < 1 day, show hours and minutes
             const hours = Math.floor(totalMinutes / 60);
-            const minutes = Math.round(totalMinutes % 60);
+            const minutesRemainder = totalMinutes % 60;
+            const roundedMinutes = Math.round(minutesRemainder);
+            
+            // Handle edge case: rounding can produce 60 minutes
+            let finalHours = hours;
+            let finalMinutes = roundedMinutes;
+            if (finalMinutes >= 60) {
+                finalHours += 1;
+                finalMinutes = 0;
+            }
             
             const parts = [];
-            if (hours > 0) parts.push(hours + 'h');
-            if (minutes > 0) parts.push(minutes + 'm');
+            if (finalHours > 0) parts.push(finalHours + 'h');
+            if (finalMinutes > 0) parts.push(finalMinutes + 'm');
             
             return parts.length > 0 ? parts.join(' ') : '0m';
         }
@@ -117,12 +126,21 @@
         const days = Math.floor(totalMinutes / 1440);
         const remainingMinutesAfterDays = totalMinutes % 1440;
         const hours = Math.floor(remainingMinutesAfterDays / 60);
-        const minutes = Math.round(remainingMinutesAfterDays % 60);
+        const minutesRemainder = remainingMinutesAfterDays % 60;
+        const roundedMinutes = Math.round(minutesRemainder);
+        
+        // Handle edge case: rounding can produce 60 minutes
+        let finalHours = hours;
+        let finalMinutes = roundedMinutes;
+        if (finalMinutes >= 60) {
+            finalHours += 1;
+            finalMinutes = 0;
+        }
         
         const parts = [];
         if (days > 0) parts.push(days + ' day' + (days === 1 ? '' : 's'));
-        if (hours > 0) parts.push(hours + ' hour' + (hours === 1 ? '' : 's'));
-        if (minutes > 0) parts.push(minutes + ' minute' + (minutes === 1 ? '' : 's'));
+        if (finalHours > 0) parts.push(finalHours + ' hour' + (finalHours === 1 ? '' : 's'));
+        if (finalMinutes > 0) parts.push(finalMinutes + ' minute' + (finalMinutes === 1 ? '' : 's'));
         
         return parts.length > 0 ? parts.join(' ') : '0 minutes';
     };

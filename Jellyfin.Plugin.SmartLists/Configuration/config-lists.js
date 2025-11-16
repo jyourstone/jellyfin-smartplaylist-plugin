@@ -218,7 +218,20 @@
                 url: url,
                 data: JSON.stringify(playlistDto),
                 contentType: 'application/json'
-            }).then(function() {
+            }).then(function(response) {
+                if (!response.ok) {
+                    // Try to parse error message from response
+                    return response.text().then(function(errorText) {
+                        var errorMessage;
+                        try {
+                            errorMessage = JSON.parse(errorText);
+                        } catch (e) {
+                            errorMessage = errorText || 'Unknown error occurred';
+                        }
+                        throw new Error(errorMessage);
+                    });
+                }
+                
                 Dashboard.hideLoadingMsg();
                 const message = editState.editMode ? 
                     listTypeName + ' "' + playlistName + '" updated successfully.' : 
@@ -864,7 +877,20 @@
             type: 'POST',
             url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '/refresh'),
             contentType: 'application/json'
-        }).then(function() {
+        }).then(function(response) {
+            if (!response.ok) {
+                // Try to parse error message from response
+                return response.text().then(function(errorText) {
+                    var errorMessage;
+                    try {
+                        errorMessage = JSON.parse(errorText);
+                    } catch (e) {
+                        errorMessage = errorText || 'Unknown error occurred';
+                    }
+                    throw new Error(errorMessage);
+                });
+            }
+            
             Dashboard.hideLoadingMsg();
             SmartLists.showNotification('List "' + playlistName + '" has been refreshed successfully.', 'success');
             

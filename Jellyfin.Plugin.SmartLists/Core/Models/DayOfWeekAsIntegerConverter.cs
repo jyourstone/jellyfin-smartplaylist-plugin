@@ -41,9 +41,23 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
                 throw new JsonException($"Unable to convert string '{value}' to DayOfWeek. Expected a day name (e.g., 'Monday') or numeric value (0-6).");
             }
 
-            // For unexpected token types, build error message without calling GetString()
+            // For unexpected token types, build error message without accessing ValueSpan for structural tokens
             var tokenType = reader.TokenType;
-            var rawText = reader.HasValueSequence ? "..." : reader.ValueSpan.Length > 0 ? System.Text.Encoding.UTF8.GetString(reader.ValueSpan) : "";
+            
+            // Only access ValueSpan for token types that have values (avoid InvalidOperationException for structural tokens)
+            var rawText = "";
+            if (tokenType != JsonTokenType.StartObject && 
+                tokenType != JsonTokenType.EndObject && 
+                tokenType != JsonTokenType.StartArray && 
+                tokenType != JsonTokenType.EndArray &&
+                tokenType != JsonTokenType.True &&
+                tokenType != JsonTokenType.False &&
+                !reader.HasValueSequence && 
+                reader.ValueSpan.Length > 0)
+            {
+                rawText = System.Text.Encoding.UTF8.GetString(reader.ValueSpan);
+            }
+            
             throw new JsonException($"Unable to convert token type '{tokenType}' (value: '{rawText}') to DayOfWeek. Expected a number (0-6) or string day name.");
         }
 

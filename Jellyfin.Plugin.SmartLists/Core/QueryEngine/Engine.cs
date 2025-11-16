@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Utilities;
+using ModelExpression = Jellyfin.Plugin.SmartLists.Core.QueryEngine.Expression;
 
 namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 {
@@ -42,10 +43,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             });
         }
 
-        private static System.Linq.Expressions.Expression BuildExpr<T>(Expression r, ParameterExpression param, string defaultUserId, ILogger? logger = null)
+        private static System.Linq.Expressions.Expression BuildExpr<T>(ModelExpression r, ParameterExpression param, string defaultUserId, ILogger? logger = null)
         {
             // Check if this is a user-specific field that should always use method calls
-            if (Expression.IsUserSpecificField(r.MemberName))
+            if (ModelExpression.IsUserSpecificField(r.MemberName))
             {
                 // Use the specified user ID or default to playlist owner
                 var effectiveUserId = r.UserId ?? defaultUserId;

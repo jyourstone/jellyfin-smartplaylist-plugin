@@ -72,6 +72,11 @@
         const apiClient = SmartLists.getApiClient();
         const userSelect = page.querySelector('#playlistUser');
         
+        if (!userSelect) {
+            console.warn('SmartLists.loadUsers: #playlistUser element not found');
+            return Promise.resolve();
+        }
+        
         return apiClient.ajax({
             type: "GET",
             url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
@@ -103,6 +108,11 @@
     SmartLists.setCurrentUserAsDefault = function(page) {
         const apiClient = SmartLists.getApiClient();
         const userSelect = page.querySelector('#playlistUser');
+        
+        if (!userSelect) {
+            console.warn('SmartLists.setCurrentUserAsDefault: #playlistUser element not found');
+            return Promise.resolve();
+        }
         
         // Check if we're in edit/clone mode
         const editState = SmartLists.getPageEditState(page);
@@ -139,6 +149,11 @@
     };
     
     SmartLists.loadUsersForRule = function(userSelect, isOptional) {
+        if (!userSelect) {
+            console.warn('SmartLists.loadUsersForRule: userSelect element not provided');
+            return Promise.resolve();
+        }
+        
         isOptional = isOptional !== undefined ? isOptional : false;
         const apiClient = SmartLists.getApiClient();
         
@@ -191,6 +206,12 @@
         // Function to set the User value
         const setUserIdValue = function() {
             const userSelect = page.querySelector('#playlistUser');
+            
+            if (!userSelect) {
+                console.warn('SmartLists.setUserIdValueWithRetry: #playlistUser element not found');
+                return;
+            }
+            
             if (userSelect) {
                 // Check if the option exists in the dropdown
                 const optionExists = Array.from(userSelect.options).some(function(opt) {
@@ -279,6 +300,12 @@
      */
     SmartLists.importPlaylists = function(page) {
         const fileInput = page.querySelector('#importPlaylistsFile');
+        
+        if (!fileInput) {
+            SmartLists.showNotification('Import file input not found on page', 'error');
+            return;
+        }
+        
         const file = fileInput.files[0];
         
         if (!file) {

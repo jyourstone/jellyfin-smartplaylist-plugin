@@ -185,6 +185,13 @@
         const editState = SmartLists.getPageEditState(page);
         if (!editState.editMode) {
             const apiClient = SmartLists.getApiClient();
+            
+            // Initialize suffix first (before async operation)
+            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
+            if (playlistNameSuffix && playlistNameSuffix.value === '') {
+                playlistNameSuffix.value = '[Smart]';
+            }
+            
             return apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
                 const sortsContainer = page.querySelector('#sorts-container');
                 if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
@@ -199,7 +206,7 @@
             });
         }
         
-        // Populate playlist naming configuration fields
+        // Populate playlist naming configuration fields (for edit mode path)
         const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
         if (playlistNameSuffix && playlistNameSuffix.value === '') {
             playlistNameSuffix.value = '[Smart]';

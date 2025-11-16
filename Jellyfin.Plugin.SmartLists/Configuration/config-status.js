@@ -7,16 +7,13 @@
     let aggressivePollingTimeout = null;
 
     /**
-     * Simple HTML escaping function
+     * Escape HTML to prevent XSS (using safe DOM-based approach)
      */
     function escapeHtml(text) {
         if (!text) return '';
-        return String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     /**
@@ -285,15 +282,6 @@
         } catch (e) {
             return isoString;
         }
-    }
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     /**

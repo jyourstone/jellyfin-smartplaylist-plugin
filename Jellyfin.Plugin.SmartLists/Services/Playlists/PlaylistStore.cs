@@ -59,7 +59,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
             // Fallback: scan all playlists if direct lookup failed
             var allPlaylists = await GetAllAsync().ConfigureAwait(false);
-            return allPlaylists.FirstOrDefault(p => p.Id == id.ToString());
+            return allPlaylists.FirstOrDefault(p => string.Equals(p.Id, id.ToString(), StringComparison.OrdinalIgnoreCase));
         }
 
         public async Task<SmartPlaylistDto[]> GetAllAsync()

@@ -299,7 +299,11 @@
         const apiClient = SmartLists.getApiClient();
         const url = apiClient.getUrl(SmartLists.ENDPOINTS.fields);
         
-        return apiClient.get(url).then(function(response) {
+        return apiClient.ajax({
+            type: 'GET',
+            url: url,
+            contentType: 'application/json'
+        }).then(function(response) {
             if (!response.ok) {
                 throw new Error('Network response was not ok: ' + response.statusText);
             }

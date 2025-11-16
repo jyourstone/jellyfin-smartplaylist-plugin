@@ -341,6 +341,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         // Do this before validation so skipped playlists are still counted in batch progress
                         currentPlaylistIndex++;
                         
+                        // Generate listId once at the start to ensure StartOperation and CompleteOperation use same ID
+                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        
                         var playlistStopwatch = Stopwatch.StartNew();
                         try
                         {
@@ -377,7 +380,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 dto.Name, mediaTypesKey, playlistSpecificMedia.Length);
 
                             // Start tracking refresh operation with batch information
-                            var listId = dto.Id ?? Guid.NewGuid().ToString();
                             _refreshStatusService.StartOperation(
                                 listId,
                                 dto.Name,
@@ -430,6 +432,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         }
                         catch (OperationCanceledException)
                         {
+                            playlistStopwatch.Stop();
+                            
+                            // Mark operation as cancelled in status service
+                            _refreshStatusService.CompleteOperation(
+                                listId,
+                                false,
+                                "Refresh operation was cancelled",
+                                null);
+                            
                             _logger.LogInformation("Direct refresh operation was cancelled");
                             throw;
                         }
@@ -437,8 +448,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         {
                             playlistStopwatch.Stop();
                             
-                            // Complete status tracking with error
-                            var listId = dto.Id ?? Guid.NewGuid().ToString();
+                            // Complete status tracking with error (reuse listId from outer scope)
                             _refreshStatusService.CompleteOperation(
                                 listId,
                                 false,
@@ -637,11 +647,41 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // Try to acquire the collection refresh lock with immediate failure
+            // Get collection service to access the refresh lock
             var collectionService = GetCollectionService();
-            var lockAcquired = await collectionService.TryRefreshAllAsync(cancellationToken).ConfigureAwait(false);
             
-            if (!lockAcquired.Success)
+            // Try to acquire the collection refresh lock directly with immediate failure
+            // We need to hold the lock for the entire refresh operation to prevent concurrent refreshes
+            _logger.LogDebug("Attempting to acquire collection refresh lock for manual refresh (immediate return)");
+            
+            var lockField = typeof(Services.Collections.CollectionService).GetField("_refreshOperationLock", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            
+            if (lockField == null)
+            {
+                _logger.LogError("Failed to access collection refresh lock via reflection");
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = "Internal error accessing refresh lock",
+                    LogMessage = "Failed to access collection refresh lock via reflection"
+                };
+            }
+            
+            var refreshLock = (SemaphoreSlim?)lockField.GetValue(null);
+            if (refreshLock == null)
+            {
+                _logger.LogError("Collection refresh lock is null");
+                return new RefreshResult
+                {
+                    Success = false,
+                    NotificationMessage = "Internal error: refresh lock is null",
+                    LogMessage = "Collection refresh lock is null"
+                };
+            }
+            
+            // Try to acquire lock with immediate failure (no waiting)
+            if (!refreshLock.Wait(0, cancellationToken))
             {
                 var message = "A collection refresh is already in progress. Please try again shortly.";
                 _logger.LogInformation("Manual collection refresh request rejected - another refresh is already in progress");
@@ -699,6 +739,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 foreach (var dto in enabledCollections)
                 {
+                    // Generate listId once at the start to ensure StartOperation and CompleteOperation use same ID
+                    var listId = dto.Id ?? Guid.NewGuid().ToString();
+                    
                     var collectionStopwatch = Stopwatch.StartNew();
                     try
                     {
@@ -708,7 +751,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         currentCollectionIndex++;
 
                         // Start tracking refresh operation with batch information
-                        var listId = dto.Id ?? Guid.NewGuid().ToString();
                         // We don't know total items yet, will be updated via progress callback
                         _refreshStatusService.StartOperation(
                             listId,
@@ -756,6 +798,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                     catch (OperationCanceledException)
                     {
+                        collectionStopwatch.Stop();
+                        
+                        // Mark operation as cancelled in status service
+                        _refreshStatusService.CompleteOperation(
+                            listId,
+                            false,
+                            "Refresh operation was cancelled",
+                            null);
+                        
                         _logger.LogInformation("Direct collection refresh operation was cancelled");
                         throw;
                     }
@@ -763,8 +814,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         collectionStopwatch.Stop();
                         
-                        // Complete status tracking with error
-                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        // Complete status tracking with error (reuse listId from outer scope)
                         _refreshStatusService.CompleteOperation(
                             listId,
                             false,
@@ -825,6 +875,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     NotificationMessage = notificationMessage,
                     LogMessage = logMessage
                 };
+            }
+            finally
+            {
+                // Always release the refresh lock
+                refreshLock.Release();
+                _logger.LogDebug("Released collection refresh lock after manual refresh");
             }
         }
 
