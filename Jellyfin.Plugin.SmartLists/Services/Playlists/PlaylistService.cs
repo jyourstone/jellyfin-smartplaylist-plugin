@@ -247,8 +247,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                     var newPlaylistId = await CreateNewPlaylistAsync(smartPlaylistName, user.Id, dto.Public, newLinkedChildren, dto, cancellationToken);
 
+                    // Check if playlist creation actually succeeded
+                    if (string.IsNullOrEmpty(newPlaylistId))
+                    {
+                        logger.LogError("Failed to create playlist '{PlaylistName}' - no valid playlist ID returned", smartPlaylistName);
+                        return (false, $"Failed to create playlist '{smartPlaylistName}' - the playlist could not be retrieved after creation", string.Empty);
+                    }
+
                     // Update the DTO with the new Jellyfin playlist ID
                     dto.JellyfinPlaylistId = newPlaylistId;
+                    dto.LastRefreshed = DateTime.UtcNow;
 
                     // Save the DTO if a callback is provided
                     if (saveCallback != null)
@@ -458,8 +466,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 var user = GetPlaylistUser(dto);
                 if (user == null)
                 {
-                    _logger.LogWarning("No user found for playlist '{PlaylistName}'. Cannot delete Jellyfin playlist.", dto.Name);
-                    return Task.CompletedTask;
+                    _logger.LogWarning("No user found for playlist '{PlaylistName}'. Will attempt deletion anyway (user may have been deleted).", dto.Name);
                 }
 
                 Playlist? existingPlaylist = null;
@@ -485,8 +492,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 if (existingPlaylist != null)
                 {
+                    var userName = user?.Username ?? "Unknown User";
                     _logger.LogInformation("Deleting Jellyfin playlist '{PlaylistName}' (ID: {PlaylistId}) for user '{UserName}'",
-                        existingPlaylist.Name, existingPlaylist.Id, user.Username);
+                        existingPlaylist.Name, existingPlaylist.Id, userName);
                     _libraryManager.DeleteItem(existingPlaylist, new DeleteOptions { DeleteFileLocation = true }, true);
                 }
 

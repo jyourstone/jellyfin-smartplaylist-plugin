@@ -227,7 +227,15 @@
                     return response.text().then(function(errorText) {
                         var errorMessage;
                         try {
-                            errorMessage = JSON.parse(errorText);
+                            var parsed = JSON.parse(errorText);
+                            // Extract string from parsed object if necessary
+                            if (parsed && typeof parsed === 'object') {
+                                errorMessage = parsed.message || parsed.error || JSON.stringify(parsed);
+                            } else if (typeof parsed === 'string') {
+                                errorMessage = parsed;
+                            } else {
+                                errorMessage = String(parsed);
+                            }
                         } catch (e) {
                             errorMessage = errorText || 'Unknown error occurred';
                         }
@@ -891,7 +899,15 @@
                 return response.text().then(function(errorText) {
                     var errorMessage;
                     try {
-                        errorMessage = JSON.parse(errorText);
+                        var parsed = JSON.parse(errorText);
+                        // Extract string from parsed object if necessary
+                        if (parsed && typeof parsed === 'object') {
+                            errorMessage = parsed.message || parsed.error || JSON.stringify(parsed);
+                        } else if (typeof parsed === 'string') {
+                            errorMessage = parsed;
+                        } else {
+                            errorMessage = String(parsed);
+                        }
                     } catch (e) {
                         errorMessage = errorText || 'Unknown error occurred';
                     }

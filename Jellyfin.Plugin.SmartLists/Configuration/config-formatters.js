@@ -123,7 +123,7 @@
     SmartLists.formatRuntimeLong = function(totalMinutes) {
         if (!totalMinutes || totalMinutes <= 0) return null;
         
-        const days = Math.floor(totalMinutes / 1440);
+        let days = Math.floor(totalMinutes / 1440);
         const remainingMinutesAfterDays = totalMinutes % 1440;
         const hours = Math.floor(remainingMinutesAfterDays / 60);
         const minutesRemainder = remainingMinutesAfterDays % 60;
@@ -135,6 +135,13 @@
         if (finalMinutes >= 60) {
             finalHours += 1;
             finalMinutes = 0;
+        }
+        
+        // Handle edge case: incrementing hours can produce 24+ hours
+        if (finalHours >= 24) {
+            const extraDays = Math.floor(finalHours / 24);
+            days += extraDays;
+            finalHours = finalHours % 24;
         }
         
         const parts = [];
