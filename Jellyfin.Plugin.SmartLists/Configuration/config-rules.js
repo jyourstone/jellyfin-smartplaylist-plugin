@@ -1830,6 +1830,14 @@
                     genresSelect.value = includeValue;
                 }
             }
+            if (expression.MemberName === 'SimilarTo') {
+                // Restore similarity comparison fields if provided
+                // This is called from edit/clone flows where playlist data is available
+                const similarityFields = page._editingPlaylistSimilarityFields || page._cloningPlaylistSimilarityFields;
+                if (similarityFields) {
+                    SmartLists.updateSimilarityOptionsVisibility(ruleRow, expression.MemberName, similarityFields);
+                }
+            }
             
             // Update regex help if needed
             SmartLists.updateRegexHelp(ruleRow);

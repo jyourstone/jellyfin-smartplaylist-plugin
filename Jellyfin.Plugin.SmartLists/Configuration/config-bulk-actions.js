@@ -50,25 +50,28 @@
         
         Dashboard.showLoadingMsg();
         
-        const promises = listsToProcess.map(function(listId) {
+        // Process sequentially to avoid refresh lock contention
+        // Enable/disable operations call RefreshWithTimeoutAsync which uses a global lock
+        // Processing sequentially ensures each operation completes before the next starts
+        for (const listId of listsToProcess) {
             let url = SmartLists.ENDPOINTS.base + '/' + listId + options.apiPath;
             if (options.getQueryParams) {
                 url += '?' + options.getQueryParams(page);
             }
             
-            return apiClient.ajax({
-                type: options.httpMethod,
-                url: apiClient.getUrl(url),
-                contentType: 'application/json'
-            }).then(function() {
+            try {
+                await apiClient.ajax({
+                    type: options.httpMethod,
+                    url: apiClient.getUrl(url),
+                    contentType: 'application/json'
+                });
                 successCount++;
-            }).catch(function(err) {
+            } catch (err) {
                 console.error('Error ' + options.actionType + ' list:', listId, err);
                 errorCount++;
-            });
-        });
+            }
+        }
         
-        await Promise.all(promises);
         Dashboard.hideLoadingMsg();
         
         // Show notifications
@@ -391,7 +394,7 @@
             : listNames.join('\n');
         
         const isPlural = listNames.length !== 1;
-        const confirmText = 'Are you sure you want to delete the following ' + (isPlural ? 'playlists' : 'playlist') + '?\n\n' + listList + '\n\nThis action cannot be undone.';
+        const confirmText = 'Are you sure you want to delete the following ' + (isPlural ? 'lists' : 'list') + '?\n\n' + listList + '\n\nThis action cannot be undone.';
         
         SmartLists.showDeleteModal(page, confirmText, function() {
             SmartLists.performBulkDelete(page, listIds);
@@ -451,7 +454,7 @@
         });
         
         if (listIds.length === 0) {
-            SmartLists.showNotification('No playlists selected', 'error');
+            SmartLists.showNotification('No lists selected', 'error');
             return;
         }
         
@@ -470,6 +473,10 @@
         const details = playlistCard.querySelector('.playlist-details');
         const actions = playlistCard.querySelector('.playlist-actions');
         const icon = playlistCard.querySelector('.playlist-expand-icon');
+        
+        if (!details || !actions || !icon) {
+            return;
+        }
         
         if (details.style.display === 'none' || details.style.display === '') {
             // Expand
@@ -508,12 +515,16 @@
                 const details = card.querySelector('.playlist-details');
                 const actions = card.querySelector('.playlist-actions');
                 const icon = card.querySelector('.playlist-expand-icon');
-                details.style.display = 'block';
-                actions.style.display = 'block';
-                icon.textContent = '▼';
-                card.setAttribute('data-expanded', 'true');
+                if (details && actions && icon) {
+                    details.style.display = 'block';
+                    actions.style.display = 'block';
+                    icon.textContent = '▼';
+                    card.setAttribute('data-expanded', 'true');
+                }
             }
-            expandAllBtn.textContent = 'Collapse All';
+            if (expandAllBtn) {
+                expandAllBtn.textContent = 'Collapse All';
+            }
             
             // Restore scroll position after DOM changes to prevent unwanted scrolling
             if (window.requestAnimationFrame) {
@@ -532,12 +543,16 @@
                 const details = card.querySelector('.playlist-details');
                 const actions = card.querySelector('.playlist-actions');
                 const icon = card.querySelector('.playlist-expand-icon');
-                details.style.display = 'none';
-                actions.style.display = 'none';
-                icon.textContent = '▶';
-                card.setAttribute('data-expanded', 'false');
+                if (details && actions && icon) {
+                    details.style.display = 'none';
+                    actions.style.display = 'none';
+                    icon.textContent = '▶';
+                    card.setAttribute('data-expanded', 'false');
+                }
             }
-            expandAllBtn.textContent = 'Expand All';
+            if (expandAllBtn) {
+                expandAllBtn.textContent = 'Expand All';
+            }
         }
         
         // Save state to localStorage

@@ -154,6 +154,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 throw new ArgumentException("Collection ID cannot be null or empty", nameof(id));
             }
 
+            // Validate that fileName is a valid GUID before constructing paths
+            // GetSmartListPath and GetLegacyPath expect a GUID to prevent path injection
+            if (!Guid.TryParse(fileName, out _))
+            {
+                throw new ArgumentException($"Collection ID must be a valid GUID, but got: {fileName}", nameof(id));
+            }
+
             var filePath = _fileSystem.GetSmartListPath(fileName);
             if (File.Exists(filePath))
             {
@@ -195,10 +202,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 return null;
             }
 
-            // Ensure type is set correctly for collections
+            // Only accept explicit Collection type; ignore any other types (future-proofing)
+            // This prevents misclassifying new SmartListType values as collections
             if (dto.Type != Core.Enums.SmartListType.Collection)
             {
-                dto.Type = Core.Enums.SmartListType.Collection;
+                return null;
             }
 
             return dto;

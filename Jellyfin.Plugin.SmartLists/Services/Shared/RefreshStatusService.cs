@@ -50,7 +50,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var itemsPerMs = (double)processedItems / elapsedMs;
                 var remainingItems = TotalItems - processedItems;
 
-                if (itemsPerMs > 0)
+                // Reset ETA if no items remaining or invalid rate
+                if (remainingItems <= 0 || itemsPerMs <= 0)
+                {
+                    EstimatedTimeRemaining = null;
+                }
+                else if (itemsPerMs > 0)
                 {
                     var estimatedMs = remainingItems / itemsPerMs;
                     EstimatedTimeRemaining = TimeSpan.FromMilliseconds(estimatedMs);

@@ -922,9 +922,18 @@
 
     // ===== PLAYLIST NAMING =====
     SmartLists.updatePlaylistNamePreview = function(page) {
-        const prefix = page.querySelector('#playlistNamePrefix').value;
-        const suffix = page.querySelector('#playlistNameSuffix').value;
+        const prefixElement = page.querySelector('#playlistNamePrefix');
+        const suffixElement = page.querySelector('#playlistNameSuffix');
         const previewText = page.querySelector('#previewText');
+        
+        // Return early if preview text element is missing
+        if (!previewText) {
+            return;
+        }
+        
+        // Use safe defaults: empty string for prefix, "[Smart]" for suffix
+        const prefix = prefixElement ? prefixElement.value : '';
+        const suffix = suffixElement ? suffixElement.value : '[Smart]';
         
         const exampleName = 'My Awesome List';
         let finalName = '';

@@ -83,8 +83,14 @@ namespace Jellyfin.Plugin.SmartLists
                 var userCacheStats = new Dictionary<Guid, (int mediaCount, int playlistCount)>();
 
                 // Handle playlists with missing/invalid User first
+                // Helper predicate to check if a playlist has a valid user ID
+                static bool IsValidUserId(SmartPlaylistDto p) => 
+                    !string.IsNullOrEmpty(p.UserId) && 
+                    Guid.TryParse(p.UserId, out var userId) && 
+                    userId != Guid.Empty;
+
                 var playlistsWithInvalidUser = playlists
-                    .Where(p => string.IsNullOrEmpty(p.UserId) || !Guid.TryParse(p.UserId, out var userId) || userId == Guid.Empty)
+                    .Where(p => !IsValidUserId(p))
                     .ToList();
                 if (playlistsWithInvalidUser.Any())
                 {
@@ -106,7 +112,7 @@ namespace Jellyfin.Plugin.SmartLists
 
                 // Group playlists by user (same as legacy tasks)
                 var playlistsByUser = playlists
-                    .Where(p => !string.IsNullOrEmpty(p.UserId) && Guid.TryParse(p.UserId, out var userId) && userId != Guid.Empty)
+                    .Where(IsValidUserId)
                     .GroupBy(p => Guid.Parse(p.UserId))
                     .ToDictionary(g => g.Key, g => g.ToList());
 
@@ -290,14 +296,8 @@ namespace Jellyfin.Plugin.SmartLists
                     var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
                         new Lazy<BaseItem[]>(() =>
                         {
-                            // Cast to PlaylistService to access GetAllUserMediaForPlaylist
-                            var concreteService = _playlistService as Services.Playlists.PlaylistService;
-                            if (concreteService == null)
-                            {
-                                _logger.LogError("PlaylistService is not the expected type");
-                                return [];
-                            }
-                            var media = concreteService.GetAllUserMediaForPlaylist(user, mediaTypesForClosure, playlist).ToArray();
+                            // Use interface method instead of casting
+                            var media = _playlistService.GetAllUserMediaForPlaylist(user, mediaTypesForClosure, playlist).ToArray();
                             _logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'",
                                 media.Length, mediaTypesKey, user.Username);
                             return media;
@@ -307,14 +307,8 @@ namespace Jellyfin.Plugin.SmartLists
                     _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items vs {CachedCount} cached items",
                         playlist.Name, mediaTypesKey, playlistSpecificMedia.Length, relevantUserMedia.Length);
 
-                    // Cast to PlaylistService to access ProcessPlaylistRefreshWithCachedMediaAsync
-                    var concreteService = _playlistService as Services.Playlists.PlaylistService;
-                    if (concreteService == null)
-                    {
-                        _logger.LogError("PlaylistService is not the expected type");
-                        continue;
-                    }
-                    var (success, message, jellyfinPlaylistId) = await concreteService.ProcessPlaylistRefreshWithCachedMediaAsync(
+                    // Use interface method instead of casting
+                    var (success, message, jellyfinPlaylistId) = await _playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                         playlist,
                         user,
                         playlistSpecificMedia,

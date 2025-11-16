@@ -471,11 +471,14 @@
             return Promise.resolve();
         }
         
+        // Read the search input value
+        const searchTerm = searchInput.value.trim();
+        
         // Apply all filters and sorting
         const filteredPlaylists = SmartLists.applyAllFiltersAndSort(page, page._allPlaylists);
         
-        // Display the filtered results
-        return SmartLists.displayFilteredPlaylists(page, filteredPlaylists, '');
+        // Display the filtered results with the actual search term
+        return SmartLists.displayFilteredPlaylists(page, filteredPlaylists, searchTerm);
     };
     
     SmartLists.displayFilteredPlaylists = async function(page, filteredPlaylists, searchTerm) {

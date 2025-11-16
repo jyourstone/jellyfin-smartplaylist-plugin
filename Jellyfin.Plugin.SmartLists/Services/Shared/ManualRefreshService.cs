@@ -353,6 +353,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         var listId = dto.Id ?? Guid.NewGuid().ToString();
                         
                         var playlistStopwatch = Stopwatch.StartNew();
+                        var operationStarted = false;
                         try
                         {
                             cancellationToken.ThrowIfCancellationRequested();
@@ -396,6 +397,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 playlistSpecificMedia.Length,
                                 batchCurrentIndex: currentPlaylistIndex,
                                 batchTotalCount: totalPlaylistCount);
+                            operationStarted = true;
 
                             // Create progress callback
                             Action<int, int>? progressCallback = (processed, total) =>
@@ -403,6 +405,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 _refreshStatusService.UpdateProgress(listId, processed, total);
                             };
 
+                            // Track if this is a new playlist (JellyfinPlaylistId was empty before refresh)
+                            var wasNewPlaylist = string.IsNullOrEmpty(dto.JellyfinPlaylistId);
+                            
                             var refreshResult = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                                 dto,
                                 user,
@@ -421,7 +426,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             
                             if (refreshResult.Success)
                             {
-                                // Save the playlist to persist LastRefreshed timestamp (same as legacy tasks)
+                                // Save the playlist to persist LastRefreshed timestamp
+                                // Note: For new playlists, the saveCallback already saved the DTO (with JellyfinPlaylistId),
+                                // but ProcessPlaylistRefreshWithCachedMediaAsync updates LastRefreshed after the callback,
+                                // so we need to save again to persist the updated timestamp.
+                                // For existing playlists, we need to save to persist LastRefreshed.
                                 await plStore.SaveAsync(dto);
 
                                 successCount++;
@@ -441,11 +450,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         {
                             playlistStopwatch.Stop();
                             
-                            // Mark operation as cancelled in status service
-                            _refreshStatusService.CompleteOperation(
-                                listId,
-                                false,
-                                "Refresh operation was cancelled");
+                            // Only complete operation if it was started
+                            if (operationStarted)
+                            {
+                                _refreshStatusService.CompleteOperation(
+                                    listId,
+                                    false,
+                                    "Refresh operation was cancelled");
+                            }
                             
                             _logger.LogInformation("Direct refresh operation was cancelled");
                             throw;
@@ -454,11 +466,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         {
                             playlistStopwatch.Stop();
                             
-                            // Complete status tracking with error (reuse listId from outer scope)
-                            _refreshStatusService.CompleteOperation(
-                                listId,
-                                false,
-                                ex.Message);
+                            // Only complete operation if it was started
+                            if (operationStarted)
+                            {
+                                _refreshStatusService.CompleteOperation(
+                                    listId,
+                                    false,
+                                    ex.Message);
+                            }
                             
                             failureCount++;
                             processedCount++;
@@ -652,41 +667,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // Get collection service to access the refresh lock
-            var collectionService = GetCollectionService();
-            
-            // Try to acquire the collection refresh lock directly with immediate failure
+            // Try to acquire the collection refresh lock with immediate failure (no waiting)
             // We need to hold the lock for the entire refresh operation to prevent concurrent refreshes
             _logger.LogDebug("Attempting to acquire collection refresh lock for manual refresh (immediate return)");
             
-            var lockField = typeof(Services.Collections.CollectionService).GetField("_refreshOperationLock", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            
-            if (lockField == null)
-            {
-                _logger.LogError("Failed to access collection refresh lock via reflection");
-                return new RefreshResult
-                {
-                    Success = false,
-                    NotificationMessage = "Internal error accessing refresh lock",
-                    LogMessage = "Failed to access collection refresh lock via reflection"
-                };
-            }
-            
-            var refreshLock = (SemaphoreSlim?)lockField.GetValue(null);
-            if (refreshLock == null)
-            {
-                _logger.LogError("Collection refresh lock is null");
-                return new RefreshResult
-                {
-                    Success = false,
-                    NotificationMessage = "Internal error: refresh lock is null",
-                    LogMessage = "Collection refresh lock is null"
-                };
-            }
-            
-            // Try to acquire lock with immediate failure (no waiting)
-            if (!refreshLock.Wait(0, cancellationToken))
+            var (lockAcquired, lockHandle) = await Services.Collections.CollectionService.TryAcquireRefreshLockAsync(cancellationToken);
+            if (!lockAcquired)
             {
                 var message = "A refresh is already in progress. Please try again shortly.";
                 _logger.LogInformation("Manual collection refresh request rejected - another refresh is already in progress");
@@ -748,6 +734,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     var listId = dto.Id ?? Guid.NewGuid().ToString();
                     
                     var collectionStopwatch = Stopwatch.StartNew();
+                    var operationStarted = false;
                     try
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -765,6 +752,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             0,
                             batchCurrentIndex: currentCollectionIndex,
                             batchTotalCount: totalCollectionCount);
+                        operationStarted = true;
+
+                        // Get collection service
+                        var collectionService = GetCollectionService();
 
                         // Create progress callback
                         Action<int, int>? progressCallback = (processed, total) =>
@@ -804,11 +795,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         collectionStopwatch.Stop();
                         
-                        // Mark operation as cancelled in status service
-                        _refreshStatusService.CompleteOperation(
-                            listId,
-                            false,
-                            "Refresh operation was cancelled");
+                        // Only complete operation if it was started
+                        if (operationStarted)
+                        {
+                            _refreshStatusService.CompleteOperation(
+                                listId,
+                                false,
+                                "Refresh operation was cancelled");
+                        }
                         
                         _logger.LogInformation("Direct collection refresh operation was cancelled");
                         throw;
@@ -817,11 +811,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         collectionStopwatch.Stop();
                         
-                        // Complete status tracking with error (reuse listId from outer scope)
-                        _refreshStatusService.CompleteOperation(
-                            listId,
-                            false,
-                            ex.Message);
+                        // Only complete operation if it was started
+                        if (operationStarted)
+                        {
+                            _refreshStatusService.CompleteOperation(
+                                listId,
+                                false,
+                                ex.Message);
+                        }
                         
                         failureCount++;
                         processedCount++;
@@ -881,7 +878,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             finally
             {
                 // Always release the refresh lock
-                refreshLock.Release();
+                lockHandle?.Dispose();
                 _logger.LogDebug("Released collection refresh lock after manual refresh");
             }
         }
@@ -903,26 +900,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 var playlistService = GetPlaylistService();
                 
-                // Get the lock using reflection to check if we can acquire it before starting status tracking
-                var lockField = typeof(Services.Playlists.PlaylistService).GetField("_refreshOperationLock", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                
-                if (lockField == null)
-                {
-                    _logger.LogError("Could not find _refreshOperationLock field in PlaylistService");
-                    return (false, "Internal error: Could not access refresh lock", string.Empty);
-                }
-                
-                var refreshLock = (SemaphoreSlim?)lockField.GetValue(null);
-                if (refreshLock == null)
-                {
-                    _logger.LogError("_refreshOperationLock is null in PlaylistService");
-                    return (false, "Internal error: Refresh lock is null", string.Empty);
-                }
-
-                // Try to acquire the lock with immediate timeout
+                // Try to acquire the lock with immediate timeout (no waiting)
                 // If we can't get it, return immediately without starting status tracking
-                if (!await refreshLock.WaitAsync(0, cancellationToken))
+                var (lockAcquired, lockHandle) = await Services.Playlists.PlaylistService.TryAcquireRefreshLockAsync(cancellationToken);
+                if (!lockAcquired)
                 {
                     _logger.LogInformation("Playlist refresh already in progress for: {PlaylistName} ({PlaylistId}). Lock could not be acquired.", playlist.Name, playlist.Id);
                     return (false, "Playlist refresh is already in progress, please try again in a moment.", string.Empty);
@@ -972,7 +953,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 finally
                 {
                     // Always release the lock
-                    refreshLock.Release();
+                    lockHandle?.Dispose();
                     _logger.LogDebug("Released refresh lock for single playlist: {PlaylistName}", playlist.Name);
                 }
             }
@@ -1013,26 +994,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 var collectionService = GetCollectionService();
                 
-                // Get the lock using reflection to check if we can acquire it before starting status tracking
-                var lockField = typeof(Services.Collections.CollectionService).GetField("_refreshOperationLock", 
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                
-                if (lockField == null)
-                {
-                    _logger.LogError("Could not find _refreshOperationLock field in CollectionService");
-                    return (false, "Internal error: Could not access refresh lock", string.Empty);
-                }
-                
-                var refreshLock = (SemaphoreSlim?)lockField.GetValue(null);
-                if (refreshLock == null)
-                {
-                    _logger.LogError("_refreshOperationLock is null in CollectionService");
-                    return (false, "Internal error: Refresh lock is null", string.Empty);
-                }
-
-                // Try to acquire the lock with immediate timeout
+                // Try to acquire the lock with immediate timeout (no waiting)
                 // If we can't get it, return immediately without starting status tracking
-                if (!await refreshLock.WaitAsync(0, cancellationToken))
+                var (lockAcquired, lockHandle) = await Services.Collections.CollectionService.TryAcquireRefreshLockAsync(cancellationToken);
+                if (!lockAcquired)
                 {
                     _logger.LogInformation("Collection refresh already in progress for: {CollectionName} ({CollectionId}). Lock could not be acquired.", collection.Name, collection.Id);
                     return (false, "Collection refresh is already in progress, please try again in a moment.", string.Empty);
@@ -1082,7 +1047,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 finally
                 {
                     // Always release the lock
-                    refreshLock.Release();
+                    lockHandle?.Dispose();
                     _logger.LogDebug("Released refresh lock for single collection: {CollectionName}", collection.Name);
                 }
             }

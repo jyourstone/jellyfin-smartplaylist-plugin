@@ -46,6 +46,32 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
         private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
 
+        /// <summary>
+        /// Attempts to acquire the refresh lock for collections with immediate return (no waiting).
+        /// This is used by ManualRefreshService to coordinate bulk refresh operations.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token</param>
+        /// <returns>Tuple of (success, disposable) - disposable is null if acquisition failed</returns>
+        public static async Task<(bool Success, IDisposable? LockHandle)> TryAcquireRefreshLockAsync(CancellationToken cancellationToken = default)
+        {
+            if (await _refreshOperationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                return (true, new RefreshLockDisposable());
+            }
+            return (false, null);
+        }
+
+        /// <summary>
+        /// Helper class to ensure the refresh lock is properly released.
+        /// </summary>
+        private sealed class RefreshLockDisposable : IDisposable
+        {
+            public void Dispose()
+            {
+                _refreshOperationLock.Release();
+            }
+        }
+
         public CollectionService(
             ILibraryManager libraryManager,
             ICollectionManager collectionManager,
@@ -60,6 +86,30 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             _userDataManager = userDataManager;
             _logger = logger;
             _providerManager = providerManager;
+        }
+
+        /// <summary>
+        /// Gets all user media for a playlist, filtered by media types.
+        /// Not supported for collections - this method is for playlist batch processing.
+        /// </summary>
+        public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartCollectionDto? dto = null)
+        {
+            throw new NotSupportedException("GetAllUserMediaForPlaylist is not supported for collections. Use RefreshCache only for playlists.");
+        }
+
+        /// <summary>
+        /// Processes a playlist refresh with pre-cached media for efficient batch processing.
+        /// Not supported for collections - this method is for playlist batch processing.
+        /// </summary>
+        public Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(
+            SmartCollectionDto dto,
+            User user,
+            BaseItem[] allUserMedia,
+            Func<SmartCollectionDto, Task>? saveCallback = null,
+            Action<int, int>? progressCallback = null,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ProcessPlaylistRefreshWithCachedMediaAsync is not supported for collections. Use RefreshCache only for playlists.");
         }
 
         public async Task<(bool Success, string Message, string Id)> RefreshAsync(SmartCollectionDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
@@ -889,7 +939,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 if (linkedChildren == null || linkedChildren.Length == 0)
                 {
                     // Check if collection has a manually uploaded image (don't clear user-uploaded images)
-                    if (HasManuallyUploadedImage(collection))
+                    if (await HasManuallyUploadedImageAsync(collection, cancellationToken).ConfigureAwait(false))
                     {
                         _logger.LogDebug("Collection {CollectionName} is empty but has a manually uploaded image, preserving it", collection.Name);
                         stopwatch.Stop();
@@ -973,7 +1023,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             try
             {
                 // Check if collection has a manually uploaded image (don't overwrite)
-                if (HasManuallyUploadedImage(collection))
+                if (await HasManuallyUploadedImageAsync(collection, cancellationToken).ConfigureAwait(false))
                 {
                     _logger.LogDebug("Collection {CollectionName} has a manually uploaded image, skipping automatic image generation", collection.Name);
                     return;
@@ -1090,7 +1140,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         /// 
         /// Note: Our auto-generated collage (smartlist-collage.jpg) will be regenerated to match current items.
         /// </summary>
-        private bool HasManuallyUploadedImage(BaseItem collection)
+        private async Task<bool> HasManuallyUploadedImageAsync(BaseItem collection, CancellationToken cancellationToken = default)
         {
             if (collection.ImageInfos == null)
             {
@@ -1133,7 +1183,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             // Check if it matches any of the collection items' images
             try
             {
-                var items = GetCollectionItemsAsync(collection, CancellationToken.None).GetAwaiter().GetResult();
+                var items = await GetCollectionItemsAsync(collection, cancellationToken).ConfigureAwait(false);
                 var itemsWithImages = GetItemsWithImages(items);
                 
                 // Check if any item uses this exact image path

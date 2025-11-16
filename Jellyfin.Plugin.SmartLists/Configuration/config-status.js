@@ -161,7 +161,8 @@
         const avgDuration = stats?.averageRefreshDuration ? formatDuration(stats.averageRefreshDuration) : 'N/A';
         
         // Find batch progress info from ongoing operations
-        const batchOp = ongoingOperations?.find(op => op.batchCurrentIndex !== null && op.batchTotalCount !== null);
+        // Use loose equality (!=) to exclude both null and undefined
+        const batchOp = ongoingOperations?.find(op => op.batchCurrentIndex != null && op.batchTotalCount != null);
         const ongoingOpsText = batchOp 
             ? `${batchOp.batchCurrentIndex} of ${batchOp.batchTotalCount}`
             : (stats.ongoingOperationsCount || 0);

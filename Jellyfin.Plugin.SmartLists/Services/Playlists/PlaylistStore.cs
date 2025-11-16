@@ -9,6 +9,7 @@ using Jellyfin.Plugin.SmartLists.Core.Models;
 using Jellyfin.Plugin.SmartLists.Services.Abstractions;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
 using MediaBrowser.Controller.Library;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 {
@@ -19,6 +20,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
     public class PlaylistStore : ISmartListStore<SmartPlaylistDto>
     {
         private readonly ISmartListFileSystem _fileSystem;
+        private readonly ILogger<PlaylistStore>? _logger;
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             WriteIndented = true,
@@ -26,9 +28,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             Converters = { new JsonStringEnumConverter() }
         };
 
-        public PlaylistStore(ISmartListFileSystem fileSystem)
+        public PlaylistStore(ISmartListFileSystem fileSystem, ILogger<PlaylistStore>? logger = null)
         {
             _fileSystem = fileSystem;
+            _logger = logger;
         }
 
         public async Task<SmartPlaylistDto?> GetByIdAsync(Guid id)
@@ -51,9 +54,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                         return playlist;
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     // File exists but couldn't be loaded, fall back to scanning all files
+                    _logger?.LogDebug(ex, "Failed to load playlist from direct path {FilePath}, falling back to scan", filePath);
                 }
             }
 

@@ -457,6 +457,9 @@
                             });
                         }
                         
+                        // Store similarity comparison fields on page for populateRuleRow to access
+                        page._editingPlaylistSimilarityFields = playlist.SimilarityComparisonFields;
+                        
                         // Add rules to this logic group
                         if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
                             expressionSet.Expressions.forEach(function(expression) {
@@ -464,143 +467,14 @@
                                 const ruleRows = logicGroup.querySelectorAll('.rule-row');
                                 const currentRule = ruleRows[ruleRows.length - 1];
                                 
-                                const fieldSelect = currentRule.querySelector('.rule-field-select');
-                                const operatorSelect = currentRule.querySelector('.rule-operator-select');
-                                const valueContainer = currentRule.querySelector('.rule-value-container');
-                                
-                                // Check if this is a people field (but not "People" itself)
-                                const isPeopleSubFieldValue = SmartLists.isPeopleSubField(expression.MemberName);
-                                const actualMemberName = expression.MemberName;
-                                
-                                if (isPeopleSubFieldValue) {
-                                    // Set field select to "People" and submenu to the actual field
-                                    fieldSelect.value = 'People';
-                                    // Update operator options using the actual member name
-                                    SmartLists.updateOperatorOptions(actualMemberName, operatorSelect);
-                                } else {
-                                    fieldSelect.value = expression.MemberName;
-                                    // Update operator options first
-                                    SmartLists.updateOperatorOptions(expression.MemberName, operatorSelect);
-                                }
-                                
-                                // Set operator so setValueInput knows what type of input to create
-                                operatorSelect.value = expression.Operator;
-                                
-                                // Update UI elements based on the loaded rule data
-                                // Pass the operator and current value to ensure correct input type is created
-                                SmartLists.setValueInput(actualMemberName, valueContainer, expression.Operator, expression.TargetValue);
-                                SmartLists.updateUserSelectorVisibility(currentRule, actualMemberName);
-                                SmartLists.updateNextUnwatchedOptionsVisibility(currentRule, actualMemberName, page);
-                                SmartLists.updateCollectionsOptionsVisibility(currentRule, actualMemberName, page);
-                                SmartLists.updateTagsOptionsVisibility(currentRule, actualMemberName, page);
-                                SmartLists.updateStudiosOptionsVisibility(currentRule, actualMemberName, page);
-                                SmartLists.updateGenresOptionsVisibility(currentRule, actualMemberName, page);
-                                // Pass the playlist's saved similarity fields (if any) so they're loaded correctly
-                                SmartLists.updateSimilarityOptionsVisibility(currentRule, actualMemberName, playlist.SimilarityComparisonFields);
-                                
-                                // Handle user-specific rules
-                                if (expression.UserId) {
-                                    const userSelect = currentRule.querySelector('.rule-user-select');
-                                    if (userSelect) {
-                                        // Ensure options are loaded before setting the value
-                                        SmartLists.loadUsersForRule(userSelect, true).then(function() {
-                                            userSelect.value = expression.UserId;
-                                        }).catch(function() {
-                                            // Fallback: set value anyway in case of error
-                                            userSelect.value = expression.UserId;
-                                        });
-                                    }
-                                }
-                                
-                                // Handle people submenu if this is a people field
-                                if (isPeopleSubFieldValue) {
-                                    SmartLists.updatePeopleOptionsVisibility(currentRule, 'People');
-                                    const peopleSelect = currentRule.querySelector('.rule-people-select');
-                                    if (peopleSelect) {
-                                        // Wait for options to be populated, then set the value
-                                        setTimeout(function() {
-                                            peopleSelect.value = actualMemberName;
-                                        }, 0);
-                                    }
-                                } else {
-                                    SmartLists.updatePeopleOptionsVisibility(currentRule, fieldSelect.value);
-                                }
-                                
-                                // Set value AFTER the correct input type is created
-                                const valueInput = currentRule.querySelector('.rule-value-input');
-                                if (valueInput) {
-                                    // For tag-based inputs (IsIn/IsNotIn), the tags are already created by setValueInput
-                                    // For relative date operators, we need to parse the "number:unit" format
-                                    const isRelativeDateOperator = expression.Operator === 'NewerThan' || expression.Operator === 'OlderThan';
-                                    if (isRelativeDateOperator && expression.TargetValue) {
-                                        const parts = expression.TargetValue.split(':');
-                                        if (parts.length === 2) {
-                                            const num = parts[0];
-                                            const unit = parts[1];
-                                            
-                                            // Set the number input
-                                            valueInput.value = num;
-                                            
-                                            // Set the unit dropdown
-                                            const unitSelect = currentRule.querySelector('.rule-value-unit');
-                                            if (unitSelect) {
-                                                unitSelect.value = unit;
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Restore per-field option selects for edit flows
-                                // Note: These must be set AFTER updateCollectionsOptionsVisibility/updateTagsOptionsVisibility
-                                // to ensure the options divs are visible
-                                if (expression.MemberName === 'NextUnwatched') {
-                                    const nextUnwatchedSelect = currentRule.querySelector('.rule-nextunwatched-select');
-                                    if (nextUnwatchedSelect) {
-                                        const includeValue = expression.IncludeUnwatchedSeries !== false ? 'true' : 'false';
-                                        nextUnwatchedSelect.value = includeValue;
-                                    }
-                                }
-                                if (expression.MemberName === 'Collections') {
-                                    // Restore collection-only option
-                                    const collectionOnlySelect = currentRule.querySelector('.rule-collections-collection-only-select');
-                                    if (collectionOnlySelect) {
-                                        const includeCollectionOnlyValue = expression.IncludeCollectionOnly === true ? 'true' : 'false';
-                                        collectionOnlySelect.value = includeCollectionOnlyValue;
-                                        // Trigger change to update visibility of episodes field
-                                        collectionOnlySelect.dispatchEvent(new Event('change'));
-                                    }
-                                    
-                                    // Restore episodes option
-                                    const collectionsSelect = currentRule.querySelector('.rule-collections-select');
-                                    if (collectionsSelect) {
-                                        const includeValue = expression.IncludeEpisodesWithinSeries === true ? 'true' : 'false';
-                                        collectionsSelect.value = includeValue;
-                                    }
-                                }
-                                if (expression.MemberName === 'Tags') {
-                                    const tagsSelect = currentRule.querySelector('.rule-tags-select');
-                                    if (tagsSelect) {
-                                        const includeValue = expression.IncludeParentSeriesTags === true ? 'true' : 'false';
-                                        tagsSelect.value = includeValue;
-                                    }
-                                }
-                                if (expression.MemberName === 'Studios') {
-                                    const studiosSelect = currentRule.querySelector('.rule-studios-select');
-                                    if (studiosSelect) {
-                                        const includeValue = expression.IncludeParentSeriesStudios === true ? 'true' : 'false';
-                                        studiosSelect.value = includeValue;
-                                    }
-                                }
-                                if (expression.MemberName === 'Genres') {
-                                    const genresSelect = currentRule.querySelector('.rule-genres-select');
-                                    if (genresSelect) {
-                                        const includeValue = expression.IncludeParentSeriesGenres === true ? 'true' : 'false';
-                                        genresSelect.value = includeValue;
-                                    }
-                                }
-                                
-                                // Update regex help if needed
-                                SmartLists.updateRegexHelp(currentRule);
+                                // Use populateRuleRow for consistency with clone flow
+                                // populateRuleRow handles all field population including:
+                                // - People sub-fields
+                                // - User-specific rules
+                                // - Value inputs (including relative date operators)
+                                // - Per-field option selects (NextUnwatched, Collections, Tags, Studios, Genres, SimilarTo)
+                                // - Regex help updates
+                                SmartLists.populateRuleRow(currentRule, expression, page);
                             });
                         }
                     });
@@ -759,6 +633,9 @@
                     playlist.ExpressionSets.forEach(function(expressionSet, setIndex) {
                         const logicGroup = setIndex === 0 ? SmartLists.createInitialLogicGroup(page) : SmartLists.addNewLogicGroup(page);
                         
+                        // Store similarity comparison fields on page for populateRuleRow to access
+                        page._cloningPlaylistSimilarityFields = playlist.SimilarityComparisonFields;
+                        
                         if (expressionSet.Expressions && expressionSet.Expressions.length > 0) {
                             expressionSet.Expressions.forEach(function(expression, expIndex) {
                                 if (expIndex === 0) {
@@ -766,10 +643,6 @@
                                     const firstRuleRow = logicGroup.querySelector('.rule-row');
                                     if (firstRuleRow) {
                                         SmartLists.populateRuleRow(firstRuleRow, expression, page);
-                                        // Restore similarity field selections when cloning
-                                        if (expression.MemberName === 'SimilarTo') {
-                                            SmartLists.updateSimilarityOptionsVisibility(firstRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
-                                        }
                                     }
                                 } else {
                                     // Add additional rule rows
@@ -777,10 +650,6 @@
                                     const newRuleRow = logicGroup.querySelector('.rule-row:last-child');
                                     if (newRuleRow) {
                                         SmartLists.populateRuleRow(newRuleRow, expression, page);
-                                        // Restore similarity field selections when cloning
-                                        if (expression.MemberName === 'SimilarTo') {
-                                            SmartLists.updateSimilarityOptionsVisibility(newRuleRow, expression.MemberName, playlist.SimilarityComparisonFields);
-                                        }
                                     }
                                 }
                             });

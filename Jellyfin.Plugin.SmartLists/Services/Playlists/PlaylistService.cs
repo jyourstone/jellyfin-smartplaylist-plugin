@@ -83,6 +83,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, progressCallback, cancellationToken);
 
             // Update LastRefreshed timestamp for successful refreshes (any trigger)
+            // Note: For new playlists, LastRefreshed was already set in ProcessPlaylistRefreshAsync before the saveCallback,
+            // but we update it here to ensure it reflects the exact completion time of the refresh operation.
             if (success)
             {
                 dto.LastRefreshed = DateTime.UtcNow;
@@ -730,7 +732,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             return GetAllUserMedia(user, mediaTypes);
         }
 
-        public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto dto)
+        public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto? dto = null)
         {
             // Validate media types before processing
             if (dto != null)

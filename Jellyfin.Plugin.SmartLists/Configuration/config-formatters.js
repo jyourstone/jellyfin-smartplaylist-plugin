@@ -291,13 +291,13 @@
         
         if (filteredCount !== null && filteredCount !== totalPlaylists) {
             // Filtered results
-            summaryText += filteredCount + ' of ' + totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '');
+            summaryText += filteredCount + ' of ' + totalPlaylists + ' list' + (totalPlaylists !== 1 ? 's' : '');
             if (searchTerm) {
                 summaryText += ' matching "' + SmartLists.escapeHtml(searchTerm) + '"';
             }
         } else {
-            // All playlists
-            summaryText += totalPlaylists + ' playlist' + (totalPlaylists !== 1 ? 's' : '');
+            // All lists
+            summaryText += totalPlaylists + ' list' + (totalPlaylists !== 1 ? 's' : '');
         }
         
         summaryText += ' ' + bullet + ' ' + enabledPlaylists + ' enabled ' + bullet + ' ' + disabledPlaylists + ' disabled';
@@ -392,6 +392,10 @@
                     displaySortBy = 'Name (Ignore Article \'The\')';
                 } else if (displaySortBy === 'SeriesName (Ignore Articles)') {
                     displaySortBy = 'Series Name (Ignore Article \'The\')';
+                }
+                // Random and NoOrder don't have meaningful order, so don't show "Ascending"
+                if (displaySortBy === 'Random' || displaySortBy === 'No Order') {
+                    return displaySortBy;
                 }
                 return displaySortBy + ' ' + opt.SortOrder;
             }).join(' → ');

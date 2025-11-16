@@ -435,10 +435,34 @@
                     sortBySelect.value = sortByOptions[0].value;
                     // Sync Sort Order UI for the new value
                     SmartLists.syncSortOrderUI(sortByOptions[0].value, sortOrderContainer, sortOrderSelect);
+                    // Update ignore article checkbox visibility for the new value
+                    const ignoreArticlesContainer = box.querySelector('.ignore-article-container');
+                    if (ignoreArticlesContainer) {
+                        const showCheckbox = (sortByOptions[0].value === 'Name' || sortByOptions[0].value === 'SeriesName');
+                        ignoreArticlesContainer.style.display = showCheckbox ? '' : 'none';
+                        if (!showCheckbox) {
+                            const ignoreArticlesCheckbox = ignoreArticlesContainer.querySelector('[id^="sort-ignore-articles-"]');
+                            if (ignoreArticlesCheckbox) {
+                                ignoreArticlesCheckbox.checked = false;
+                            }
+                        }
+                    }
                 }
             } else {
                 // Sync Sort Order UI for the current value
                 SmartLists.syncSortOrderUI(sortBySelect.value, sortOrderContainer, sortOrderSelect);
+                // Update ignore article checkbox visibility for the current value
+                const ignoreArticlesContainer = box.querySelector('.ignore-article-container');
+                if (ignoreArticlesContainer) {
+                    const showCheckbox = (sortBySelect.value === 'Name' || sortBySelect.value === 'SeriesName');
+                    ignoreArticlesContainer.style.display = showCheckbox ? '' : 'none';
+                    if (!showCheckbox) {
+                        const ignoreArticlesCheckbox = ignoreArticlesContainer.querySelector('[id^="sort-ignore-articles-"]');
+                        if (ignoreArticlesCheckbox) {
+                            ignoreArticlesCheckbox.checked = false;
+                        }
+                    }
+                }
             }
         });
     };

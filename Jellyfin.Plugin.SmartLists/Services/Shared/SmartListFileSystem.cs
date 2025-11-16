@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Jellyfin.Plugin.SmartLists.Core.Enums;
 using Jellyfin.Plugin.SmartLists.Core.Models;
 using MediaBrowser.Controller;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartLists.Services.Shared
 {
@@ -32,9 +33,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
     public class SmartListFileSystem : ISmartListFileSystem
     {
         private readonly string _legacyBasePath;
+        private readonly ILogger<SmartListFileSystem>? _logger;
 
-        public SmartListFileSystem(IServerApplicationPaths serverApplicationPaths)
+        public SmartListFileSystem(IServerApplicationPaths serverApplicationPaths, ILogger<SmartListFileSystem>? logger = null)
         {
+            _logger = logger;
             ArgumentNullException.ThrowIfNull(serverApplicationPaths);
 
             // New unified directory name
