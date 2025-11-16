@@ -109,16 +109,54 @@
         return false;
     };
     
-    // Simple text conversion (no escaping - admin area only)
+    /**
+     * Escape HTML entities for safe insertion into HTML content.
+     * Returns empty string for null/undefined, converts to string, then escapes:
+     * & < > " ' / and ` (backtick) with their corresponding HTML entities.
+     * 
+     * Usage: Use this when inserting user-controlled content into HTML element content
+     * (e.g., textContent, innerHTML, or between HTML tags).
+     * 
+     * @param {*} text - The text to escape
+     * @returns {string} - The escaped HTML string
+     */
     SmartLists.escapeHtml = function(text) {
         if (text == null) return '';
-        return String(text);
+        var str = String(text);
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\//g, '&#x2F;')
+            .replace(/`/g, '&#96;');
     };
     
-    // Simple text conversion for attributes (no escaping - admin area only)
+    /**
+     * Escape HTML entities for safe insertion into HTML attribute values.
+     * Returns empty string for null/undefined, converts to string, then escapes:
+     * & < > " ' / and ` (backtick) with their corresponding HTML entities.
+     * Quotes are escaped as &quot; (double quote) and &#39; (single quote) to prevent
+     * attribute injection attacks.
+     * 
+     * Usage: Use this when inserting user-controlled content into HTML attribute values
+     * (e.g., href, data-*, title, alt, value attributes, or data-* attributes).
+     * 
+     * @param {*} text - The text to escape
+     * @returns {string} - The escaped HTML attribute string
+     */
     SmartLists.escapeHtmlAttribute = function(text) {
         if (text == null) return '';
-        return String(text);
+        var str = String(text);
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\//g, '&#x2F;')
+            .replace(/`/g, '&#96;');
     };
     
     // Extract error message from API error responses
