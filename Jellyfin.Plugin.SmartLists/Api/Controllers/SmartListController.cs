@@ -1831,8 +1831,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var collection = await collectionStore.GetByIdAsync(guidId);
                 if (collection != null)
                 {
-                    var collectionService = GetCollectionService();
-                    var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(collection);
+                    var (success, message, jellyfinCollectionId) = await _manualRefreshService.RefreshSingleCollectionAsync(collection);
 
                     if (success)
                     {
@@ -2377,8 +2376,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     endTime = h.EndTime?.ToString("o"),
                     duration = h.Duration.TotalSeconds,
                     success = h.Success,
-                    errorMessage = h.ErrorMessage,
-                    itemCount = h.ItemCount
+                    errorMessage = h.ErrorMessage
                 }).ToList();
 
                 var statistics = _refreshStatusService.GetStatistics();
@@ -2425,8 +2423,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     endTime = h.EndTime?.ToString("o"),
                     duration = h.Duration.TotalSeconds,
                     success = h.Success,
-                    errorMessage = h.ErrorMessage,
-                    itemCount = h.ItemCount
+                    errorMessage = h.ErrorMessage
                 }).ToList();
 
                 return Ok(history);

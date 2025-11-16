@@ -10,7 +10,7 @@
      * Escape HTML to prevent XSS (using safe DOM-based approach)
      */
     function escapeHtml(text) {
-        if (!text) return '';
+        if (text == null) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
@@ -226,7 +226,6 @@
         html += '<th style="text-align: left; padding: 0.75em;">Trigger</th>';
         html += '<th style="text-align: left; padding: 0.75em;">Status</th>';
         html += '<th style="text-align: left; padding: 0.75em;">Duration</th>';
-        html += '<th style="text-align: left; padding: 0.75em;">Items</th>';
         html += '<th style="text-align: left; padding: 0.75em;">End Time</th>';
         html += '</tr></thead><tbody>';
 
@@ -242,7 +241,6 @@
             html += `<td style="padding: 0.75em;">${entry.triggerType}</td>`;
             html += `<td style="padding: 0.75em; color: ${statusColor};">${statusText}</td>`;
             html += `<td style="padding: 0.75em;">${duration}</td>`;
-            html += `<td style="padding: 0.75em;">${entry.itemCount !== null && entry.itemCount !== undefined ? entry.itemCount : 'N/A'}</td>`;
             html += `<td style="padding: 0.75em;">${endTime}</td>`;
             html += '</tr>';
         });

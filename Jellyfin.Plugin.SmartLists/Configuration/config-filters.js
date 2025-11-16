@@ -113,8 +113,8 @@
                                 return true;
                             }
                             
-                            // Search in target value
-                            if (expression.TargetValue && expression.TargetValue.toLowerCase().indexOf(searchTerm) !== -1) {
+                            // Search in target value (coerce to string to handle numbers/booleans)
+                            if (expression.TargetValue && String(expression.TargetValue).toLowerCase().indexOf(searchTerm) !== -1) {
                                 return true;
                             }
                         }

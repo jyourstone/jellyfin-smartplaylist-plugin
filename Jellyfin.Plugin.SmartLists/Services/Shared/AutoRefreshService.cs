@@ -1385,8 +1385,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         _refreshStatusService?.CompleteOperation(
                             result.PlaylistId,
                             result.Success,
-                            result.Success ? null : result.Message,
-                            null);
+                            result.Success ? null : result.Message);
 
                         if (result.Success)
                         {
@@ -1477,8 +1476,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _refreshStatusService?.CompleteOperation(
                                 listId,
                                 success,
-                                success ? null : message,
-                                collection.ItemCount);
+                                success ? null : message);
 
                             if (success)
                             {
@@ -1495,7 +1493,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         }
                         catch (Exception ex)
                         {
-                            _refreshStatusService?.CompleteOperation(listId, false, ex.Message, null);
+                            _refreshStatusService?.CompleteOperation(listId, false, ex.Message);
                             failureCount++;
                             _logger.LogError(ex, "Error refreshing collection '{CollectionName}'", collection.Name);
                         }
@@ -1982,8 +1980,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     _refreshStatusService?.CompleteOperation(
                         result.PlaylistId,
                         result.Success,
-                        result.Success ? null : result.Message,
-                        null);
+                        result.Success ? null : result.Message);
 
                     if (result.Success)
                     {
@@ -2020,7 +2017,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         await _playlistService.RefreshWithTimeoutAsync(playlist).ConfigureAwait(false);
 
                         // Complete tracking
-                        _refreshStatusService?.CompleteOperation(listId, true, null, playlist.ItemCount);
+                        _refreshStatusService?.CompleteOperation(listId, true, null);
 
                         playlist.LastRefreshed = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
                         await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
@@ -2029,7 +2026,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                     catch (Exception fallbackEx)
                     {
-                        _refreshStatusService?.CompleteOperation(listId, false, fallbackEx.Message, null);
+                        _refreshStatusService?.CompleteOperation(listId, false, fallbackEx.Message);
                         _logger.LogError(fallbackEx, "Fallback refresh also failed for playlist {PlaylistName}", playlist.Name);
                     }
                 }
@@ -2082,8 +2079,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         _refreshStatusService?.CompleteOperation(
                             listId,
                             success,
-                            success ? null : message,
-                            collection.ItemCount);
+                            success ? null : message);
 
                         if (success)
                         {
@@ -2100,7 +2096,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                     catch (Exception collectionEx)
                     {
-                        _refreshStatusService?.CompleteOperation(listId, false, collectionEx.Message, null);
+                        _refreshStatusService?.CompleteOperation(listId, false, collectionEx.Message);
                         failureCount++;
                         _logger.LogError(collectionEx, "Failed to refresh scheduled collection: {CollectionName}", collection.Name);
                     }

@@ -73,7 +73,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         public TimeSpan Duration { get; set; }
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
-        public int? ItemCount { get; set; }
     }
 
     /// <summary>
@@ -117,7 +116,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             _ongoingOperations.AddOrUpdate(listId, operation, (key, existing) =>
             {
-                _logger.LogWarning("Starting new operation for list {ListId} that already has an ongoing operation. Replacing existing operation.", listId);
+                _logger.LogWarning("Starting new operation for list {ListId} ({ListName}) that already has an ongoing operation. Existing: Started at {ExistingStart}, {ExistingProcessed}/{ExistingTotal} items. Replacing with new operation.", 
+                    listId, listName, existing.StartTime, existing.ProcessedItems, existing.TotalItems);
                 return operation;
             });
 
@@ -175,8 +175,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         public void CompleteOperation(
             string listId,
             bool success,
-            string? errorMessage = null,
-            int? itemCount = null)
+            string? errorMessage = null)
         {
             if (_ongoingOperations.TryRemove(listId, out var operation))
             {
@@ -190,8 +189,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     EndTime = DateTime.UtcNow,
                     Duration = operation.ElapsedTime,
                     Success = success,
-                    ErrorMessage = errorMessage ?? operation.ErrorMessage,
-                    ItemCount = itemCount
+                    ErrorMessage = errorMessage ?? operation.ErrorMessage
                 };
 
                 _refreshHistory.AddOrUpdate(listId, historyEntry, (key, existing) => historyEntry);

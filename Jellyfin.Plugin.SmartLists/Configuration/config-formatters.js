@@ -208,15 +208,20 @@
         return days;
     };
     
+    /**
+     * Get ordinal suffix for day of month (1st, 2nd, 3rd, 4th, etc.)
+     */
+    function getDayOfMonthSuffix(dayOfMonth) {
+        if (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) return 'st';
+        if (dayOfMonth === 2 || dayOfMonth === 22) return 'nd';
+        if (dayOfMonth === 3 || dayOfMonth === 23) return 'rd';
+        return 'th';
+    }
+    
     SmartLists.generateDayOfMonthOptions = function(defaultValue) {
         var days = [];
         for (var i = 1; i <= 31; i++) {
-            var suffix = '';
-            if (i === 1 || i === 21 || i === 31) suffix = 'st';
-            else if (i === 2 || i === 22) suffix = 'nd';
-            else if (i === 3 || i === 23) suffix = 'rd';
-            else suffix = 'th';
-            
+            var suffix = getDayOfMonthSuffix(i);
             days.push({ value: i.toString(), label: i + suffix });
         }
         // Mark the default option as selected
@@ -415,9 +420,7 @@
             const h = parts[0] !== undefined ? parseInt(parts[0], 10) : 0;
             const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0;
             const dayOfMonth = schedule.DayOfMonth || 1;
-            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
-                        (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
-                        (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            const suffix = getDayOfMonthSuffix(dayOfMonth);
             return 'Monthly on the ' + dayOfMonth + suffix + ' at ' + SmartLists.formatTimeForUser(h, m);
         } else if (schedule.Trigger === 'Yearly') {
             const raw = schedule.Time ? schedule.Time.substring(0, 5) : '00:00';
@@ -428,9 +431,7 @@
                              'July', 'August', 'September', 'October', 'November', 'December'];
             const month = schedule.Month || 1;
             const dayOfMonth = schedule.DayOfMonth || 1;
-            const suffix = (dayOfMonth === 1 || dayOfMonth === 21 || dayOfMonth === 31) ? 'st' :
-                        (dayOfMonth === 2 || dayOfMonth === 22) ? 'nd' :
-                        (dayOfMonth === 3 || dayOfMonth === 23) ? 'rd' : 'th';
+            const suffix = getDayOfMonthSuffix(dayOfMonth);
             return 'Yearly on ' + monthNames[month - 1] + ' ' + dayOfMonth + suffix + ' at ' + SmartLists.formatTimeForUser(h, m);
         } else if (schedule.Trigger === 'Interval') {
             const interval = schedule.Interval || '24:00:00';

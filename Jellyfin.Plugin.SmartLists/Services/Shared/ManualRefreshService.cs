@@ -72,6 +72,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Tuple of (success, message, jellyfinPlaylistId)</returns>
         Task<(bool Success, string Message, string? JellyfinPlaylistId)> RefreshSinglePlaylistAsync(Core.Models.SmartPlaylistDto playlist, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Refresh a single smart collection manually.
+        /// </summary>
+        /// <param name="collection">The collection to refresh</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Tuple of (success, message, jellyfinCollectionId)</returns>
+        Task<(bool Success, string Message, string? JellyfinCollectionId)> RefreshSingleCollectionAsync(Core.Models.SmartCollectionDto collection, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -409,8 +417,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _refreshStatusService.CompleteOperation(
                                 listId,
                                 refreshResult.Success,
-                                refreshResult.Success ? null : refreshResult.Message,
-                                dto.ItemCount);
+                                refreshResult.Success ? null : refreshResult.Message);
                             
                             if (refreshResult.Success)
                             {
@@ -438,8 +445,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _refreshStatusService.CompleteOperation(
                                 listId,
                                 false,
-                                "Refresh operation was cancelled",
-                                null);
+                                "Refresh operation was cancelled");
                             
                             _logger.LogInformation("Direct refresh operation was cancelled");
                             throw;
@@ -452,8 +458,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _refreshStatusService.CompleteOperation(
                                 listId,
                                 false,
-                                ex.Message,
-                                null);
+                                ex.Message);
                             
                             failureCount++;
                             processedCount++;
@@ -775,8 +780,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         _refreshStatusService.CompleteOperation(
                             listId,
                             success,
-                            success ? null : message,
-                            dto.ItemCount);
+                            success ? null : message);
                         
                         if (success)
                         {
@@ -804,8 +808,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         _refreshStatusService.CompleteOperation(
                             listId,
                             false,
-                            "Refresh operation was cancelled",
-                            null);
+                            "Refresh operation was cancelled");
                         
                         _logger.LogInformation("Direct collection refresh operation was cancelled");
                         throw;
@@ -818,8 +821,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         _refreshStatusService.CompleteOperation(
                             listId,
                             false,
-                            ex.Message,
-                            null);
+                            ex.Message);
                         
                         failureCount++;
                         processedCount++;
@@ -893,61 +895,214 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             ArgumentNullException.ThrowIfNull(playlist);
 
             var listId = playlist.Id ?? Guid.NewGuid().ToString();
+            bool operationStarted = false;
 
             try
             {
                 _logger.LogInformation("Starting manual refresh of single playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
 
-                // Start tracking refresh operation
-                // We don't know total items yet, will be updated via progress callback
-                _refreshStatusService.StartOperation(
-                    listId,
-                    playlist.Name,
-                    Core.Enums.SmartListType.Playlist,
-                    Core.Enums.RefreshTriggerType.Manual,
-                    0);
-
                 var playlistService = GetPlaylistService();
                 
-                // Create progress callback
-                Action<int, int>? progressCallback = (processed, total) =>
-                {
-                    _refreshStatusService.UpdateProgress(listId, processed, total);
-                };
+                // Get the lock using reflection to check if we can acquire it before starting status tracking
+                var lockField = typeof(Services.Playlists.PlaylistService).GetField("_refreshOperationLock", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 
-                var (success, message, playlistId) = await playlistService.RefreshWithTimeoutAsync(playlist, progressCallback, cancellationToken);
-
-                // Complete status tracking
-                _refreshStatusService.CompleteOperation(
-                    listId,
-                    success,
-                    success ? null : message,
-                    playlist.ItemCount);
-
-                if (success)
+                if (lockField == null)
                 {
-                    _logger.LogInformation("Successfully refreshed single playlist: {PlaylistName} ({PlaylistId}) - Jellyfin ID: {JellyfinPlaylistId}",
-                        playlist.Name, playlist.Id, playlistId ?? "none");
+                    _logger.LogError("Could not find _refreshOperationLock field in PlaylistService");
+                    return (false, "Internal error: Could not access refresh lock", string.Empty);
                 }
-                else
+                
+                var refreshLock = (SemaphoreSlim?)lockField.GetValue(null);
+                if (refreshLock == null)
                 {
-                    _logger.LogWarning("Failed to refresh single playlist: {PlaylistName} ({PlaylistId}). Error: {ErrorMessage}",
-                        playlist.Name, playlist.Id, message);
+                    _logger.LogError("_refreshOperationLock is null in PlaylistService");
+                    return (false, "Internal error: Refresh lock is null", string.Empty);
                 }
 
-                return (success, message, playlistId);
+                // Try to acquire the lock with immediate timeout
+                // If we can't get it, return immediately without starting status tracking
+                if (!await refreshLock.WaitAsync(0, cancellationToken))
+                {
+                    _logger.LogInformation("Playlist refresh already in progress for: {PlaylistName} ({PlaylistId}). Lock could not be acquired.", playlist.Name, playlist.Id);
+                    return (false, "Playlist refresh is already in progress, please try again in a moment.", string.Empty);
+                }
+
+                try
+                {
+                    _logger.LogDebug("Successfully acquired lock for playlist: {PlaylistName} ({PlaylistId}). Starting status tracking.", playlist.Name, playlist.Id);
+                    
+                    // We got the lock! Now start tracking the operation
+                    operationStarted = true;
+                    _refreshStatusService.StartOperation(
+                        listId,
+                        playlist.Name,
+                        Core.Enums.SmartListType.Playlist,
+                        Core.Enums.RefreshTriggerType.Manual,
+                        0);
+
+                    // Create progress callback
+                    Action<int, int>? progressCallback = (processed, total) =>
+                    {
+                        _refreshStatusService.UpdateProgress(listId, processed, total);
+                    };
+                    
+                    // Call RefreshAsync directly (not RefreshWithTimeoutAsync) since we already hold the lock
+                    var (success, message, playlistId) = await playlistService.RefreshAsync(playlist, progressCallback, cancellationToken);
+
+                    // Complete status tracking
+                    _refreshStatusService.CompleteOperation(
+                        listId,
+                        success,
+                        success ? null : message);
+
+                    if (success)
+                    {
+                        _logger.LogInformation("Successfully refreshed single playlist: {PlaylistName} ({PlaylistId}) - Jellyfin ID: {JellyfinPlaylistId}",
+                            playlist.Name, playlist.Id, playlistId ?? "none");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to refresh single playlist: {PlaylistName} ({PlaylistId}). Error: {ErrorMessage}",
+                            playlist.Name, playlist.Id, message);
+                    }
+
+                    return (success, message, playlistId);
+                }
+                finally
+                {
+                    // Always release the lock
+                    refreshLock.Release();
+                    _logger.LogDebug("Released refresh lock for single playlist: {PlaylistName}", playlist.Name);
+                }
             }
             catch (OperationCanceledException)
             {
-                _refreshStatusService.CompleteOperation(listId, false, "Refresh operation was cancelled", null);
+                if (operationStarted)
+                {
+                    _refreshStatusService.CompleteOperation(listId, false, "Refresh operation was cancelled");
+                }
                 _logger.LogInformation("Single playlist refresh was cancelled for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
                 return (false, "Refresh operation was cancelled", string.Empty);
             }
             catch (Exception ex)
             {
-                _refreshStatusService.CompleteOperation(listId, false, ex.Message, null);
+                if (operationStarted)
+                {
+                    _refreshStatusService.CompleteOperation(listId, false, ex.Message);
+                }
                 _logger.LogError(ex, "Error during single playlist refresh for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
                 return (false, $"Error during playlist refresh: {ex.Message}", string.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Refresh a single smart collection manually.
+        /// This method provides the same functionality as the individual "Refresh" button in the UI.
+        /// </summary>
+        public async Task<(bool Success, string Message, string? JellyfinCollectionId)> RefreshSingleCollectionAsync(SmartCollectionDto collection, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            var listId = collection.Id ?? Guid.NewGuid().ToString();
+            bool operationStarted = false;
+
+            try
+            {
+                _logger.LogInformation("Starting manual refresh of single collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
+
+                var collectionService = GetCollectionService();
+                
+                // Get the lock using reflection to check if we can acquire it before starting status tracking
+                var lockField = typeof(Services.Collections.CollectionService).GetField("_refreshOperationLock", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                
+                if (lockField == null)
+                {
+                    _logger.LogError("Could not find _refreshOperationLock field in CollectionService");
+                    return (false, "Internal error: Could not access refresh lock", string.Empty);
+                }
+                
+                var refreshLock = (SemaphoreSlim?)lockField.GetValue(null);
+                if (refreshLock == null)
+                {
+                    _logger.LogError("_refreshOperationLock is null in CollectionService");
+                    return (false, "Internal error: Refresh lock is null", string.Empty);
+                }
+
+                // Try to acquire the lock with immediate timeout
+                // If we can't get it, return immediately without starting status tracking
+                if (!await refreshLock.WaitAsync(0, cancellationToken))
+                {
+                    _logger.LogInformation("Collection refresh already in progress for: {CollectionName} ({CollectionId}). Lock could not be acquired.", collection.Name, collection.Id);
+                    return (false, "Collection refresh is already in progress, please try again in a moment.", string.Empty);
+                }
+
+                try
+                {
+                    _logger.LogDebug("Successfully acquired lock for collection: {CollectionName} ({CollectionId}). Starting status tracking.", collection.Name, collection.Id);
+                    
+                    // We got the lock! Now start tracking the operation
+                    operationStarted = true;
+                    _refreshStatusService.StartOperation(
+                        listId,
+                        collection.Name,
+                        Core.Enums.SmartListType.Collection,
+                        Core.Enums.RefreshTriggerType.Manual,
+                        0);
+
+                    // Create progress callback
+                    Action<int, int>? progressCallback = (processed, total) =>
+                    {
+                        _refreshStatusService.UpdateProgress(listId, processed, total);
+                    };
+                    
+                    // Call RefreshAsync directly (not RefreshWithTimeoutAsync) since we already hold the lock
+                    var (success, message, collectionId) = await collectionService.RefreshAsync(collection, progressCallback, cancellationToken);
+
+                    // Complete status tracking
+                    _refreshStatusService.CompleteOperation(
+                        listId,
+                        success,
+                        success ? null : message);
+
+                    if (success)
+                    {
+                        _logger.LogInformation("Successfully refreshed single collection: {CollectionName} ({CollectionId}) - Jellyfin ID: {JellyfinCollectionId}",
+                            collection.Name, collection.Id, collectionId ?? "none");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to refresh single collection: {CollectionName} ({CollectionId}). Error: {ErrorMessage}",
+                            collection.Name, collection.Id, message);
+                    }
+
+                    return (success, message, collectionId);
+                }
+                finally
+                {
+                    // Always release the lock
+                    refreshLock.Release();
+                    _logger.LogDebug("Released refresh lock for single collection: {CollectionName}", collection.Name);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                if (operationStarted)
+                {
+                    _refreshStatusService.CompleteOperation(listId, false, "Refresh operation was cancelled");
+                }
+                _logger.LogInformation("Single collection refresh was cancelled for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
+                return (false, "Refresh operation was cancelled", string.Empty);
+            }
+            catch (Exception ex)
+            {
+                if (operationStarted)
+                {
+                    _refreshStatusService.CompleteOperation(listId, false, ex.Message);
+                }
+                _logger.LogError(ex, "Error during single collection refresh for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
+                return (false, $"Error during collection refresh: {ex.Message}", string.Empty);
             }
         }
     }

@@ -272,12 +272,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         {
             ArgumentNullException.ThrowIfNull(dto);
 
-            // Wait up to 5 seconds for create/edit operations
-            _logger.LogDebug("Attempting to acquire refresh lock for single collection: {CollectionName} (5-second timeout)", dto.Name);
+            // Use immediate return (0 timeout) instead of 5-second wait for consistent UX
+            // This gives users instant feedback if a refresh is already in progress
+            _logger.LogDebug("Attempting to acquire refresh lock for single collection: {CollectionName} (immediate return)", dto.Name);
 
             try
             {
-                if (await _refreshOperationLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
+                if (await _refreshOperationLock.WaitAsync(0, cancellationToken))
                 {
                     try
                     {
@@ -293,7 +294,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 }
                 else
                 {
-                    _logger.LogDebug("Timeout waiting for refresh lock for single collection: {CollectionName}", dto.Name);
+                    _logger.LogDebug("Refresh lock already held for single collection: {CollectionName}", dto.Name);
                     return (false, "Collection refresh is already in progress, please try again in a moment.", string.Empty);
                 }
             }

@@ -142,10 +142,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             if (playlist == null)
                 return;
 
-            // Use the actual filename to construct the path
-            var fileName = string.IsNullOrWhiteSpace(playlist.FileName)
-                ? playlist.Id
-                : Path.GetFileNameWithoutExtension(playlist.FileName);
+            // Use the playlist Id, which is validated and used as the canonical filename elsewhere
+            var fileName = playlist.Id;
 
             if (string.IsNullOrWhiteSpace(fileName))
             {

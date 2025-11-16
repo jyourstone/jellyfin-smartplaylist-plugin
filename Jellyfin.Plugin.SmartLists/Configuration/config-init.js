@@ -449,6 +449,11 @@
                 contentType: 'application/json'
             });
             
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to load users: ${errorText || response.statusText}`);
+            }
+            
             const users = await response.json();
             
             // Clear existing options
@@ -1226,6 +1231,20 @@
             type: "POST",
             url: SmartLists.getApiClient().getUrl(SmartLists.ENDPOINTS.refreshDirect),
             contentType: 'application/json'
+        }).then(function(response) {
+            if (!response.ok) {
+                // Try to parse error message from response
+                return response.text().then(function(errorText) {
+                    var errorMessage;
+                    try {
+                        errorMessage = JSON.parse(errorText);
+                    } catch (e) {
+                        errorMessage = errorText || 'Unknown error occurred';
+                    }
+                    throw new Error(errorMessage);
+                });
+            }
+            // Success - status page will show progress
         }).catch(async function(err) {
             // Extract error message using utility function
             const errorMessage = await SmartLists.extractErrorMessage(

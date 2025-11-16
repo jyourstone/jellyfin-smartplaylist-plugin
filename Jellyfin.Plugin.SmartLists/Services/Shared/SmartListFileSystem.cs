@@ -58,7 +58,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 return null;
             }
 
-            // Check new directory first
+            // Check new directory first using the known flat layout for O(1) lookup
+            var candidatePath = Path.Combine(BasePath, $"{smartListId}.json");
+            if (File.Exists(candidatePath))
+            {
+                return candidatePath;
+            }
+            
+            // Fallback to recursive search in case of nested structure (shouldn't happen but defensive)
             var filePath = Directory.GetFiles(BasePath, $"{smartListId}.json", SearchOption.AllDirectories).FirstOrDefault();
             if (!string.IsNullOrEmpty(filePath))
             {

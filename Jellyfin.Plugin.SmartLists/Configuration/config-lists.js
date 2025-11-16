@@ -55,6 +55,9 @@
             url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
             contentType: 'application/json'
         }).then(function(response) {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+            }
             return response.json();
         }).then(function(users) {
             // Build cache from all users
@@ -872,6 +875,11 @@
         const apiClient = SmartLists.getApiClient();
         
         Dashboard.showLoadingMsg();
+        
+        // Start aggressive polling on status page to catch the operation
+        if (window.SmartLists && window.SmartLists.Status && window.SmartLists.Status.startAggressivePolling) {
+            window.SmartLists.Status.startAggressivePolling();
+        }
         
         apiClient.ajax({
             type: 'POST',
