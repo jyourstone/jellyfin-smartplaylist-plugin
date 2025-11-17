@@ -79,12 +79,33 @@
                 }
                 
                 try {
-                    await apiClient.ajax({
+                    const response = await apiClient.ajax({
                         type: options.httpMethod,
                         url: apiClient.getUrl(url),
                         contentType: 'application/json'
                     });
-                    successCount++;
+                    
+                    if (!response.ok) {
+                        // Parse error message from response
+                        let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
+                        try {
+                            const errorText = await response.text();
+                            if (errorText) {
+                                try {
+                                    const parsed = JSON.parse(errorText);
+                                    errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
+                                } catch (e) {
+                                    errorMessage = errorText;
+                                }
+                            }
+                        } catch (parseErr) {
+                            // Use default error message if parsing fails
+                        }
+                        console.error('Error ' + options.actionType + ' list:', listId, errorMessage);
+                        errorCount++;
+                    } else {
+                        successCount++;
+                    }
                 } catch (err) {
                     console.error('Error ' + options.actionType + ' list:', listId, err);
                     errorCount++;
@@ -148,11 +169,30 @@
         
         // Make API call
         try {
-            await apiClient.ajax({
+            const response = await apiClient.ajax({
                 type: options.httpMethod,
                 url: apiClient.getUrl(url),
                 contentType: 'application/json'
             });
+            
+            if (!response.ok) {
+                // Parse error message from response
+                let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
+                try {
+                    const errorText = await response.text();
+                    if (errorText) {
+                        try {
+                            const parsed = JSON.parse(errorText);
+                            errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
+                        } catch (e) {
+                            errorMessage = errorText;
+                        }
+                    }
+                } catch (parseErr) {
+                    // Use default error message if parsing fails
+                }
+                throw new Error(errorMessage);
+            }
             
             // Show success notification after API call completes
             const message = options.formatSuccessMessage 
@@ -448,11 +488,32 @@
                 type: 'DELETE',
                 url: apiClient.getUrl(url),
                 contentType: 'application/json'
-            }).then(function() {
-                successCount++;
+            }).then(function(response) {
+                if (!response.ok) {
+                    // Parse error message from response
+                    return response.text().then(function(errorText) {
+                        let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
+                        if (errorText) {
+                            try {
+                                const parsed = JSON.parse(errorText);
+                                errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
+                            } catch (e) {
+                                errorMessage = errorText;
+                            }
+                        }
+                        console.error('Error deleting list:', listId, errorMessage);
+                        errorCount++;
+                        throw new Error(errorMessage);
+                    });
+                } else {
+                    successCount++;
+                }
             }).catch(function(err) {
-                console.error('Error deleting list:', listId, err);
-                errorCount++;
+                // Only increment errorCount if it wasn't already incremented above
+                if (err.message && !err.message.startsWith('HTTP')) {
+                    console.error('Error deleting list:', listId, err);
+                    errorCount++;
+                }
             });
         });
         

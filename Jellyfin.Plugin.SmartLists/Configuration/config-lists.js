@@ -214,44 +214,10 @@
                 apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + editState.editingPlaylistId) : 
                 apiClient.getUrl(SmartLists.ENDPOINTS.base);
             
-            // Show notifications immediately (before API call)
-            const message = editState.editMode ? 
-                listTypeName + ' "' + playlistName + '" updated successfully.' : 
-                listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
-            SmartLists.showNotification(message, 'success');
+            // Store editingPlaylistId for error recovery
+            const editingPlaylistId = editState.editMode ? editState.editingPlaylistId : null;
             
-            // Show notification that refresh has started (refresh happens automatically on backend)
-            var statusLink = SmartLists.createStatusPageLink('status page');
-            var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
-            SmartLists.showNotification(refreshMessage, 'info', { html: true });
-            
-            // Exit edit mode and redirect immediately (before API call)
-            if (editState.editMode) {
-                // Exit edit mode silently without showing cancellation message
-                SmartLists.setPageEditState(page, false, null);
-                const editIndicator = page.querySelector('#edit-mode-indicator');
-                if (editIndicator) {
-                    editIndicator.style.display = 'none';
-                }
-                const submitBtn = page.querySelector('#submitBtn');
-                if (submitBtn) {
-                    const currentListType = SmartLists.getElementValue(page, '#listType', 'Playlist');
-                    submitBtn.textContent = 'Create ' + currentListType;
-                }
-                
-                // Restore tab button text
-                const createTabButton = page.querySelector('a[data-tab="create"]');
-                if (createTabButton) {
-                    createTabButton.textContent = 'Create List';
-                }
-                
-                // Switch to Manage tab immediately (before API call completes)
-                SmartLists.switchToTab(page, 'manage');
-                window.scrollTo({ top: 0, behavior: 'auto' });
-            }
-            SmartLists.clearForm(page);
-            
-            // Make API call (fire and forget - notifications already shown)
+            // Make API call - wait for response before updating UI
             apiClient.ajax({
                 type: requestType,
                 url: url,
@@ -279,13 +245,64 @@
                     });
                 }
                 
-                // Success - notifications already shown, just reload the list
+                // Success - now update UI
+                const message = editState.editMode ? 
+                    listTypeName + ' "' + playlistName + '" updated successfully.' : 
+                    listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
+                SmartLists.showNotification(message, 'success');
+                
+                // Show notification that refresh has started (refresh happens automatically on backend)
+                var statusLink = SmartLists.createStatusPageLink('status page');
+                var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+                SmartLists.showNotification(refreshMessage, 'info', { html: true });
+                
+                // Exit edit mode and redirect after successful API call
+                if (editState.editMode) {
+                    // Exit edit mode silently without showing cancellation message
+                    SmartLists.setPageEditState(page, false, null);
+                    const editIndicator = page.querySelector('#edit-mode-indicator');
+                    if (editIndicator) {
+                        editIndicator.style.display = 'none';
+                    }
+                    const submitBtn = page.querySelector('#submitBtn');
+                    if (submitBtn) {
+                        const currentListType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+                        submitBtn.textContent = 'Create ' + currentListType;
+                    }
+                    
+                    // Restore tab button text
+                    const createTabButton = page.querySelector('a[data-tab="create"]');
+                    if (createTabButton) {
+                        createTabButton.textContent = 'Create List';
+                    }
+                    
+                    // Switch to Manage tab after successful update
+                    SmartLists.switchToTab(page, 'manage');
+                    window.scrollTo({ top: 0, behavior: 'auto' });
+                }
+                
+                // Clear form after successful creation/update
+                SmartLists.clearForm(page);
+                
+                // Reload list to show updated state
                 if (SmartLists.loadPlaylistList) {
                     SmartLists.loadPlaylistList(page);
                 }
             }).catch(function(err) {
                 console.error('Error creating ' + listTypeName.toLowerCase() + ':', err);
                 const action = editState.editMode ? 'update' : 'create';
+                
+                // For UPDATE operations: restore edit mode by reloading playlist from server
+                if (editState.editMode && editingPlaylistId) {
+                    // Reload the playlist to restore form state
+                    if (SmartLists.editPlaylist) {
+                        SmartLists.editPlaylist(page, editingPlaylistId);
+                    }
+                }
+                // For CREATE operations: form remains populated, user can fix and retry
+                // Stay on Create tab (already there)
+                
+                // Show error notification
                 SmartLists.handleApiError(err, 'Failed to ' + action + ' ' + listTypeName.toLowerCase() + ' ' + playlistName);
             });
         } catch (e) {

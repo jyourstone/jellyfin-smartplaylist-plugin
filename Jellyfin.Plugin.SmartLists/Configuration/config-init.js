@@ -1235,7 +1235,15 @@
                     throw new Error(errorMessage);
                 });
             }
-            // Success - status page will show progress
+            // Parse success response to get completion message
+            return response.json();
+        }).then(function(result) {
+            // Show success notification with completion message
+            if (result && result.message) {
+                SmartLists.showNotification(result.message, 'success');
+            } else {
+                SmartLists.showNotification('All lists refreshed successfully.', 'success');
+            }
         }).catch(async function(err) {
             // Extract error message using utility function
             const errorMessage = await SmartLists.extractErrorMessage(
