@@ -209,13 +209,49 @@
                 playlistDto.Id = editState.editingPlaylistId;
             }
 
-            Dashboard.showLoadingMsg();
-            
             const requestType = editState.editMode ? 'PUT' : 'POST';
             const url = editState.editMode ? 
                 apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + editState.editingPlaylistId) : 
                 apiClient.getUrl(SmartLists.ENDPOINTS.base);
             
+            // Show notifications immediately (before API call)
+            const message = editState.editMode ? 
+                listTypeName + ' "' + playlistName + '" updated successfully.' : 
+                listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
+            SmartLists.showNotification(message, 'success');
+            
+            // Show notification that refresh has started (refresh happens automatically on backend)
+            var statusLink = SmartLists.createStatusPageLink('status page');
+            var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+            SmartLists.showNotification(refreshMessage, 'info', { html: true });
+            
+            // Exit edit mode and redirect immediately (before API call)
+            if (editState.editMode) {
+                // Exit edit mode silently without showing cancellation message
+                SmartLists.setPageEditState(page, false, null);
+                const editIndicator = page.querySelector('#edit-mode-indicator');
+                if (editIndicator) {
+                    editIndicator.style.display = 'none';
+                }
+                const submitBtn = page.querySelector('#submitBtn');
+                if (submitBtn) {
+                    const currentListType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+                    submitBtn.textContent = 'Create ' + currentListType;
+                }
+                
+                // Restore tab button text
+                const createTabButton = page.querySelector('a[data-tab="create"]');
+                if (createTabButton) {
+                    createTabButton.textContent = 'Create List';
+                }
+                
+                // Switch to Manage tab immediately (before API call completes)
+                SmartLists.switchToTab(page, 'manage');
+                window.scrollTo({ top: 0, behavior: 'auto' });
+            }
+            SmartLists.clearForm(page);
+            
+            // Make API call (fire and forget - notifications already shown)
             apiClient.ajax({
                 type: requestType,
                 url: url,
@@ -243,45 +279,16 @@
                     });
                 }
                 
-                Dashboard.hideLoadingMsg();
-                const message = editState.editMode ? 
-                    listTypeName + ' "' + playlistName + '" updated successfully.' : 
-                    listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
-                SmartLists.showNotification(message, 'success');
-                
-                // Exit edit mode and clear form
-                if (editState.editMode) {
-                    // Exit edit mode silently without showing cancellation message
-                    SmartLists.setPageEditState(page, false, null);
-                    const editIndicator = page.querySelector('#edit-mode-indicator');
-                    if (editIndicator) {
-                        editIndicator.style.display = 'none';
-                    }
-                    const submitBtn = page.querySelector('#submitBtn');
-                    if (submitBtn) {
-                        const currentListType = SmartLists.getElementValue(page, '#listType', 'Playlist');
-                        submitBtn.textContent = 'Create ' + currentListType;
-                    }
-                    
-                    // Restore tab button text
-                    const createTabButton = page.querySelector('a[data-tab="create"]');
-                    if (createTabButton) {
-                        createTabButton.textContent = 'Create List';
-                    }
-                    
-                    // Switch to Manage tab and scroll to top after successful update (auto for instant behavior)
-                    SmartLists.switchToTab(page, 'manage');
-                    window.scrollTo({ top: 0, behavior: 'auto' });
+                // Success - notifications already shown, just reload the list
+                if (SmartLists.loadPlaylistList) {
+                    SmartLists.loadPlaylistList(page);
                 }
-                SmartLists.clearForm(page);
             }).catch(function(err) {
-                Dashboard.hideLoadingMsg();
                 console.error('Error creating ' + listTypeName.toLowerCase() + ':', err);
                 const action = editState.editMode ? 'update' : 'create';
                 SmartLists.handleApiError(err, 'Failed to ' + action + ' ' + listTypeName.toLowerCase() + ' ' + playlistName);
             });
         } catch (e) {
-            Dashboard.hideLoadingMsg();
             console.error('A synchronous error occurred in createPlaylist:', e);
             SmartLists.showNotification('A critical client-side error occurred: ' + e.message);
         }
@@ -751,13 +758,17 @@
     SmartLists.refreshPlaylist = function(playlistId, playlistName) {
         const apiClient = SmartLists.getApiClient();
         
-        Dashboard.showLoadingMsg();
+        // Show notification that refresh has started
+        var statusLink = SmartLists.createStatusPageLink('status page');
+        var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+        SmartLists.showNotification(refreshMessage, 'info', { html: true });
         
         // Start aggressive polling on status page to catch the operation
         if (window.SmartLists && window.SmartLists.Status && window.SmartLists.Status.startAggressivePolling) {
             window.SmartLists.Status.startAggressivePolling();
         }
         
+        // Make API call (fire and forget - notification already shown)
         apiClient.ajax({
             type: 'POST',
             url: apiClient.getUrl(SmartLists.ENDPOINTS.base + '/' + playlistId + '/refresh'),
@@ -784,7 +795,6 @@
                 });
             }
             
-            Dashboard.hideLoadingMsg();
             SmartLists.showNotification('List "' + playlistName + '" has been refreshed successfully.', 'success');
             
             // Auto-refresh the playlist list to show updated LastRefreshed timestamp
@@ -793,7 +803,6 @@
                 SmartLists.loadPlaylistList(page);
             }
         }).catch(async function(err) {
-            Dashboard.hideLoadingMsg();
             
             // Extract error message using utility function
             const errorMessage = await SmartLists.extractErrorMessage(
@@ -832,7 +841,7 @@
             apiPath: '/enable',
             httpMethod: 'POST',
             formatSuccessMessage: function(name) {
-                return 'List "' + name + '" has been enabled.';
+                return 'List "' + name + '" has been refreshed successfully.';
             }
         });
     };

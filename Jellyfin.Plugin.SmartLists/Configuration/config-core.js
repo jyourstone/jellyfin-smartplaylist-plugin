@@ -637,88 +637,223 @@
         return element;
     };
     
-    // Notification system
-    var notificationTimeout;
-    SmartLists.showNotification = function(message, type) {
+    // Notification system with stacking support
+    var notificationContainer = null;
+    var activeNotifications = [];
+    
+    function ensureNotificationContainer() {
+        if (!notificationContainer) {
+            notificationContainer = document.querySelector('#floating-notification-container');
+            if (!notificationContainer) {
+                notificationContainer = document.createElement('div');
+                notificationContainer.id = 'floating-notification-container';
+                const containerStyles = {
+                    position: 'fixed',
+                    bottom: '20px',
+                    left: '20px',
+                    zIndex: '10000',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    pointerEvents: 'none',
+                    maxWidth: '400px',
+                    minWidth: '300px'
+                };
+                Object.entries(containerStyles).forEach(function(entry) {
+                    const property = entry[0].replace(/([A-Z])/g, '-$1').toLowerCase();
+                    notificationContainer.style.setProperty(property, entry[1], 'important');
+                });
+                document.body.appendChild(notificationContainer);
+            }
+        }
+        return notificationContainer;
+    }
+    
+    function removeNotification(notificationElement, timeoutId) {
+        // Find and remove from active notifications
+        var index = -1;
+        for (var i = 0; i < activeNotifications.length; i++) {
+            if (activeNotifications[i].element === notificationElement) {
+                index = i;
+                break;
+            }
+        }
+        
+        if (index !== -1) {
+            activeNotifications.splice(index, 1);
+        }
+        
+        // Clear timeout if provided
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        
+        // Animate out
+        notificationElement.style.setProperty('transform', 'translateY(20px)', 'important');
+        notificationElement.style.setProperty('opacity', '0', 'important');
+        
+        // Remove from DOM after animation
+        setTimeout(function() {
+            if (notificationElement && notificationElement.parentNode) {
+                notificationElement.parentNode.removeChild(notificationElement);
+            }
+            
+            // Update positions of remaining notifications
+            updateNotificationPositions();
+        }, 300);
+    }
+    
+    function updateNotificationPositions() {
+        // Positions are automatically handled by flexbox column layout
+        // New notifications appear at top, older ones move down
+        // No manual positioning needed
+    }
+    
+    // Helper function to create a link to the status page
+    SmartLists.createStatusPageLink = function(linkText) {
+        linkText = linkText || 'status page';
+        // Create a unique ID for the link to attach event listener
+        var linkId = 'status-link-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        var linkHtml = '<a href="#" id="' + linkId + '">' + linkText + '</a>';
+        
+        // Attach click handler after a short delay to ensure DOM is ready
+        setTimeout(function() {
+            var linkElement = document.getElementById(linkId);
+            if (linkElement) {
+                linkElement.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var page = document.querySelector('.SmartListsConfigurationPage');
+                    if (page && window.SmartLists && window.SmartLists.switchToTab) {
+                        window.SmartLists.switchToTab(page, 'status');
+                    }
+                    return false;
+                });
+            }
+        }, 50);
+        
+        return linkHtml;
+    };
+    
+    SmartLists.showNotification = function(message, type, options) {
         type = type || 'error';
-        // Create or get the floating notification container
-        let floatingNotification = document.querySelector('#floating-notification');
-        if (!floatingNotification) {
-            floatingNotification = document.createElement('div');
-            floatingNotification.id = 'floating-notification';
-            document.body.appendChild(floatingNotification);
-        }
-
-        // Add type prefix for better clarity
+        options = options || {};
+        
+        // Ensure container exists
+        var container = ensureNotificationContainer();
+        
+        // Add type prefix for better clarity (only if not using HTML)
         let prefixedMessage = message;
-        if (type === 'warning') {
-            prefixedMessage = '⚠ ' + message;
-        } else if (type === 'error') {
-            prefixedMessage = '✗ ' + message;
-        } else if (type === 'info') {
-            prefixedMessage = 'ℹ ' + message;
+        if (!options.html) {
+            if (type === 'warning') {
+                prefixedMessage = '⚠ ' + message;
+            } else if (type === 'error') {
+                prefixedMessage = '✗ ' + message;
+            } else if (type === 'info') {
+                prefixedMessage = 'ℹ ' + message;
+            }
         }
-
-        // Set the message
-        floatingNotification.textContent = prefixedMessage;
-
-        // Apply floating notification styles
+        
+        // Create individual notification element
+        var notificationElement = document.createElement('div');
+        notificationElement.className = 'floating-notification';
+        
+        // Set content - support HTML or plain text
+        if (options.html) {
+            notificationElement.innerHTML = prefixedMessage;
+        } else {
+            notificationElement.textContent = prefixedMessage;
+        }
+        
+        // Apply notification styles
         const notificationStyles = {
-            position: 'fixed',
-            bottom: '20px',
-            left: '20px',
-            maxWidth: '400px',
-            minWidth: '300px',
             padding: '16px 20px',
             color: 'rgba(255, 255, 255, 0.95)',
             backgroundColor: type === 'success' ? 'rgba(40, 40, 40, 0.95)' : 
                             type === 'warning' ? '#ff9800' :
-                            type === 'info' ? '#2196f3' : '#f44336',
+                            type === 'info' ? 'rgba(40, 40, 40, 0.95)' : '#f44336',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
             fontSize: '16px',
             fontWeight: 'normal',
             textAlign: 'left',
-            zIndex: '10000',
-            transform: 'translateY(100%)',
+            boxSizing: 'border-box',
+            borderRadius: '4px',
+            transform: 'translateY(20px)',
             opacity: '0',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxSizing: 'border-box',
-            pointerEvents: 'none'
+            pointerEvents: 'auto',
+            cursor: 'default',
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            userSelect: 'text',
+            WebkitUserSelect: 'text',
+            MozUserSelect: 'text',
+            msUserSelect: 'text'
         };
-
+        
+        // Style links within notifications
+        if (options.html) {
+            setTimeout(function() {
+                var links = notificationElement.querySelectorAll('a');
+                for (var i = 0; i < links.length; i++) {
+                    links[i].style.color = 'rgba(255, 255, 255, 0.95)';
+                    links[i].style.textDecoration = 'underline';
+                    links[i].style.cursor = 'pointer';
+                }
+            }, 0);
+        }
+        
         // Apply styles
         Object.entries(notificationStyles).forEach(function(entry) {
             const property = entry[0].replace(/([A-Z])/g, '-$1').toLowerCase();
-            floatingNotification.style.setProperty(property, entry[1], 'important');
+            notificationElement.style.setProperty(property, entry[1], 'important');
         });
-
+        
+        // Add to container (at the beginning, so newest appears at top)
+        if (container.firstChild) {
+            container.insertBefore(notificationElement, container.firstChild);
+        } else {
+            container.appendChild(notificationElement);
+        }
+        
+        // Track this notification
+        var notificationData = {
+            element: notificationElement,
+            timeoutId: null
+        };
+        activeNotifications.push(notificationData);
+        
         // Animate in
         setTimeout(function() {
-            floatingNotification.style.setProperty('transform', 'translateY(0)', 'important');
-            floatingNotification.style.setProperty('opacity', '1', 'important');
+            notificationElement.style.setProperty('transform', 'translateY(0)', 'important');
+            notificationElement.style.setProperty('opacity', '1', 'important');
         }, 10);
-
-        // Clear any existing timeout
-        clearTimeout(notificationTimeout);
         
-        // Animate out after delay
-        notificationTimeout = setTimeout(function() {
-            floatingNotification.style.setProperty('transform', 'translateY(100%)', 'important');
-            floatingNotification.style.setProperty('opacity', '0', 'important');
-            
-            setTimeout(function() {
-                if (floatingNotification && floatingNotification.parentNode) {
-                    floatingNotification.parentNode.removeChild(floatingNotification);
-                }
-            }, 300);
+        // Set timeout to auto-dismiss
+        notificationData.timeoutId = setTimeout(function() {
+            removeNotification(notificationElement, notificationData.timeoutId);
         }, 8000);
     };
     
     SmartLists.clearNotification = function() {
-        if (notificationTimeout) {
-            clearTimeout(notificationTimeout);
-            notificationTimeout = null;
+        // Clear all notifications
+        if (notificationContainer) {
+            var notifications = notificationContainer.querySelectorAll('.floating-notification');
+            for (var i = 0; i < notifications.length; i++) {
+                var notification = notifications[i];
+                // Find its timeout and clear it
+                for (var j = 0; j < activeNotifications.length; j++) {
+                    if (activeNotifications[j].element === notification) {
+                        if (activeNotifications[j].timeoutId) {
+                            clearTimeout(activeNotifications[j].timeoutId);
+                        }
+                        break;
+                    }
+                }
+                removeNotification(notification, null);
+            }
         }
+        activeNotifications = [];
     };
     
     SmartLists.cleanupModalListeners = function(modal) {

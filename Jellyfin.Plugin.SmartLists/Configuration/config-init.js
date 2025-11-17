@@ -1204,27 +1204,10 @@
     };
 
     SmartLists.refreshAllPlaylists = function() {
-        const page = document.querySelector('.SmartListsConfigurationPage');
-            
-        // Redirect to status page immediately to show progress
-        if (page) {
-            SmartLists.switchToTab(page, 'status');
-                    
-            // Initialize and load status page if Status module is available
-            if (window.SmartLists && window.SmartLists.Status) {
-                window.SmartLists.Status.initializeStatusPage();
-                window.SmartLists.Status.loadStatusPage();
-                
-                // After a brief delay, refresh again to catch operations that just started
-                // Also enable aggressive polling for the first few seconds
-                setTimeout(function() {
-                    if (window.SmartLists && window.SmartLists.Status) {
-                        window.SmartLists.Status.loadStatusPage();
-                        window.SmartLists.Status.startAggressivePolling();
-                    }
-                }, 500);
-            }
-        }
+        // Show notification that refresh has started
+        var statusLink = SmartLists.createStatusPageLink('status page');
+        var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+        SmartLists.showNotification(refreshMessage, 'info', { html: true });
         
         // Start the refresh operation (fire and forget - status page will show progress)
         SmartLists.getApiClient().ajax({
