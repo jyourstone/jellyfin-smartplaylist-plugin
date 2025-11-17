@@ -43,18 +43,18 @@ SmartLists features a modern web-based configuration interface with four main ta
 <div align="center">
     <p>
         <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create.png" target="_blank" style="cursor: pointer;">
-            <img alt="Create list page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
+            <img alt="Create list page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_create_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
         </a>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage.png" target="_blank" style="cursor: pointer;">
-            <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_manage_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_manage.png" target="_blank" style="cursor: pointer;">
+            <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_manage_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
         </a>
     </p>
     <p>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_status.png" target="_blank" style="cursor: pointer;">
-            <img alt="Status page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_status.png" width="400" style="margin-right: 10px;"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_status.png" target="_blank" style="cursor: pointer;">
+            <img alt="Status page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_status.png" width="400" style="margin-right: 10px;"/>
         </a>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings.png" target="_blank" style="cursor: pointer;">
-            <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_settings_cropped.png" width="400"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_settings.png" target="_blank" style="cursor: pointer;">
+            <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_settings_cropped.png" width="400"/>
         </a>
     </p>
 </div>
