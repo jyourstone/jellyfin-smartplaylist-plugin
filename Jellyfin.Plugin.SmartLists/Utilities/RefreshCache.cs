@@ -52,12 +52,16 @@ namespace Jellyfin.Plugin.SmartLists
         /// <param name="playlists">Playlists to refresh</param>
         /// <param name="updateLastRefreshTime">Whether to update LastRefreshed timestamp</param>
         /// <param name="batchProgressCallback">Optional callback invoked before processing each playlist (playlist ID)</param>
+        /// <param name="createProgressCallback">Optional function to create a progress callback for each playlist (playlist ID -> progress callback)</param>
+        /// <param name="onPlaylistComplete">Optional callback invoked immediately after each playlist completes (playlist ID, success, duration, message)</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Results for each playlist</returns>
         public async Task<List<PlaylistRefreshResult>> RefreshPlaylistsWithCacheAsync(
             List<SmartPlaylistDto> playlists,
             bool updateLastRefreshTime = false,
             Action<string>? batchProgressCallback = null,
+            Func<string, Action<int, int>?>? createProgressCallback = null,
+            Action<string, bool, TimeSpan, string>? onPlaylistComplete = null,
             CancellationToken cancellationToken = default)
         {
             var results = new List<PlaylistRefreshResult>();
@@ -149,7 +153,7 @@ namespace Jellyfin.Plugin.SmartLists
 
                     // Use the same advanced caching as legacy tasks (per-media-type caching)
                     var userResults = await ProcessUserPlaylistsWithAdvancedCachingAsync(
-                        user, userPlaylists, updateLastRefreshTime, batchProgressCallback, cancellationToken);
+                        user, userPlaylists, updateLastRefreshTime, batchProgressCallback, createProgressCallback, onPlaylistComplete, cancellationToken);
 
                     results.AddRange(userResults);
                 }
@@ -193,6 +197,8 @@ namespace Jellyfin.Plugin.SmartLists
             List<SmartPlaylistDto> userPlaylists,
             bool updateLastRefreshTime,
             Action<string>? batchProgressCallback,
+            Func<string, Action<int, int>?>? createProgressCallback,
+            Action<string, bool, TimeSpan, string>? onPlaylistComplete,
             CancellationToken cancellationToken)
         {
             var results = new List<PlaylistRefreshResult>();
@@ -231,13 +237,16 @@ namespace Jellyfin.Plugin.SmartLists
                     _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items",
                         playlist.Name, mediaTypesKey, playlistSpecificMedia.Length);
 
+                    // Create progress callback for this playlist if provided
+                    var progressCallback = createProgressCallback?.Invoke(playlist.Id ?? string.Empty);
+
                     // Use interface method instead of casting
                     var (success, message, jellyfinPlaylistId) = await _playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                         playlist,
                         user,
                         playlistSpecificMedia,
                         async (updatedDto) => await _playlistStore.SaveAsync(updatedDto),
-                        null,
+                        progressCallback,
                         cancellationToken);
 
                     if (success && updateLastRefreshTime)
@@ -247,6 +256,11 @@ namespace Jellyfin.Plugin.SmartLists
                     }
 
                     playlistStopwatch.Stop();
+                    
+                    var duration = playlistStopwatch.Elapsed;
+
+                    // Notify completion callback immediately so operation can be marked complete
+                    onPlaylistComplete?.Invoke(playlist.Id ?? string.Empty, success, duration, message);
 
                     results.Add(new PlaylistRefreshResult
                     {
@@ -274,6 +288,11 @@ namespace Jellyfin.Plugin.SmartLists
                     playlistStopwatch.Stop();
                     _logger.LogError(ex, "Failed to process playlist {PlaylistName} after {ElapsedTime}ms",
                         playlist.Name, playlistStopwatch.ElapsedMilliseconds);
+
+                    var errorDuration = playlistStopwatch.Elapsed;
+                    
+                    // Notify completion callback for error case too
+                    onPlaylistComplete?.Invoke(playlist.Id ?? string.Empty, false, errorDuration, $"Exception: {ex.Message}");
 
                     results.Add(new PlaylistRefreshResult
                     {

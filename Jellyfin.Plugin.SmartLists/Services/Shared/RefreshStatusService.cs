@@ -25,8 +25,17 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         public int? BatchCurrentIndex { get; set; }
         public int? BatchTotalCount { get; set; }
         private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+        private TimeSpan? _preservedElapsedTime;
 
-        public TimeSpan ElapsedTime => _stopwatch.Elapsed;
+        public TimeSpan ElapsedTime => _preservedElapsedTime ?? _stopwatch.Elapsed;
+        
+        /// <summary>
+        /// Sets a preserved elapsed time (used when creating copies)
+        /// </summary>
+        public void SetPreservedElapsedTime(TimeSpan elapsedTime)
+        {
+            _preservedElapsedTime = elapsedTime;
+        }
 
         /// <summary>
         /// Updates the processed items count and recalculates estimated time remaining
@@ -177,9 +186,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// <summary>
         /// Completes an operation and moves it to history
         /// </summary>
+        /// <param name="listId">The list ID</param>
+        /// <param name="success">Whether the operation succeeded</param>
+        /// <param name="duration">The duration of the operation</param>
+        /// <param name="errorMessage">Optional error message</param>
         public void CompleteOperation(
             string listId,
             bool success,
+            TimeSpan duration,
             string? errorMessage = null)
         {
             if (_ongoingOperations.TryRemove(listId, out var operation))
@@ -192,7 +206,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     TriggerType = operation.TriggerType,
                     StartTime = operation.StartTime,
                     EndTime = DateTime.UtcNow,
-                    Duration = operation.ElapsedTime,
+                    Duration = duration,
                     Success = success,
                     ErrorMessage = errorMessage ?? operation.ErrorMessage
                 };
@@ -200,7 +214,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 _refreshHistory.AddOrUpdate(listId, historyEntry, (key, existing) => historyEntry);
 
                 _logger.LogDebug("Completed refresh operation for list {ListId} ({ListName}): Success={Success}, Duration={Duration}ms",
-                    listId, operation.ListName, success, operation.ElapsedTime.TotalMilliseconds);
+                    listId, operation.ListName, success, duration.TotalMilliseconds);
             }
             else
             {
@@ -221,15 +235,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         /// <summary>
         /// Gets all ongoing operations (returns copies to prevent external mutation)
-        /// Note: ElapsedTime is calculated from the original Stopwatch, so copies will show the same elapsed time
         /// </summary>
         public List<RefreshOperation> GetOngoingOperations()
         {
             // Create copies to prevent external mutation of tracked state
-            // Note: RefreshOperation has a private Stopwatch, so we create new instances with copied properties
-            // The ElapsedTime property will be calculated from a new Stopwatch, but that's acceptable for read-only views
+            // We need to preserve the elapsed time from the original stopwatch
             return _ongoingOperations.Values.Select(op =>
             {
+                // Get elapsed time from original operation before creating copy
+                var elapsedTime = op.ElapsedTime;
+                
                 var copy = new RefreshOperation
                 {
                     ListId = op.ListId,
@@ -244,8 +259,28 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     BatchCurrentIndex = op.BatchCurrentIndex,
                     BatchTotalCount = op.BatchTotalCount
                 };
-                // Update progress to sync the internal state (this will recalculate EstimatedTimeRemaining)
-                copy.UpdateProgress(op.ProcessedItems, op.TotalItems);
+                
+                // Preserve the elapsed time from the original operation
+                copy.SetPreservedElapsedTime(elapsedTime);
+                
+                // Recalculate estimated time using the preserved elapsed time
+                if (op.ProcessedItems > 0 && op.TotalItems > 0 && elapsedTime.TotalMilliseconds > 0)
+                {
+                    var itemsPerMs = (double)op.ProcessedItems / elapsedTime.TotalMilliseconds;
+                    var remainingItems = op.TotalItems - op.ProcessedItems;
+                    
+                    if (remainingItems > 0 && itemsPerMs > 0)
+                    {
+                        var estimatedMs = remainingItems / itemsPerMs;
+                        copy.EstimatedTimeRemaining = TimeSpan.FromMilliseconds(estimatedMs);
+                    }
+                    else
+                    {
+                        // All items processed, no time remaining
+                        copy.EstimatedTimeRemaining = null;
+                    }
+                }
+                
                 return copy;
             }).ToList();
         }
@@ -304,6 +339,18 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         public bool HasOngoingOperation(string listId)
         {
             return _ongoingOperations.ContainsKey(listId);
+        }
+
+        /// <summary>
+        /// Gets the elapsed time for an ongoing operation without removing it
+        /// </summary>
+        public TimeSpan? GetElapsedTime(string listId)
+        {
+            if (_ongoingOperations.TryGetValue(listId, out var operation))
+            {
+                return operation.ElapsedTime;
+            }
+            return null;
         }
     }
 

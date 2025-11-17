@@ -396,9 +396,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                         // Complete status tracking if we started it
                         if (shouldTrackStatus)
                         {
+                            var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
                             refreshStatusService?.CompleteOperation(
                                 listId,
                                 success,
+                                elapsedTime,
                                 success ? null : message);
                         }
                         
@@ -417,9 +419,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     // Complete status tracking if we started it (operation failed to start)
                     if (shouldTrackStatus)
                     {
+                        var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
                         refreshStatusService?.CompleteOperation(
                             listId,
                             false,
+                            elapsedTime,
                             "Playlist refresh is already in progress, please try again in a moment.");
                     }
                     
@@ -433,9 +437,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 // Complete status tracking if we started it
                 if (shouldTrackStatus)
                 {
+                    var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
                     refreshStatusService?.CompleteOperation(
                         listId,
                         false,
+                        elapsedTime,
                         "Refresh operation was cancelled.");
                 }
                 
@@ -446,9 +452,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 // Complete status tracking if we started it (exception occurred)
                 if (shouldTrackStatus)
                 {
+                    var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
                     refreshStatusService?.CompleteOperation(
                         listId,
                         false,
+                        elapsedTime,
                         ex.Message);
                 }
                 throw;

@@ -327,9 +327,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         0,
                         batchCurrentIndex: batchOffset + resolvedPlaylists.Count + playlistsWithoutUser.IndexOf(dto) + 1,
                         batchTotalCount: totalBatchCount ?? (enabledPlaylists.Count));
+                    var earlyFailureDuration = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
                     _refreshStatusService?.CompleteOperation(
                         listId,
                         false,
+                        earlyFailureDuration,
                         "User not found for playlist");
                 }
 
@@ -397,7 +399,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             if (user.Id == Guid.Empty)
                             {
                                 _logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
-                                _refreshStatusService?.CompleteOperation(listId, false, "Invalid user ID");
+                                var invalidUserDuration = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                                _refreshStatusService?.CompleteOperation(listId, false, invalidUserDuration, "Invalid user ID");
                                 failureCount++;
                                 processedCount++;
                                 continue;
@@ -446,10 +449,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                             playlistStopwatch.Stop();
                             
-                            // Complete status tracking
+                            // Complete status tracking with explicit duration from stopwatch
                             _refreshStatusService?.CompleteOperation(
                                 listId,
                                 refreshResult.Success,
+                                playlistStopwatch.Elapsed,
                                 refreshResult.Success ? null : refreshResult.Message);
                             
                             if (refreshResult.Success)
@@ -484,6 +488,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 _refreshStatusService?.CompleteOperation(
                                     listId,
                                     false,
+                                    playlistStopwatch.Elapsed,
                                     "Refresh operation was cancelled");
                             }
                             
@@ -500,6 +505,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                                 _refreshStatusService?.CompleteOperation(
                                     listId,
                                     false,
+                                    playlistStopwatch.Elapsed,
                                     ex.Message);
                             }
                             
@@ -810,10 +816,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                         collectionStopwatch.Stop();
                         
-                        // Complete status tracking
+                        // Complete status tracking with explicit duration from stopwatch
                         _refreshStatusService?.CompleteOperation(
                             listId,
                             success,
+                            collectionStopwatch.Elapsed,
                             success ? null : message);
                         
                         if (success)
@@ -844,6 +851,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _refreshStatusService?.CompleteOperation(
                                 listId,
                                 false,
+                                collectionStopwatch.Elapsed,
                                 "Refresh operation was cancelled");
                         }
                         
@@ -860,6 +868,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             _refreshStatusService?.CompleteOperation(
                                 listId,
                                 false,
+                                collectionStopwatch.Elapsed,
                                 ex.Message);
                         }
                         
@@ -981,9 +990,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     var (success, message, playlistId) = await playlistService.RefreshAsync(playlist, progressCallback, cancellationToken);
 
                     // Complete status tracking
+                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
                     _refreshStatusService.CompleteOperation(
                         listId,
                         success,
+                        elapsedTime,
                         success ? null : message);
 
                     if (success)
@@ -1010,7 +1021,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 if (operationStarted)
                 {
-                    _refreshStatusService.CompleteOperation(listId, false, "Refresh operation was cancelled");
+                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, "Refresh operation was cancelled");
                 }
                 _logger.LogInformation("Single playlist refresh was cancelled for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
                 return (false, "Refresh operation was cancelled", string.Empty);
@@ -1019,7 +1031,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 if (operationStarted)
                 {
-                    _refreshStatusService.CompleteOperation(listId, false, ex.Message);
+                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, ex.Message);
                 }
                 _logger.LogError(ex, "Error during single playlist refresh for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
                 return (false, $"Error during playlist refresh: {ex.Message}", string.Empty);
@@ -1075,9 +1088,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     var (success, message, collectionId) = await collectionService.RefreshAsync(collection, progressCallback, cancellationToken);
 
                     // Complete status tracking
+                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
                     _refreshStatusService.CompleteOperation(
                         listId,
                         success,
+                        elapsedTime,
                         success ? null : message);
 
                     if (success)
@@ -1104,7 +1119,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 if (operationStarted)
                 {
-                    _refreshStatusService.CompleteOperation(listId, false, "Refresh operation was cancelled");
+                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, "Refresh operation was cancelled");
                 }
                 _logger.LogInformation("Single collection refresh was cancelled for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
                 return (false, "Refresh operation was cancelled", string.Empty);
@@ -1113,7 +1129,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 if (operationStarted)
                 {
-                    _refreshStatusService.CompleteOperation(listId, false, ex.Message);
+                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, ex.Message);
                 }
                 _logger.LogError(ex, "Error during single collection refresh for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
                 return (false, $"Error during collection refresh: {ex.Message}", string.Empty);

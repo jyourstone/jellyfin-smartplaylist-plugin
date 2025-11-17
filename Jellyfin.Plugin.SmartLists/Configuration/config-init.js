@@ -527,6 +527,14 @@
             var contentTabId = content.getAttribute('data-tab-content');
             if (contentTabId === tabId) {
                 content.classList.remove('hide');
+                // If this is the status tab, ensure status page loads after tab becomes visible
+                if (contentTabId === 'status' && window.SmartLists && window.SmartLists.Status) {
+                    // Use requestAnimationFrame to ensure DOM update is complete
+                    requestAnimationFrame(function() {
+                        window.SmartLists.Status.initializeStatusPage();
+                        window.SmartLists.Status.loadStatusPage();
+                    });
+                }
             } else {
                 content.classList.add('hide');
             }
@@ -556,13 +564,8 @@
             }
         }
 
-        // Initialize status page when switching to status tab
-        if (tabId === 'status') {
-            if (window.SmartLists && window.SmartLists.Status) {
-                window.SmartLists.Status.initializeStatusPage();
-                window.SmartLists.Status.loadStatusPage();
-            }
-        }
+        // Note: Status page loading is now handled in the tab visibility update above
+        // to ensure it happens after the tab is visible
 
         // Update URL
         SmartLists.updateUrl(tabId);

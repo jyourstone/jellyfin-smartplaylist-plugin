@@ -160,11 +160,17 @@
         const avgDuration = stats?.averageRefreshDuration ? formatDuration(stats.averageRefreshDuration) : 'N/A';
         
         // Find batch progress info from ongoing operations
-        // Use loose equality (!=) to exclude both null and undefined
-        const batchOp = ongoingOperations?.find(op => op.batchCurrentIndex != null && op.batchTotalCount != null);
-        const ongoingOpsText = batchOp 
-            ? `${batchOp.batchCurrentIndex} of ${batchOp.batchTotalCount}`
-            : (stats.ongoingOperationsCount || 0);
+        // Show the highest batch index (current operation being processed) or count of ongoing operations
+        const batchOps = ongoingOperations?.filter(op => op.batchCurrentIndex != null && op.batchTotalCount != null) || [];
+        let ongoingOpsText;
+        if (batchOps.length > 0) {
+            // Find the highest batch index to show current progress
+            const maxIndex = Math.max(...batchOps.map(op => op.batchCurrentIndex));
+            const totalCount = batchOps[0].batchTotalCount; // All should have same total
+            ongoingOpsText = `${maxIndex} of ${totalCount}`;
+        } else {
+            ongoingOpsText = stats.ongoingOperationsCount || 0;
+        }
 
         container.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 1em;">
@@ -361,11 +367,19 @@
      * Initialize status page event handlers
      */
     function initializeStatusPage() {
+        setupRefreshButton();
+    }
+
+    /**
+     * Setup refresh button - can be called multiple times safely
+     */
+    function setupRefreshButton() {
         const refreshBtn = document.getElementById('refresh-status-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => {
+        if (refreshBtn && !refreshBtn._statusListenerAttached) {
+            refreshBtn.addEventListener('click', function() {
                 fetchStatusData();
             });
+            refreshBtn._statusListenerAttached = true;
         }
     }
 
@@ -374,9 +388,19 @@
     window.SmartLists.Status = {
         loadStatusPage: loadStatusPage,
         initializeStatusPage: initializeStatusPage,
+        setupRefreshButton: setupRefreshButton,
         stopPolling: stopPolling,
         startAggressivePolling: startAggressivePolling,
         stopAggressivePolling: stopAggressivePolling
     };
+    
+    // Auto-setup refresh button when DOM is ready (if script loads after DOM)
+    if (document.readyState !== 'loading') {
+        // DOM already loaded, try to setup button immediately
+        setTimeout(setupRefreshButton, 0);
+    } else {
+        // Wait for DOM to be ready
+        document.addEventListener('DOMContentLoaded', setupRefreshButton);
+    }
 })();
 

@@ -1867,7 +1867,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         Core.Enums.SmartListType.Playlist,
                         Core.Enums.RefreshTriggerType.Manual,
                         0);
-                    _refreshStatusService?.CompleteOperation(id, false, "Invalid list ID format");
+                    var duration = _refreshStatusService?.GetElapsedTime(id) ?? TimeSpan.Zero;
+                    _refreshStatusService?.CompleteOperation(id, false, duration, "Invalid list ID format");
                     
                     return BadRequest("Invalid list ID format");
                 }
@@ -1931,7 +1932,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     Core.Enums.SmartListType.Playlist,
                     Core.Enums.RefreshTriggerType.Manual,
                     0);
-                _refreshStatusService?.CompleteOperation(id, false, "Smart list not found");
+                var notFoundDuration = _refreshStatusService?.GetElapsedTime(id) ?? TimeSpan.Zero;
+                _refreshStatusService?.CompleteOperation(id, false, notFoundDuration, "Smart list not found");
                 
                 return NotFound("Smart list not found");
             }
@@ -1949,7 +1951,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         Core.Enums.RefreshTriggerType.Manual,
                         0);
                 }
-                _refreshStatusService?.CompleteOperation(id, false, $"Error refreshing smart list: {ex.Message}");
+                var errorDuration = _refreshStatusService?.GetElapsedTime(id) ?? TimeSpan.Zero;
+                _refreshStatusService?.CompleteOperation(id, false, errorDuration, $"Error refreshing smart list: {ex.Message}");
                 
                 return StatusCode(StatusCodes.Status500InternalServerError, "Error refreshing smart list");
             }
