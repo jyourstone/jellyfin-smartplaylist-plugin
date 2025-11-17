@@ -1072,7 +1072,19 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             try
             {
                 var regex = GetOrCreateRegex(pattern);
-                return list.Any(s => s != null && regex.IsMatch(s));
+                
+                // Convert to list to check if empty and iterate
+                var listItems = list.ToList();
+                
+                // If the list is empty, check if the regex matches an empty string
+                // This handles cases like ^$ which should match items with no tags/genres/etc.
+                if (listItems.Count == 0)
+                {
+                    return regex.IsMatch(string.Empty);
+                }
+                
+                // Otherwise, check if any item in the list matches the regex
+                return listItems.Any(s => s != null && regex.IsMatch(s));
             }
             catch (ArgumentException ex)
             {
