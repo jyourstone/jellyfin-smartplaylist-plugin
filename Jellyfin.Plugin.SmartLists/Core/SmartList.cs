@@ -682,7 +682,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                         additionalUserIds = [..ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
                             .Where(expr => expr?.IsUserSpecific == true && !string.IsNullOrEmpty(expr.UserId))
-                            .Select(expr => expr.UserId)
+                            .Select(expr => expr.UserId!)
                             .Distinct()];
 
                         if (additionalUserIds.Count > 0)
@@ -2613,7 +2613,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             requirements.AdditionalUserIds = [.. expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
                 .Where(e => !string.IsNullOrEmpty(e?.UserId))
-                .Select(e => e.UserId)
+                .Select(e => e.UserId!)
                 .Distinct()];
 
             return requirements;
