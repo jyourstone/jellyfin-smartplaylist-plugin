@@ -45,58 +45,94 @@
         }
         
         const apiClient = SmartLists.getApiClient();
+        
+        // If enabling, show notification about refresh starting
+        if (options.actionType === 'enable' && listsToProcess.length > 0) {
+            var statusLink = SmartLists.createStatusPageLink('status page');
+            var refreshMessage = 'List(s) have been enabled. A refresh will be triggered automatically, check the ' + statusLink + ' for progress.';
+            SmartLists.showNotification(refreshMessage, 'info', { html: true });
+        }
+        
+        // If disabling, show notification about Jellyfin list removal
+        if (options.actionType === 'disable' && listsToProcess.length > 0) {
+            SmartLists.showNotification('Disabling list(s) and removing Jellyfin list(s)...', 'info', { html: true });
+        }
+        
+        // Process sequentially in background
+        // Enable/disable operations call RefreshWithTimeoutAsync which uses a global lock
+        // Processing sequentially ensures each operation completes before the next starts
         let successCount = 0;
         let errorCount = 0;
         
-        Dashboard.showLoadingMsg();
-        
-        // Process sequentially to avoid refresh lock contention
-        // Enable/disable operations call RefreshWithTimeoutAsync which uses a global lock
-        // Processing sequentially ensures each operation completes before the next starts
-        for (const listId of listsToProcess) {
-            let url = SmartLists.ENDPOINTS.base + '/' + listId + options.apiPath;
-            if (options.getQueryParams) {
-                url += '?' + options.getQueryParams(page);
-            }
-            
-            try {
-                await apiClient.ajax({
-                    type: options.httpMethod,
-                    url: apiClient.getUrl(url),
-                    contentType: 'application/json'
-                });
-                successCount++;
-            } catch (err) {
-                console.error('Error ' + options.actionType + ' list:', listId, err);
-                errorCount++;
-            }
-        }
-        
-        Dashboard.hideLoadingMsg();
-        
-        // Show notifications
-        if (successCount > 0) {
-            const message = options.formatSuccessMessage 
-                ? options.formatSuccessMessage(successCount, page)
-                : 'Successfully ' + options.actionType + ' ' + successCount + ' list(s).';
-            SmartLists.showNotification(message, 'success');
-        }
-        if (errorCount > 0) {
-            const message = options.formatErrorMessage
-                ? options.formatErrorMessage(errorCount, successCount)
-                : 'Failed to ' + options.actionType + ' ' + errorCount + ' list(s).';
-            SmartLists.showNotification(message, 'error');
-        }
-        
-        // Clear selections and reload
+        // Clear selections immediately (before API calls)
         const selectAllCheckbox = page.querySelector('#selectAllCheckbox');
         if (selectAllCheckbox) {
             selectAllCheckbox.checked = false;
         }
         
-        if (SmartLists.loadPlaylistList) {
-            SmartLists.loadPlaylistList(page);
-        }
+        // Process sequentially in background
+        (async function() {
+            for (const listId of listsToProcess) {
+                let url = SmartLists.ENDPOINTS.base + '/' + listId + options.apiPath;
+                if (options.getQueryParams) {
+                    url += '?' + options.getQueryParams(page);
+                }
+                
+                try {
+                    const response = await apiClient.ajax({
+                        type: options.httpMethod,
+                        url: apiClient.getUrl(url),
+                        contentType: 'application/json'
+                    });
+                    
+                    if (!response.ok) {
+                        // Parse error message from response
+                        let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
+                        try {
+                            const errorText = await response.text();
+                            if (errorText) {
+                                try {
+                                    const parsed = JSON.parse(errorText);
+                                    errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
+                                } catch (e) {
+                                    errorMessage = errorText;
+                                }
+                            }
+                        } catch (parseErr) {
+                            // Use default error message if parsing fails
+                        }
+                        console.error('Error ' + options.actionType + ' list:', listId, errorMessage);
+                        errorCount++;
+                    } else {
+                        successCount++;
+                    }
+                } catch (err) {
+                    console.error('Error ' + options.actionType + ' list:', listId, err);
+                    errorCount++;
+                }
+            }
+            
+            // Show success notification after all API calls complete
+            if (successCount > 0) {
+                const message = options.formatSuccessMessage 
+                    ? options.formatSuccessMessage(successCount, page)
+                    : 'Successfully ' + options.actionType + ' ' + successCount + ' list(s).';
+                SmartLists.showNotification(message, 'success');
+            }
+            
+            // If there were errors, show error notification
+            if (errorCount > 0) {
+                const message = options.formatErrorMessage
+                    ? options.formatErrorMessage(errorCount, successCount)
+                    : 'Failed to ' + options.actionType + ' ' + errorCount + ' list(s).';
+                SmartLists.showNotification(message, 'error');
+            }
+            
+            // Reload list to show updated state
+            if (SmartLists.loadPlaylistList) {
+                SmartLists.loadPlaylistList(page);
+            }
+        })();
     };
     
     /**
@@ -119,26 +155,60 @@
             url += '?' + options.getQueryParams(page);
         }
         
-        Dashboard.showLoadingMsg();
+        // If enabling, show notification about refresh starting
+        if (options.actionType === 'enable') {
+            var statusLink = SmartLists.createStatusPageLink('status page');
+            var refreshMessage = 'List has been enabled. A refresh will be triggered automatically, check the ' + statusLink + ' for progress.';
+            SmartLists.showNotification(refreshMessage, 'info', { html: true });
+        }
         
+        // If disabling, show notification about Jellyfin list removal
+        if (options.actionType === 'disable') {
+            SmartLists.showNotification('Disabling list and removing Jellyfin list...', 'info', { html: true });
+        }
+        
+        // Make API call
         try {
-            await apiClient.ajax({
+            const response = await apiClient.ajax({
                 type: options.httpMethod,
                 url: apiClient.getUrl(url),
                 contentType: 'application/json'
             });
             
-            Dashboard.hideLoadingMsg();
+            if (!response.ok) {
+                // Parse error message from response
+                let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
+                try {
+                    const errorText = await response.text();
+                    if (errorText) {
+                        try {
+                            const parsed = JSON.parse(errorText);
+                            errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
+                        } catch (e) {
+                            errorMessage = errorText;
+                        }
+                    }
+                } catch (parseErr) {
+                    // Use default error message if parsing fails
+                }
+                throw new Error(errorMessage);
+            }
+            
+            // Show success notification after API call completes
             const message = options.formatSuccessMessage 
                 ? options.formatSuccessMessage(listName, page)
                 : 'List "' + listName + '" ' + options.actionType + ' successfully.';
             SmartLists.showNotification(message, 'success');
             
+            // Reload list after API call completes to show accurate updated values
             if (SmartLists.loadPlaylistList) {
                 SmartLists.loadPlaylistList(page);
             }
         } catch (err) {
-            Dashboard.hideLoadingMsg();
+            // Reload list on error to show correct state
+            if (SmartLists.loadPlaylistList) {
+                SmartLists.loadPlaylistList(page);
+            }
             SmartLists.displayApiError(err, 'Failed to ' + options.actionType + ' list "' + listName + '"');
         }
     };
@@ -418,11 +488,35 @@
                 type: 'DELETE',
                 url: apiClient.getUrl(url),
                 contentType: 'application/json'
-            }).then(function() {
-                successCount++;
+            }).then(function(response) {
+                if (!response.ok) {
+                    // Parse error message from response
+                    return response.text().then(function(errorText) {
+                        let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
+                        if (errorText) {
+                            try {
+                                const parsed = JSON.parse(errorText);
+                                const parsedMsg = parsed.message || parsed.error || parsed.detail || errorText;
+                                errorMessage = 'HTTP ' + response.status + ': ' + parsedMsg;
+                            } catch (e) {
+                                // keep default HTTP + statusText or raw body
+                            }
+                        }
+                        console.error('Error deleting list:', listId, errorMessage);
+                        errorCount++;
+                        const err = new Error(errorMessage);
+                        err._smartListsHttpError = true;
+                        throw err;
+                    });
+                } else {
+                    successCount++;
+                }
             }).catch(function(err) {
-                console.error('Error deleting list:', listId, err);
-                errorCount++;
+                // Only increment errorCount for non-HTTP/transport errors
+                if (!err._smartListsHttpError) {
+                    console.error('Error deleting list:', listId, err);
+                    errorCount++;
+                }
             });
         });
         
