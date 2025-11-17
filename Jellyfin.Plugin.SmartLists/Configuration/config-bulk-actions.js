@@ -496,21 +496,24 @@
                         if (errorText) {
                             try {
                                 const parsed = JSON.parse(errorText);
-                                errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
+                                const parsedMsg = parsed.message || parsed.error || parsed.detail || errorText;
+                                errorMessage = 'HTTP ' + response.status + ': ' + parsedMsg;
                             } catch (e) {
-                                errorMessage = errorText;
+                                // keep default HTTP + statusText or raw body
                             }
                         }
                         console.error('Error deleting list:', listId, errorMessage);
                         errorCount++;
-                        throw new Error(errorMessage);
+                        const err = new Error(errorMessage);
+                        err._smartListsHttpError = true;
+                        throw err;
                     });
                 } else {
                     successCount++;
                 }
             }).catch(function(err) {
-                // Only increment errorCount if it wasn't already incremented above
-                if (err.message && !err.message.startsWith('HTTP')) {
+                // Only increment errorCount for non-HTTP/transport errors
+                if (!err._smartListsHttpError) {
                     console.error('Error deleting list:', listId, err);
                     errorCount++;
                 }
