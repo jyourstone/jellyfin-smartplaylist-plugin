@@ -396,12 +396,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 progressCallback,
                 cancellationToken);
 
-            if (success)
-            {
-                // Save to persist LastRefreshed timestamp
-                await playlistStore.SaveAsync(dto);
-            }
-            else
+            if (!success)
             {
                 throw new InvalidOperationException($"Playlist refresh failed: {message}");
             }
@@ -477,12 +472,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 progressCallback,
                 cancellationToken);
 
-            if (success)
-            {
-                // Save to persist LastRefreshed timestamp (already saved by callback, but ensure it's persisted)
-                await collectionStore.SaveAsync(dto);
-            }
-            else
+            if (!success)
             {
                 throw new InvalidOperationException($"Collection refresh failed: {message}");
             }

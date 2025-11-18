@@ -88,6 +88,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             {
                 dto.LastRefreshed = DateTime.UtcNow;
                 _logger.LogDebug("Updated LastRefreshed timestamp for cached playlist: {PlaylistName}", dto.Name);
+                
+                // Call save callback if provided to persist the LastRefreshed timestamp
+                if (saveCallback != null)
+                {
+                    await saveCallback(dto);
+                }
             }
 
             return (success, message, jellyfinPlaylistId);

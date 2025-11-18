@@ -252,14 +252,7 @@
                 SmartLists.showNotification(message, 'success');
                 
                 // Then show notification that refresh has started (refresh happens automatically on backend)
-                var statusLink = SmartLists.createStatusPageLink('status page');
-                var refreshMessage = 'List refresh started, check the ' + statusLink + ' for progress.';
-                SmartLists.showNotification(refreshMessage, 'info', { html: true });
-                
-                // Start aggressive polling on status page to catch the operation
-                if (window.SmartLists && window.SmartLists.Status && window.SmartLists.Status.startAggressivePolling) {
-                    window.SmartLists.Status.startAggressivePolling();
-                }
+                SmartLists.notifyRefreshQueued();
                 
                 // Exit edit mode and redirect after successful API call
                 if (editState.editMode) {
@@ -777,18 +770,27 @@
         SmartLists.showNotification('Edit mode cancelled.', 'success');
     };
 
-    SmartLists.refreshPlaylist = function(playlistId, playlistName) {
-        const apiClient = SmartLists.getApiClient();
-        
-        // Show notification that refresh has started
+    SmartLists.notifyRefreshQueued = function(listTypeName, playlistName) {
+        listTypeName = listTypeName || 'List';
+        // Show success notification
+        SmartLists.showNotification('Refresh started for ' + listTypeName + ' "' + playlistName + '"', 'success');
+
+        // Show status page link and start aggressive polling
         var statusLink = SmartLists.createStatusPageLink('status page');
-        var refreshMessage = 'List refresh started, check the ' + statusLink + ' for progress.';
+        var refreshMessage = 'Check the ' + statusLink + ' for progress.';
         SmartLists.showNotification(refreshMessage, 'info', { html: true });
         
         // Start aggressive polling on status page to catch the operation
         if (window.SmartLists && window.SmartLists.Status && window.SmartLists.Status.startAggressivePolling) {
             window.SmartLists.Status.startAggressivePolling();
         }
+    };
+
+    SmartLists.refreshPlaylist = function(playlistId, playlistName) {
+        const apiClient = SmartLists.getApiClient();
+        
+        // Show notification that refresh has started and start aggressive polling
+        SmartLists.notifyRefreshQueued('List', playlistName);
         
         // Make API call (fire and forget - notification already shown)
         apiClient.ajax({

@@ -395,15 +395,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 if (!playlistHasFailures && !collectionHasFailures)
                 {
                     // Simple success message when everything succeeds
-                    notificationMessage = $"All lists refreshed successfully in {elapsedTime}.";
+                    notificationMessage = $"Enqueued all lists for refresh. They will be processed in the background.";
                 }
                 else
                 {
                     // Include details when there are failures
-                    notificationMessage = $"All lists refreshed. Playlists: {playlistResult.NotificationMessage}. Collections: {collectionResult.NotificationMessage}.";
+                    notificationMessage = $"List enqueue completed. Playlists: {playlistResult.NotificationMessage}. Collections: {collectionResult.NotificationMessage}.";
                 }
                 
-                logMessage = $"All lists refresh completed. Playlists: {playlistResult.LogMessage}. Collections: {collectionResult.LogMessage}. (Total time: {overallStopwatch.ElapsedMilliseconds}ms)";
+                logMessage = $"All lists enqueue completed. Playlists: {playlistResult.LogMessage}. Collections: {collectionResult.LogMessage}. (Total time: {overallStopwatch.ElapsedMilliseconds}ms)";
                 _logger.LogInformation(logMessage);
 
                 return new RefreshResult
@@ -575,9 +575,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                _logger.LogInformation("Enqueuing single playlist for manual refresh: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
-
                 var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                _logger.LogInformation("Enqueuing single playlist for manual refresh: {PlaylistName} ({ListId})", playlist.Name, listId);
+
                 var queueItem = new RefreshQueueItem
                 {
                     ListId = listId,
@@ -591,7 +591,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 _refreshQueueService.EnqueueOperation(queueItem);
 
-                _logger.LogInformation("Enqueued single playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
+                _logger.LogInformation("Enqueued single playlist: {PlaylistName} ({ListId})", playlist.Name, listId);
                 return Task.FromResult<(bool Success, string Message, string? JellyfinPlaylistId)>((true, "Playlist refresh has been queued. It will be processed in the background.", playlist.JellyfinPlaylistId));
             }
             catch (Exception ex)
@@ -611,9 +611,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                _logger.LogInformation("Enqueuing single collection for manual refresh: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
-
                 var listId = collection.Id ?? Guid.NewGuid().ToString();
+                _logger.LogInformation("Enqueuing single collection for manual refresh: {CollectionName} ({ListId})", collection.Name, listId);
+
                 var queueItem = new RefreshQueueItem
                 {
                     ListId = listId,
@@ -627,7 +627,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 _refreshQueueService.EnqueueOperation(queueItem);
 
-                _logger.LogInformation("Enqueued single collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
+                _logger.LogInformation("Enqueued single collection: {CollectionName} ({ListId})", collection.Name, listId);
                 return Task.FromResult<(bool Success, string Message, string? JellyfinCollectionId)>((true, "Collection refresh has been queued. It will be processed in the background.", collection.JellyfinCollectionId));
             }
             catch (Exception ex)
