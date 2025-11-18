@@ -955,7 +955,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     _logger.LogWarning(ex, "Failed to trigger UI refresh for collection {CollectionId}", collectionId);
                 }
 
-                return collectionId.ToString();
+                return collectionId.ToString("D");
             }
             else
             {
