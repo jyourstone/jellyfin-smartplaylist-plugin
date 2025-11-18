@@ -800,22 +800,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         collectionDto.FileName = existingPlaylist.FileName; // Keep the same filename
                         collectionDto.JellyfinCollectionId = null; // Clear old Jellyfin ID
                         
-                        // Enqueue refresh operation for the converted collection
-                        var listId = collectionDto.Id ?? Guid.NewGuid().ToString();
-                        var queueItem = new RefreshQueueItem
-                        {
-                            ListId = listId,
-                            ListName = collectionDto.Name,
-                            ListType = Core.Enums.SmartListType.Collection,
-                            OperationType = RefreshOperationType.Create,
-                            ListData = collectionDto,
-                            UserId = collectionDto.UserId,
-                            TriggerType = Core.Enums.RefreshTriggerType.Manual
-                        };
-
-                        _refreshQueueService.EnqueueOperation(queueItem);
-                        
-                        // Save to collection store (refresh will happen in background)
+                        // Save to collection store first (before enqueuing)
                         var newCollectionStore = GetCollectionStore();
                         await newCollectionStore.SaveAsync(collectionDto);
                         
@@ -823,6 +808,29 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var playlistService = GetPlaylistService();
                         await playlistService.DeleteAsync(existingPlaylist);
                         await playlistStore.DeleteAsync(guidId);
+                        
+                        // Enqueue refresh operation for the converted collection (after successful save)
+                        try
+                        {
+                            var listId = collectionDto.Id ?? Guid.NewGuid().ToString();
+                            var queueItem = new RefreshQueueItem
+                            {
+                                ListId = listId,
+                                ListName = collectionDto.Name,
+                                ListType = Core.Enums.SmartListType.Collection,
+                                OperationType = RefreshOperationType.Create,
+                                ListData = collectionDto,
+                                UserId = collectionDto.UserId,
+                                TriggerType = Core.Enums.RefreshTriggerType.Manual
+                            };
+
+                            _refreshQueueService.EnqueueOperation(queueItem);
+                        }
+                        catch (Exception enqueueEx)
+                        {
+                            // Log but don't fail the conversion - the collection is already saved
+                            logger.LogWarning(enqueueEx, "Failed to enqueue refresh for converted collection '{Name}', but conversion succeeded", collectionDto.Name);
+                        }
                         
                         logger.LogInformation("Successfully converted playlist to collection '{Name}' (JellyfinCollectionId: {Id})", 
                             collectionDto.Name, collectionDto.JellyfinCollectionId);
@@ -854,22 +862,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             playlistDto.UserId = existingCollection.UserId; // Carry over from collection
                         }
                         
-                        // Enqueue refresh operation for the converted playlist
-                        var listId = playlistDto.Id ?? Guid.NewGuid().ToString();
-                        var queueItem = new RefreshQueueItem
-                        {
-                            ListId = listId,
-                            ListName = playlistDto.Name,
-                            ListType = Core.Enums.SmartListType.Playlist,
-                            OperationType = RefreshOperationType.Create,
-                            ListData = playlistDto,
-                            UserId = playlistDto.UserId,
-                            TriggerType = Core.Enums.RefreshTriggerType.Manual
-                        };
-
-                        _refreshQueueService.EnqueueOperation(queueItem);
-                        
-                        // Save to playlist store (refresh will happen in background)
+                        // Save to playlist store first (before enqueuing)
                         var newPlaylistStore = GetPlaylistStore();
                         await newPlaylistStore.SaveAsync(playlistDto);
                         
@@ -877,6 +870,29 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         var collectionService = GetCollectionService();
                         await collectionService.DeleteAsync(existingCollection);
                         await collectionStore.DeleteAsync(guidId);
+                        
+                        // Enqueue refresh operation for the converted playlist (after successful save)
+                        try
+                        {
+                            var listId = playlistDto.Id ?? Guid.NewGuid().ToString();
+                            var queueItem = new RefreshQueueItem
+                            {
+                                ListId = listId,
+                                ListName = playlistDto.Name,
+                                ListType = Core.Enums.SmartListType.Playlist,
+                                OperationType = RefreshOperationType.Create,
+                                ListData = playlistDto,
+                                UserId = playlistDto.UserId,
+                                TriggerType = Core.Enums.RefreshTriggerType.Manual
+                            };
+
+                            _refreshQueueService.EnqueueOperation(queueItem);
+                        }
+                        catch (Exception enqueueEx)
+                        {
+                            // Log but don't fail the conversion - the playlist is already saved
+                            logger.LogWarning(enqueueEx, "Failed to enqueue refresh for converted playlist '{Name}', but conversion succeeded", playlistDto.Name);
+                        }
                         
                         logger.LogInformation("Successfully converted collection to playlist '{Name}' (JellyfinPlaylistId: {Id})", 
                             playlistDto.Name, playlistDto.JellyfinPlaylistId);
@@ -1583,26 +1599,34 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                     try
                     {
-                        // Enqueue refresh operation instead of direct refresh
-                        var listId = playlist.Id ?? Guid.NewGuid().ToString();
-                        var queueItem = new RefreshQueueItem
-                        {
-                            ListId = listId,
-                            ListName = playlist.Name,
-                            ListType = Core.Enums.SmartListType.Playlist,
-                            OperationType = RefreshOperationType.Refresh,
-                            ListData = playlist,
-                            UserId = playlist.UserId,
-                            TriggerType = Core.Enums.RefreshTriggerType.Manual
-                        };
-
-                        _refreshQueueService.EnqueueOperation(queueItem);
-
-                        // Save the configuration (refresh will happen in background)
+                        // Save the configuration first (before enqueuing)
                         await playlistStore.SaveAsync(playlist);
 
                         // Update the auto-refresh cache with the enabled playlist
                         AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
+
+                        // Enqueue refresh operation after successful save
+                        try
+                        {
+                            var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                            var queueItem = new RefreshQueueItem
+                            {
+                                ListId = listId,
+                                ListName = playlist.Name,
+                                ListType = Core.Enums.SmartListType.Playlist,
+                                OperationType = RefreshOperationType.Refresh,
+                                ListData = playlist,
+                                UserId = playlist.UserId,
+                                TriggerType = Core.Enums.RefreshTriggerType.Manual
+                            };
+
+                            _refreshQueueService.EnqueueOperation(queueItem);
+                        }
+                        catch (Exception enqueueEx)
+                        {
+                            // Log but don't fail the enable - the playlist is already saved and enabled
+                            logger.LogWarning(enqueueEx, "Failed to enqueue refresh for enabled playlist '{Name}', but enable succeeded", playlist.Name);
+                        }
 
                         logger.LogInformation("Enabled smart playlist: {PlaylistId} - {PlaylistName}", id, playlist.Name);
                         return Ok(new { message = $"Smart playlist '{playlist.Name}' has been enabled" });
@@ -1625,24 +1649,32 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                     try
                     {
-                        // Enqueue refresh operation instead of direct refresh
-                        var listId = collection.Id ?? Guid.NewGuid().ToString();
-                        var queueItem = new RefreshQueueItem
-                        {
-                            ListId = listId,
-                            ListName = collection.Name,
-                            ListType = Core.Enums.SmartListType.Collection,
-                            OperationType = RefreshOperationType.Refresh,
-                            ListData = collection,
-                            UserId = collection.UserId,
-                            TriggerType = Core.Enums.RefreshTriggerType.Manual
-                        };
-
-                        _refreshQueueService.EnqueueOperation(queueItem);
-
-                        // Save the configuration (refresh will happen in background)
+                        // Save the configuration first (before enqueuing)
                         await collectionStore.SaveAsync(collection);
                         AutoRefreshService.Instance?.UpdateCollectionInCache(collection);
+
+                        // Enqueue refresh operation after successful save
+                        try
+                        {
+                            var listId = collection.Id ?? Guid.NewGuid().ToString();
+                            var queueItem = new RefreshQueueItem
+                            {
+                                ListId = listId,
+                                ListName = collection.Name,
+                                ListType = Core.Enums.SmartListType.Collection,
+                                OperationType = RefreshOperationType.Refresh,
+                                ListData = collection,
+                                UserId = collection.UserId,
+                                TriggerType = Core.Enums.RefreshTriggerType.Manual
+                            };
+
+                            _refreshQueueService.EnqueueOperation(queueItem);
+                        }
+                        catch (Exception enqueueEx)
+                        {
+                            // Log but don't fail the enable - the collection is already saved and enabled
+                            logger.LogWarning(enqueueEx, "Failed to enqueue refresh for enabled collection '{Name}', but enable succeeded", collection.Name);
+                        }
 
                         logger.LogInformation("Enabled smart collection: {CollectionId} - {CollectionName}", id, collection.Name);
                         return Ok(new { message = $"Smart collection '{collection.Name}' has been enabled" });
@@ -1799,7 +1831,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         }
 
                         await playlistStore.SaveAsync(playlist);
-                        return Ok(new { message = $"Smart playlist '{playlist.Name}' has been refreshed successfully" });
+                        return Ok(new { message });
                     }
                     else
                     {
@@ -1825,7 +1857,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         }
 
                         await collectionStore.SaveAsync(collection);
-                        return Ok(new { message = $"Smart collection '{collection.Name}' has been refreshed successfully" });
+                        return Ok(new { message });
                     }
                     else
                     {

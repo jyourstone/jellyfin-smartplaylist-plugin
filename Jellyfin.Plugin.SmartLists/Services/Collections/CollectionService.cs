@@ -97,6 +97,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             ArgumentNullException.ThrowIfNull(dto);
             ArgumentNullException.ThrowIfNull(user);
             ArgumentNullException.ThrowIfNull(allUserMedia);
+            ArgumentNullException.ThrowIfNull(refreshCache);
 
             var (success, message, collectionId) = await ProcessCollectionRefreshAsync(dto, user, allUserMedia, refreshCache, progressCallback, cancellationToken);
 

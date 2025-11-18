@@ -118,8 +118,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 return;
             }
 
-            // Deduplication: Check if this list is already queued
-            if (_queuedItems.ContainsKey(item.ListId))
+            // Deduplication: Use TryAdd as atomic gate to prevent race conditions
+            if (!_queuedItems.TryAdd(item.ListId, item))
             {
                 _logger.LogDebug("List {ListId} ({ListName}) is already queued, skipping duplicate", item.ListId, item.ListName);
                 return;
@@ -127,7 +127,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             item.QueuedAt = DateTime.UtcNow;
             _queue.Enqueue(item);
-            _queuedItems.TryAdd(item.ListId, item);
 
             _logger.LogDebug("Enqueued {OperationType} operation for list {ListId} ({ListName}) of type {ListType}",
                 item.OperationType, item.ListId, item.ListName, item.ListType);

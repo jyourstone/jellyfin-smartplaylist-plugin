@@ -1319,46 +1319,89 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                _logger.LogInformation("Enqueuing {PlaylistCount} smart playlists for auto-refresh", playlistIds.Count);
+                _logger.LogInformation("Processing {PlaylistCount} smart playlists for auto-refresh", playlistIds.Count);
 
                 if (_refreshQueueService == null)
                 {
-                    _logger.LogWarning("RefreshQueueService is not available, cannot enqueue playlists");
-                    return;
+                    _logger.LogWarning("RefreshQueueService is not available, using fallback direct refresh");
                 }
 
-                // Load all playlists and enqueue them
-                var enqueuedCount = 0;
+                // Load all playlists and process them
+                var processedCount = 0;
                 foreach (var playlistId in playlistIds)
                 {
                     try
                     {
                         var playlist = await _playlistStore.GetByIdAsync(Guid.Parse(playlistId));
                         if (playlist != null)
-                    {
-                        var listId = playlist.Id ?? Guid.NewGuid().ToString();
-                        var queueItem = new RefreshQueueItem
                         {
-                            ListId = listId,
-                            ListName = playlist.Name,
-                            ListType = Core.Enums.SmartListType.Playlist,
-                            OperationType = RefreshOperationType.Refresh,
-                            ListData = playlist,
-                            UserId = playlist.UserId,
-                            TriggerType = Core.Enums.RefreshTriggerType.Auto
-                        };
-                        
-                        _refreshQueueService.EnqueueOperation(queueItem);
-                        enqueuedCount++;
+                            var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                            
+                            if (_refreshQueueService != null)
+                            {
+                                // Enqueue for background processing
+                                var queueItem = new RefreshQueueItem
+                                {
+                                    ListId = listId,
+                                    ListName = playlist.Name,
+                                    ListType = Core.Enums.SmartListType.Playlist,
+                                    OperationType = RefreshOperationType.Refresh,
+                                    ListData = playlist,
+                                    UserId = playlist.UserId,
+                                    TriggerType = Core.Enums.RefreshTriggerType.Auto
+                                };
+                                
+                                _refreshQueueService.EnqueueOperation(queueItem);
+                                processedCount++;
+                            }
+                            else
+                            {
+                                // Fallback: use RefreshAsync directly if queue service is not available
+                                _refreshStatusService?.StartOperation(
+                                    listId,
+                                    playlist.Name,
+                                    Core.Enums.SmartListType.Playlist,
+                                    Core.Enums.RefreshTriggerType.Auto,
+                                    0);
+
+                                var result = await _playlistService.RefreshAsync(playlist, progressCallback: null, CancellationToken.None).ConfigureAwait(false);
+
+                                // Complete tracking for fallback case
+                                var elapsedTime = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                                _refreshStatusService?.CompleteOperation(
+                                    listId,
+                                    result.Success,
+                                    elapsedTime,
+                                    result.Success ? null : result.Message);
+
+                                if (result.Success)
+                                {
+                                    playlist.LastRefreshed = DateTime.UtcNow;
+                                    await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
+                                    _logger.LogInformation("Successfully refreshed playlist (fallback): {PlaylistName}", playlist.Name);
+                                    processedCount++;
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("Failed to refresh playlist (fallback): {PlaylistName} - {Message}", playlist.Name, result.Message);
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
-                        {
-                        _logger.LogError(ex, "Error loading playlist {PlaylistId} for auto-refresh", playlistId);
-                        }
+                    {
+                        _logger.LogError(ex, "Error processing playlist {PlaylistId} for auto-refresh", playlistId);
                     }
+                }
 
-                _logger.LogInformation("Enqueued {EnqueuedCount} playlists for auto-refresh", enqueuedCount);
+                if (_refreshQueueService != null)
+                {
+                    _logger.LogInformation("Enqueued {ProcessedCount} playlists for auto-refresh", processedCount);
+                }
+                else
+                {
+                    _logger.LogInformation("Processed {ProcessedCount} playlists for auto-refresh (fallback mode)", processedCount);
+                }
             }
             catch (Exception ex)
             {
@@ -1372,16 +1415,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                _logger.LogInformation("Enqueuing {CollectionCount} smart collections for auto-refresh", collectionIds.Count);
+                _logger.LogInformation("Processing {CollectionCount} smart collections for auto-refresh", collectionIds.Count);
 
                 if (_refreshQueueService == null)
                 {
-                    _logger.LogWarning("RefreshQueueService is not available, cannot enqueue collections");
-                    return;
+                    _logger.LogWarning("RefreshQueueService is not available, using fallback direct refresh");
                 }
 
-                // Load all collections and enqueue them
-                var enqueuedCount = 0;
+                // Load all collections and process them
+                var processedCount = 0;
                 foreach (var collectionId in collectionIds)
                 {
                     try
@@ -1390,28 +1432,72 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         if (collection != null && collection.Enabled)
                         {
                             var listId = collection.Id ?? Guid.NewGuid().ToString();
-                            var queueItem = new RefreshQueueItem
+                            
+                            if (_refreshQueueService != null)
                             {
-                                ListId = listId,
-                                ListName = collection.Name,
-                                ListType = Core.Enums.SmartListType.Collection,
-                                OperationType = RefreshOperationType.Refresh,
-                                ListData = collection,
-                                UserId = collection.UserId,
-                                TriggerType = Core.Enums.RefreshTriggerType.Auto
-                            };
+                                // Enqueue for background processing
+                                var queueItem = new RefreshQueueItem
+                                {
+                                    ListId = listId,
+                                    ListName = collection.Name,
+                                    ListType = Core.Enums.SmartListType.Collection,
+                                    OperationType = RefreshOperationType.Refresh,
+                                    ListData = collection,
+                                    UserId = collection.UserId,
+                                    TriggerType = Core.Enums.RefreshTriggerType.Auto
+                                };
 
-                            _refreshQueueService.EnqueueOperation(queueItem);
-                            enqueuedCount++;
-                        }
-                        }
-                        catch (Exception ex)
-                        {
-                        _logger.LogError(ex, "Error loading collection {CollectionId} for auto-refresh", collectionId);
+                                _refreshQueueService.EnqueueOperation(queueItem);
+                                processedCount++;
+                            }
+                            else
+                            {
+                                // Fallback: use RefreshAsync directly if queue service is not available
+                                _refreshStatusService?.StartOperation(
+                                    listId,
+                                    collection.Name,
+                                    Core.Enums.SmartListType.Collection,
+                                    Core.Enums.RefreshTriggerType.Auto,
+                                    0);
+
+                                var result = await _collectionService.RefreshAsync(collection, progressCallback: null, CancellationToken.None).ConfigureAwait(false);
+
+                                // Complete tracking for fallback case
+                                var elapsedTime = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
+                                _refreshStatusService?.CompleteOperation(
+                                    listId,
+                                    result.Success,
+                                    elapsedTime,
+                                    result.Success ? null : result.Message);
+
+                                if (result.Success)
+                                {
+                                    collection.LastRefreshed = DateTime.UtcNow;
+                                    await _collectionStore.SaveAsync(collection).ConfigureAwait(false);
+                                    _logger.LogInformation("Successfully refreshed collection (fallback): {CollectionName}", collection.Name);
+                                    processedCount++;
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("Failed to refresh collection (fallback): {CollectionName} - {Message}", collection.Name, result.Message);
+                                }
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing collection {CollectionId} for auto-refresh", collectionId);
+                    }
+                }
 
-                _logger.LogInformation("Enqueued {EnqueuedCount} collections for auto-refresh", enqueuedCount);
+                if (_refreshQueueService != null)
+                {
+                    _logger.LogInformation("Enqueued {ProcessedCount} collections for auto-refresh", processedCount);
+                }
+                else
+                {
+                    _logger.LogInformation("Processed {ProcessedCount} collections for auto-refresh (fallback mode)", processedCount);
+                }
             }
             catch (Exception ex)
             {
