@@ -7,6 +7,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartLists.Core.QueryEngine;
 using Jellyfin.Plugin.SmartLists.Core.Models;
+using Jellyfin.Plugin.SmartLists.Services.Shared;
 using Jellyfin.Plugin.SmartLists.Utilities;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -583,7 +584,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
         // Returns the ID's of the items, if order is provided the IDs are sorted.
         public IEnumerable<Guid> FilterPlaylistItems(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
-            User user, IUserDataManager? userDataManager = null, ILogger? logger = null, Action<int, int>? progressCallback = null)
+            User user, RefreshQueueService.RefreshCache refreshCache, IUserDataManager? userDataManager = null, ILogger? logger = null, Action<int, int>? progressCallback = null)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -819,11 +820,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     referenceMetadata = OperandFactory.BuildReferenceMetadata(similarToExpressions, itemsArray, similarityComparisonFields, libraryManager, logger);
                 }
 
-                // CRITICAL: Create RefreshCache once for the entire playlist filtering to enable caching across chunks
-                // This provides significant performance improvement for large playlists by caching expensive operations
-                // like People lookups, Collections lookups, etc. across all chunks
-                var refreshCache = new OperandFactory.RefreshCache();
-                logger?.LogDebug("Created RefreshCache for playlist '{PlaylistName}' - will be shared across all chunks for optimal performance", Name);
+                // RefreshCache is provided as parameter - shared across multiple playlists/collections for the same user
 
                 // OPTIMIZATION: Process items in batches for large libraries to prevent memory issues
                 // Get batch size from configuration, default to 300 if 0 or invalid
@@ -895,7 +892,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     Name, stopwatch.ElapsedMilliseconds, totalItems, results.Count);
 
                 // Check if we need to expand Collections based on media type selection
-                var expandedResults = ExpandCollectionsBasedOnMediaType(results, libraryManager, user, userDataManager, logger);
+                var expandedResults = ExpandCollectionsBasedOnMediaType(results, libraryManager, user, userDataManager, logger, refreshCache);
                 logger?.LogDebug("Playlist '{PlaylistName}' expanded from {OriginalCount} items to {ExpandedCount} items after Collections processing",
                     Name, results.Count, expandedResults.Count);
 
@@ -921,7 +918,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     // Apply limits (items and/or time)
                     if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
                     {
-                        var limitedResults = ApplyLimits(orderedResults, libraryManager, user, userDataManager, logger);
+                        var limitedResults = ApplyLimits(orderedResults, libraryManager, user, userDataManager, refreshCache, logger);
 
                         var hasRandomOrder = Orders.Any(o => o is RandomOrder);
                         if (hasRandomOrder)
@@ -1123,7 +1120,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <returns>True if the series matches Collections rules, false otherwise</returns>
         private bool DoesSeriesMatchCollectionsRules(Series series,
             ILibraryManager libraryManager, User user, IUserDataManager? userDataManager,
-            ILogger? logger, OperandFactory.RefreshCache refreshCache)
+            ILogger? logger, RefreshQueueService.RefreshCache refreshCache)
         {
             try
             {
@@ -1199,7 +1196,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             }
         }
 
-        private List<BaseItem> ExpandCollectionsBasedOnMediaType(List<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager? userDataManager, ILogger? logger)
+        private List<BaseItem> ExpandCollectionsBasedOnMediaType(List<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager? userDataManager, ILogger? logger, RefreshQueueService.RefreshCache refreshCache)
         {
             try
             {
@@ -1241,7 +1238,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                                 logger?.LogDebug("Expanding series '{SeriesName}' with {TotalEpisodes} episodes", series.Name, seriesEpisodes.Count);
 
                                 // Filter episodes against rules (excluding Collections rules since parent series matched)
-                                var matchingEpisodes = FilterEpisodesAgainstRules(seriesEpisodes, libraryManager, user, userDataManager, logger, series);
+                                var matchingEpisodes = FilterEpisodesAgainstRules(seriesEpisodes, libraryManager, user, userDataManager, logger, refreshCache, series);
 
                                 // Add unique matching episodes
                                 int addedCount = 0;
@@ -1312,7 +1309,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             }
         }
 
-        private List<BaseItem> FilterEpisodesAgainstRules(List<BaseItem> episodes, ILibraryManager libraryManager, User user, IUserDataManager? userDataManager, ILogger? logger, Series? parentSeries = null)
+        private List<BaseItem> FilterEpisodesAgainstRules(List<BaseItem> episodes, ILibraryManager libraryManager, User user, IUserDataManager? userDataManager, ILogger? logger, RefreshQueueService.RefreshCache refreshCache, Series? parentSeries = null)
         {
             try
             {
@@ -1339,8 +1336,6 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 var needsParentSeriesGenres = fieldReqs.NeedsParentSeriesGenres;
                 var includeUnwatchedSeries = fieldReqs.IncludeUnwatchedSeries;
                 var additionalUserIds = fieldReqs.AdditionalUserIds;
-
-                var refreshCache = new OperandFactory.RefreshCache();
 
                 logger?.LogDebug("Filtering {EpisodeCount} episodes against playlist rules", episodes.Count);
 
@@ -1794,7 +1789,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <param name="userDataManager">User data manager for operand creation</param>
         /// <param name="logger">Optional logger for debugging</param>
         /// <returns>The limited collection of items</returns>
-        private List<BaseItem> ApplyLimits(IEnumerable<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager? userDataManager, ILogger? logger = null)
+        private List<BaseItem> ApplyLimits(IEnumerable<BaseItem> items, ILibraryManager libraryManager, User user, IUserDataManager? userDataManager, RefreshQueueService.RefreshCache refreshCache, ILogger? logger = null)
         {
             var itemsList = items.ToList();
             if (itemsList.Count == 0) return itemsList;
@@ -1836,7 +1831,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                                 ExtractSeriesName = false,
                                 IncludeUnwatchedSeries = true,
                                 AdditionalUserIds = [],
-                            }, new OperandFactory.RefreshCache());
+                            }, refreshCache);
                             itemMinutes = operand.RuntimeMinutes;
                         }
                     }
@@ -1868,7 +1863,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
         private List<BaseItem> ProcessItemChunk(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager? userDataManager, ILogger? logger, bool needsAudioLanguages, bool needsAudioQuality, bool needsVideoQuality, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsParentSeriesStudios, bool needsParentSeriesGenres, bool needsSimilarTo, bool includeUnwatchedSeries,
-            List<string> additionalUserIds, OperandFactory.ReferenceMetadata? referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules, OperandFactory.RefreshCache refreshCache)
+            List<string> additionalUserIds, OperandFactory.ReferenceMetadata? referenceMetadata, List<string> similarityComparisonFields, List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, bool hasNonExpensiveRules, RefreshQueueService.RefreshCache refreshCache)
         {
             var results = new List<BaseItem>();
 
@@ -1961,7 +1956,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     catch (Exception ex)
                     {
                         logger?.LogWarning(ex, "Error separating rules into cheap and expensive categories. Falling back to simple processing.");
-                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsAudioQuality, needsVideoQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsParentSeriesStudios, needsParentSeriesGenres, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
+                        return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsAudioQuality, needsVideoQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsParentSeriesStudios, needsParentSeriesGenres, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules, refreshCache);
                     }
 
                     if (!hasNonExpensiveRules)
@@ -2303,7 +2298,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 else
                 {
                     // No expensive fields needed - use simple filtering
-                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsAudioQuality, needsVideoQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsParentSeriesStudios, needsParentSeriesGenres, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules);
+                    return ProcessItemsSimple(items, libraryManager, user, userDataManager, logger, needsAudioLanguages, needsAudioQuality, needsVideoQuality, needsPeople, needsCollections, needsNextUnwatched, needsSeriesName, needsParentSeriesTags, needsParentSeriesStudios, needsParentSeriesGenres, includeUnwatchedSeries, additionalUserIds, referenceMetadata, similarityComparisonFields, needsSimilarTo, compiledRules, hasAnyRules, refreshCache);
                 }
 
                 return results;
@@ -2327,12 +2322,9 @@ namespace Jellyfin.Plugin.SmartLists.Core
         private List<BaseItem> ProcessItemsSimple(IEnumerable<BaseItem> items, ILibraryManager libraryManager,
             User user, IUserDataManager? userDataManager, ILogger? logger, bool needsAudioLanguages, bool needsAudioQuality, bool needsVideoQuality, bool needsPeople, bool needsCollections, bool needsNextUnwatched, bool needsSeriesName, bool needsParentSeriesTags, bool needsParentSeriesStudios, bool needsParentSeriesGenres, bool includeUnwatchedSeries,
             List<string> additionalUserIds, OperandFactory.ReferenceMetadata? referenceMetadata, List<string> similarityComparisonFields, bool needsSimilarTo,
-            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules)
+            List<List<Func<Operand, bool>>> compiledRules, bool hasAnyRules, RefreshQueueService.RefreshCache refreshCache)
         {
             var results = new List<BaseItem>();
-
-            // Create per-refresh cache for performance optimization within this simple processing
-            var refreshCache = new OperandFactory.RefreshCache();
 
             // Materialize items to prevent multiple enumerations
             var itemList = items as IList<BaseItem> ?? items.ToList();

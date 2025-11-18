@@ -89,6 +89,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             SmartCollectionDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             Func<SmartCollectionDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
@@ -97,7 +98,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             ArgumentNullException.ThrowIfNull(user);
             ArgumentNullException.ThrowIfNull(allUserMedia);
 
-            var (success, message, collectionId) = await ProcessCollectionRefreshAsync(dto, user, allUserMedia, progressCallback, cancellationToken);
+            var (success, message, collectionId) = await ProcessCollectionRefreshAsync(dto, user, allUserMedia, refreshCache, progressCallback, cancellationToken);
 
             // Update LastRefreshed timestamp for successful refreshes (any trigger)
             // Note: For new collections, LastRefreshed was already set in ProcessCollectionRefreshAsync,
@@ -168,8 +169,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 var allMedia = GetAllMedia(dto.MediaTypes, dto, ownerUser).ToArray();
                 _logger.LogDebug("Found {MediaCount} total media items for collection using owner user {OwnerUsername}", allMedia.Length, ownerUser.Username);
 
+                // Create a temporary RefreshCache for this refresh (fallback path when queue service unavailable)
+                var refreshCache = new RefreshQueueService.RefreshCache();
+
                 // Process collection refresh with the media
-                return await ProcessCollectionRefreshAsync(dto, ownerUser, allMedia, progressCallback, cancellationToken);
+                return await ProcessCollectionRefreshAsync(dto, ownerUser, allMedia, refreshCache, progressCallback, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -191,150 +195,151 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             SmartCollectionDto dto,
             User ownerUser,
             BaseItem[] allMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
         {
-            var smartCollection = new Core.SmartList(dto)
-            {
-                UserManager = _userManager // Set UserManager for Jellyfin 10.11+ user resolution
-            };
-
-            // Check if IncludeCollectionOnly is enabled
-            var hasCollectionsIncludeCollectionOnly = dto.ExpressionSets?.Any(set =>
-                set.Expressions?.Any(expr =>
-                    expr.MemberName == "Collections" && expr.IncludeCollectionOnly == true) == true) == true;
-
-            // If IncludeCollectionOnly is enabled, also query for collections to include in lookup
-            var allCollections = new List<BaseItem>();
-            if (hasCollectionsIncludeCollectionOnly)
-            {
-                _logger.LogDebug("IncludeCollectionOnly is enabled - querying collections for lookup");
-                var collectionQuery = new InternalItemsQuery(ownerUser)
+                var smartCollection = new Core.SmartList(dto)
                 {
-                    IncludeItemTypes = [BaseItemKind.BoxSet],
-                    Recursive = true,
+                    UserManager = _userManager // Set UserManager for Jellyfin 10.11+ user resolution
                 };
-                allCollections = _libraryManager.GetItemsResult(collectionQuery).Items.ToList();
-                _logger.LogDebug("Found {CollectionCount} collections for lookup", allCollections.Count);
-            }
 
-            // Log the collection rules
-            _logger.LogDebug("Processing collection {CollectionName} with {RuleSetCount} rule sets (Owner: {OwnerUser})", 
-                dto.Name, dto.ExpressionSets?.Count ?? 0, ownerUser.Username);
-            
-            // Report initial total items count
-            progressCallback?.Invoke(0, allMedia.Length);
-            
-            // Use owner's user data manager for user-specific filtering (IsPlayed, IsFavorite, etc.)
-            var newItems = smartCollection.FilterPlaylistItems(allMedia, _libraryManager, ownerUser, _userDataManager, _logger, progressCallback).ToArray();
-            _logger.LogDebug("Collection {CollectionName} filtered to {FilteredCount} items from {TotalCount} total items",
-                dto.Name, newItems.Length, allMedia.Length);
+                // Check if IncludeCollectionOnly is enabled
+                var hasCollectionsIncludeCollectionOnly = dto.ExpressionSets?.Any(set =>
+                    set.Expressions?.Any(expr =>
+                        expr.MemberName == "Collections" && expr.IncludeCollectionOnly == true) == true) == true;
 
-            // Create a lookup dictionary for O(1) access while preserving order from newItems
-            // Include both media items and collections (if IncludeCollectionOnly is enabled)
-            var mediaLookup = allMedia.ToDictionary(m => m.Id, m => m);
-            if (hasCollectionsIncludeCollectionOnly)
-            {
-                foreach (var collection in allCollections)
+                // If IncludeCollectionOnly is enabled, also query for collections to include in lookup
+                var allCollections = new List<BaseItem>();
+                if (hasCollectionsIncludeCollectionOnly)
                 {
-                    mediaLookup[collection.Id] = collection;
+                    _logger.LogDebug("IncludeCollectionOnly is enabled - querying collections for lookup");
+                    var collectionQuery = new InternalItemsQuery(ownerUser)
+                    {
+                        IncludeItemTypes = [BaseItemKind.BoxSet],
+                        Recursive = true,
+                    };
+                    allCollections = _libraryManager.GetItemsResult(collectionQuery).Items.ToList();
+                    _logger.LogDebug("Found {CollectionCount} collections for lookup", allCollections.Count);
                 }
-            }
-            var newLinkedChildren = newItems
-                .Where(itemId => mediaLookup.ContainsKey(itemId))
-                .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
-                .ToArray();
 
-            // Calculate collection statistics from the same filtered list used for the actual collection
-            dto.ItemCount = newLinkedChildren.Length;
-            dto.TotalRuntimeMinutes = RuntimeCalculator.CalculateTotalRuntimeMinutes(
-                newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId!.Value).ToArray(),
-                mediaLookup,
-                _logger);
-            _logger.LogDebug("Calculated collection stats: {ItemCount} items, {TotalRuntime} minutes total runtime",
-                dto.ItemCount, dto.TotalRuntimeMinutes);
+                // Log the collection rules
+                _logger.LogDebug("Processing collection {CollectionName} with {RuleSetCount} rule sets (Owner: {OwnerUser})", 
+                    dto.Name, dto.ExpressionSets?.Count ?? 0, ownerUser.Username);
+                
+                // Report initial total items count
+                progressCallback?.Invoke(0, allMedia.Length);
+                
+                // Use owner's user data manager for user-specific filtering (IsPlayed, IsFavorite, etc.)
+                var newItems = smartCollection.FilterPlaylistItems(allMedia, _libraryManager, ownerUser, refreshCache, _userDataManager, _logger, progressCallback).ToArray();
+                _logger.LogDebug("Collection {CollectionName} filtered to {FilteredCount} items from {TotalCount} total items",
+                    dto.Name, newItems.Length, allMedia.Length);
 
-            // Try to find existing collection by Jellyfin collection ID
-            BaseItem? existingCollectionItem = null;
-
-            _logger.LogDebug("Looking for collection: JellyfinCollectionId={JellyfinCollectionId}",
-                dto.JellyfinCollectionId);
-
-            // First try to find by Jellyfin collection ID (most reliable)
-            if (!string.IsNullOrEmpty(dto.JellyfinCollectionId) && Guid.TryParse(dto.JellyfinCollectionId, out var jellyfinCollectionId))
-            {
-                var itemById = _libraryManager.GetItemById(jellyfinCollectionId);
-                if (itemById != null && itemById.GetBaseItemKind() == BaseItemKind.BoxSet)
+                // Create a lookup dictionary for O(1) access while preserving order from newItems
+                // Include both media items and collections (if IncludeCollectionOnly is enabled)
+                var mediaLookup = allMedia.ToDictionary(m => m.Id, m => m);
+                if (hasCollectionsIncludeCollectionOnly)
                 {
-                    existingCollectionItem = itemById;
-                    _logger.LogDebug("Found existing collection by Jellyfin collection ID: {JellyfinCollectionId} - {CollectionName}",
-                        dto.JellyfinCollectionId, itemById.Name);
+                    foreach (var collection in allCollections)
+                    {
+                        mediaLookup[collection.Id] = collection;
+                    }
+                }
+                var newLinkedChildren = newItems
+                    .Where(itemId => mediaLookup.ContainsKey(itemId))
+                    .Select(itemId => new LinkedChild { ItemId = itemId, Path = mediaLookup[itemId].Path })
+                    .ToArray();
+
+                // Calculate collection statistics from the same filtered list used for the actual collection
+                dto.ItemCount = newLinkedChildren.Length;
+                dto.TotalRuntimeMinutes = RuntimeCalculator.CalculateTotalRuntimeMinutes(
+                    newLinkedChildren.Where(lc => lc.ItemId.HasValue).Select(lc => lc.ItemId!.Value).ToArray(),
+                    mediaLookup,
+                    _logger);
+                _logger.LogDebug("Calculated collection stats: {ItemCount} items, {TotalRuntime} minutes total runtime",
+                    dto.ItemCount, dto.TotalRuntimeMinutes);
+
+                // Try to find existing collection by Jellyfin collection ID
+                BaseItem? existingCollectionItem = null;
+
+                _logger.LogDebug("Looking for collection: JellyfinCollectionId={JellyfinCollectionId}",
+                    dto.JellyfinCollectionId);
+
+                // First try to find by Jellyfin collection ID (most reliable)
+                if (!string.IsNullOrEmpty(dto.JellyfinCollectionId) && Guid.TryParse(dto.JellyfinCollectionId, out var jellyfinCollectionId))
+                {
+                    var itemById = _libraryManager.GetItemById(jellyfinCollectionId);
+                    if (itemById != null && itemById.GetBaseItemKind() == BaseItemKind.BoxSet)
+                    {
+                        existingCollectionItem = itemById;
+                        _logger.LogDebug("Found existing collection by Jellyfin collection ID: {JellyfinCollectionId} - {CollectionName}",
+                            dto.JellyfinCollectionId, itemById.Name);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No collection found by Jellyfin collection ID: {JellyfinCollectionId}", dto.JellyfinCollectionId);
+                    }
+                }
+
+                var collectionName = dto.Name;
+
+                if (existingCollectionItem != null && existingCollectionItem.GetBaseItemKind() == BaseItemKind.BoxSet)
+                {
+                    var existingCollection = existingCollectionItem;
+                    _logger.LogDebug("Processing existing collection: {CollectionName} (ID: {CollectionId})", existingCollection.Name, existingCollection.Id);
+
+                    // Check if the collection name needs to be updated
+                    // Apply prefix/suffix formatting to ensure consistency
+                    var currentName = existingCollection.Name;
+                    var expectedName = NameFormatter.FormatPlaylistName(collectionName);
+                    var nameChanged = currentName != expectedName;
+
+                    if (nameChanged)
+                    {
+                        _logger.LogDebug("Collection name changing from '{OldName}' to '{NewName}'", currentName, expectedName);
+                        existingCollection.Name = expectedName;
+                    }
+
+                    // Update the collection if any changes are needed
+                    if (nameChanged)
+                    {
+                        await existingCollection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken);
+                        _logger.LogDebug("Updated existing collection: {CollectionName}", existingCollection.Name);
+                    }
+
+                    // Update the collection items
+                    await UpdateCollectionItemsAsync(existingCollection, newLinkedChildren, dto, cancellationToken);
+
+                    _logger.LogDebug("Successfully updated existing collection: {CollectionName} with {ItemCount} items",
+                        existingCollection.Name, newLinkedChildren.Length);
+
+                    // Trigger library scan to update UI
+                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
+
+                    // Update LastRefreshed timestamp for successful refresh
+                    dto.LastRefreshed = DateTime.UtcNow;
+                    _logger.LogDebug("Updated LastRefreshed timestamp for collection: {CollectionName}", dto.Name);
+
+                    return (true, $"Updated collection '{existingCollection.Name}' with {newLinkedChildren.Length} items", existingCollection.Id.ToString());
                 }
                 else
                 {
-                    _logger.LogDebug("No collection found by Jellyfin collection ID: {JellyfinCollectionId}", dto.JellyfinCollectionId);
-                }
-            }
+                    // Create new collection
+                    _logger.LogDebug("Creating new collection: {CollectionName}", collectionName);
 
-            var collectionName = dto.Name;
+                    var newCollectionId = await CreateNewCollectionAsync(collectionName, newLinkedChildren, dto, cancellationToken);
 
-            if (existingCollectionItem != null && existingCollectionItem.GetBaseItemKind() == BaseItemKind.BoxSet)
-            {
-                var existingCollection = existingCollectionItem;
-                _logger.LogDebug("Processing existing collection: {CollectionName} (ID: {CollectionId})", existingCollection.Name, existingCollection.Id);
+                    // Update the DTO with the new Jellyfin collection ID
+                    dto.JellyfinCollectionId = newCollectionId;
 
-                // Check if the collection name needs to be updated
-                // Apply prefix/suffix formatting to ensure consistency
-                var currentName = existingCollection.Name;
-                var expectedName = NameFormatter.FormatPlaylistName(collectionName);
-                var nameChanged = currentName != expectedName;
+                    // Update LastRefreshed timestamp for successful refresh
+                    dto.LastRefreshed = DateTime.UtcNow;
+                    _logger.LogDebug("Updated LastRefreshed timestamp for collection: {CollectionName}", dto.Name);
 
-                if (nameChanged)
-                {
-                    _logger.LogDebug("Collection name changing from '{OldName}' to '{NewName}'", currentName, expectedName);
-                    existingCollection.Name = expectedName;
-                }
+                    _logger.LogDebug("Successfully created new collection: {CollectionName} with {ItemCount} items",
+                        collectionName, newLinkedChildren.Length);
 
-                // Update the collection if any changes are needed
-                if (nameChanged)
-                {
-                    await existingCollection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken);
-                    _logger.LogDebug("Updated existing collection: {CollectionName}", existingCollection.Name);
-                }
-
-                // Update the collection items
-                await UpdateCollectionItemsAsync(existingCollection, newLinkedChildren, dto, cancellationToken);
-
-                _logger.LogDebug("Successfully updated existing collection: {CollectionName} with {ItemCount} items",
-                    existingCollection.Name, newLinkedChildren.Length);
-
-                // Trigger library scan to update UI
-                LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
-
-                // Update LastRefreshed timestamp for successful refresh
-                dto.LastRefreshed = DateTime.UtcNow;
-                _logger.LogDebug("Updated LastRefreshed timestamp for collection: {CollectionName}", dto.Name);
-
-                return (true, $"Updated collection '{existingCollection.Name}' with {newLinkedChildren.Length} items", existingCollection.Id.ToString());
-            }
-            else
-            {
-                // Create new collection
-                _logger.LogDebug("Creating new collection: {CollectionName}", collectionName);
-
-                var newCollectionId = await CreateNewCollectionAsync(collectionName, newLinkedChildren, dto, cancellationToken);
-
-                // Update the DTO with the new Jellyfin collection ID
-                dto.JellyfinCollectionId = newCollectionId;
-
-                // Update LastRefreshed timestamp for successful refresh
-                dto.LastRefreshed = DateTime.UtcNow;
-                _logger.LogDebug("Updated LastRefreshed timestamp for collection: {CollectionName}", dto.Name);
-
-                _logger.LogDebug("Successfully created new collection: {CollectionName} with {ItemCount} items",
-                    collectionName, newLinkedChildren.Length);
-
-                return (true, $"Created collection '{collectionName}' with {newLinkedChildren.Length} items", newCollectionId);
+                    return (true, $"Created collection '{collectionName}' with {newLinkedChildren.Length} items", newCollectionId);
             }
         }
 

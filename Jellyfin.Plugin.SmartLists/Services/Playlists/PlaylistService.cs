@@ -61,6 +61,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         /// <param name="dto">The playlist DTO to process</param>
         /// <param name="user">The user for this playlist (already resolved)</param>
         /// <param name="allUserMedia">All media items for the user (can be cached)</param>
+        /// <param name="refreshCache">RefreshCache instance for caching expensive operations</param>
         /// <param name="saveCallback">Optional callback to save the DTO when JellyfinPlaylistId is updated</param>
         /// <param name="progressCallback">Optional callback to report progress (processed items, total items)</param>
         /// <param name="cancellationToken">Cancellation token</param>
@@ -69,6 +70,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             SmartPlaylistDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             Func<SmartPlaylistDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
@@ -77,7 +79,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             ArgumentNullException.ThrowIfNull(user);
             ArgumentNullException.ThrowIfNull(allUserMedia);
 
-            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, progressCallback, cancellationToken);
+            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, refreshCache, _logger, saveCallback, progressCallback, cancellationToken);
 
             // Update LastRefreshed timestamp for successful refreshes (any trigger)
             // Note: For new playlists, LastRefreshed was already set in ProcessPlaylistRefreshAsync before the saveCallback,
@@ -106,6 +108,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             SmartPlaylistDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             ILogger logger,
             Func<SmartPlaylistDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
@@ -135,7 +138,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 // Report initial total items count
                 progressCallback?.Invoke(0, allUserMedia.Length);
 
-                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, logger, progressCallback).ToArray();
+                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, refreshCache, _userDataManager, logger, progressCallback).ToArray();
                 logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items",
                     dto.Name, newItems.Length, allUserMedia.Length);
 
@@ -323,7 +326,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 var allUserMedia = GetAllUserMedia(user, dto.MediaTypes, dto).ToArray();
 
-                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, progressCallback, cancellationToken);
+                // Create a temporary RefreshCache for this refresh (fallback path when queue service unavailable)
+                var refreshCache = new RefreshQueueService.RefreshCache();
+
+                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, refreshCache, _logger, null, progressCallback, cancellationToken);
 
                 // Update LastRefreshed timestamp for successful refreshes (any trigger)
                 if (success)

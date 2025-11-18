@@ -113,7 +113,8 @@
             }
             
             // Show success notification after all API calls complete
-            if (successCount > 0) {
+            // Skip success notification for enable actions (info notification already shown)
+            if (successCount > 0 && options.actionType !== 'enable') {
                 const message = options.formatSuccessMessage 
                     ? options.formatSuccessMessage(successCount, page)
                     : 'Successfully ' + options.actionType + ' ' + successCount + ' list(s).';
@@ -195,10 +196,13 @@
             }
             
             // Show success notification after API call completes
-            const message = options.formatSuccessMessage 
-                ? options.formatSuccessMessage(listName, page)
-                : 'List "' + listName + '" ' + options.actionType + ' successfully.';
-            SmartLists.showNotification(message, 'success');
+            // Skip success notification for enable actions (info notification already shown)
+            if (options.actionType !== 'enable') {
+                const message = options.formatSuccessMessage 
+                    ? options.formatSuccessMessage(listName, page)
+                    : 'List "' + listName + '" ' + options.actionType + ' successfully.';
+                SmartLists.showNotification(message, 'success');
+            }
             
             // Reload list after API call completes to show accurate updated values
             if (SmartLists.loadPlaylistList) {

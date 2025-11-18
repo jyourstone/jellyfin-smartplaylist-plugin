@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.SmartLists.Core.Constants;
+using RefreshQueueServiceRefreshCache = Jellyfin.Plugin.SmartLists.Services.Shared.RefreshQueueService.RefreshCache;
+using CategorizedPeople = Jellyfin.Plugin.SmartLists.Services.Shared.RefreshQueueService.CategorizedPeople;
 
 namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 {
@@ -148,54 +150,6 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo?> _indexPropertyCache = new();
         private static readonly ConcurrentDictionary<Type, System.Reflection.PropertyInfo?> _seriesIdPropertyCache = new();
 
-        // Per-refresh cache classes for better performance within single playlist processing
-        // Uses ConcurrentDictionary for thread-safety during parallel processing
-        public sealed class RefreshCache
-        {
-            public ConcurrentDictionary<(Guid SeriesId, Guid UserId), BaseItem[]> SeriesEpisodes { get; } = new();
-            public ConcurrentDictionary<(Guid SeriesId, Guid UserId, bool IncludeUnwatchedSeries), (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = new();
-            public ConcurrentDictionary<Guid, List<string>> ItemCollections { get; } = new();
-            public BaseItem[]? AllCollections { get; set; } = null;
-            public ConcurrentDictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = new();
-            public ConcurrentDictionary<Guid, string> SeriesNameById { get; } = new();
-            public ConcurrentDictionary<Guid, List<string>> SeriesTagsById { get; } = new();
-            public ConcurrentDictionary<Guid, List<string>> SeriesStudiosById { get; } = new();
-            public ConcurrentDictionary<Guid, List<string>> SeriesGenresById { get; } = new();
-            public ConcurrentDictionary<Guid, CategorizedPeople> ItemPeople { get; } = new();
-            public bool PeopleCacheInitialized { get; set; } = false;
-        }
-
-        /// <summary>
-        /// Holds categorized people data for an item.
-        /// </summary>
-        public sealed class CategorizedPeople
-        {
-            public List<string> AllPeople { get; set; } = [];
-            public List<string> Actors { get; set; } = [];
-            public List<string> Directors { get; set; } = [];
-            public List<string> Composers { get; set; } = [];
-            public List<string> Writers { get; set; } = [];
-            public List<string> GuestStars { get; set; } = [];
-            public List<string> Producers { get; set; } = [];
-            public List<string> Conductors { get; set; } = [];
-            public List<string> Lyricists { get; set; } = [];
-            public List<string> Arrangers { get; set; } = [];
-            public List<string> SoundEngineers { get; set; } = [];
-            public List<string> Mixers { get; set; } = [];
-            public List<string> Remixers { get; set; } = [];
-            public List<string> Creators { get; set; } = [];
-            public List<string> PersonArtists { get; set; } = []; // Person role "Artist" (different from music Artists field)
-            public List<string> PersonAlbumArtists { get; set; } = []; // Person role "Album Artist" (different from music AlbumArtists field)
-            public List<string> Authors { get; set; } = [];
-            public List<string> Illustrators { get; set; } = [];
-            public List<string> Pencilers { get; set; } = [];
-            public List<string> Inkers { get; set; } = [];
-            public List<string> Colorists { get; set; } = [];
-            public List<string> Letterers { get; set; } = [];
-            public List<string> CoverArtists { get; set; } = [];
-            public List<string> Editors { get; set; } = [];
-            public List<string> Translators { get; set; } = [];
-        }
 
         /// <summary>
         /// Sets fallback values for user-specific data when userData is unavailable or invalid.
@@ -540,13 +494,27 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Extracts audio languages from media streams.
         /// </summary>
-        private static void ExtractAudioLanguages(Operand operand, BaseItem baseItem, ILogger? logger)
+        private static void ExtractAudioLanguages(Operand operand, BaseItem baseItem, RefreshQueueServiceRefreshCache? cache, ILogger? logger)
         {
             operand.AudioLanguages = [];
             try
             {
-                // Use shared helper to extract media streams
-                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                // Check cache first if available
+                IEnumerable<object> mediaStreams;
+                if (cache != null && cache.MediaStreamsCache.TryGetValue(baseItem.Id, out var cachedStreams))
+                {
+                    mediaStreams = cachedStreams;
+                }
+                else
+                {
+                    // Use shared helper to extract media streams
+                    mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                    // Cache the result if cache is available
+                    if (cache != null)
+                    {
+                        cache.MediaStreamsCache[baseItem.Id] = mediaStreams;
+                    }
+                }
 
                 // Process found streams
                 foreach (var stream in mediaStreams)
@@ -586,13 +554,24 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Extracts resolution from media streams.
         /// </summary>
-        private static void ExtractResolution(Operand operand, BaseItem baseItem, ILogger? logger)
+        private static void ExtractResolution(Operand operand, BaseItem baseItem, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.Resolution = string.Empty;
             try
             {
-                // Use shared helper to extract media streams
-                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                // Check cache first
+                IEnumerable<object> mediaStreams;
+                if (cache.MediaStreamsCache.TryGetValue(baseItem.Id, out var cachedStreams))
+                {
+                    mediaStreams = cachedStreams;
+                }
+                else
+                {
+                    // Use shared helper to extract media streams
+                    mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                    // Cache the result
+                    cache.MediaStreamsCache[baseItem.Id] = mediaStreams;
+                }
 
                 // Process found streams to find the highest resolution video stream
                 int maxHeight = 0;
@@ -713,7 +692,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Extracts audio quality information from media streams (bitrate, sample rate, bit depth, codec, channels).
         /// </summary>
-        private static void ExtractAudioQuality(Operand operand, BaseItem baseItem, ILogger? logger)
+        private static void ExtractAudioQuality(Operand operand, BaseItem baseItem, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.AudioBitrate = 0;
             operand.AudioSampleRate = 0;
@@ -724,8 +703,19 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
             try
             {
-                // Use shared helper to extract media streams
-                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                // Check cache first
+                IEnumerable<object> mediaStreams;
+                if (cache.MediaStreamsCache.TryGetValue(baseItem.Id, out var cachedStreams))
+                {
+                    mediaStreams = cachedStreams;
+                }
+                else
+                {
+                    // Use shared helper to extract media streams
+                    mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                    // Cache the result
+                    cache.MediaStreamsCache[baseItem.Id] = mediaStreams;
+                }
 
                 // Process found streams to find the first audio stream with quality information
                 foreach (var stream in mediaStreams)
@@ -838,7 +828,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Extracts video quality information from media streams (codec, profile, range, range type).
         /// </summary>
-        private static void ExtractVideoQuality(Operand operand, BaseItem baseItem, ILogger? logger)
+        private static void ExtractVideoQuality(Operand operand, BaseItem baseItem, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.VideoCodec = string.Empty;
             operand.VideoProfile = string.Empty;
@@ -847,8 +837,19 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
             try
             {
-                // Use shared helper to extract media streams
-                var mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                // Check cache first
+                IEnumerable<object> mediaStreams;
+                if (cache.MediaStreamsCache.TryGetValue(baseItem.Id, out var cachedStreams))
+                {
+                    mediaStreams = cachedStreams;
+                }
+                else
+                {
+                    // Use shared helper to extract media streams
+                    mediaStreams = TryGetAllMediaStreams(baseItem, logger);
+                    // Cache the result
+                    cache.MediaStreamsCache[baseItem.Id] = mediaStreams;
+                }
 
                 // Process found streams to find the first video stream with quality information
                 foreach (var stream in mediaStreams)
@@ -963,7 +964,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Extracts the series name for episodes with per-refresh caching.
         /// </summary>
-        private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static void ExtractSeriesName(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.SeriesName = string.Empty;
             try
@@ -1026,7 +1027,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// Extracts the parent series tags for episodes with per-refresh caching.
         /// This is an expensive operation as it requires a database lookup, so caching is critical for performance.
         /// </summary>
-        private static void ExtractParentSeriesTags(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static void ExtractParentSeriesTags(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.ParentSeriesTags = [];
             try
@@ -1088,7 +1089,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// Extracts the parent series studios for episodes with per-refresh caching.
         /// This is an expensive operation as it requires a database lookup, so caching is critical for performance.
         /// </summary>
-        private static void ExtractParentSeriesStudios(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static void ExtractParentSeriesStudios(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.ParentSeriesStudios = [];
             try
@@ -1150,7 +1151,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// Extracts the parent series genres for episodes with per-refresh caching.
         /// This is an expensive operation as it requires a database lookup, so caching is critical for performance.
         /// </summary>
-        private static void ExtractParentSeriesGenres(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static void ExtractParentSeriesGenres(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.ParentSeriesGenres = [];
             try
@@ -1211,7 +1212,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Extracts people (actors, directors, producers, etc.) associated with the item.
         /// </summary>
-        private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static void ExtractPeople(Operand operand, BaseItem baseItem, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             // Initialize all people fields
             operand.People = [];
@@ -1380,30 +1381,32 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Preloads people data for all items in parallel to improve performance.
         /// </summary>
-        public static void PreloadPeopleCache(ILibraryManager libraryManager, IEnumerable<BaseItem> items, RefreshCache cache, ILogger? logger)
+        public static void PreloadPeopleCache(ILibraryManager libraryManager, IEnumerable<BaseItem> items, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             if (cache == null || items == null)
             {
                 return;
             }
 
-            // Skip if already initialized
-            if (cache.PeopleCacheInitialized)
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var itemList = items.ToList();
+            
+            // Skip if cache already has entries for these items
+            var itemsToProcess = itemList.Where(item => !cache.ItemPeople.ContainsKey(item.Id)).ToList();
+            if (itemsToProcess.Count == 0)
             {
-                logger?.LogDebug("People cache already initialized, skipping preload");
+                logger?.LogDebug("People cache already contains all items, skipping preload");
                 return;
             }
 
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var itemList = items.ToList();
-            logger?.LogDebug("Preloading People cache for {Count} items sequentially", itemList.Count);
+            logger?.LogDebug("Preloading People cache for {Count} items sequentially", itemsToProcess.Count);
 
             // Dictionary for collecting results
             var tempCache = new Dictionary<Guid, CategorizedPeople>();
             var processedCount = 0;
 
             // Process items sequentially
-            foreach (var item in itemList)
+            foreach (var item in itemsToProcess)
             {
                 try
                 {
@@ -1443,7 +1446,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                         if (processedCount % 100 == 0)
                         {
                             logger?.LogDebug("People cache progress: {Processed}/{Total} items",
-                                processedCount, itemList.Count);
+                                processedCount, itemsToProcess.Count);
                         }
                     }
                 }
@@ -1459,11 +1462,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 cache.ItemPeople[kvp.Key] = kvp.Value;
             }
 
-            cache.PeopleCacheInitialized = true;
             stopwatch.Stop();
 
             logger?.LogDebug("People cache initialization completed in {TotalMs}ms for {Count} items",
-                stopwatch.ElapsedMilliseconds, itemList.Count);
+                stopwatch.ElapsedMilliseconds, itemsToProcess.Count);
         }
 
         /// <summary>
@@ -1541,7 +1543,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         // Clean API using options object - no more boolean flag proliferation!
         public static Operand GetMediaType(ILibraryManager libraryManager, BaseItem baseItem, User user,
             IUserDataManager? userDataManager, IUserManager userManager, ILogger? logger, MediaTypeExtractionOptions options,
-            RefreshCache cache)
+            RefreshQueueServiceRefreshCache cache)
         {
 
             // Extract options for easier access
@@ -1557,8 +1559,22 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             var includeUnwatchedSeries = options.IncludeUnwatchedSeries;
             var additionalUserIds = options.AdditionalUserIds;
 
-            // Get user data first for Jellyfin 10.11 compatibility
-            var userData = userDataManager?.GetUserData(user, baseItem);
+            // Get user data first for Jellyfin 10.11 compatibility - check cache first
+            MediaBrowser.Controller.Entities.UserItemData? userData = null;
+            var userDataCacheKey = (baseItem.Id, user.Id);
+            if (cache.UserDataCache.TryGetValue(userDataCacheKey, out var cachedUserData))
+            {
+                userData = cachedUserData;
+            }
+            else if (userDataManager != null)
+            {
+                userData = userDataManager.GetUserData(user, baseItem);
+                // Cache the result
+                if (userData != null)
+                {
+                    cache.UserDataCache[userDataCacheKey] = userData;
+                }
+            }
 
             // Cache the IsPlayed result to avoid multiple expensive calls
             var isPlayed = userData != null ? baseItem.IsPlayed(user, userData) : false;
@@ -1647,8 +1663,22 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                 var targetUser = GetUserById(userManager, userGuid);
                                 if (targetUser != null)
                                 {
-                                    // Get user data first for Jellyfin 10.11 compatibility
-                                    var targetUserData = userDataManager.GetUserData(targetUser, baseItem);
+                                    // Get user data first for Jellyfin 10.11 compatibility - check cache first
+                                    MediaBrowser.Controller.Entities.UserItemData? targetUserData = null;
+                                    var targetUserDataCacheKey = (baseItem.Id, userGuid);
+                                    if (cache.UserDataCache.TryGetValue(targetUserDataCacheKey, out var cachedTargetUserData))
+                                    {
+                                        targetUserData = cachedTargetUserData;
+                                    }
+                                    else
+                                    {
+                                        targetUserData = userDataManager.GetUserData(targetUser, baseItem);
+                                        // Cache the result
+                                        if (targetUserData != null)
+                                        {
+                                            cache.UserDataCache[targetUserDataCacheKey] = targetUserData;
+                                        }
+                                    }
                                     var userIsPlayed = targetUserData != null ? baseItem.IsPlayed(targetUser, targetUserData) : false;
                                     operand.IsPlayedByUser[userId] = userIsPlayed;
 
@@ -1729,7 +1759,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             // Extract audio languages from media streams - only when needed for performance
             if (extractAudioLanguages)
             {
-                ExtractAudioLanguages(operand, baseItem, logger);
+                ExtractAudioLanguages(operand, baseItem, cache, logger);
             }
             else
             {
@@ -1739,7 +1769,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             // Extract audio quality from media streams - only when needed for performance
             if (extractAudioQuality)
             {
-                ExtractAudioQuality(operand, baseItem, logger);
+                ExtractAudioQuality(operand, baseItem, cache, logger);
             }
             else
             {
@@ -1757,9 +1787,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 // Extract resolution/framerate/video quality only for items that can have video streams
                 if (MediaTypes.VideoStreamCapableSet.Contains(operand.ItemType))
                 {
-                    ExtractResolution(operand, baseItem, logger);
+                    ExtractResolution(operand, baseItem, cache, logger);
                     ExtractFramerate(operand, baseItem, logger);
-                    ExtractVideoQuality(operand, baseItem, logger);
+                    ExtractVideoQuality(operand, baseItem, cache, logger);
                 }
                 else
                 {
@@ -1995,7 +2025,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <param name="cache">Per-refresh cache to store results</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>Array of all episodes in the series</returns>
-        private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             var key = (seriesId, user.Id);
             if (cache.SeriesEpisodes.TryGetValue(key, out var cachedEpisodes))
@@ -2047,7 +2077,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <param name="logger">Logger for debugging</param>
         /// <returns>True if this episode is the next unwatched episode for the user</returns>
         private static bool IsNextUnwatchedEpisodeCached(BaseItem[] allEpisodes, BaseItem currentEpisode, User user,
-            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshCache cache, IUserDataManager userDataManager, ILogger? logger)
+            int currentSeason, int currentEpisodeNumber, bool includeUnwatchedSeries, Guid seriesId, RefreshQueueServiceRefreshCache cache, IUserDataManager userDataManager, ILogger? logger)
         {
             // Use per-refresh cache to avoid O(E²) recomputation for large series
             // Cache is scoped to single refresh, so no staleness issues across refreshes
@@ -2192,7 +2222,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <param name="cache">Per-refresh cache to avoid repeated queries</param>
         /// <param name="logger">Logger for debugging</param>
         /// <returns>List of collection names this item belongs to</returns>
-        private static List<string> ExtractCollections(BaseItem baseItem, User user, ILibraryManager libraryManager, RefreshCache cache, ILogger? logger)
+        private static List<string> ExtractCollections(BaseItem baseItem, User user, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             // Check if we already have the result cached for this item
             if (cache.ItemCollections.TryGetValue(baseItem.Id, out var cachedCollections))
@@ -2748,7 +2778,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                             try
                             {
                                 var tempOperand = new Operand(item.Name);
-                                ExtractAudioLanguages(tempOperand, item, logger);
+                                ExtractAudioLanguages(tempOperand, item, null, logger); // No cache available in BuildReferenceMetadata
                                 if (tempOperand.AudioLanguages != null && tempOperand.AudioLanguages.Count > 0)
                                 {
                                     referenceMetadata.AudioLanguages.AddRange(tempOperand.AudioLanguages);

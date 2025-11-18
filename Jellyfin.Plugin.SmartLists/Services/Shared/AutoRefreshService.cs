@@ -1335,21 +1335,21 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         var playlist = await _playlistStore.GetByIdAsync(Guid.Parse(playlistId));
                         if (playlist != null)
+                    {
+                        var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
                         {
-                            var listId = playlist.Id ?? Guid.NewGuid().ToString();
-                            var queueItem = new RefreshQueueItem
-                            {
-                                ListId = listId,
-                                ListName = playlist.Name,
-                                ListType = Core.Enums.SmartListType.Playlist,
-                                OperationType = RefreshOperationType.Refresh,
-                                ListData = playlist,
-                                UserId = playlist.UserId,
-                                TriggerType = Core.Enums.RefreshTriggerType.Auto
-                            };
-
-                            _refreshQueueService.EnqueueOperation(queueItem);
-                            enqueuedCount++;
+                            ListId = listId,
+                            ListName = playlist.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = playlist,
+                            UserId = playlist.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Auto
+                        };
+                        
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        enqueuedCount++;
                         }
                     }
                     catch (Exception ex)

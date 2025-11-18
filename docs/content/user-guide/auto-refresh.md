@@ -25,7 +25,7 @@ Configure individual lists with their own refresh schedules:
 - **Per-list scheduling**: Each list can have its own schedule
 - **Schedule types**: Daily, Weekly, Monthly, Yearly, or Interval
 - **Flexible intervals**: 15 min, 30 min, 1 h, 2 h, 3 h, 4 h, 6 h, 8 h, 12 h, or 24 h
-- **Backward compatible**: Existing lists continue using legacy Jellyfin scheduled tasks
+- ~~**Backward compatible**: Existing lists continue using legacy Jellyfin scheduled tasks~~ (Deprecated)
 
 ### Schedule Options
 

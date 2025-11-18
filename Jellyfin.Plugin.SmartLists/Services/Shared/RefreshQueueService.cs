@@ -69,6 +69,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         // Cache management - per-user caches to avoid rebuilding when switching between users
         private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>> _userCaches = new();
+        
+        // Per-user RefreshCache for expensive operations (People, Collections, Series metadata, UserData, MediaStreams)
+        private readonly ConcurrentDictionary<Guid, RefreshCache> _refreshCaches = new();
 
         // Background processing
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -380,11 +383,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var fileSystem = new SmartListFileSystem(_applicationPaths);
             var playlistStore = new PlaylistStore(fileSystem);
 
+            // Get or create RefreshCache for this user
+            var refreshCache = GetOrCreateRefreshCacheForUser(userId);
+            _logger.LogDebug("Using RefreshCache for user '{Username}' (shared across playlists/collections)", user.Username);
+
             // Process refresh
             var (success, message, playlistId) = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                 dto,
                 user,
                 playlistSpecificMedia,
+                refreshCache,
                 async (updatedDto) => await playlistStore.SaveAsync(updatedDto),
                 progressCallback,
                 cancellationToken);
@@ -456,11 +464,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var fileSystem = new SmartListFileSystem(_applicationPaths);
             var collectionStore = new CollectionStore(fileSystem);
 
+            // Get or create RefreshCache for this user
+            var refreshCache = GetOrCreateRefreshCacheForUser(ownerUserId);
+            _logger.LogDebug("Using RefreshCache for user '{Username}' (shared across playlists/collections)", ownerUser.Username);
+
             // Process refresh with cached media
             var (success, message, collectionId) = await collectionService.ProcessPlaylistRefreshWithCachedMediaAsync(
                 dto,
                 ownerUser,
                 collectionSpecificMedia,
+                refreshCache,
                 async (updatedDto) => await collectionStore.SaveAsync(updatedDto),
                 progressCallback,
                 cancellationToken);
@@ -497,6 +510,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
+        /// Gets or creates a RefreshCache for the specified user
+        /// </summary>
+        private RefreshCache GetOrCreateRefreshCacheForUser(Guid userId)
+        {
+            return _refreshCaches.GetOrAdd(userId, _ => new RefreshCache());
+        }
+
+        /// <summary>
         /// Clears all user caches
         /// </summary>
         private void ClearCache()
@@ -510,6 +531,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 }
                 _userCaches.Clear();
                 _logger.LogDebug("Cleared all user caches ({UserCount} users)", userCount);
+            }
+
+            if (_refreshCaches.Count > 0)
+            {
+                var refreshCacheCount = _refreshCaches.Count;
+                _refreshCaches.Clear();
+                _logger.LogDebug("Cleared all refresh caches ({RefreshCacheCount} users)", refreshCacheCount);
             }
         }
 
@@ -565,6 +593,62 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             ClearCache();
 
             _logger.LogInformation("RefreshQueueService disposed");
+        }
+
+        /// <summary>
+        /// Per-refresh cache for expensive operations within single playlist processing.
+        /// Uses ConcurrentDictionary for thread-safety during parallel processing.
+        /// </summary>
+        public sealed class RefreshCache
+        {
+            public ConcurrentDictionary<(Guid SeriesId, Guid UserId), BaseItem[]> SeriesEpisodes { get; } = new();
+            public ConcurrentDictionary<(Guid SeriesId, Guid UserId, bool IncludeUnwatchedSeries), (Guid? NextEpisodeId, int Season, int Episode)> NextUnwatched { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> ItemCollections { get; } = new();
+            public BaseItem[]? AllCollections { get; set; } = null;
+            public ConcurrentDictionary<Guid, HashSet<Guid>> CollectionMembershipCache { get; } = new();
+            public ConcurrentDictionary<Guid, string> SeriesNameById { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> SeriesTagsById { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> SeriesStudiosById { get; } = new();
+            public ConcurrentDictionary<Guid, List<string>> SeriesGenresById { get; } = new();
+            public ConcurrentDictionary<Guid, CategorizedPeople> ItemPeople { get; } = new();
+            
+            // User-specific data cache - keyed by (ItemId, UserId) to support playlist owner + additional users in rules
+            public ConcurrentDictionary<(Guid ItemId, Guid UserId), MediaBrowser.Controller.Entities.UserItemData> UserDataCache { get; } = new();
+            
+            // Media streams cache - keyed by ItemId only (user-agnostic)
+            public ConcurrentDictionary<Guid, IEnumerable<object>> MediaStreamsCache { get; } = new();
+        }
+
+        /// <summary>
+        /// Holds categorized people data for an item.
+        /// </summary>
+        public sealed class CategorizedPeople
+        {
+            public List<string> AllPeople { get; set; } = [];
+            public List<string> Actors { get; set; } = [];
+            public List<string> Directors { get; set; } = [];
+            public List<string> Composers { get; set; } = [];
+            public List<string> Writers { get; set; } = [];
+            public List<string> GuestStars { get; set; } = [];
+            public List<string> Producers { get; set; } = [];
+            public List<string> Conductors { get; set; } = [];
+            public List<string> Lyricists { get; set; } = [];
+            public List<string> Arrangers { get; set; } = [];
+            public List<string> SoundEngineers { get; set; } = [];
+            public List<string> Mixers { get; set; } = [];
+            public List<string> Remixers { get; set; } = [];
+            public List<string> Creators { get; set; } = [];
+            public List<string> PersonArtists { get; set; } = []; // Person role "Artist" (different from music Artists field)
+            public List<string> PersonAlbumArtists { get; set; } = []; // Person role "Album Artist" (different from music AlbumArtists field)
+            public List<string> Authors { get; set; } = [];
+            public List<string> Illustrators { get; set; } = [];
+            public List<string> Pencilers { get; set; } = [];
+            public List<string> Inkers { get; set; } = [];
+            public List<string> Colorists { get; set; } = [];
+            public List<string> Letterers { get; set; } = [];
+            public List<string> CoverArtists { get; set; } = [];
+            public List<string> Editors { get; set; } = [];
+            public List<string> Translators { get; set; } = [];
         }
     }
 }
