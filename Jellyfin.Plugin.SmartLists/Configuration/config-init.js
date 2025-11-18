@@ -1206,7 +1206,7 @@
     SmartLists.refreshAllPlaylists = function() {
         // Show notification that refresh has started
         var statusLink = SmartLists.createStatusPageLink('status page');
-        var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+        var refreshMessage = 'List refresh started, check the ' + statusLink + ' for progress.';
         SmartLists.showNotification(refreshMessage, 'info', { html: true });
         
         // Start the refresh operation (fire and forget - status page will show progress)

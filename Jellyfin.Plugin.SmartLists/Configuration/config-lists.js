@@ -217,6 +217,17 @@
             // Store editingPlaylistId for error recovery
             const editingPlaylistId = editState.editMode ? editState.editingPlaylistId : null;
             
+            // Show notification that refresh has started BEFORE making API call
+            // (refresh happens automatically on backend, so we show notification immediately)
+            var statusLink = SmartLists.createStatusPageLink('status page');
+            var refreshMessage = 'List refresh started, check the ' + statusLink + ' for progress.';
+            SmartLists.showNotification(refreshMessage, 'info', { html: true });
+            
+            // Start aggressive polling on status page to catch the operation
+            if (window.SmartLists && window.SmartLists.Status && window.SmartLists.Status.startAggressivePolling) {
+                window.SmartLists.Status.startAggressivePolling();
+            }
+            
             // Make API call - wait for response before updating UI
             apiClient.ajax({
                 type: requestType,
@@ -250,11 +261,6 @@
                     listTypeName + ' "' + playlistName + '" updated successfully.' : 
                     listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
                 SmartLists.showNotification(message, 'success');
-                
-                // Show notification that refresh has started (refresh happens automatically on backend)
-                var statusLink = SmartLists.createStatusPageLink('status page');
-                var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
-                SmartLists.showNotification(refreshMessage, 'info', { html: true });
                 
                 // Exit edit mode and redirect after successful API call
                 if (editState.editMode) {
@@ -777,7 +783,7 @@
         
         // Show notification that refresh has started
         var statusLink = SmartLists.createStatusPageLink('status page');
-        var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+        var refreshMessage = 'List refresh started, check the ' + statusLink + ' for progress.';
         SmartLists.showNotification(refreshMessage, 'info', { html: true });
         
         // Start aggressive polling on status page to catch the operation
