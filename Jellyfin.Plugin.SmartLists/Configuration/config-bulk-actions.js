@@ -59,7 +59,7 @@
         }
         
         // Process sequentially in background
-        // Enable/disable operations call RefreshWithTimeoutAsync which uses a global lock
+        // Enable/disable operations enqueue refresh operations through the queue system
         // Processing sequentially ensures each operation completes before the next starts
         let successCount = 0;
         let errorCount = 0;

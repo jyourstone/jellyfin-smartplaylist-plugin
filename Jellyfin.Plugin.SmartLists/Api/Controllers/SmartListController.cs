@@ -48,7 +48,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         IUserDataManager userDataManager,
         IProviderManager providerManager,
         IManualRefreshService manualRefreshService,
-        RefreshStatusService refreshStatusService) : ControllerBase
+        RefreshStatusService refreshStatusService,
+        RefreshQueueService refreshQueueService) : ControllerBase
     {
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
         private readonly IUserManager _userManager = userManager;
@@ -59,6 +60,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         private readonly IProviderManager _providerManager = providerManager;
         private readonly IManualRefreshService _manualRefreshService = manualRefreshService;
         private readonly RefreshStatusService _refreshStatusService = refreshStatusService;
+        private readonly RefreshQueueService _refreshQueueService = refreshQueueService;
 
         private Services.Playlists.PlaylistStore GetPlaylistStore()
         {
@@ -512,67 +514,26 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after creating playlist '{PlaylistName}'", playlist.Name);
 
-                logger.LogDebug("Calling RefreshWithTimeoutAsync for {PlaylistName}", playlist.Name);
-                var playlistService = GetPlaylistService();
-                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(
-                    createdPlaylist, 
-                    progressCallback: null,
-                    refreshStatusService: _refreshStatusService,
-                    triggerType: Core.Enums.RefreshTriggerType.Manual,
-                    cancellationToken: default);
-
-                // If refresh was successful, save the Jellyfin playlist ID
-                if (success && !string.IsNullOrEmpty(jellyfinPlaylistId))
+                // Enqueue refresh operation instead of direct refresh
+                logger.LogDebug("Enqueuing refresh for newly created playlist {PlaylistName}", playlist.Name);
+                var listId = createdPlaylist.Id ?? Guid.NewGuid().ToString();
+                var queueItem = new RefreshQueueItem
                 {
-                    createdPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
-                    await playlistStore.SaveAsync(createdPlaylist);
-                    logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}",
-                        jellyfinPlaylistId, createdPlaylist.Name);
-                }
+                    ListId = listId,
+                    ListName = createdPlaylist.Name,
+                    ListType = Core.Enums.SmartListType.Playlist,
+                    OperationType = RefreshOperationType.Create,
+                    ListData = createdPlaylist,
+                    UserId = createdPlaylist.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
+
+                _refreshQueueService.EnqueueOperation(queueItem);
+
+                // Return the created playlist immediately (refresh will happen in background)
+                // Note: JellyfinPlaylistId will be populated after the queue processes the refresh
                 stopwatch.Stop();
-
-                if (!success)
-                {
-                    logger.LogWarning("Failed to refresh newly created playlist {PlaylistName}: {Message}", playlist.Name, message);
-                    // Still return the created playlist but log the warning
-                    return CreatedAtAction(nameof(GetSmartList), new { id = createdPlaylist.Id }, createdPlaylist);
-                }
-
-                // DEBUG: Check the MediaType of the created Jellyfin playlist
-                try
-                {
-                    if (Guid.TryParse(createdPlaylist.UserId, out var userId))
-                    {
-                        var user = _userManager.GetUserById(userId);
-                        if (user != null)
-                        {
-                            var smartPlaylistName = NameFormatter.FormatPlaylistName(createdPlaylist.Name);
-                            var query = new InternalItemsQuery(user)
-                            {
-                                IncludeItemTypes = [BaseItemKind.Playlist],
-                                Recursive = true,
-                                Name = smartPlaylistName,
-                            };
-                            var jellyfinPlaylist = _libraryManager.GetItemsResult(query).Items.OfType<Playlist>().FirstOrDefault();
-
-                            if (jellyfinPlaylist != null)
-                            {
-                                var mediaTypeProperty = jellyfinPlaylist.GetType().GetProperty("MediaType");
-                                var currentMediaType = mediaTypeProperty?.GetValue(jellyfinPlaylist)?.ToString() ?? "Unknown";
-
-                                // Log MediaType for debugging - note this is a known Jellyfin limitation
-                                logger.LogDebug("Created Jellyfin playlist '{PlaylistName}' has MediaType: {MediaType}.",
-                                    smartPlaylistName, currentMediaType);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogDebug(ex, "Error checking MediaType of created playlist");
-                }
-
-                logger.LogDebug("Finished RefreshWithTimeoutAsync for {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
+                logger.LogInformation("Created smart playlist '{PlaylistName}' and enqueued for refresh", playlist.Name);
 
                 return CreatedAtAction(nameof(GetSmartList), new { id = createdPlaylist.Id }, createdPlaylist);
             }
@@ -761,32 +722,26 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after creating collection '{CollectionName}'", collection.Name);
 
-                logger.LogDebug("Calling RefreshWithTimeoutAsync for {CollectionName}", collection.Name);
-                var collectionService = GetCollectionService();
-                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(
-                    createdCollection, 
-                    progressCallback: null,
-                    refreshStatusService: _refreshStatusService,
-                    triggerType: Core.Enums.RefreshTriggerType.Manual,
-                    cancellationToken: default);
-
-                // If refresh was successful, save the Jellyfin collection ID
-                if (success && !string.IsNullOrEmpty(jellyfinCollectionId))
+                // Enqueue refresh operation instead of direct refresh
+                logger.LogDebug("Enqueuing refresh for newly created collection {CollectionName}", collection.Name);
+                var listId = createdCollection.Id ?? Guid.NewGuid().ToString();
+                var queueItem = new RefreshQueueItem
                 {
-                    createdCollection.JellyfinCollectionId = jellyfinCollectionId;
-                    await collectionStore.SaveAsync(createdCollection);
-                    logger.LogDebug("Saved Jellyfin collection ID {JellyfinCollectionId} for smart collection {CollectionName}",
-                        jellyfinCollectionId, createdCollection.Name);
-                }
+                    ListId = listId,
+                    ListName = createdCollection.Name,
+                    ListType = Core.Enums.SmartListType.Collection,
+                    OperationType = RefreshOperationType.Create,
+                    ListData = createdCollection,
+                    UserId = createdCollection.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
+
+                _refreshQueueService.EnqueueOperation(queueItem);
+
+                // Return the created collection immediately (refresh will happen in background)
+                // Note: JellyfinCollectionId will be populated after the queue processes the refresh
                 stopwatch.Stop();
-
-                if (!success)
-                {
-                    logger.LogWarning("Failed to refresh newly created collection {CollectionName}: {Message}", collection.Name, message);
-                    return CreatedAtAction(nameof(GetSmartList), new { id = createdCollection.Id }, createdCollection);
-                }
-
-                logger.LogDebug("Finished RefreshWithTimeoutAsync for {CollectionName} in {ElapsedTime}ms", collection.Name, stopwatch.ElapsedMilliseconds);
+                logger.LogInformation("Created smart collection '{CollectionName}' and enqueued for refresh", collection.Name);
 
                 return CreatedAtAction(nameof(GetSmartList), new { id = createdCollection.Id }, createdCollection);
             }
@@ -845,22 +800,22 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         collectionDto.FileName = existingPlaylist.FileName; // Keep the same filename
                         collectionDto.JellyfinCollectionId = null; // Clear old Jellyfin ID
                         
-                        // Create the new Jellyfin collection first (this populates JellyfinCollectionId)
-                        var collectionService = GetCollectionService();
-                        var refreshResult = await collectionService.RefreshWithTimeoutAsync(
-                            collectionDto,
-                            progressCallback: null,
-                            refreshStatusService: _refreshStatusService,
-                            triggerType: Core.Enums.RefreshTriggerType.Manual,
-                            cancellationToken: default);
-                        
-                        if (!refreshResult.Success)
+                        // Enqueue refresh operation for the converted collection
+                        var listId = collectionDto.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
                         {
-                            logger.LogError("Failed to create collection during conversion: {Message}", refreshResult.Message);
-                            return StatusCode(StatusCodes.Status500InternalServerError, $"Failed to create collection: {refreshResult.Message}");
-                        }
+                            ListId = listId,
+                            ListName = collectionDto.Name,
+                            ListType = Core.Enums.SmartListType.Collection,
+                            OperationType = RefreshOperationType.Create,
+                            ListData = collectionDto,
+                            UserId = collectionDto.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
+
+                        _refreshQueueService.EnqueueOperation(queueItem);
                         
-                        // Save to collection store with the populated JellyfinCollectionId
+                        // Save to collection store (refresh will happen in background)
                         var newCollectionStore = GetCollectionStore();
                         await newCollectionStore.SaveAsync(collectionDto);
                         
@@ -899,22 +854,22 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             playlistDto.UserId = existingCollection.UserId; // Carry over from collection
                         }
                         
-                        // Create the new Jellyfin playlist first (this populates JellyfinPlaylistId)
-                        var playlistService = GetPlaylistService();
-                        var refreshResult = await playlistService.RefreshWithTimeoutAsync(
-                            playlistDto,
-                            progressCallback: null,
-                            refreshStatusService: _refreshStatusService,
-                            triggerType: Core.Enums.RefreshTriggerType.Manual,
-                            cancellationToken: default);
-                        
-                        if (!refreshResult.Success)
+                        // Enqueue refresh operation for the converted playlist
+                        var listId = playlistDto.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
                         {
-                            logger.LogError("Failed to create playlist during conversion: {Message}", refreshResult.Message);
-                            return StatusCode(StatusCodes.Status500InternalServerError, $"Failed to create playlist: {refreshResult.Message}");
-                        }
+                            ListId = listId,
+                            ListName = playlistDto.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Create,
+                            ListData = playlistDto,
+                            UserId = playlistDto.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
+
+                        _refreshQueueService.EnqueueOperation(queueItem);
                         
-                        // Save to playlist store with the populated JellyfinPlaylistId
+                        // Save to playlist store (refresh will happen in background)
                         var newPlaylistStore = GetPlaylistStore();
                         await newPlaylistStore.SaveAsync(playlistDto);
                         
@@ -1062,34 +1017,24 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after updating playlist '{PlaylistName}'", playlist.Name);
 
-                // Immediately update the Jellyfin playlist using the single playlist service with timeout
-                var playlistService = GetPlaylistService();
-                var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(
-                    updatedPlaylist, 
-                    progressCallback: null,
-                    refreshStatusService: _refreshStatusService,
-                    triggerType: Core.Enums.RefreshTriggerType.Manual,
-                    cancellationToken: default);
-
-                // If refresh was successful, save the Jellyfin playlist ID
-                if (success && !string.IsNullOrEmpty(jellyfinPlaylistId))
+                // Enqueue refresh operation instead of direct refresh
+                logger.LogDebug("Enqueuing refresh for updated playlist {PlaylistName}", playlist.Name);
+                var listId = updatedPlaylist.Id ?? Guid.NewGuid().ToString();
+                var queueItem = new RefreshQueueItem
                 {
-                    updatedPlaylist.JellyfinPlaylistId = jellyfinPlaylistId;
-                    await playlistStore.SaveAsync(updatedPlaylist);
-                    logger.LogDebug("Saved Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}",
-                        jellyfinPlaylistId, updatedPlaylist.Name);
-                }
+                    ListId = listId,
+                    ListName = updatedPlaylist.Name,
+                    ListType = Core.Enums.SmartListType.Playlist,
+                    OperationType = RefreshOperationType.Edit,
+                    ListData = updatedPlaylist,
+                    UserId = updatedPlaylist.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
+
+                _refreshQueueService.EnqueueOperation(queueItem);
 
                 stopwatch.Stop();
-
-                if (!success)
-                {
-                    logger.LogWarning("Failed to refresh updated playlist {PlaylistName}: {Message}", playlist.Name, message);
-                    // Still return the updated playlist but log the warning
-                    return Ok(updatedPlaylist);
-                }
-
-                logger.LogInformation("Updated SmartList: {PlaylistName} in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
+                logger.LogInformation("Updated SmartList: {PlaylistName} and enqueued for refresh in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
 
                 return Ok(updatedPlaylist);
             }
@@ -1252,33 +1197,24 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after updating collection '{CollectionName}'", collection.Name);
 
-                // Immediately update the Jellyfin collection using the single collection service with timeout
-                var collectionService = GetCollectionService();
-                var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(
-                    updatedCollection, 
-                    progressCallback: null,
-                    refreshStatusService: _refreshStatusService,
-                    triggerType: Core.Enums.RefreshTriggerType.Manual,
-                    cancellationToken: default);
-
-                // If refresh was successful, save the Jellyfin collection ID
-                if (success && !string.IsNullOrEmpty(jellyfinCollectionId))
+                // Enqueue refresh operation instead of direct refresh
+                logger.LogDebug("Enqueuing refresh for updated collection {CollectionName}", collection.Name);
+                var listId = updatedCollection.Id ?? Guid.NewGuid().ToString();
+                var queueItem = new RefreshQueueItem
                 {
-                    updatedCollection.JellyfinCollectionId = jellyfinCollectionId;
-                    await collectionStore.SaveAsync(updatedCollection);
-                    logger.LogDebug("Saved Jellyfin collection ID {JellyfinCollectionId} for smart collection {CollectionName}",
-                        jellyfinCollectionId, updatedCollection.Name);
-                }
+                    ListId = listId,
+                    ListName = updatedCollection.Name,
+                    ListType = Core.Enums.SmartListType.Collection,
+                    OperationType = RefreshOperationType.Edit,
+                    ListData = updatedCollection,
+                    UserId = updatedCollection.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
+
+                _refreshQueueService.EnqueueOperation(queueItem);
 
                 stopwatch.Stop();
-
-                if (!success)
-                {
-                    logger.LogWarning("Failed to refresh updated collection {CollectionName}: {Message}", collection.Name, message);
-                    return Ok(updatedCollection);
-                }
-
-                logger.LogInformation("Updated SmartList: {CollectionName} in {ElapsedTime}ms", collection.Name, stopwatch.ElapsedMilliseconds);
+                logger.LogInformation("Updated SmartList: {CollectionName} and enqueued for refresh in {ElapsedTime}ms", collection.Name, stopwatch.ElapsedMilliseconds);
 
                 return Ok(updatedCollection);
             }
@@ -1647,38 +1583,22 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                     try
                     {
-                        var playlistService = GetPlaylistService();
-                        var (success, message, jellyfinPlaylistId) = await playlistService.RefreshWithTimeoutAsync(
-                            playlist,
-                            progressCallback: null,
-                            refreshStatusService: _refreshStatusService,
-                            triggerType: Core.Enums.RefreshTriggerType.Manual,
-                            cancellationToken: default);
-
-                        if (!success)
+                        // Enqueue refresh operation instead of direct refresh
+                        var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
                         {
-                            // Check if it's a lock conflict
-                            if (message.Contains("already in progress"))
-                            {
-                                logger.LogWarning("Failed to enable playlist {PlaylistName}: Refresh lock could not be acquired", playlist.Name);
-                                playlist.Enabled = originalEnabledState;
-                                return StatusCode(StatusCodes.Status409Conflict, "A refresh is already in progress. Please try again shortly.");
-                            }
+                            ListId = listId,
+                            ListName = playlist.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = playlist,
+                            UserId = playlist.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
 
-                            logger.LogWarning("Failed to enable playlist {PlaylistName}: {Message}", playlist.Name, message);
-                            playlist.Enabled = originalEnabledState;
-                            throw new InvalidOperationException(message);
-                        }
+                        _refreshQueueService.EnqueueOperation(queueItem);
 
-                        // If refresh was successful, save the Jellyfin playlist ID
-                        if (!string.IsNullOrEmpty(jellyfinPlaylistId))
-                        {
-                            playlist.JellyfinPlaylistId = jellyfinPlaylistId;
-                            logger.LogDebug("Captured Jellyfin playlist ID {JellyfinPlaylistId} for smart playlist {PlaylistName}",
-                                jellyfinPlaylistId, playlist.Name);
-                        }
-
-                        // Only save the configuration if the Jellyfin operation succeeds
+                        // Save the configuration (refresh will happen in background)
                         await playlistStore.SaveAsync(playlist);
 
                         // Update the auto-refresh cache with the enabled playlist
@@ -1705,34 +1625,22 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                     try
                     {
-                        var collectionService = GetCollectionService();
-                        var (success, message, jellyfinCollectionId) = await collectionService.RefreshWithTimeoutAsync(
-                            collection,
-                            progressCallback: null,
-                            refreshStatusService: _refreshStatusService,
-                            triggerType: Core.Enums.RefreshTriggerType.Manual,
-                            cancellationToken: default);
-
-                        if (!success)
+                        // Enqueue refresh operation instead of direct refresh
+                        var listId = collection.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
                         {
-                            // Check if it's a lock conflict
-                            if (message.Contains("already in progress"))
-                            {
-                                logger.LogWarning("Failed to enable collection {CollectionName}: Refresh lock could not be acquired", collection.Name);
-                                collection.Enabled = originalEnabledState;
-                                return StatusCode(StatusCodes.Status409Conflict, "A refresh is already in progress. Please try again shortly.");
-                            }
+                            ListId = listId,
+                            ListName = collection.Name,
+                            ListType = Core.Enums.SmartListType.Collection,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = collection,
+                            UserId = collection.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
 
-                            logger.LogWarning("Failed to enable collection {CollectionName}: {Message}", collection.Name, message);
-                            collection.Enabled = originalEnabledState;
-                            throw new InvalidOperationException(message);
-                        }
+                        _refreshQueueService.EnqueueOperation(queueItem);
 
-                        if (!string.IsNullOrEmpty(jellyfinCollectionId))
-                        {
-                            collection.JellyfinCollectionId = jellyfinCollectionId;
-                        }
-
+                        // Save the configuration (refresh will happen in background)
                         await collectionStore.SaveAsync(collection);
                         AutoRefreshService.Instance?.UpdateCollectionInCache(collection);
 
@@ -2489,6 +2397,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     {
                         totalLists = statistics.TotalLists,
                         ongoingOperationsCount = statistics.OngoingOperationsCount,
+                        queuedOperationsCount = statistics.QueuedOperationsCount,
                         lastRefreshTime = statistics.LastRefreshTime?.ToString("o"),
                         averageRefreshDuration = statistics.AverageRefreshDuration?.TotalSeconds,
                         successfulRefreshes = statistics.SuccessfulRefreshes,

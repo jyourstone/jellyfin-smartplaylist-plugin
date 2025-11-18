@@ -245,15 +245,13 @@
                     });
                 }
                 
-                // Success - now update UI
-                const message = editState.editMode ? 
-                    listTypeName + ' "' + playlistName + '" updated successfully.' : 
-                    listTypeName + ' "' + playlistName + '" created. The ' + listTypeName.toLowerCase() + ' has been generated.';
-                SmartLists.showNotification(message, 'success');
-                
+                // Success - operations are queued and will be processed in the background
                 // Show notification that refresh has started (refresh happens automatically on backend)
                 var statusLink = SmartLists.createStatusPageLink('status page');
-                var refreshMessage = 'Playlist refresh started, check the ' + statusLink + ' for progress.';
+                var refreshMessage = (editState.editMode ? 
+                    listTypeName + ' "' + playlistName + '" updated. ' : 
+                    listTypeName + ' "' + playlistName + '" created. ') + 
+                    'Refresh started, check the ' + statusLink + ' for progress.';
                 SmartLists.showNotification(refreshMessage, 'info', { html: true });
                 
                 // Exit edit mode and redirect after successful API call
@@ -812,7 +810,8 @@
                 });
             }
             
-            SmartLists.showNotification('List "' + playlistName + '" has been refreshed successfully.', 'success');
+            // Success - operation is queued and will be processed in the background
+            // No success notification needed since status page shows progress
             
             // Auto-refresh the playlist list to show updated LastRefreshed timestamp
             const page = document.querySelector('.SmartListsConfigurationPage');

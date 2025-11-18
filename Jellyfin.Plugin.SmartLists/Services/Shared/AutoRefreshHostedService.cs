@@ -67,7 +67,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     _logger.LogWarning("RefreshStatusService not found in DI container, created new instance. This may cause status tracking issues.");
                 }
 
-                _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, collectionStore, collectionService, userDataManager, userManager, refreshStatusService);
+                // Get RefreshQueueService from DI - it should be registered as singleton
+                var refreshQueueService = _serviceProvider.GetService<RefreshQueueService>();
+
+                _autoRefreshService = new AutoRefreshService(libraryManager, autoRefreshLogger, playlistStore, playlistService, collectionStore, collectionService, userDataManager, userManager, refreshStatusService, refreshQueueService);
 
                 _logger.LogInformation("SmartLists AutoRefreshService started successfully (schedule timer initialized)");
             }

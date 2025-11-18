@@ -97,10 +97,27 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly ILogger<RefreshStatusService> _logger;
         private readonly ConcurrentDictionary<string, RefreshOperation> _ongoingOperations = new();
         private readonly ConcurrentDictionary<string, RefreshHistoryEntry> _refreshHistory = new();
+        private RefreshQueueService? _refreshQueueService;
 
         public RefreshStatusService(ILogger<RefreshStatusService> logger)
         {
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Sets the RefreshQueueService reference (called during service registration)
+        /// </summary>
+        public void SetRefreshQueueService(RefreshQueueService refreshQueueService)
+        {
+            _refreshQueueService = refreshQueueService;
+        }
+
+        /// <summary>
+        /// Gets the count of operations waiting in the queue (excludes currently processing item)
+        /// </summary>
+        public int GetQueuedCount()
+        {
+            return _refreshQueueService?.GetQueueCount() ?? 0;
         }
 
         /// <summary>
@@ -324,6 +341,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 TotalLists = history.Count,
                 OngoingOperationsCount = ongoing.Count,
+                QueuedOperationsCount = GetQueuedCount(),
                 LastRefreshTime = history.OrderByDescending(h => h.EndTime ?? h.StartTime).FirstOrDefault()?.EndTime,
                 AverageRefreshDuration = history.Any() 
                     ? TimeSpan.FromMilliseconds(history.Average(h => h.Duration.TotalMilliseconds))
@@ -361,6 +379,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
     {
         public int TotalLists { get; set; }
         public int OngoingOperationsCount { get; set; }
+        public int QueuedOperationsCount { get; set; }
         public DateTime? LastRefreshTime { get; set; }
         public TimeSpan? AverageRefreshDuration { get; set; }
         public int SuccessfulRefreshes { get; set; }

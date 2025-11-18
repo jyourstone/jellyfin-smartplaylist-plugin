@@ -1235,15 +1235,8 @@
                     throw new Error(errorMessage);
                 });
             }
-            // Parse success response to get completion message
-            return response.json();
-        }).then(function(result) {
-            // Show success notification with completion message
-            if (result && result.message) {
-                SmartLists.showNotification(result.message, 'success');
-            } else {
-                SmartLists.showNotification('All lists refreshed successfully.', 'success');
-            }
+            // Success - operations are queued and will be processed in the background
+            // No success notification needed since status page shows progress
         }).catch(async function(err) {
             // Extract error message using utility function
             const errorMessage = await SmartLists.extractErrorMessage(
