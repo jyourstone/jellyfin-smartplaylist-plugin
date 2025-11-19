@@ -20,6 +20,19 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             ILogger? logger,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
+            return GetPlayCountFromUserData(item, user, userDataManager, logger, refreshCache);
+        }
+
+        /// <summary>
+        /// Shared logic for extracting PlayCount from user data
+        /// </summary>
+        public static int GetPlayCountFromUserData(
+            BaseItem item,
+            User user,
+            IUserDataManager? userDataManager,
+            ILogger? logger,
+            RefreshQueueService.RefreshCache? refreshCache = null)
+        {
             ArgumentNullException.ThrowIfNull(item);
             try
             {
@@ -68,39 +81,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             ILogger? logger,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            ArgumentNullException.ThrowIfNull(item);
-            try
-            {
-                object? userData = null;
-                
-                // Try to get user data from cache if available
-                if (refreshCache != null && refreshCache.UserDataCache.TryGetValue((item.Id, user.Id), out var cachedUserData))
-                {
-                    userData = cachedUserData;
-                }
-                else if (userDataManager != null)
-                {
-                    // Fallback to fetching from userDataManager
-                    userData = userDataManager.GetUserData(user, item);
-                }
-
-                // Use reflection to safely extract PlayCount from userData
-                var playCountProp = userData?.GetType().GetProperty("PlayCount");
-                if (playCountProp != null)
-                {
-                    var playCountValue = playCountProp.GetValue(userData);
-                    if (playCountValue is int pc)
-                        return pc;
-                    if (playCountValue != null)
-                        return Convert.ToInt32(playCountValue, System.Globalization.CultureInfo.InvariantCulture);
-                }
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                logger?.LogDebug(ex, "Error extracting PlayCount from userData for item {ItemName}", item.Name);
-                return 0;
-            }
+            return PlayCountOrder.GetPlayCountFromUserData(item, user, userDataManager, logger, refreshCache);
         }
     }
 }

@@ -11,12 +11,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartLists.Core.Orders
 {
-    public class SimilarityOrder : Order
+    /// <summary>
+    /// Base class for similarity ordering to eliminate duplication
+    /// </summary>
+    public abstract class SimilarityOrderBase : Order
     {
-        public override string Name => "Similarity Descending";
+        protected abstract bool IsDescending { get; }
 
-        // Scores dictionary will be set by SmartList before sorting
-        public ConcurrentDictionary<Guid, float> Scores { get; set; } = null!;
+        // Initialize to empty dictionary instead of null-suppression
+        public ConcurrentDictionary<Guid, float> Scores { get; set; } = new();
 
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
@@ -27,10 +30,12 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
                 return items;
             }
 
-            // Sort by similarity score (highest first), then by name for deterministic ordering when scores are equal
-            return items
-                .OrderByDescending(item => Scores.TryGetValue(item.Id, out var score) ? score : 0)
-                .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
+            // Sort by similarity score, then by name for deterministic ordering when scores are equal
+            var orderedItems = IsDescending
+                ? items.OrderByDescending(item => Scores.TryGetValue(item.Id, out var score) ? score : 0)
+                : items.OrderBy(item => Scores.TryGetValue(item.Id, out var score) ? score : 0);
+
+            return orderedItems.ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
         }
 
         public override IEnumerable<BaseItem> OrderBy(
@@ -40,7 +45,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             ILogger? logger,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            // refreshCache not used for similarity ordering
+            // Similarity ordering only depends on pre-computed scores, so user context and cache are not needed
             return OrderBy(items);
         }
 
@@ -60,53 +65,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         }
     }
 
-    public class SimilarityOrderAsc : Order
+    public class SimilarityOrder : SimilarityOrderBase
+    {
+        public override string Name => "Similarity Descending";
+        protected override bool IsDescending => true;
+    }
+
+    public class SimilarityOrderAsc : SimilarityOrderBase
     {
         public override string Name => "Similarity Ascending";
-
-        // Scores dictionary will be set by SmartList before sorting
-        public ConcurrentDictionary<Guid, float> Scores { get; set; } = null!;
-
-        public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
-        {
-            if (items == null) return [];
-            if (Scores == null || Scores.Count == 0)
-            {
-                // No scores available, return items unsorted
-                return items;
-            }
-
-            // Sort by similarity score (lowest first), then by name for deterministic ordering when scores are equal
-            return items
-                .OrderBy(item => Scores.TryGetValue(item.Id, out var score) ? score : 0)
-                .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
-        }
-
-        public override IEnumerable<BaseItem> OrderBy(
-            IEnumerable<BaseItem> items,
-            User user,
-            IUserDataManager? userDataManager,
-            ILogger? logger,
-            RefreshQueueService.RefreshCache? refreshCache = null)
-        {
-            // refreshCache not used for similarity ordering
-            return OrderBy(items);
-        }
-
-        public override IComparable GetSortKey(
-            BaseItem item,
-            User user,
-            IUserDataManager? userDataManager,
-            ILogger? logger,
-            Dictionary<Guid, int>? itemRandomKeys = null,
-            RefreshQueueService.RefreshCache? refreshCache = null)
-        {
-            if (Scores != null && Scores.TryGetValue(item.Id, out var score))
-            {
-                return score;
-            }
-            return 0f;
-        }
+        protected override bool IsDescending => false;
     }
 }
 

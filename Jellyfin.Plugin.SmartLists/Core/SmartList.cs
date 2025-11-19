@@ -2503,6 +2503,56 @@ namespace Jellyfin.Plugin.SmartLists.Core
         }
 
         /// <summary>
+        /// Gets the disc number for an audio item
+        /// </summary>
+        /// <param name="item">The BaseItem to get the disc number for</param>
+        /// <returns>The disc number or 0 if not available</returns>
+        public static int GetDiscNumber(BaseItem item)
+        {
+            try
+            {
+                // For audio items, ParentIndexNumber represents the disc number
+                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
+                if (parentIndexProperty != null)
+                {
+                    var value = parentIndexProperty.GetValue(item);
+                    if (value is int discNum)
+                        return discNum;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Gets the track number for an audio item
+        /// </summary>
+        /// <param name="item">The BaseItem to get the track number for</param>
+        /// <returns>The track number or 0 if not available</returns>
+        public static int GetTrackNumber(BaseItem item)
+        {
+            try
+            {
+                // For audio items, IndexNumber represents the track number
+                var indexProperty = item.GetType().GetProperty("IndexNumber");
+                if (indexProperty != null)
+                {
+                    var value = indexProperty.GetValue(item);
+                    if (value is int trackNum)
+                        return trackNum;
+                }
+            }
+            catch
+            {
+                // Ignore errors and return 0
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// Common articles in multiple languages to strip from names during sorting
         /// </summary>
         private static readonly string[] Articles =

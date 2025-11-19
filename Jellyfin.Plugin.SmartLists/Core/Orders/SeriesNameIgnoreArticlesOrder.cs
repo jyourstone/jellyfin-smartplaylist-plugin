@@ -23,8 +23,18 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             ILogger? logger = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            ArgumentNullException.ThrowIfNull(item);
+            return ComputeSeriesNameIgnoreArticlesSortValue(item, refreshCache, logger);
+        }
 
+        /// <summary>
+        /// Shared logic for computing series name with articles stripped
+        /// </summary>
+        public static string ComputeSeriesNameIgnoreArticlesSortValue(
+            BaseItem item,
+            RefreshQueueService.RefreshCache? refreshCache = null,
+            ILogger? logger = null)
+        {
+            ArgumentNullException.ThrowIfNull(item);
             // Try to get Series SortName from cache first (for episodes)
             if (refreshCache != null && item is Episode episode && episode.SeriesId != Guid.Empty)
             {
@@ -54,9 +64,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
                         return OrderUtilities.StripLeadingArticles(seriesName ?? "");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore errors and return empty string
+                logger?.LogWarning(ex, "Failed to retrieve SeriesName property via reflection for item {ItemId}", item.Id);
             }
             return "";
         }
@@ -75,42 +85,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             ILogger? logger = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            ArgumentNullException.ThrowIfNull(item);
-
-            // Try to get Series SortName from cache first (for episodes)
-            if (refreshCache != null && item is Episode episode && episode.SeriesId != Guid.Empty)
-            {
-                if (refreshCache.SeriesSortNameById.TryGetValue(episode.SeriesId, out var cachedSortName) && !string.IsNullOrEmpty(cachedSortName))
-                {
-                    return cachedSortName;
-                }
-                if (refreshCache.SeriesNameById.TryGetValue(episode.SeriesId, out var cachedName))
-                {
-                    return OrderUtilities.StripLeadingArticles(cachedName);
-                }
-            }
-
-            // Fallback to item properties
-            // Use SortName if set (as-is, without article stripping), otherwise strip articles from SeriesName
-            if (!string.IsNullOrEmpty(item.SortName))
-                return item.SortName;
-
-            try
-            {
-                // SeriesName property for episodes
-                var seriesNameProperty = item.GetType().GetProperty("SeriesName");
-                if (seriesNameProperty != null)
-                {
-                    var value = seriesNameProperty.GetValue(item);
-                    if (value is string seriesName)
-                        return OrderUtilities.StripLeadingArticles(seriesName ?? "");
-                }
-            }
-            catch
-            {
-                // Ignore errors and return empty string
-            }
-            return "";
+            return SeriesNameIgnoreArticlesOrder.ComputeSeriesNameIgnoreArticlesSortValue(item, refreshCache, logger);
         }
     }
 }

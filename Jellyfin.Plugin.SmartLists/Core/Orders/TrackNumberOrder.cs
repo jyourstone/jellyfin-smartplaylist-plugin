@@ -21,8 +21,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             // Sort by Album -> Disc Number -> Track Number -> Name
             return items
                 .OrderBy(item => item.Album ?? "", OrderUtilities.SharedNaturalComparer)
-                .ThenBy(item => GetDiscNumber(item))
-                .ThenBy(item => GetTrackNumber(item))
+                .ThenBy(item => OrderUtilities.GetDiscNumber(item))
+                .ThenBy(item => OrderUtilities.GetTrackNumber(item))
                 .ThenBy(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
         }
 
@@ -47,50 +47,18 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         {
             // For TrackNumberOrder - complex multi-level sort: Album -> Disc -> Track -> Name
             var album = item.Album ?? "";
-            var discNumber = GetDiscNumber(item);
-            var trackNumber = GetTrackNumber(item);
+            var discNumber = OrderUtilities.GetDiscNumber(item);
+            var trackNumber = OrderUtilities.GetTrackNumber(item);
             var name = item.Name ?? "";
-            return new ComparableTuple4<string, int, int, string>(album, discNumber, trackNumber, name, OrderUtilities.SharedNaturalComparer);
-        }
-
-        private static int GetDiscNumber(BaseItem item)
-        {
-            try
-            {
-                // For audio items, ParentIndexNumber represents the disc number
-                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
-                if (parentIndexProperty != null)
-                {
-                    var value = parentIndexProperty.GetValue(item);
-                    if (value is int discNum)
-                        return discNum;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
-        }
-
-        private static int GetTrackNumber(BaseItem item)
-        {
-            try
-            {
-                // For audio items, IndexNumber represents the track number
-                var indexProperty = item.GetType().GetProperty("IndexNumber");
-                if (indexProperty != null)
-                {
-                    var value = indexProperty.GetValue(item);
-                    if (value is int trackNum)
-                        return trackNum;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
+            
+            // FIX: Pass SharedNaturalComparer for both album AND name to match OrderBy behavior
+            return new ComparableTuple4<string, int, int, string>(
+                album, discNumber, trackNumber, name,
+                OrderUtilities.SharedNaturalComparer,  // for album
+                null,  // for discNumber (int uses default)
+                null,  // for trackNumber (int uses default)
+                OrderUtilities.SharedNaturalComparer   // for name - THIS WAS MISSING
+            );
         }
     }
 
@@ -105,8 +73,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             // Sort by Album (descending) -> Disc Number (descending) -> Track Number (descending) -> Name (descending)
             return items
                 .OrderByDescending(item => item.Album ?? "", OrderUtilities.SharedNaturalComparer)
-                .ThenByDescending(item => GetDiscNumber(item))
-                .ThenByDescending(item => GetTrackNumber(item))
+                .ThenByDescending(item => OrderUtilities.GetDiscNumber(item))
+                .ThenByDescending(item => OrderUtilities.GetTrackNumber(item))
                 .ThenByDescending(item => item.Name ?? "", OrderUtilities.SharedNaturalComparer);
         }
 
@@ -131,50 +99,18 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         {
             // For TrackNumberOrder - complex multi-level sort: Album -> Disc -> Track -> Name
             var album = item.Album ?? "";
-            var discNumber = GetDiscNumber(item);
-            var trackNumber = GetTrackNumber(item);
+            var discNumber = OrderUtilities.GetDiscNumber(item);
+            var trackNumber = OrderUtilities.GetTrackNumber(item);
             var name = item.Name ?? "";
-            return new ComparableTuple4<string, int, int, string>(album, discNumber, trackNumber, name, OrderUtilities.SharedNaturalComparer);
-        }
-
-        private static int GetDiscNumber(BaseItem item)
-        {
-            try
-            {
-                // For audio items, ParentIndexNumber represents the disc number
-                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
-                if (parentIndexProperty != null)
-                {
-                    var value = parentIndexProperty.GetValue(item);
-                    if (value is int discNum)
-                        return discNum;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
-        }
-
-        private static int GetTrackNumber(BaseItem item)
-        {
-            try
-            {
-                // For audio items, IndexNumber represents the track number
-                var indexProperty = item.GetType().GetProperty("IndexNumber");
-                if (indexProperty != null)
-                {
-                    var value = indexProperty.GetValue(item);
-                    if (value is int trackNum)
-                        return trackNum;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
+            
+            // FIX: Pass SharedNaturalComparer for both album AND name to match OrderBy behavior
+            return new ComparableTuple4<string, int, int, string>(
+                album, discNumber, trackNumber, name,
+                OrderUtilities.SharedNaturalComparer,  // for album
+                null,  // for discNumber (int uses default)
+                null,  // for trackNumber (int uses default)
+                OrderUtilities.SharedNaturalComparer   // for name - THIS WAS MISSING
+            );
         }
     }
 }
