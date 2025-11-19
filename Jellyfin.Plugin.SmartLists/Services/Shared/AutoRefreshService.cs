@@ -1370,13 +1370,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 _logger.LogInformation("Processing {CollectionCount} smart collections for auto-refresh", collectionIds.Count);
 
-                if (_refreshQueueService == null)
-                {
-                    _logger.LogWarning("RefreshQueueService is not available, using fallback direct refresh");
-                }
-
-                // Load all collections and process them
-                var processedCount = 0;
+                var enqueuedCount = 0;
                 foreach (var collectionId in collectionIds)
                 {
                     try
@@ -1386,55 +1380,19 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         {
                             var listId = collection.Id ?? Guid.NewGuid().ToString();
                             
-                            if (_refreshQueueService != null)
+                            var queueItem = new RefreshQueueItem
                             {
-                                // Enqueue for background processing
-                                var queueItem = new RefreshQueueItem
-                                {
-                                    ListId = listId,
-                                    ListName = collection.Name,
-                                    ListType = Core.Enums.SmartListType.Collection,
-                                    OperationType = RefreshOperationType.Refresh,
-                                    ListData = collection,
-                                    UserId = collection.UserId,
-                                    TriggerType = Core.Enums.RefreshTriggerType.Auto
-                                };
+                                ListId = listId,
+                                ListName = collection.Name,
+                                ListType = Core.Enums.SmartListType.Collection,
+                                OperationType = RefreshOperationType.Refresh,
+                                ListData = collection,
+                                UserId = collection.UserId,
+                                TriggerType = Core.Enums.RefreshTriggerType.Auto
+                            };
 
-                                _refreshQueueService.EnqueueOperation(queueItem);
-                                processedCount++;
-                            }
-                            else
-                            {
-                                // Fallback: use RefreshAsync directly if queue service is not available
-                                _refreshStatusService?.StartOperation(
-                                    listId,
-                                    collection.Name,
-                                    Core.Enums.SmartListType.Collection,
-                                    Core.Enums.RefreshTriggerType.Auto,
-                                    0);
-
-                                var result = await _collectionService.RefreshAsync(collection, progressCallback: null, CancellationToken.None).ConfigureAwait(false);
-
-                                // Complete tracking for fallback case
-                                var elapsedTime = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                                _refreshStatusService?.CompleteOperation(
-                                    listId,
-                                    result.Success,
-                                    elapsedTime,
-                                    result.Success ? null : result.Message);
-
-                                if (result.Success)
-                                {
-                                    collection.LastRefreshed = DateTime.UtcNow;
-                                    await _collectionStore.SaveAsync(collection).ConfigureAwait(false);
-                                    _logger.LogInformation("Successfully refreshed collection (fallback): {CollectionName}", collection.Name);
-                                    processedCount++;
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Failed to refresh collection (fallback): {CollectionName} - {Message}", collection.Name, result.Message);
-                                }
-                            }
+                            _refreshQueueService.EnqueueOperation(queueItem);
+                            enqueuedCount++;
                         }
                     }
                     catch (Exception ex)
@@ -1443,14 +1401,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                 }
 
-                if (_refreshQueueService != null)
-                {
-                    _logger.LogInformation("Enqueued {ProcessedCount} collections for auto-refresh", processedCount);
-                }
-                else
-                {
-                    _logger.LogInformation("Processed {ProcessedCount} collections for auto-refresh (fallback mode)", processedCount);
-                }
+                _logger.LogInformation("Enqueued {EnqueuedCount} collections for auto-refresh", enqueuedCount);
             }
             catch (Exception ex)
             {

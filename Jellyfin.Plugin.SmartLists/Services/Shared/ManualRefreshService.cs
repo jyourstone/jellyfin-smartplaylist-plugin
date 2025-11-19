@@ -282,7 +282,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     try
                     {
-                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        var listId = string.IsNullOrEmpty(dto.Id) ? Guid.NewGuid().ToString() : dto.Id;
                         var queueItem = new RefreshQueueItem
                         {
                             ListId = listId,
@@ -517,7 +517,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 {
                     try
                     {
-                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        var listId = string.IsNullOrEmpty(dto.Id) ? Guid.NewGuid().ToString() : dto.Id;
                         var queueItem = new RefreshQueueItem
                         {
                             ListId = listId,
@@ -601,7 +601,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                var listId = string.IsNullOrEmpty(playlist.Id) ? Guid.NewGuid().ToString() : playlist.Id;
                 _logger.LogInformation("Enqueuing single playlist for manual refresh: {PlaylistName} ({ListId})", playlist.Name, listId);
 
                 var queueItem = new RefreshQueueItem
@@ -637,7 +637,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                var listId = collection.Id ?? Guid.NewGuid().ToString();
+                var listId = string.IsNullOrEmpty(collection.Id) ? Guid.NewGuid().ToString() : collection.Id;
                 _logger.LogInformation("Enqueuing single collection for manual refresh: {CollectionName} ({ListId})", collection.Name, listId);
 
                 var queueItem = new RefreshQueueItem
