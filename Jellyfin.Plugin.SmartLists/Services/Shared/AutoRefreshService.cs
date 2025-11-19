@@ -53,7 +53,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly IUserDataManager _userDataManager;
         private readonly IUserManager _userManager;
         private readonly RefreshCache _playlistRefreshCache;
-        private readonly RefreshQueueService? _refreshQueueService;
+        private readonly RefreshQueueService _refreshQueueService;
 
         // Static reference for API access to cache management
         public static AutoRefreshService? Instance { get; private set; }
@@ -101,8 +101,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             ISmartListService<SmartCollectionDto> collectionService,
             IUserDataManager userDataManager,
             IUserManager userManager,
-            RefreshStatusService? refreshStatusService = null,
-            RefreshQueueService? refreshQueueService = null)
+            RefreshQueueService refreshQueueService,
+            RefreshStatusService? refreshStatusService = null)
         {
             _libraryManager = libraryManager;
             _logger = logger;
@@ -126,8 +126,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             // Set static instance for API access
             Instance = this;
 
-            // Note: RefreshCache is used for scheduled batch processing (when queue service is unavailable as fallback)
-            // and for direct refresh operations. Manual refresh operations use the queue service when available.
+            // Note: RefreshCache is used for scheduled batch processing to efficiently process multiple lists.
+            // The RefreshQueueService handles all refresh operations (manual, auto, and scheduled).
             // Initialize batch processing timer (runs every 1 second to check for pending refreshes)
             _batchProcessTimer = new Timer(ProcessPendingBatchRefreshes, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
@@ -1322,12 +1322,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 _logger.LogInformation("Processing {PlaylistCount} smart playlists for auto-refresh", playlistIds.Count);
 
-                if (_refreshQueueService == null)
-                {
-                    _logger.LogError("RefreshQueueService is not available - cannot process auto-refresh. This should not happen.");
-                    return;
-                }
-
                 // Enqueue all playlists for background processing
                 var enqueuedCount = 0;
                 foreach (var playlistId in playlistIds)
@@ -2052,55 +2046,23 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         _logger.LogDebug("Refreshing scheduled playlist (fallback): {PlaylistName}", playlist.Name);
 
-                        // Enqueue scheduled refresh instead of direct refresh
-                        // Status tracking will be handled by the queue processor
-                        if (_refreshQueueService != null)
+                        // Enqueue scheduled refresh
+                        var queueItem = new RefreshQueueItem
                         {
-                            var queueItem = new RefreshQueueItem
-                            {
-                                ListId = listId,
-                                ListName = playlist.Name,
-                                ListType = Core.Enums.SmartListType.Playlist,
-                                OperationType = RefreshOperationType.Refresh,
-                                ListData = playlist,
-                                UserId = playlist.UserId,
-                                TriggerType = Core.Enums.RefreshTriggerType.Scheduled
-                            };
+                            ListId = listId,
+                            ListName = playlist.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = playlist,
+                            UserId = playlist.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Scheduled
+                        };
 
-                            _refreshQueueService.EnqueueOperation(queueItem);
-                        }
-                        else
-                        {
-                            // Fallback: use RefreshAsync directly if queue service is not available
-                            // Start tracking for fallback case
-                            _refreshStatusService?.StartOperation(
-                                listId,
-                                playlist.Name,
-                                Core.Enums.SmartListType.Playlist,
-                                Core.Enums.RefreshTriggerType.Scheduled,
-                                0);
-
-                            await _playlistService.RefreshAsync(playlist, progressCallback: null, CancellationToken.None).ConfigureAwait(false);
-
-                            // Complete tracking for fallback case
-                            var elapsedTime = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                            _refreshStatusService?.CompleteOperation(listId, true, elapsedTime, null);
-
-                            playlist.LastRefreshed = DateTime.UtcNow; // Use UTC for consistent timestamps across timezones
-                            await _playlistStore.SaveAsync(playlist).ConfigureAwait(false);
-
-                            _logger.LogInformation("Successfully refreshed scheduled playlist (fallback): {PlaylistName}", playlist.Name);
-                        }
+                        _refreshQueueService.EnqueueOperation(queueItem);
                     }
                     catch (Exception fallbackEx)
                     {
-                        // Only track errors in fallback case (when queue service is not available)
-                        if (_refreshQueueService == null)
-                    {
-                        var elapsedTime = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                        _refreshStatusService?.CompleteOperation(listId, false, elapsedTime, fallbackEx.Message);
-                        }
-                        _logger.LogError(fallbackEx, "Fallback refresh also failed for playlist {PlaylistName}", playlist.Name);
+                        _logger.LogError(fallbackEx, "Failed to enqueue scheduled playlist {PlaylistName}", playlist.Name);
                     }
                 }
             }
@@ -2117,12 +2079,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             try
             {
-                if (_refreshQueueService == null)
-                {
-                    _logger.LogError("RefreshQueueService is not available - cannot process auto-refresh. This should not happen.");
-                    return Task.CompletedTask;
-                }
-
                 var enqueuedCount = 0;
 
                 foreach (var collection in collections)

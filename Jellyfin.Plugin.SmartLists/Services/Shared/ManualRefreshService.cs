@@ -186,7 +186,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// </summary>
         /// <param name="result">The refresh result to check.</param>
         /// <returns>True if there are actual failures (FailureCount > 0 or Success = false), false otherwise.</returns>
-        private static bool HasActualFailures(RefreshResult result)
+        private static bool HasActualFailures(RefreshResult? result)
         {
             return result != null && (!result.Success || result.FailureCount > 0);
         }
