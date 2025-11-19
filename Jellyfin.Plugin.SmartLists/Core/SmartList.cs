@@ -2956,7 +2956,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return item.Name ?? "";
+            // Use SortName if set, otherwise fall back to Name
+            return !string.IsNullOrEmpty(item.SortName) ? item.SortName : (item.Name ?? "");
         }
         protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
@@ -2968,7 +2969,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return item.Name ?? "";
+            // Use SortName if set, otherwise fall back to Name
+            return !string.IsNullOrEmpty(item.SortName) ? item.SortName : (item.Name ?? "");
         }
         protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
@@ -2980,7 +2982,10 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return OrderUtilities.StripLeadingArticles(item.Name ?? "");
+            // Use SortName if set (as-is, without article stripping), otherwise strip articles from Name
+            return !string.IsNullOrEmpty(item.SortName) 
+                ? item.SortName 
+                : OrderUtilities.StripLeadingArticles(item.Name ?? "");
         }
         protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
@@ -2992,7 +2997,10 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return OrderUtilities.StripLeadingArticles(item.Name ?? "");
+            // Use SortName if set (as-is, without article stripping), otherwise strip articles from Name
+            return !string.IsNullOrEmpty(item.SortName) 
+                ? item.SortName 
+                : OrderUtilities.StripLeadingArticles(item.Name ?? "");
         }
         protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
     }
@@ -3514,6 +3522,11 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
+            
+            // Use SortName if set, otherwise fall back to SeriesName
+            if (!string.IsNullOrEmpty(item.SortName))
+                return item.SortName;
+            
             try
             {
                 // SeriesName property for episodes
@@ -3542,6 +3555,11 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
+            
+            // Use SortName if set, otherwise fall back to SeriesName
+            if (!string.IsNullOrEmpty(item.SortName))
+                return item.SortName;
+            
             try
             {
                 // SeriesName property for episodes
@@ -3570,6 +3588,11 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
+            
+            // Use SortName if set (as-is, without article stripping), otherwise strip articles from SeriesName
+            if (!string.IsNullOrEmpty(item.SortName))
+                return item.SortName;
+            
             try
             {
                 // SeriesName property for episodes
@@ -3598,6 +3621,11 @@ namespace Jellyfin.Plugin.SmartLists.Core
         protected override string GetSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
+            
+            // Use SortName if set (as-is, without article stripping), otherwise strip articles from SeriesName
+            if (!string.IsNullOrEmpty(item.SortName))
+                return item.SortName;
+            
             try
             {
                 // SeriesName property for episodes
