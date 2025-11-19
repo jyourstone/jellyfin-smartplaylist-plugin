@@ -1003,6 +1003,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
                             // Cache empty string to avoid repeated failures
                             cache.SeriesNameById[seriesGuid] = string.Empty;
+                            cache.SeriesSortNameById[seriesGuid] = string.Empty;
                         }
                     }
                 }
