@@ -655,7 +655,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 {
                     if (ExpressionSets != null)
                     {
-                        var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
+                        var fieldReqs = FieldRequirements.Analyze(ExpressionSets, Orders);
 
                         needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
                         needsAudioQuality = fieldReqs.NeedsAudioQuality;
@@ -1536,15 +1536,20 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 return new ComparableTuple4<long, int, int, int>(releaseDate, isEpisode, seasonNumber, episodeNumber);
             }
 
-            // For name-based orders
+            // For name-based orders (honor SortName when set)
             if (order is NameOrder || order is NameOrderDesc)
             {
-                return item.Name ?? "";
+                return !string.IsNullOrEmpty(item.SortName)
+                    ? item.SortName
+                    : (item.Name ?? "");
             }
 
             if (order is NameIgnoreArticlesOrder || order is NameIgnoreArticlesOrderDesc)
             {
-                return OrderUtilities.StripLeadingArticles(item.Name ?? "");
+                // Use SortName as-is (no article stripping) when present, else strip articles from Name
+                return !string.IsNullOrEmpty(item.SortName)
+                    ? item.SortName
+                    : OrderUtilities.StripLeadingArticles(item.Name ?? "");
             }
 
             // For production year
@@ -1608,9 +1613,12 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 return item.RunTimeTicks ?? 0L;
             }
 
-            // For series name
+            // For series name orders, prefer SortName when set
             if (order is SeriesNameOrder || order is SeriesNameOrderDesc)
             {
+                if (!string.IsNullOrEmpty(item.SortName))
+                    return item.SortName;
+
                 try
                 {
                     var seriesNameProperty = item.GetType().GetProperty("SeriesName");
@@ -1623,13 +1631,16 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 }
                 catch
                 {
-                    // Ignore errors
+                    // Ignore errors and fall through
                 }
                 return "";
             }
             
             if (order is SeriesNameIgnoreArticlesOrder || order is SeriesNameIgnoreArticlesOrderDesc)
             {
+                if (!string.IsNullOrEmpty(item.SortName))
+                    return item.SortName;
+
                 try
                 {
                     var seriesNameProperty = item.GetType().GetProperty("SeriesName");
@@ -1642,7 +1653,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 }
                 catch
                 {
-                    // Ignore errors
+                    // Ignore errors and fall through
                 }
                 return "";
             }
@@ -2526,7 +2537,9 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <summary>
         /// Analyzes expression sets to determine field requirements.
         /// </summary>
-        public static FieldRequirements Analyze(List<ExpressionSet> expressionSets)
+        /// <param name="expressionSets">Filter expression sets to analyze</param>
+        /// <param name="orders">Optional sorting orders to check for field requirements</param>
+        public static FieldRequirements Analyze(List<ExpressionSet> expressionSets, List<Order>? orders = null)
         {
             var requirements = new FieldRequirements();
 
@@ -2569,6 +2582,13 @@ namespace Jellyfin.Plugin.SmartLists.Core
             requirements.NeedsSeriesName = expressionSets
                 .SelectMany(set => set?.Expressions ?? [])
                 .Any(expr => expr?.MemberName == "SeriesName");
+
+            // Also check if SeriesName is used in sorting
+            if (orders != null && !requirements.NeedsSeriesName)
+            {
+                requirements.NeedsSeriesName = orders.Any(o => 
+                    o.Name.Contains("SeriesName", StringComparison.OrdinalIgnoreCase));
+            }
 
             // Check if any Tags rule has IncludeParentSeriesTags = true
             requirements.NeedsParentSeriesTags = expressionSets
