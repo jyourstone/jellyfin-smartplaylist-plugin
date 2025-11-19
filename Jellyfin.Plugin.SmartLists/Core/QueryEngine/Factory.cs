@@ -986,9 +986,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                             // Get the parent series from the library manager
                             var parentSeries = libraryManager.GetItemById(seriesGuid);
                             var seriesName = parentSeries?.Name ?? "";
+                            var seriesSortName = parentSeries?.SortName ?? ""; // Don't fallback to Name, let sorting logic handle it
 
                             // Cache the result for future episodes from the same series
                             cache.SeriesNameById[seriesGuid] = seriesName;
+                            cache.SeriesSortNameById[seriesGuid] = seriesSortName;
                             operand.SeriesName = seriesName;
 
                             logger?.LogDebug("Extracted and cached series name '{SeriesName}' for episode '{EpisodeName}'",
@@ -1001,6 +1003,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
                             // Cache empty string to avoid repeated failures
                             cache.SeriesNameById[seriesGuid] = string.Empty;
+                            cache.SeriesSortNameById[seriesGuid] = string.Empty;
                         }
                     }
                 }
