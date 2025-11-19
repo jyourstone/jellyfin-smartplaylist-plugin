@@ -835,7 +835,7 @@
                 'An unexpected error occurred, check the logs for more details.'
             );
 
-            const fullMessage = 'Failed to refresh list "' + playlistName + '": ' + errorMessage;
+            const fullMessage = 'Failed to refresh list "' + (playlistName || 'Unknown') + '": ' + errorMessage;
             console.error('List refresh error:', fullMessage, err);
             SmartLists.showNotification(fullMessage, 'error');
         });

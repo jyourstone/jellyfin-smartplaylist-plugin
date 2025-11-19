@@ -2036,7 +2036,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to refresh scheduled playlists with caching - falling back to individual refresh");
+                _logger.LogError(ex, "Failed to refresh scheduled playlists with caching - falling back to queueing individual playlist refreshes");
 
                 // Fallback to individual refresh without caching
                 foreach (var playlist in playlists)

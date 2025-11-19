@@ -277,38 +277,51 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 _logger.LogInformation("Enqueuing {EnabledCount} enabled playlists", enabledPlaylists.Count);
 
                 var enqueuedCount = 0;
+                var failedCount = 0;
                 foreach (var dto in enabledPlaylists)
                 {
-                    var listId = dto.Id ?? Guid.NewGuid().ToString();
-                    var queueItem = new RefreshQueueItem
+                    try
                     {
-                        ListId = listId,
-                        ListName = dto.Name,
-                        ListType = Core.Enums.SmartListType.Playlist,
-                        OperationType = RefreshOperationType.Refresh,
-                        ListData = dto,
-                        UserId = dto.UserId,
-                        TriggerType = Core.Enums.RefreshTriggerType.Manual
-                    };
+                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
+                        {
+                            ListId = listId,
+                            ListName = dto.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = dto,
+                            UserId = dto.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
 
-                    _refreshQueueService.EnqueueOperation(queueItem);
-                    enqueuedCount++;
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        enqueuedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error enqueuing playlist {PlaylistName} ({PlaylistId}) for refresh", dto.Name, dto.Id);
+                        failedCount++;
+                    }
                 }
 
                 stopwatch.Stop();
                 var elapsedTime = FormatElapsedTime(stopwatch.ElapsedMilliseconds);
-                var logMessage = $"Enqueued {enqueuedCount} playlists for refresh (completed in {stopwatch.ElapsedMilliseconds}ms)";
-                var notificationMessage = $"Enqueued {enqueuedCount} playlists for refresh. They will be processed in the background.";
+                var logMessage = failedCount > 0 
+                    ? $"Enqueued {enqueuedCount} playlists for refresh ({failedCount} failed to enqueue) (completed in {stopwatch.ElapsedMilliseconds}ms)"
+                    : $"Enqueued {enqueuedCount} playlists for refresh (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                var notificationMessage = failedCount > 0
+                    ? $"Enqueued {enqueuedCount} playlists for refresh ({failedCount} failed). They will be processed in the background."
+                    : $"Enqueued {enqueuedCount} playlists for refresh. They will be processed in the background.";
                 
                 _logger.LogInformation(logMessage);
 
                 return new RefreshResult
                 {
-                    Success = true,
+                    Success = failedCount == 0,
                     NotificationMessage = notificationMessage,
                     LogMessage = logMessage,
                     SuccessCount = enqueuedCount,
-                    FailureCount = 0
+                    FailureCount = failedCount
                 };
             }
             catch (OperationCanceledException)
@@ -499,38 +512,51 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 _logger.LogInformation("Enqueuing {EnabledCount} enabled collections", enabledCollections.Count);
 
                 var enqueuedCount = 0;
+                var failedCount = 0;
                 foreach (var dto in enabledCollections)
                 {
-                    var listId = dto.Id ?? Guid.NewGuid().ToString();
-                    var queueItem = new RefreshQueueItem
+                    try
                     {
-                        ListId = listId,
-                        ListName = dto.Name,
-                        ListType = Core.Enums.SmartListType.Collection,
-                        OperationType = RefreshOperationType.Refresh,
-                        ListData = dto,
-                        UserId = dto.UserId,
-                        TriggerType = Core.Enums.RefreshTriggerType.Manual
-                    };
+                        var listId = dto.Id ?? Guid.NewGuid().ToString();
+                        var queueItem = new RefreshQueueItem
+                        {
+                            ListId = listId,
+                            ListName = dto.Name,
+                            ListType = Core.Enums.SmartListType.Collection,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = dto,
+                            UserId = dto.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
 
-                    _refreshQueueService.EnqueueOperation(queueItem);
-                    enqueuedCount++;
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        enqueuedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error enqueuing collection {CollectionName} ({CollectionId}) for refresh", dto.Name, dto.Id);
+                        failedCount++;
+                    }
                 }
 
                 stopwatch.Stop();
                 var elapsedTime = FormatElapsedTime(stopwatch.ElapsedMilliseconds);
-                var logMessage = $"Enqueued {enqueuedCount} collections for refresh (completed in {stopwatch.ElapsedMilliseconds}ms)";
-                var notificationMessage = $"Enqueued {enqueuedCount} collections for refresh. They will be processed in the background.";
+                var logMessage = failedCount > 0
+                    ? $"Enqueued {enqueuedCount} collections for refresh ({failedCount} failed to enqueue) (completed in {stopwatch.ElapsedMilliseconds}ms)"
+                    : $"Enqueued {enqueuedCount} collections for refresh (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                var notificationMessage = failedCount > 0
+                    ? $"Enqueued {enqueuedCount} collections for refresh ({failedCount} failed). They will be processed in the background."
+                    : $"Enqueued {enqueuedCount} collections for refresh. They will be processed in the background.";
                 
                 _logger.LogInformation(logMessage);
 
                 return new RefreshResult
                 {
-                    Success = true,
+                    Success = failedCount == 0,
                     NotificationMessage = notificationMessage,
                     LogMessage = logMessage,
                     SuccessCount = enqueuedCount,
-                    FailureCount = 0
+                    FailureCount = failedCount
                 };
             }
             catch (OperationCanceledException)
