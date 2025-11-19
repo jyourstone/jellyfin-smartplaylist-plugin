@@ -1331,7 +1331,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         var playlist = await _playlistStore.GetByIdAsync(Guid.Parse(playlistId));
                         if (playlist != null)
                         {
-                            var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                            var listId = string.IsNullOrEmpty(playlist.Id) ? Guid.NewGuid().ToString() : playlist.Id;
                             
                             var queueItem = new RefreshQueueItem
                             {
@@ -1378,7 +1378,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         var collection = await _collectionStore.GetByIdAsync(Guid.Parse(collectionId));
                         if (collection != null && collection.Enabled)
                         {
-                            var listId = collection.Id ?? Guid.NewGuid().ToString();
+                            var listId = string.IsNullOrEmpty(collection.Id) ? Guid.NewGuid().ToString() : collection.Id;
                             
                             var queueItem = new RefreshQueueItem
                             {
@@ -1895,7 +1895,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 // Build playlistIdMap without starting operations yet
                 foreach (var playlist in playlists)
                 {
-                    var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                    var listId = string.IsNullOrEmpty(playlist.Id) ? Guid.NewGuid().ToString() : playlist.Id;
                     playlistIdMap[playlist.Id ?? string.Empty] = listId;
                 }
 
@@ -1992,7 +1992,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 // Fallback to individual refresh without caching
                 foreach (var playlist in playlists)
                 {
-                    var listId = playlist.Id ?? Guid.NewGuid().ToString();
+                    var listId = string.IsNullOrEmpty(playlist.Id) ? Guid.NewGuid().ToString() : playlist.Id;
                     try
                     {
                         _logger.LogDebug("Refreshing scheduled playlist (fallback): {PlaylistName}", playlist.Name);
@@ -2034,7 +2034,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                 foreach (var collection in collections)
                 {
-                    var listId = collection.Id ?? Guid.NewGuid().ToString();
+                    var listId = string.IsNullOrEmpty(collection.Id) ? Guid.NewGuid().ToString() : collection.Id;
                     try
                     {
                         _logger.LogDebug("Enqueuing scheduled collection for refresh: {CollectionName}", collection.Name);

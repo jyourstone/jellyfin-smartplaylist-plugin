@@ -108,7 +108,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         IProviderManager providerManager,
         ILogger<ManualRefreshService> logger,
         Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-        RefreshStatusService refreshStatusService,
         RefreshQueueService refreshQueueService) : IManualRefreshService
     {
         private readonly IUserManager _userManager = userManager;
@@ -120,7 +119,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly IProviderManager _providerManager = providerManager;
         private readonly ILogger<ManualRefreshService> _logger = logger;
         private readonly Microsoft.Extensions.Logging.ILoggerFactory _loggerFactory = loggerFactory;
-        private readonly RefreshStatusService _refreshStatusService = refreshStatusService;
         private readonly RefreshQueueService _refreshQueueService = refreshQueueService;
 
         /// <summary>
