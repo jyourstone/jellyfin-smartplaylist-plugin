@@ -36,6 +36,15 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 - **Similarity** - Sort by similarity score (highest first) - only available when using the "Similar To" field
 - **Random** - Randomize the order of items
 
+!!! tip "Sort Title Metadata Support"
+    All **Name** and **Series Name** sort options (including "Ignore Articles" variants) automatically respect Jellyfin's **Sort Title** metadata field. When you set a custom Sort Title for a media item in Jellyfin's metadata editor:
+    
+    - The plugin will use the Sort Title **as-is** for sorting (without any modifications)
+    - This applies to both regular and "Ignore Articles" sorting options
+    - If Sort Title is not set, the plugin falls back to the regular title (and strips "The" for "Ignore Articles" options)
+    
+    This allows you to control the exact sort order without changing the displayed title.
+
 ## Max Items
 
 You can optionally set a maximum number of items for your smart list. This is useful for:
