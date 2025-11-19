@@ -43,35 +43,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         private readonly ILogger<CollectionService> _logger;
         private readonly IProviderManager _providerManager;
 
-        // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
-        private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
-
-        /// <summary>
-        /// Attempts to acquire the refresh lock for collections with immediate return (no waiting).
-        /// This is used by ManualRefreshService to coordinate bulk refresh operations.
-        /// </summary>
-        /// <param name="cancellationToken">The cancellation token</param>
-        /// <returns>Tuple of (success, disposable) - disposable is null if acquisition failed</returns>
-        public static async Task<(bool Success, IDisposable? LockHandle)> TryAcquireRefreshLockAsync(CancellationToken cancellationToken = default)
-        {
-            if (await _refreshOperationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            {
-                return (true, new RefreshLockDisposable());
-            }
-            return (false, null);
-        }
-
-        /// <summary>
-        /// Helper class to ensure the refresh lock is properly released.
-        /// </summary>
-        private sealed class RefreshLockDisposable : IDisposable
-        {
-            public void Dispose()
-            {
-                _refreshOperationLock.Release();
-            }
-        }
-
         public CollectionService(
             ILibraryManager libraryManager,
             ICollectionManager collectionManager,
@@ -89,27 +60,63 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
         }
 
         /// <summary>
-        /// Gets all user media for a playlist, filtered by media types.
-        /// Not supported for collections - this method is for playlist batch processing.
+        /// Gets all user media for a collection, filtered by media types.
+        /// Uses the owner user context to query media items.
         /// </summary>
         public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartCollectionDto? dto = null)
         {
-            throw new NotSupportedException("GetAllUserMediaForPlaylist is not supported for collections. Use RefreshCache only for playlists.");
+            // Validate media types before processing
+            if (dto != null)
+            {
+                _logger?.LogDebug("GetAllUserMediaForPlaylist validation for '{CollectionName}': MediaTypes={MediaTypes}", dto.Name, mediaTypes != null ? string.Join(",", mediaTypes) : "null");
+
+                if (mediaTypes == null || mediaTypes.Count == 0)
+                {
+                    _logger?.LogError("Smart collection '{CollectionName}' has no media types specified. At least one media type must be selected.", dto.Name);
+                    throw new InvalidOperationException("No media types specified. At least one media type must be selected.");
+                }
+            }
+
+            // Use GetAllMedia which queries media in the owner user's context
+            return GetAllMedia(mediaTypes, dto, user);
         }
 
         /// <summary>
-        /// Processes a playlist refresh with pre-cached media for efficient batch processing.
-        /// Not supported for collections - this method is for playlist batch processing.
+        /// Processes a collection refresh with pre-cached media for efficient batch processing.
+        /// Implements ISmartListService interface (generic method name for both playlists and collections).
         /// </summary>
-        public Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(
+        public async Task<(bool Success, string Message, string JellyfinPlaylistId)> ProcessPlaylistRefreshWithCachedMediaAsync(
             SmartCollectionDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             Func<SmartCollectionDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException("ProcessPlaylistRefreshWithCachedMediaAsync is not supported for collections. Use RefreshCache only for playlists.");
+            ArgumentNullException.ThrowIfNull(dto);
+            ArgumentNullException.ThrowIfNull(user);
+            ArgumentNullException.ThrowIfNull(allUserMedia);
+            ArgumentNullException.ThrowIfNull(refreshCache);
+
+            var (success, message, collectionId) = await ProcessCollectionRefreshAsync(dto, user, allUserMedia, refreshCache, progressCallback, cancellationToken);
+
+            // Update LastRefreshed timestamp for successful refreshes (any trigger)
+            // Note: For new collections, LastRefreshed was already set in ProcessCollectionRefreshAsync,
+            // but we update it here to ensure it reflects the exact completion time of the refresh operation.
+            if (success)
+            {
+                dto.LastRefreshed = DateTime.UtcNow;
+                _logger.LogDebug("Updated LastRefreshed timestamp for cached collection: {CollectionName}", dto.Name);
+                
+                // Call save callback if provided
+                if (saveCallback != null)
+                {
+                    await saveCallback(dto);
+                }
+            }
+
+            return (success, message, collectionId);
         }
 
         public async Task<(bool Success, string Message, string Id)> RefreshAsync(SmartCollectionDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default)
@@ -163,6 +170,36 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 var allMedia = GetAllMedia(dto.MediaTypes, dto, ownerUser).ToArray();
                 _logger.LogDebug("Found {MediaCount} total media items for collection using owner user {OwnerUsername}", allMedia.Length, ownerUser.Username);
 
+                // Create a temporary RefreshCache for this refresh (fallback path when queue service unavailable)
+                var refreshCache = new RefreshQueueService.RefreshCache();
+
+                // Process collection refresh with the media
+                return await ProcessCollectionRefreshAsync(dto, ownerUser, allMedia, refreshCache, progressCallback, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing collection refresh for '{CollectionName}': {ErrorMessage}", dto.Name, ex.Message);
+                return (false, $"Error processing collection '{dto.Name}': {ex.Message}", string.Empty);
+            }
+            finally
+            {
+                stopwatch.Stop();
+                _logger.LogDebug("Collection refresh completed in {ElapsedMs}ms: {CollectionName}", stopwatch.ElapsedMilliseconds, dto.Name);
+            }
+        }
+
+        /// <summary>
+        /// Core method to process a collection refresh with provided media items.
+        /// This is the shared logic used by both RefreshAsync and ProcessCollectionRefreshWithCachedMediaAsync.
+        /// </summary>
+        private async Task<(bool Success, string Message, string Id)> ProcessCollectionRefreshAsync(
+            SmartCollectionDto dto,
+            User ownerUser,
+            BaseItem[] allMedia,
+            RefreshQueueService.RefreshCache refreshCache,
+            Action<int, int>? progressCallback = null,
+            CancellationToken cancellationToken = default)
+        {
                 var smartCollection = new Core.SmartList(dto)
                 {
                     UserManager = _userManager // Set UserManager for Jellyfin 10.11+ user resolution
@@ -195,7 +232,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 progressCallback?.Invoke(0, allMedia.Length);
                 
                 // Use owner's user data manager for user-specific filtering (IsPlayed, IsFavorite, etc.)
-                var newItems = smartCollection.FilterPlaylistItems(allMedia, _libraryManager, ownerUser, _userDataManager, _logger, progressCallback).ToArray();
+                var newItems = smartCollection.FilterPlaylistItems(allMedia, _libraryManager, ownerUser, refreshCache, _userDataManager, _logger, progressCallback).ToArray();
                 _logger.LogDebug("Collection {CollectionName} filtered to {FilteredCount} items from {TotalCount} total items",
                     dto.Name, newItems.Length, allMedia.Length);
 
@@ -304,131 +341,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         collectionName, newLinkedChildren.Length);
 
                     return (true, $"Created collection '{collectionName}' with {newLinkedChildren.Length} items", newCollectionId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing collection refresh for '{CollectionName}': {ErrorMessage}", dto.Name, ex.Message);
-                return (false, $"Error processing collection '{dto.Name}': {ex.Message}", string.Empty);
-            }
-            finally
-            {
-                stopwatch.Stop();
-                _logger.LogDebug("Collection refresh completed in {ElapsedMs}ms: {CollectionName}", stopwatch.ElapsedMilliseconds, dto.Name);
-            }
-        }
-
-        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(
-            SmartCollectionDto dto, 
-            Action<int, int>? progressCallback = null,
-            RefreshStatusService? refreshStatusService = null,
-            Core.Enums.RefreshTriggerType? triggerType = null,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(dto);
-
-            // Use immediate return (0 timeout) instead of 5-second wait for consistent UX
-            // This gives users instant feedback if a refresh is already in progress
-            _logger.LogDebug("Attempting to acquire refresh lock for single collection: {CollectionName} (immediate return)", dto.Name);
-
-            // Start status tracking if RefreshStatusService is provided and status isn't already being tracked
-            var listId = dto.Id ?? Guid.NewGuid().ToString();
-            var shouldTrackStatus = refreshStatusService != null && triggerType.HasValue && !refreshStatusService.HasOngoingOperation(listId);
-            
-            if (shouldTrackStatus && refreshStatusService != null)
-            {
-                refreshStatusService.StartOperation(
-                    listId,
-                    dto.Name,
-                    Core.Enums.SmartListType.Collection,
-                    triggerType!.Value,
-                    0); // Total items will be updated by progress callback
-
-                // Wrap progress callback to also update status service
-                var originalProgressCallback = progressCallback;
-                progressCallback = (processed, total) =>
-                {
-                    refreshStatusService.UpdateProgress(listId, processed, total);
-                    originalProgressCallback?.Invoke(processed, total);
-                };
-            }
-
-            try
-            {
-                if (await _refreshOperationLock.WaitAsync(0, cancellationToken))
-                {
-                    try
-                    {
-                        _logger.LogDebug("Acquired refresh lock for single collection: {CollectionName}", dto.Name);
-                        var (success, message, collectionId) = await RefreshAsync(dto, progressCallback, cancellationToken);
-                        
-                        // Complete status tracking if we started it
-                        if (shouldTrackStatus)
-                        {
-                            var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                            refreshStatusService?.CompleteOperation(
-                                listId,
-                                success,
-                                elapsedTime,
-                                success ? null : message);
-                        }
-                        
-                        return (success, message, collectionId);
-                    }
-                    finally
-                    {
-                        _refreshOperationLock.Release();
-                        _logger.LogDebug("Released refresh lock for single collection: {CollectionName}", dto.Name);
-                    }
-                }
-                else
-                {
-                    _logger.LogDebug("Refresh lock already held for single collection: {CollectionName}", dto.Name);
-                    
-                    // Complete status tracking if we started it (operation failed to start)
-                    if (shouldTrackStatus)
-                    {
-                        var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                        refreshStatusService?.CompleteOperation(
-                            listId,
-                            false,
-                            elapsedTime,
-                            "Collection refresh is already in progress, please try again in a moment.");
-                    }
-                    
-                    return (false, "Collection refresh is already in progress, please try again in a moment.", string.Empty);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogDebug("Refresh operation cancelled for collection: {CollectionName}", dto.Name);
-                
-                // Complete status tracking if we started it
-                if (shouldTrackStatus)
-                {
-                    var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    refreshStatusService?.CompleteOperation(
-                        listId,
-                        false,
-                        elapsedTime,
-                        "Refresh operation was cancelled.");
-                }
-                
-                return (false, "Refresh operation was cancelled.", string.Empty);
-            }
-            catch (Exception ex)
-            {
-                // Complete status tracking if we started it (exception occurred)
-                if (shouldTrackStatus)
-                {
-                    var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    refreshStatusService?.CompleteOperation(
-                        listId,
-                        false,
-                        elapsedTime,
-                        ex.Message);
-                }
-                throw;
             }
         }
 
@@ -588,27 +500,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
             try
             {
                 _logger.LogDebug("Disabling smart collection: {CollectionName}", dto.Name);
-
-                // Use timeout approach for disable operations since they involve deleting collections
-                if (await _refreshOperationLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
-                {
-                    try
-                    {
-                        _logger.LogDebug("Acquired refresh lock for disabling collection: {CollectionName}", dto.Name);
-                        await DeleteAsync(dto, cancellationToken);
-                        _logger.LogInformation("Successfully disabled smart collection: {CollectionName}", dto.Name);
-                    }
-                    finally
-                    {
-                        _refreshOperationLock.Release();
-                        _logger.LogDebug("Released refresh lock for disabling collection: {CollectionName}", dto.Name);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Timeout waiting for refresh lock to disable collection: {CollectionName}", dto.Name);
-                    throw new InvalidOperationException("Collection refresh is already in progress. Please try again in a moment.");
-                }
+                await DeleteAsync(dto, cancellationToken);
+                _logger.LogInformation("Successfully disabled smart collection: {CollectionName}", dto.Name);
             }
             catch (Exception ex)
             {

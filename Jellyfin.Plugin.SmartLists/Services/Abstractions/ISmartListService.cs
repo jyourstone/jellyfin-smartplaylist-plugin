@@ -17,19 +17,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
     {
         /// <summary>
         /// Refreshes a single smart list
+        /// This method is called by the queue processor and assumes no locking is needed.
         /// </summary>
         Task<(bool Success, string Message, string Id)> RefreshAsync(
             TDto dto, Action<int, int>? progressCallback = null, CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Refreshes a single smart list with timeout protection
-        /// </summary>
-        Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(
-            TDto dto, 
-            Action<int, int>? progressCallback = null,
-            RefreshStatusService? refreshStatusService = null,
-            Core.Enums.RefreshTriggerType? triggerType = null,
-            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Deletes a smart list
@@ -56,6 +47,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
         /// <param name="dto">The playlist DTO to process</param>
         /// <param name="user">The user for this playlist</param>
         /// <param name="allUserMedia">All media items for the user (cached)</param>
+        /// <param name="refreshCache">RefreshCache instance for caching expensive operations</param>
         /// <param name="saveCallback">Optional callback to save the DTO when JellyfinPlaylistId is updated</param>
         /// <param name="progressCallback">Optional callback to report progress</param>
         /// <param name="cancellationToken">Cancellation token</param>
@@ -64,6 +56,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Abstractions
             TDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             Func<TDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default);

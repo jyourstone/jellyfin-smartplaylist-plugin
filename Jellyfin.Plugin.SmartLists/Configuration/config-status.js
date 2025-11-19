@@ -172,12 +172,15 @@
             ongoingOpsText = stats.ongoingOperationsCount || 0;
         }
 
+        // Get queue count from statistics
+        const queuedCount = stats.queuedOperationsCount || 0;
+
         container.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 1em;">
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em;">
                     <div style="padding: 1em; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                        <div style="font-size: 0.9em; color: #aaa; margin-bottom: 0.25em;">Ongoing Operations</div>
-                        <div style="font-size: 1.5em; font-weight: bold;">${ongoingOpsText}</div>
+                        <div style="font-size: 0.9em; color: #aaa; margin-bottom: 0.25em;">In Queue</div>
+                        <div style="font-size: 1.5em; font-weight: bold;">${queuedCount}</div>
                     </div>
                     <div style="padding: 1em; background: rgba(255,255,255,0.05); border-radius: 4px;">
                         <div style="font-size: 0.9em; color: #aaa; margin-bottom: 0.25em;">Avg Duration</div>

@@ -240,11 +240,15 @@ namespace Jellyfin.Plugin.SmartLists
                     // Create progress callback for this playlist if provided
                     var progressCallback = createProgressCallback?.Invoke(playlist.Id ?? string.Empty);
 
+                    // Create a temporary RefreshCache for this refresh (fallback path when queue service unavailable)
+                    var refreshCache = new Services.Shared.RefreshQueueService.RefreshCache();
+
                     // Use interface method instead of casting
                     var (success, message, jellyfinPlaylistId) = await _playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
                         playlist,
                         user,
                         playlistSpecificMedia,
+                        refreshCache,
                         async (updatedDto) => await _playlistStore.SaveAsync(updatedDto),
                         progressCallback,
                         cancellationToken);

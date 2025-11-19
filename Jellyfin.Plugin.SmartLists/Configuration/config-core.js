@@ -713,7 +713,7 @@
     SmartLists.createStatusPageLink = function(linkText) {
         linkText = linkText || 'status page';
         // Create a unique ID for the link to attach event listener
-        var linkId = 'status-link-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        var linkId = 'status-link-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
         var linkHtml = '<a href="#" id="' + linkId + '">' + linkText + '</a>';
         
         // Attach click handler after a short delay to ensure DOM is ready

@@ -36,9 +36,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         private readonly ILogger<PlaylistService> _logger;
         private readonly IProviderManager _providerManager;
 
-        // Global semaphore to prevent concurrent refresh operations while preserving internal parallelism
-        private static readonly SemaphoreSlim _refreshOperationLock = new(1, 1);
-
         public PlaylistService(
             IUserManager userManager,
             ILibraryManager libraryManager,
@@ -64,6 +61,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         /// <param name="dto">The playlist DTO to process</param>
         /// <param name="user">The user for this playlist (already resolved)</param>
         /// <param name="allUserMedia">All media items for the user (can be cached)</param>
+        /// <param name="refreshCache">RefreshCache instance for caching expensive operations</param>
         /// <param name="saveCallback">Optional callback to save the DTO when JellyfinPlaylistId is updated</param>
         /// <param name="progressCallback">Optional callback to report progress (processed items, total items)</param>
         /// <param name="cancellationToken">Cancellation token</param>
@@ -72,6 +70,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             SmartPlaylistDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             Func<SmartPlaylistDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
             CancellationToken cancellationToken = default)
@@ -80,7 +79,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             ArgumentNullException.ThrowIfNull(user);
             ArgumentNullException.ThrowIfNull(allUserMedia);
 
-            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, saveCallback, progressCallback, cancellationToken);
+            var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, refreshCache, _logger, saveCallback, progressCallback, cancellationToken);
 
             // Update LastRefreshed timestamp for successful refreshes (any trigger)
             // Note: For new playlists, LastRefreshed was already set in ProcessPlaylistRefreshAsync before the saveCallback,
@@ -89,6 +88,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             {
                 dto.LastRefreshed = DateTime.UtcNow;
                 _logger.LogDebug("Updated LastRefreshed timestamp for cached playlist: {PlaylistName}", dto.Name);
+                
+                // Call save callback if provided to persist the LastRefreshed timestamp
+                if (saveCallback != null)
+                {
+                    await saveCallback(dto);
+                }
             }
 
             return (success, message, jellyfinPlaylistId);
@@ -109,6 +114,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             SmartPlaylistDto dto,
             User user,
             BaseItem[] allUserMedia,
+            RefreshQueueService.RefreshCache refreshCache,
             ILogger logger,
             Func<SmartPlaylistDto, Task>? saveCallback = null,
             Action<int, int>? progressCallback = null,
@@ -138,7 +144,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 // Report initial total items count
                 progressCallback?.Invoke(0, allUserMedia.Length);
 
-                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, _userDataManager, logger, progressCallback).ToArray();
+                var newItems = smartPlaylist.FilterPlaylistItems(allUserMedia, _libraryManager, user, refreshCache, _userDataManager, logger, progressCallback).ToArray();
                 logger.LogDebug("Playlist {PlaylistName} filtered to {FilteredCount} items from {TotalCount} total items",
                     dto.Name, newItems.Length, allUserMedia.Length);
 
@@ -326,7 +332,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
                 var allUserMedia = GetAllUserMedia(user, dto.MediaTypes, dto).ToArray();
 
-                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, _logger, null, progressCallback, cancellationToken);
+                // Create a temporary RefreshCache for this refresh (fallback path when queue service unavailable)
+                var refreshCache = new RefreshQueueService.RefreshCache();
+
+                var (success, message, jellyfinPlaylistId) = await ProcessPlaylistRefreshAsync(dto, user, allUserMedia, refreshCache, _logger, null, progressCallback, cancellationToken);
 
                 // Update LastRefreshed timestamp for successful refreshes (any trigger)
                 if (success)
@@ -349,157 +358,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             }
         }
 
-        public async Task<(bool Success, string Message, string Id)> RefreshWithTimeoutAsync(
-            SmartPlaylistDto dto, 
-            Action<int, int>? progressCallback = null,
-            RefreshStatusService? refreshStatusService = null,
-            Core.Enums.RefreshTriggerType? triggerType = null,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(dto);
-
-            // Use immediate return (0 timeout) instead of 5-second wait for consistent UX
-            // This gives users instant feedback if a refresh is already in progress
-            _logger.LogDebug("Attempting to acquire refresh lock for single playlist: {PlaylistName} (immediate return)", dto.Name);
-
-            // Start status tracking if RefreshStatusService is provided and status isn't already being tracked
-            var listId = dto.Id ?? Guid.NewGuid().ToString();
-            var shouldTrackStatus = refreshStatusService != null && triggerType.HasValue && !refreshStatusService.HasOngoingOperation(listId);
-            
-            if (shouldTrackStatus && refreshStatusService != null)
-            {
-                refreshStatusService.StartOperation(
-                    listId,
-                    dto.Name,
-                    Core.Enums.SmartListType.Playlist,
-                    triggerType!.Value,
-                    0); // Total items will be updated by progress callback
-
-                // Wrap progress callback to also update status service
-                var originalProgressCallback = progressCallback;
-                progressCallback = (processed, total) =>
-                {
-                    refreshStatusService.UpdateProgress(listId, processed, total);
-                    originalProgressCallback?.Invoke(processed, total);
-                };
-            }
-
-            try
-            {
-                if (await _refreshOperationLock.WaitAsync(0, cancellationToken))
-                {
-                    try
-                    {
-                        _logger.LogDebug("Acquired refresh lock for single playlist: {PlaylistName}", dto.Name);
-                        var (success, message, playlistId) = await RefreshAsync(dto, progressCallback, cancellationToken);
-                        
-                        // Complete status tracking if we started it
-                        if (shouldTrackStatus)
-                        {
-                            var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                            refreshStatusService?.CompleteOperation(
-                                listId,
-                                success,
-                                elapsedTime,
-                                success ? null : message);
-                        }
-                        
-                        return (success, message, playlistId);
-                    }
-                    finally
-                    {
-                        _refreshOperationLock.Release();
-                        _logger.LogDebug("Released refresh lock for single playlist: {PlaylistName}", dto.Name);
-                    }
-                }
-                else
-                {
-                    _logger.LogDebug("Refresh lock already held for single playlist: {PlaylistName}", dto.Name);
-                    
-                    // Complete status tracking if we started it (operation failed to start)
-                    if (shouldTrackStatus)
-                    {
-                        var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                        refreshStatusService?.CompleteOperation(
-                            listId,
-                            false,
-                            elapsedTime,
-                            "Playlist refresh is already in progress, please try again in a moment.");
-                    }
-                    
-                    return (false, "Playlist refresh is already in progress, please try again in a moment.", string.Empty);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogDebug("Refresh operation cancelled for playlist: {PlaylistName}", dto.Name);
-                
-                // Complete status tracking if we started it
-                if (shouldTrackStatus)
-                {
-                    var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    refreshStatusService?.CompleteOperation(
-                        listId,
-                        false,
-                        elapsedTime,
-                        "Refresh operation was cancelled.");
-                }
-                
-                return (false, "Refresh operation was cancelled.", string.Empty);
-            }
-            catch (Exception ex)
-            {
-                // Complete status tracking if we started it (exception occurred)
-                if (shouldTrackStatus)
-                {
-                    var elapsedTime = refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    refreshStatusService?.CompleteOperation(
-                        listId,
-                        false,
-                        elapsedTime,
-                        ex.Message);
-                }
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Acquires the global refresh lock for use by the scheduled task.
-        /// This should be called by the scheduled task to ensure exclusive access.
-        /// </summary>
-        /// <param name="cancellationToken">The cancellation token</param>
-        /// <returns>An IDisposable that releases the lock when disposed</returns>
-        public static async Task<IDisposable> AcquireRefreshLockAsync(CancellationToken cancellationToken = default)
-        {
-            await _refreshOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return new RefreshLockDisposable();
-        }
-
-        /// <summary>
-        /// Attempts to acquire the global refresh lock without blocking.
-        /// Returns immediately with success/failure result for manual refresh operations.
-        /// </summary>
-        /// <param name="cancellationToken">The cancellation token</param>
-        /// <returns>Tuple of (success, disposable) - disposable is null if acquisition failed</returns>
-        public static async Task<(bool Success, IDisposable? LockHandle)> TryAcquireRefreshLockAsync(CancellationToken cancellationToken = default)
-        {
-            if (await _refreshOperationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            {
-                return (true, new RefreshLockDisposable());
-            }
-            return (false, null);
-        }
-
-        /// <summary>
-        /// Helper class to ensure the refresh lock is properly released.
-        /// </summary>
-        private sealed class RefreshLockDisposable : IDisposable
-        {
-            public void Dispose()
-            {
-                _refreshOperationLock.Release();
-            }
-        }
 
         public Task DeleteAsync(SmartPlaylistDto dto, CancellationToken cancellationToken = default)
         {
@@ -658,27 +516,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             try
             {
                 _logger.LogDebug("Disabling smart playlist: {PlaylistName}", dto.Name);
-
-                // Use timeout approach for disable operations since they involve deleting playlists
-                if (await _refreshOperationLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
-                {
-                    try
-                    {
-                        _logger.LogDebug("Acquired refresh lock for disabling playlist: {PlaylistName}", dto.Name);
-                        await DeleteAsync(dto, cancellationToken);
-                        _logger.LogInformation("Successfully disabled smart playlist: {PlaylistName}", dto.Name);
-                    }
-                    finally
-                    {
-                        _refreshOperationLock.Release();
-                        _logger.LogDebug("Released refresh lock for disabling playlist: {PlaylistName}", dto.Name);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Timeout waiting for refresh lock to disable playlist: {PlaylistName}", dto.Name);
-                    throw new InvalidOperationException("Playlist refresh is already in progress. Please try again in a moment.");
-                }
+                await DeleteAsync(dto, cancellationToken);
+                _logger.LogInformation("Successfully disabled smart playlist: {PlaylistName}", dto.Name);
             }
             catch (Exception ex)
             {

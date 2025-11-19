@@ -108,9 +108,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         IProviderManager providerManager,
         ILogger<ManualRefreshService> logger,
         Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-        RefreshStatusService refreshStatusService) : IManualRefreshService
+        RefreshQueueService refreshQueueService) : IManualRefreshService
     {
-        // Note: Manual refresh now uses the shared PlaylistService lock to prevent concurrent operations
         private readonly IUserManager _userManager = userManager;
         private readonly ILibraryManager _libraryManager = libraryManager;
         private readonly IServerApplicationPaths _applicationPaths = applicationPaths;
@@ -120,7 +119,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private readonly IProviderManager _providerManager = providerManager;
         private readonly ILogger<ManualRefreshService> _logger = logger;
         private readonly Microsoft.Extensions.Logging.ILoggerFactory _loggerFactory = loggerFactory;
-        private readonly RefreshStatusService _refreshStatusService = refreshStatusService;
+        private readonly RefreshQueueService _refreshQueueService = refreshQueueService;
 
         /// <summary>
         /// Gets the user for a playlist, handling migration from old User field to new UserId field.
@@ -181,13 +180,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         }
 
         /// <summary>
-        /// Checks if a refresh result indicates actual failures (failure count > 0).
+        /// Checks if a refresh result indicates actual failures (failure count > 0 or Success = false).
         /// </summary>
         /// <param name="result">The refresh result to check.</param>
-        /// <returns>True if there are actual failures (FailureCount > 0), false otherwise.</returns>
-        private static bool HasActualFailures(RefreshResult result)
+        /// <returns>True if there are actual failures (FailureCount > 0 or Success = false), false otherwise.</returns>
+        private static bool HasActualFailures(RefreshResult? result)
         {
-            return result?.FailureCount > 0;
+            return result != null && (!result.Success || result.FailureCount > 0);
         }
 
         /// <summary>
@@ -226,9 +225,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         /// <summary>
         /// Refresh all smart playlists manually without using Jellyfin scheduled tasks.
-        /// This method performs the same work as the scheduled tasks but processes ALL playlists
-        /// regardless of their ScheduleTrigger settings, since this is a manual operation.
-        /// This method uses immediate failure if another refresh is already in progress.
+        /// This method enqueues all playlists for processing through the queue system.
         /// </summary>
         /// <param name="batchOffset">Offset for batch tracking (used when refreshing all lists together)</param>
         /// <param name="totalBatchCount">Total count for unified batch tracking (used when refreshing all lists together)</param>
@@ -237,33 +234,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // Declare cache variables at method level so they're accessible in finally for cleanup
-            var allUserMediaTypeCaches = new List<ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>>();
-
-            // Try to acquire the shared refresh lock (same as scheduled tasks) with immediate failure
-            var (lockAcquired, lockHandle) = await Services.Playlists.PlaylistService.TryAcquireRefreshLockAsync(cancellationToken);
-            if (!lockAcquired)
-            {
-                var message = "A refresh is already in progress. Please try again shortly.";
-                _logger.LogInformation("Manual playlist refresh request rejected - another refresh is already in progress");
-                return new RefreshResult
-                {
-                    Success = false,
-                    NotificationMessage = message,
-                    LogMessage = message,
-                    SuccessCount = 0,
-                    FailureCount = 0
-                };
-            }
-
             try
             {
-                _logger.LogInformation("Starting manual refresh of all smart playlists (acquired refresh lock)");
+                _logger.LogInformation("Enqueuing all smart playlists for manual refresh");
 
                 // Create playlist store
                 var fileSystem = new SmartListFileSystem(_applicationPaths);
                 var plStore = new PlaylistStore(fileSystem);
-                var playlistService = GetPlaylistService();
 
                 var allDtos = await plStore.GetAllAsync().ConfigureAwait(false);
 
@@ -293,252 +270,56 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     _logger.LogDebug("Skipping {DisabledCount} disabled playlists: {DisabledNames}", disabledPlaylists.Count, disabledNames);
                 }
 
-                // Process all enabled playlists (not just legacy ones - this is a manual trigger)
+                // Process all enabled playlists - enqueue each one individually
                 var enabledPlaylists = allDtos.Where(dto => dto.Enabled).ToList();
-                _logger.LogInformation("Processing {EnabledCount} enabled playlists", enabledPlaylists.Count);
+                _logger.LogInformation("Enqueuing {EnabledCount} enabled playlists", enabledPlaylists.Count);
 
-                // Pre-resolve users and group playlists by user
-                var resolvedPlaylists = new List<(SmartPlaylistDto dto, User user)>();
-                var playlistsWithoutUser = new List<SmartPlaylistDto>();
-
+                var enqueuedCount = 0;
+                var failedCount = 0;
                 foreach (var dto in enabledPlaylists)
                 {
-                    var user = await GetPlaylistUserAsync(dto);
-                    if (user != null)
+                    try
                     {
-                        resolvedPlaylists.Add((dto, user));
+                        var listId = string.IsNullOrEmpty(dto.Id) ? Guid.NewGuid().ToString() : dto.Id;
+                        var queueItem = new RefreshQueueItem
+                        {
+                            ListId = listId,
+                            ListName = dto.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = dto,
+                            UserId = dto.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
+
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        enqueuedCount++;
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogWarning("User not found for playlist '{PlaylistName}'. Will track as failure.", dto.Name);
-                        playlistsWithoutUser.Add(dto);
-                    }
-                }
-
-                // Track playlists without users as failures
-                foreach (var dto in playlistsWithoutUser)
-                {
-                    var listId = dto.Id ?? Guid.NewGuid().ToString();
-                    _refreshStatusService?.StartOperation(
-                        listId,
-                        dto.Name,
-                        Core.Enums.SmartListType.Playlist,
-                        Core.Enums.RefreshTriggerType.Manual,
-                        0,
-                        batchCurrentIndex: batchOffset + resolvedPlaylists.Count + playlistsWithoutUser.IndexOf(dto) + 1,
-                        batchTotalCount: totalBatchCount ?? (enabledPlaylists.Count));
-                    var earlyFailureDuration = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService?.CompleteOperation(
-                        listId,
-                        false,
-                        earlyFailureDuration,
-                        "User not found for playlist");
-                }
-
-                // Group by user for efficient media caching
-                var playlistsByUser = resolvedPlaylists
-                    .GroupBy(p => p.user.Id)
-                    .ToDictionary(g => g.Key, g => g.ToList());
-
-                _logger.LogDebug("Grouped {UserCount} users with {TotalPlaylists} playlists after user resolution",
-                    playlistsByUser.Count, resolvedPlaylists.Count);
-
-                // Process playlists with proper MediaTypes filtering
-                // Start counts with playlists that already failed (no user)
-                var processedCount = playlistsWithoutUser.Count;
-                var successCount = 0;
-                var failureCount = playlistsWithoutUser.Count;
-
-                // Calculate total count of all playlists for batch tracking
-                // Include playlists without users in the total count so they're all tracked
-                var totalPlaylistCount = playlistsByUser.Values.Sum(userPlaylistPairs => userPlaylistPairs.Count) + playlistsWithoutUser.Count;
-                var batchTotalCount = totalBatchCount ?? totalPlaylistCount;
-                var currentPlaylistIndex = batchOffset; // Start from offset if provided
-
-                foreach (var (userId, userPlaylistPairs) in playlistsByUser)
-                {
-                    var user = userPlaylistPairs.First().user;
-                    var userPlaylists = userPlaylistPairs.Select(p => p.dto).ToList();
-
-                    _logger.LogDebug("Processing {PlaylistCount} playlists sequentially for user '{Username}' (parallelism will be used for expensive operations within each playlist)",
-                        userPlaylists.Count, user.Username);
-
-                    // OPTIMIZATION: Cache media by MediaTypes to avoid redundant queries for playlists with same media types
-                    // Use Lazy<T> to ensure value factory executes only once per key, even under concurrent access
-                    var userMediaTypeCache = new ConcurrentDictionary<MediaTypesKey, Lazy<BaseItem[]>>();
-                    allUserMediaTypeCaches.Add(userMediaTypeCache); // Track for cleanup
-
-                    foreach (var dto in userPlaylists)
-                    {
-                        // Increment current index for batch tracking (1-based for display)
-                        // Do this before validation so skipped playlists are still counted in batch progress
-                        currentPlaylistIndex++;
-                        
-                        // Generate listId once at the start to ensure StartOperation and CompleteOperation use same ID
-                        var listId = dto.Id ?? Guid.NewGuid().ToString();
-                        
-                        var playlistStopwatch = Stopwatch.StartNew();
-                        var operationStarted = false;
-                        try
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-
-                            // Start tracking refresh operation early, before any operations that might fail
-                            // This ensures failures are always reported to the status service
-                            _refreshStatusService?.StartOperation(
-                                listId,
-                                dto.Name,
-                                Core.Enums.SmartListType.Playlist,
-                                Core.Enums.RefreshTriggerType.Manual,
-                                0, // Will update with actual count after media fetch
-                                batchCurrentIndex: currentPlaylistIndex,
-                                batchTotalCount: batchTotalCount);
-                            operationStarted = true;
-
-                            // Validate that the playlist user is valid
-                            if (user.Id == Guid.Empty)
-                            {
-                                _logger.LogWarning("Playlist '{PlaylistName}' has invalid user ID. Skipping.", dto.Name);
-                                var invalidUserDuration = _refreshStatusService?.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                                _refreshStatusService?.CompleteOperation(listId, false, invalidUserDuration, "Invalid user ID");
-                                failureCount++;
-                                processedCount++;
-                                continue;
-                            }
-
-                            // OPTIMIZATION: Get media specifically for this playlist's media types using cache
-                            // This ensures Movie playlists only get movies, not episodes/series, while avoiding redundant queries
-                            var mediaTypesForClosure = dto.MediaTypes?.ToList() ?? []; // Create defensive copy to prevent accidental modifications
-                            var mediaTypesKey = MediaTypesKey.Create(mediaTypesForClosure, dto);
-
-                            // NOTE: Lazy<T> caches exceptions. This is intentional for database operations
-                            // where failures typically indicate serious issues that should fail fast
-                            // rather than retry repeatedly during the same manual refresh operation.
-                            var playlistSpecificMedia = userMediaTypeCache.GetOrAdd(mediaTypesKey, _ =>
-                                new Lazy<BaseItem[]>(() =>
-                                {
-                                    var media = playlistService.GetAllUserMediaForPlaylist(user, mediaTypesForClosure, dto).ToArray();
-                                    _logger.LogDebug("Cached {MediaCount} items for MediaTypes [{MediaTypes}] for user '{Username}'",
-                                        media.Length, mediaTypesKey, user.Username);
-                                    return media;
-                                }, LazyThreadSafetyMode.ExecutionAndPublication)
-                            ).Value;
-
-                            _logger.LogDebug("Playlist {PlaylistName} with MediaTypes [{MediaTypes}] has {PlaylistSpecificCount} specific items",
-                                dto.Name, mediaTypesKey, playlistSpecificMedia.Length);
-
-                            // Update operation with actual media count now that we have it
-                            _refreshStatusService?.UpdateProgress(listId, 0, playlistSpecificMedia.Length);
-
-                            // Create progress callback
-                            Action<int, int>? progressCallback = (processed, total) =>
-                            {
-                                _refreshStatusService?.UpdateProgress(listId, processed, total);
-                            };
-
-                            // Track if this is a new playlist (JellyfinPlaylistId was empty before refresh)
-                            var wasNewPlaylist = string.IsNullOrEmpty(dto.JellyfinPlaylistId);
-                            
-                            var refreshResult = await playlistService.ProcessPlaylistRefreshWithCachedMediaAsync(
-                                dto,
-                                user,
-                                playlistSpecificMedia, // Use properly filtered and cached media
-                                async (updatedDto) => await plStore.SaveAsync(updatedDto),
-                                progressCallback,
-                                cancellationToken);
-
-                            playlistStopwatch.Stop();
-                            
-                            // Complete status tracking with explicit duration from stopwatch
-                            _refreshStatusService?.CompleteOperation(
-                                listId,
-                                refreshResult.Success,
-                                playlistStopwatch.Elapsed,
-                                refreshResult.Success ? null : refreshResult.Message);
-                            
-                            if (refreshResult.Success)
-                            {
-                                // Save the playlist to persist LastRefreshed timestamp
-                                // Note: For new playlists, the saveCallback already saved the DTO (with JellyfinPlaylistId),
-                                // but ProcessPlaylistRefreshWithCachedMediaAsync updates LastRefreshed after the callback,
-                                // so we need to save again to persist the updated timestamp.
-                                // For existing playlists, we need to save to persist LastRefreshed.
-                                await plStore.SaveAsync(dto);
-
-                                successCount++;
-                                _logger.LogDebug("Playlist {PlaylistName} processed successfully in {ElapsedTime}ms: {Message}",
-                                    dto.Name, playlistStopwatch.ElapsedMilliseconds, refreshResult.Message);
-                            }
-                            else
-                            {
-                                failureCount++;
-                                _logger.LogWarning("Playlist {PlaylistName} processing failed after {ElapsedTime}ms: {Message}",
-                                    dto.Name, playlistStopwatch.ElapsedMilliseconds, refreshResult.Message);
-                            }
-
-                            processedCount++;
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            playlistStopwatch.Stop();
-                            
-                            // Only complete operation if it was started
-                            if (operationStarted)
-                            {
-                                _refreshStatusService?.CompleteOperation(
-                                    listId,
-                                    false,
-                                    playlistStopwatch.Elapsed,
-                                    "Refresh operation was cancelled");
-                            }
-                            
-                            _logger.LogInformation("Direct refresh operation was cancelled");
-                            throw;
-                        }
-                        catch (Exception ex)
-                        {
-                            playlistStopwatch.Stop();
-                            
-                            // Only complete operation if it was started
-                            if (operationStarted)
-                            {
-                                _refreshStatusService?.CompleteOperation(
-                                    listId,
-                                    false,
-                                    playlistStopwatch.Elapsed,
-                                    ex.Message);
-                            }
-                            
-                            failureCount++;
-                            processedCount++;
-                            _logger.LogError(ex, "Error processing playlist {PlaylistName} after {ElapsedTime}ms", dto.Name, playlistStopwatch.ElapsedMilliseconds);
-                        }
+                        _logger.LogError(ex, "Error enqueuing playlist {PlaylistName} ({PlaylistId}) for refresh", dto.Name, dto.Id);
+                        failedCount++;
                     }
                 }
 
                 stopwatch.Stop();
                 var elapsedTime = FormatElapsedTime(stopwatch.ElapsedMilliseconds);
-                var logMessage = $"Direct refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed playlists (completed in {stopwatch.ElapsedMilliseconds}ms)";
-                
-                string notificationMessage;
-                if (failureCount == 0)
-                {
-                    notificationMessage = $"All playlists refreshed successfully in {elapsedTime}.";
-                }
-                else
-                {
-                    notificationMessage = $"Playlist refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed (in {elapsedTime})";
-                }
+                var logMessage = failedCount > 0 
+                    ? $"Enqueued {enqueuedCount} playlists for refresh ({failedCount} failed to enqueue) (completed in {stopwatch.ElapsedMilliseconds}ms)"
+                    : $"Enqueued {enqueuedCount} playlists for refresh (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                var notificationMessage = failedCount > 0
+                    ? $"Enqueued {enqueuedCount} playlists for refresh ({failedCount} failed). They will be processed in the background."
+                    : $"Enqueued {enqueuedCount} playlists for refresh. They will be processed in the background.";
                 
                 _logger.LogInformation(logMessage);
 
                 return new RefreshResult
                 {
-                    Success = failureCount == 0,
+                    Success = failedCount == 0,
                     NotificationMessage = notificationMessage,
                     LogMessage = logMessage,
-                    SuccessCount = successCount,
-                    FailureCount = failureCount
+                    SuccessCount = enqueuedCount,
+                    FailureCount = failedCount
                 };
             }
             catch (OperationCanceledException)
@@ -559,7 +340,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                var notificationMessage = "An error occurred during playlist refresh. Please check the logs for details.";
+                var notificationMessage = "An error occurred while enqueuing playlists. Please check the logs for details.";
                 var logMessage = $"Error during manual playlist refresh (after {stopwatch.ElapsedMilliseconds}ms): {ex.Message}";
                 _logger.LogError(ex, logMessage);
                 return new RefreshResult
@@ -570,27 +351,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     SuccessCount = 0,
                     FailureCount = 0
                 };
-            }
-            finally
-            {
-                // Clean up memory - explicitly clear the caches to free memory from large media collections
-                // This prevents memory leaks when processing large libraries with thousands of media items
-                if (allUserMediaTypeCaches != null && allUserMediaTypeCaches.Count > 0)
-                {
-                    var totalCaches = allUserMediaTypeCaches.Count;
-                    var totalCacheEntries = allUserMediaTypeCaches.Sum(cache => cache.Count);
-                    _logger.LogDebug("Cleaning up {CacheCount} media type caches containing {TotalEntries} cache entries",
-                        totalCaches, totalCacheEntries);
-
-                    foreach (var cache in allUserMediaTypeCaches)
-                    {
-                        cache.Clear();
-                    }
-                    allUserMediaTypeCaches.Clear();
-                }
-
-                lockHandle?.Dispose();
-                _logger.LogDebug("Released shared refresh lock");
             }
         }
 
@@ -646,15 +406,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 if (!playlistHasFailures && !collectionHasFailures)
                 {
                     // Simple success message when everything succeeds
-                    notificationMessage = $"All lists refreshed successfully in {elapsedTime}.";
+                    notificationMessage = $"Enqueued all lists for refresh. They will be processed in the background.";
                 }
                 else
                 {
                     // Include details when there are failures
-                    notificationMessage = $"All lists refreshed. Playlists: {playlistResult.NotificationMessage}. Collections: {collectionResult.NotificationMessage}.";
+                    notificationMessage = $"List enqueue completed. Playlists: {playlistResult.NotificationMessage}. Collections: {collectionResult.NotificationMessage}.";
                 }
                 
-                logMessage = $"All lists refresh completed. Playlists: {playlistResult.LogMessage}. Collections: {collectionResult.LogMessage}. (Total time: {overallStopwatch.ElapsedMilliseconds}ms)";
+                logMessage = $"All lists enqueue completed. Playlists: {playlistResult.LogMessage}. Collections: {collectionResult.LogMessage}. (Total time: {overallStopwatch.ElapsedMilliseconds}ms)";
                 _logger.LogInformation(logMessage);
 
                 return new RefreshResult
@@ -700,8 +460,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
         /// <summary>
         /// Refresh all smart collections manually without using Jellyfin scheduled tasks.
-        /// This method processes ALL collections regardless of their ScheduleTrigger settings, since this is a manual operation.
-        /// This method uses immediate failure if another refresh is already in progress.
+        /// This method enqueues all collections for processing through the queue system.
         /// </summary>
         /// <param name="batchOffset">Offset for batch tracking (used when refreshing all lists together)</param>
         /// <param name="totalBatchCount">Total count for unified batch tracking (used when refreshing all lists together)</param>
@@ -710,28 +469,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // Try to acquire the collection refresh lock with immediate failure (no waiting)
-            // We need to hold the lock for the entire refresh operation to prevent concurrent refreshes
-            _logger.LogDebug("Attempting to acquire collection refresh lock for manual refresh (immediate return)");
-            
-            var (lockAcquired, lockHandle) = await Services.Collections.CollectionService.TryAcquireRefreshLockAsync(cancellationToken);
-            if (!lockAcquired)
-            {
-                var message = "A refresh is already in progress. Please try again shortly.";
-                _logger.LogInformation("Manual collection refresh request rejected - another refresh is already in progress");
-                return new RefreshResult
-                {
-                    Success = false,
-                    NotificationMessage = message,
-                    LogMessage = message,
-                    SuccessCount = 0,
-                    FailureCount = 0
-                };
-            }
-
             try
             {
-                _logger.LogInformation("Starting manual refresh of all smart collections (acquired refresh lock)");
+                _logger.LogInformation("Enqueuing all smart collections for manual refresh");
 
                 // Create collection store
                 var fileSystem = new SmartListFileSystem(_applicationPaths);
@@ -765,142 +505,56 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     _logger.LogDebug("Skipping {DisabledCount} disabled collections: {DisabledNames}", disabledCollections.Count, disabledNames);
                 }
 
-                // Process all enabled collections
+                // Process all enabled collections - enqueue each one individually
                 var enabledCollections = allDtos.Where(dto => dto.Enabled).ToList();
-                _logger.LogInformation("Processing {EnabledCount} enabled collections", enabledCollections.Count);
+                _logger.LogInformation("Enqueuing {EnabledCount} enabled collections", enabledCollections.Count);
 
-                var processedCount = 0;
-                var successCount = 0;
-                var failureCount = 0;
-                var totalCollectionCount = enabledCollections.Count;
-                // Use unified batch count if provided (for "Refresh All Lists"), otherwise use collection-only count
-                var batchTotalCount = totalBatchCount ?? totalCollectionCount;
-                var currentCollectionIndex = batchOffset; // Start from offset if provided
-
+                var enqueuedCount = 0;
+                var failedCount = 0;
                 foreach (var dto in enabledCollections)
                 {
-                    // Generate listId once at the start to ensure StartOperation and CompleteOperation use same ID
-                    var listId = dto.Id ?? Guid.NewGuid().ToString();
-                    
-                    var collectionStopwatch = Stopwatch.StartNew();
-                    var operationStarted = false;
                     try
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        // Increment current index for batch tracking (1-based for display)
-                        currentCollectionIndex++;
-
-                        // Start tracking refresh operation early, before any operations that might fail
-                        // This ensures failures are always reported to the status service
-                        _refreshStatusService?.StartOperation(
-                            listId,
-                            dto.Name,
-                            Core.Enums.SmartListType.Collection,
-                            Core.Enums.RefreshTriggerType.Manual,
-                            0,
-                            batchCurrentIndex: currentCollectionIndex,
-                            batchTotalCount: batchTotalCount);
-                        operationStarted = true;
-
-                        // Get collection service
-                        var collectionService = GetCollectionService();
-
-                        // Create progress callback
-                        Action<int, int>? progressCallback = (processed, total) =>
+                        var listId = string.IsNullOrEmpty(dto.Id) ? Guid.NewGuid().ToString() : dto.Id;
+                        var queueItem = new RefreshQueueItem
                         {
-                            _refreshStatusService?.UpdateProgress(listId, processed, total);
+                            ListId = listId,
+                            ListName = dto.Name,
+                            ListType = Core.Enums.SmartListType.Collection,
+                            OperationType = RefreshOperationType.Refresh,
+                            ListData = dto,
+                            UserId = dto.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
                         };
 
-                        var (success, message, collectionId) = await collectionService.RefreshAsync(dto, progressCallback, cancellationToken).ConfigureAwait(false);
-
-                        collectionStopwatch.Stop();
-                        
-                        // Complete status tracking with explicit duration from stopwatch
-                        _refreshStatusService?.CompleteOperation(
-                            listId,
-                            success,
-                            collectionStopwatch.Elapsed,
-                            success ? null : message);
-                        
-                        if (success)
-                        {
-                            // Save the collection to persist LastRefreshed timestamp
-                            await collectionStore.SaveAsync(dto).ConfigureAwait(false);
-
-                            successCount++;
-                            _logger.LogDebug("Collection {CollectionName} processed successfully in {ElapsedTime}ms: {Message}",
-                                dto.Name, collectionStopwatch.ElapsedMilliseconds, message);
-                        }
-                        else
-                        {
-                            failureCount++;
-                            _logger.LogWarning("Collection {CollectionName} processing failed after {ElapsedTime}ms: {Message}",
-                                dto.Name, collectionStopwatch.ElapsedMilliseconds, message);
-                        }
-
-                        processedCount++;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        collectionStopwatch.Stop();
-                        
-                        // Only complete operation if it was started
-                        if (operationStarted)
-                        {
-                            _refreshStatusService?.CompleteOperation(
-                                listId,
-                                false,
-                                collectionStopwatch.Elapsed,
-                                "Refresh operation was cancelled");
-                        }
-                        
-                        _logger.LogInformation("Direct collection refresh operation was cancelled");
-                        throw;
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        enqueuedCount++;
                     }
                     catch (Exception ex)
                     {
-                        collectionStopwatch.Stop();
-                        
-                        // Only complete operation if it was started
-                        if (operationStarted)
-                        {
-                            _refreshStatusService?.CompleteOperation(
-                                listId,
-                                false,
-                                collectionStopwatch.Elapsed,
-                                ex.Message);
-                        }
-                        
-                        failureCount++;
-                        processedCount++;
-                        _logger.LogError(ex, "Error processing collection {CollectionName} after {ElapsedTime}ms", dto.Name, collectionStopwatch.ElapsedMilliseconds);
+                        _logger.LogError(ex, "Error enqueuing collection {CollectionName} ({CollectionId}) for refresh", dto.Name, dto.Id);
+                        failedCount++;
                     }
                 }
 
                 stopwatch.Stop();
                 var elapsedTime = FormatElapsedTime(stopwatch.ElapsedMilliseconds);
-                var logMessage = $"Direct refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed collections (completed in {stopwatch.ElapsedMilliseconds}ms)";
-                
-                string notificationMessage;
-                if (failureCount == 0)
-                {
-                    notificationMessage = $"All collections refreshed successfully in {elapsedTime}.";
-                }
-                else
-                {
-                    notificationMessage = $"Collection refresh completed: {successCount} successful, {failureCount} failed out of {processedCount} processed (in {elapsedTime})";
-                }
+                var logMessage = failedCount > 0
+                    ? $"Enqueued {enqueuedCount} collections for refresh ({failedCount} failed to enqueue) (completed in {stopwatch.ElapsedMilliseconds}ms)"
+                    : $"Enqueued {enqueuedCount} collections for refresh (completed in {stopwatch.ElapsedMilliseconds}ms)";
+                var notificationMessage = failedCount > 0
+                    ? $"Enqueued {enqueuedCount} collections for refresh ({failedCount} failed). They will be processed in the background."
+                    : $"Enqueued {enqueuedCount} collections for refresh. They will be processed in the background.";
                 
                 _logger.LogInformation(logMessage);
 
                 return new RefreshResult
                 {
-                    Success = failureCount == 0,
+                    Success = failedCount == 0,
                     NotificationMessage = notificationMessage,
                     LogMessage = logMessage,
-                    SuccessCount = successCount,
-                    FailureCount = failureCount
+                    SuccessCount = enqueuedCount,
+                    FailureCount = failedCount
                 };
             }
             catch (OperationCanceledException)
@@ -921,7 +575,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                var notificationMessage = "An error occurred during collection refresh. Please check the logs for details.";
+                var notificationMessage = "An error occurred while enqueuing collections. Please check the logs for details.";
                 var logMessage = $"Error during manual collection refresh (after {stopwatch.ElapsedMilliseconds}ms): {ex.Message}";
                 _logger.LogError(ex, logMessage);
                 return new RefreshResult
@@ -933,207 +587,77 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     FailureCount = 0
                 };
             }
-            finally
-            {
-                // Always release the refresh lock
-                lockHandle?.Dispose();
-                _logger.LogDebug("Released collection refresh lock after manual refresh");
-            }
         }
 
         /// <summary>
         /// Refresh a single smart playlist manually.
-        /// This method provides the same functionality as the individual "Refresh" button in the UI.
+        /// This method enqueues the playlist for processing through the queue system.
         /// </summary>
-        public async Task<(bool Success, string Message, string? JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto playlist, CancellationToken cancellationToken = default)
+        public Task<(bool Success, string Message, string? JellyfinPlaylistId)> RefreshSinglePlaylistAsync(SmartPlaylistDto playlist, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(playlist);
 
-            var listId = playlist.Id ?? Guid.NewGuid().ToString();
-            bool operationStarted = false;
-
             try
             {
-                _logger.LogInformation("Starting manual refresh of single playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
+                var listId = string.IsNullOrEmpty(playlist.Id) ? Guid.NewGuid().ToString() : playlist.Id;
+                _logger.LogInformation("Enqueuing single playlist for manual refresh: {PlaylistName} ({ListId})", playlist.Name, listId);
 
-                var playlistService = GetPlaylistService();
-                
-                // Try to acquire the lock with immediate timeout (no waiting)
-                // If we can't get it, return immediately without starting status tracking
-                var (lockAcquired, lockHandle) = await Services.Playlists.PlaylistService.TryAcquireRefreshLockAsync(cancellationToken);
-                if (!lockAcquired)
+                var queueItem = new RefreshQueueItem
                 {
-                    _logger.LogInformation("Playlist refresh already in progress for: {PlaylistName} ({PlaylistId}). Lock could not be acquired.", playlist.Name, playlist.Id);
-                    return (false, "Playlist refresh is already in progress, please try again in a moment.", string.Empty);
-                }
+                    ListId = listId,
+                    ListName = playlist.Name,
+                    ListType = Core.Enums.SmartListType.Playlist,
+                    OperationType = RefreshOperationType.Refresh,
+                    ListData = playlist,
+                    UserId = playlist.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
 
-                try
-                {
-                    _logger.LogDebug("Successfully acquired lock for playlist: {PlaylistName} ({PlaylistId}). Starting status tracking.", playlist.Name, playlist.Id);
-                    
-                    // We got the lock! Now start tracking the operation
-                    operationStarted = true;
-                    _refreshStatusService.StartOperation(
-                        listId,
-                        playlist.Name,
-                        Core.Enums.SmartListType.Playlist,
-                        Core.Enums.RefreshTriggerType.Manual,
-                        0);
+                _refreshQueueService.EnqueueOperation(queueItem);
 
-                    // Create progress callback
-                    Action<int, int>? progressCallback = (processed, total) =>
-                    {
-                        _refreshStatusService.UpdateProgress(listId, processed, total);
-                    };
-                    
-                    // Call RefreshAsync directly (not RefreshWithTimeoutAsync) since we already hold the lock
-                    var (success, message, playlistId) = await playlistService.RefreshAsync(playlist, progressCallback, cancellationToken);
-
-                    // Complete status tracking
-                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService.CompleteOperation(
-                        listId,
-                        success,
-                        elapsedTime,
-                        success ? null : message);
-
-                    if (success)
-                    {
-                        _logger.LogInformation("Successfully refreshed single playlist: {PlaylistName} ({PlaylistId}) - Jellyfin ID: {JellyfinPlaylistId}",
-                            playlist.Name, playlist.Id, playlistId ?? "none");
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Failed to refresh single playlist: {PlaylistName} ({PlaylistId}). Error: {ErrorMessage}",
-                            playlist.Name, playlist.Id, message);
-                    }
-
-                    return (success, message, playlistId);
-                }
-                finally
-                {
-                    // Always release the lock
-                    lockHandle?.Dispose();
-                    _logger.LogDebug("Released refresh lock for single playlist: {PlaylistName}", playlist.Name);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                if (operationStarted)
-                {
-                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, "Refresh operation was cancelled");
-                }
-                _logger.LogInformation("Single playlist refresh was cancelled for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
-                return (false, "Refresh operation was cancelled", string.Empty);
+                _logger.LogInformation("Enqueued single playlist: {PlaylistName} ({ListId})", playlist.Name, listId);
+                return Task.FromResult<(bool Success, string Message, string? JellyfinPlaylistId)>((true, "Playlist refresh has been queued. It will be processed in the background.", playlist.JellyfinPlaylistId));
             }
             catch (Exception ex)
             {
-                if (operationStarted)
-                {
-                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, ex.Message);
-                }
-                _logger.LogError(ex, "Error during single playlist refresh for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
-                return (false, $"Error during playlist refresh: {ex.Message}", string.Empty);
+                _logger.LogError(ex, "Error enqueuing single playlist refresh for playlist: {PlaylistName} ({PlaylistId})", playlist.Name, playlist.Id);
+                return Task.FromResult<(bool Success, string Message, string? JellyfinPlaylistId)>((false, $"Error enqueuing playlist refresh: {ex.Message}", string.Empty));
             }
         }
 
         /// <summary>
         /// Refresh a single smart collection manually.
-        /// This method provides the same functionality as the individual "Refresh" button in the UI.
+        /// This method enqueues the collection for processing through the queue system.
         /// </summary>
-        public async Task<(bool Success, string Message, string? JellyfinCollectionId)> RefreshSingleCollectionAsync(SmartCollectionDto collection, CancellationToken cancellationToken = default)
+        public Task<(bool Success, string Message, string? JellyfinCollectionId)> RefreshSingleCollectionAsync(SmartCollectionDto collection, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(collection);
 
-            var listId = collection.Id ?? Guid.NewGuid().ToString();
-            bool operationStarted = false;
-
             try
             {
-                _logger.LogInformation("Starting manual refresh of single collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
+                var listId = string.IsNullOrEmpty(collection.Id) ? Guid.NewGuid().ToString() : collection.Id;
+                _logger.LogInformation("Enqueuing single collection for manual refresh: {CollectionName} ({ListId})", collection.Name, listId);
 
-                var collectionService = GetCollectionService();
-                
-                // Try to acquire the lock with immediate timeout (no waiting)
-                // If we can't get it, return immediately without starting status tracking
-                var (lockAcquired, lockHandle) = await Services.Collections.CollectionService.TryAcquireRefreshLockAsync(cancellationToken);
-                if (!lockAcquired)
+                var queueItem = new RefreshQueueItem
                 {
-                    _logger.LogInformation("Collection refresh already in progress for: {CollectionName} ({CollectionId}). Lock could not be acquired.", collection.Name, collection.Id);
-                    return (false, "Collection refresh is already in progress, please try again in a moment.", string.Empty);
-                }
+                    ListId = listId,
+                    ListName = collection.Name,
+                    ListType = Core.Enums.SmartListType.Collection,
+                    OperationType = RefreshOperationType.Refresh,
+                    ListData = collection,
+                    UserId = collection.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
 
-                try
-                {
-                    _logger.LogDebug("Successfully acquired lock for collection: {CollectionName} ({CollectionId}). Starting status tracking.", collection.Name, collection.Id);
-                    
-                    // We got the lock! Now start tracking the operation
-                    operationStarted = true;
-                    _refreshStatusService.StartOperation(
-                        listId,
-                        collection.Name,
-                        Core.Enums.SmartListType.Collection,
-                        Core.Enums.RefreshTriggerType.Manual,
-                        0);
+                _refreshQueueService.EnqueueOperation(queueItem);
 
-                    // Create progress callback
-                    Action<int, int>? progressCallback = (processed, total) =>
-                    {
-                        _refreshStatusService.UpdateProgress(listId, processed, total);
-                    };
-                    
-                    // Call RefreshAsync directly (not RefreshWithTimeoutAsync) since we already hold the lock
-                    var (success, message, collectionId) = await collectionService.RefreshAsync(collection, progressCallback, cancellationToken);
-
-                    // Complete status tracking
-                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService.CompleteOperation(
-                        listId,
-                        success,
-                        elapsedTime,
-                        success ? null : message);
-
-                    if (success)
-                    {
-                        _logger.LogInformation("Successfully refreshed single collection: {CollectionName} ({CollectionId}) - Jellyfin ID: {JellyfinCollectionId}",
-                            collection.Name, collection.Id, collectionId ?? "none");
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Failed to refresh single collection: {CollectionName} ({CollectionId}). Error: {ErrorMessage}",
-                            collection.Name, collection.Id, message);
-                    }
-
-                    return (success, message, collectionId);
-                }
-                finally
-                {
-                    // Always release the lock
-                    lockHandle?.Dispose();
-                    _logger.LogDebug("Released refresh lock for single collection: {CollectionName}", collection.Name);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                if (operationStarted)
-                {
-                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, "Refresh operation was cancelled");
-                }
-                _logger.LogInformation("Single collection refresh was cancelled for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
-                return (false, "Refresh operation was cancelled", string.Empty);
+                _logger.LogInformation("Enqueued single collection: {CollectionName} ({ListId})", collection.Name, listId);
+                return Task.FromResult<(bool Success, string Message, string? JellyfinCollectionId)>((true, "Collection refresh has been queued. It will be processed in the background.", collection.JellyfinCollectionId));
             }
             catch (Exception ex)
             {
-                if (operationStarted)
-                {
-                    var elapsedTime = _refreshStatusService.GetElapsedTime(listId) ?? TimeSpan.Zero;
-                    _refreshStatusService.CompleteOperation(listId, false, elapsedTime, ex.Message);
-                }
-                _logger.LogError(ex, "Error during single collection refresh for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
-                return (false, $"Error during collection refresh: {ex.Message}", string.Empty);
+                _logger.LogError(ex, "Error enqueuing single collection refresh for collection: {CollectionName} ({CollectionId})", collection.Name, collection.Id);
+                return Task.FromResult<(bool Success, string Message, string? JellyfinCollectionId)>((false, $"Error enqueuing collection refresh: {ex.Message}", string.Empty));
             }
         }
     }
