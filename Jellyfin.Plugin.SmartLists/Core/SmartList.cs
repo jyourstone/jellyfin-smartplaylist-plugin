@@ -2509,22 +2509,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <returns>The disc number or 0 if not available</returns>
         public static int GetDiscNumber(BaseItem item)
         {
-            try
-            {
-                // For audio items, ParentIndexNumber represents the disc number
-                var parentIndexProperty = item.GetType().GetProperty("ParentIndexNumber");
-                if (parentIndexProperty != null)
-                {
-                    var value = parentIndexProperty.GetValue(item);
-                    if (value is int discNum)
-                        return discNum;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
+            // For audio items, ParentIndexNumber represents the disc number
+            return item.ParentIndexNumber ?? 0;
         }
 
         /// <summary>
@@ -2534,22 +2520,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <returns>The track number or 0 if not available</returns>
         public static int GetTrackNumber(BaseItem item)
         {
-            try
-            {
-                // For audio items, IndexNumber represents the track number
-                var indexProperty = item.GetType().GetProperty("IndexNumber");
-                if (indexProperty != null)
-                {
-                    var value = indexProperty.GetValue(item);
-                    if (value is int trackNum)
-                        return trackNum;
-                }
-            }
-            catch
-            {
-                // Ignore errors and return 0
-            }
-            return 0;
+            // For audio items, IndexNumber represents the track number
+            return item.IndexNumber ?? 0;
         }
 
         /// <summary>

@@ -34,6 +34,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
             ArgumentNullException.ThrowIfNull(item);
+            ArgumentNullException.ThrowIfNull(user);
             try
             {
                 object? userData = null;

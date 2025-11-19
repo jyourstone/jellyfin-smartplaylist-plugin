@@ -52,23 +52,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
                             userData = userDataManager.GetUserData(user, item);
                         }
                         
-                        var lastPlayedProp = userData?.GetType().GetProperty("LastPlayedDate");
-                        if (lastPlayedProp != null)
-                        {
-                            var lastPlayedValue = lastPlayedProp.GetValue(userData);
-                            if (lastPlayedValue is DateTime dt && dt != DateTime.MinValue)
-                            {
-                                sortValueCache[item] = dt;
-                            }
-                            else
-                            {
-                                sortValueCache[item] = DateTime.MinValue; // Never played = oldest
-                            }
-                        }
-                        else
-                        {
-                            sortValueCache[item] = DateTime.MinValue;
-                        }
+                        sortValueCache[item] = GetLastPlayedDateFromUserData(userData);
                     }
                     catch (Exception ex)
                     {
@@ -111,22 +95,53 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
                     userData = userDataManager.GetUserData(user, item);
                 }
                 
-                var lastPlayedProp = userData?.GetType().GetProperty("LastPlayedDate");
-                if (lastPlayedProp != null)
-                {
-                    var lastPlayedValue = lastPlayedProp.GetValue(userData);
-                    if (lastPlayedValue is DateTime dt && dt != DateTime.MinValue)
-                    {
-                        return dt.Ticks;
-                    }
-                }
-                return DateTime.MinValue.Ticks; // Never played = oldest
+                return GetLastPlayedDateFromUserData(userData).Ticks;
             }
             catch (Exception ex)
             {
                 logger?.LogError(ex, "Error getting last played date for item {ItemId} user {UserId}", item.Id, user.Id);
                 return DateTime.MinValue.Ticks;
             }
+        }
+
+        /// <summary>
+        /// Extracts LastPlayedDate from user data, handling both DateTime and Nullable&lt;DateTime&gt;
+        /// </summary>
+        private static DateTime GetLastPlayedDateFromUserData(object? userData)
+        {
+            if (userData == null) return DateTime.MinValue;
+
+            var lastPlayedProp = userData.GetType().GetProperty("LastPlayedDate");
+            if (lastPlayedProp == null) return DateTime.MinValue;
+
+            var lastPlayedValue = lastPlayedProp.GetValue(userData);
+
+            // Handle non-nullable DateTime
+            if (lastPlayedValue is DateTime dt && dt != DateTime.MinValue)
+            {
+                return dt;
+            }
+
+            // Handle nullable DateTime?
+            if (lastPlayedValue != null)
+            {
+                var valueType = lastPlayedValue.GetType();
+                if (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(Nullable<>))
+                {
+                    var hasValueProp = valueType.GetProperty("HasValue");
+                    var valueProp = valueType.GetProperty("Value");
+
+                    if (hasValueProp?.GetValue(lastPlayedValue) is true)
+                    {
+                        if (valueProp?.GetValue(lastPlayedValue) is DateTime nullableDt && nullableDt != DateTime.MinValue)
+                        {
+                            return nullableDt;
+                        }
+                    }
+                }
+            }
+
+            return DateTime.MinValue;
         }
     }
 }

@@ -24,7 +24,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         public override IEnumerable<BaseItem> OrderBy(IEnumerable<BaseItem> items)
         {
             if (items == null) return [];
-            if (Scores == null || Scores.Count == 0)
+            if (Scores.Count == 0)
             {
                 // No scores available, return items unsorted
                 return items;
@@ -57,7 +57,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             Dictionary<Guid, int>? itemRandomKeys = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            if (Scores != null && Scores.TryGetValue(item.Id, out var score))
+            if (Scores.TryGetValue(item.Id, out var score))
             {
                 return score;
             }
