@@ -913,7 +913,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     }
 
                     // Apply multiple orders in cascade
-                    var orderedResults = ApplyMultipleOrders(expandedResults, user, userDataManager, logger);
+                    var orderedResults = ApplyMultipleOrders(expandedResults, user, userDataManager, logger, refreshCache);
 
                     // Apply limits (items and/or time)
                     if (MaxItems > 0 || MaxPlayTimeMinutes > 0)
@@ -1323,7 +1323,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 }
 
                 // Check field requirements for performance optimization
-                var fieldReqs = FieldRequirements.Analyze(ExpressionSets);
+                var fieldReqs = FieldRequirements.Analyze(ExpressionSets, Orders);
                 var needsAudioLanguages = fieldReqs.NeedsAudioLanguages;
                 var needsAudioQuality = fieldReqs.NeedsAudioQuality;
                 var needsVideoQuality = fieldReqs.NeedsVideoQuality;
@@ -1393,7 +1393,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <param name="userDataManager">User data manager for user-specific sorting</param>
         /// <param name="logger">Optional logger for debugging</param>
         /// <returns>The sorted collection of items</returns>
-        private IEnumerable<BaseItem> ApplyMultipleOrders(IEnumerable<BaseItem> items, User user, IUserDataManager? userDataManager, ILogger? logger = null)
+        private IEnumerable<BaseItem> ApplyMultipleOrders(IEnumerable<BaseItem> items, User user, IUserDataManager? userDataManager, ILogger? logger, RefreshQueueService.RefreshCache refreshCache)
         {
             if (Orders == null || Orders.Count == 0)
             {
@@ -1407,11 +1407,17 @@ namespace Jellyfin.Plugin.SmartLists.Core
             }
 
             // If there's only one order, use the original Order.OrderBy() method
-            if (Orders.Count == 1)
+            // Single sort optimization disabled to ensure consistent behavior and debugging
+            // All sorts now go through CreateSortKey logic
+            /*
+            if (Orders.Count == 1 && 
+                !(Orders[0] is SeriesNameOrder || Orders[0] is SeriesNameOrderDesc || 
+                  Orders[0] is SeriesNameIgnoreArticlesOrder || Orders[0] is SeriesNameIgnoreArticlesOrderDesc))
             {
                 logger?.LogDebug("Single sort detected, returning result from Order.OrderBy()");
                 return Orders[0].OrderBy(items, user, userDataManager, logger);
             }
+            */
 
             // For multiple orders, we need to group by the sort key and apply secondary sorts within groups
             // This is complex, so we'll use a different approach: create a composite sort key
@@ -1445,7 +1451,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             var itemsWithKeys = itemsList.Select(item => new
             {
                 Item = item,
-                SortKeys = Orders.Select(order => CreateSortKey(order, item, user, userDataManager, logger, itemRandomKeys)).ToList(),
+                SortKeys = Orders.Select(order => CreateSortKey(order, item, user, userDataManager, logger, itemRandomKeys, refreshCache)).ToList(),
             }).ToList();
 
             // Sort using the composite keys
@@ -1496,7 +1502,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
         /// <summary>
         /// Creates a comparable sort key for an item based on the order type.
         /// </summary>
-        private static IComparable CreateSortKey(Order order, BaseItem item, User user, IUserDataManager? userDataManager, ILogger? logger, Dictionary<Guid, int> itemRandomKeys)
+        private static IComparable CreateSortKey(Order order, BaseItem item, User user, IUserDataManager? userDataManager, ILogger? logger, Dictionary<Guid, int> itemRandomKeys, RefreshQueueService.RefreshCache? refreshCache = null)
         {
             // For random order, use pre-generated random key that's different each refresh
             // but stable within this sort operation
@@ -1536,9 +1542,19 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 return new ComparableTuple4<long, int, int, int>(releaseDate, isEpisode, seasonNumber, episodeNumber);
             }
 
-            // For name-based orders (honor SortName when set)
+            // For name-based orders (honor SortName when set, except for Episodes where SortName includes S/E)
             if (order is NameOrder || order is NameOrderDesc)
             {
+                // For Episodes, SortName is auto-generated as "001 - 0001 - Title", which forces chronological sort.
+                // If the user selected "Name", they likely want alphabetical by Title.
+                // However, if the user MANUALLY set a SortName (e.g. "A"), we should respect it.
+                // We detect auto-generated SortName by pattern: 3+ digits, hyphen, 4+ digits, hyphen.
+                if (item is Episode && !string.IsNullOrEmpty(item.SortName) && 
+                    System.Text.RegularExpressions.Regex.IsMatch(item.SortName, @"^\d{3,} - \d{4,} - "))
+                {
+                    return item.Name ?? "";
+                }
+
                 return !string.IsNullOrEmpty(item.SortName)
                     ? item.SortName
                     : (item.Name ?? "");
@@ -1546,6 +1562,14 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
             if (order is NameIgnoreArticlesOrder || order is NameIgnoreArticlesOrderDesc)
             {
+                // For Episodes, SortName is auto-generated as "001 - 0001 - Title".
+                // We want to sort by Title (ignoring articles) UNLESS manual SortName is set.
+                if (item is Episode && !string.IsNullOrEmpty(item.SortName) && 
+                    System.Text.RegularExpressions.Regex.IsMatch(item.SortName, @"^\d{3,} - \d{4,} - "))
+                {
+                    return OrderUtilities.StripLeadingArticles(item.Name ?? "");
+                }
+
                 // Use SortName as-is (no article stripping) when present, else strip articles from Name
                 return !string.IsNullOrEmpty(item.SortName)
                     ? item.SortName
@@ -1614,11 +1638,30 @@ namespace Jellyfin.Plugin.SmartLists.Core
             }
 
             // For series name orders, prefer SortName when set
+            // For series name orders, prefer SortName when set
             if (order is SeriesNameOrder || order is SeriesNameOrderDesc)
             {
-                if (!string.IsNullOrEmpty(item.SortName))
-                    return item.SortName;
+                // Try to get Series SortName from cache first (for episodes)
+                if (refreshCache != null && item is Episode episode && episode.SeriesId != Guid.Empty)
+                {
+                    // For strict SeriesName sort, we prefer the Display Name (e.g. "The IT Crowd")
+                    // This allows users to choose between "The IT Crowd" (SeriesName) and "IT Crowd" (IgnoreArticles/SortName)
+                    if (refreshCache.SeriesNameById.TryGetValue(episode.SeriesId, out var cachedName))
+                    {
+                        return cachedName;
+                    }
+                    if (refreshCache.SeriesSortNameById.TryGetValue(episode.SeriesId, out var cachedSortName) && !string.IsNullOrEmpty(cachedSortName))
+                    {
+                        return cachedSortName;
+                    }
+                }
 
+                // Fallback to item properties (though for SeriesNameOrder we usually want the Series Name, not the Episode SortName)
+                // But if we are here, cache failed.
+                // Existing logic used item.SortName, but that's usually wrong for SeriesName sort on episodes.
+                // However, we'll keep the fallback structure but prioritize SeriesName property if possible?
+                // No, let's stick to the pattern: if cache fails, try to get SeriesName property.
+                
                 try
                 {
                     var seriesNameProperty = item.GetType().GetProperty("SeriesName");
@@ -1631,13 +1674,30 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 }
                 catch
                 {
-                    // Ignore errors and fall through
+                    // Ignore errors
                 }
+
+                if (!string.IsNullOrEmpty(item.SortName))
+                    return item.SortName;
+
                 return "";
             }
             
             if (order is SeriesNameIgnoreArticlesOrder || order is SeriesNameIgnoreArticlesOrderDesc)
             {
+                // Try to get Series SortName from cache first (for episodes)
+                if (refreshCache != null && item is Episode episode && episode.SeriesId != Guid.Empty)
+                {
+                    if (refreshCache.SeriesSortNameById.TryGetValue(episode.SeriesId, out var cachedSortName) && !string.IsNullOrEmpty(cachedSortName))
+                    {
+                        return cachedSortName;
+                    }
+                    if (refreshCache.SeriesNameById.TryGetValue(episode.SeriesId, out var cachedName))
+                    {
+                        return OrderUtilities.StripLeadingArticles(cachedName);
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(item.SortName))
                     return item.SortName;
 
