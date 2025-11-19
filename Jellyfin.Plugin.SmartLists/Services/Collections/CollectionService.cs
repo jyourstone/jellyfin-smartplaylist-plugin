@@ -314,9 +314,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     _logger.LogDebug("Successfully updated existing collection: {CollectionName} with {ItemCount} items",
                         existingCollection.Name, newLinkedChildren.Length);
 
-                    // Trigger library scan to update UI
-                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
-
                     // Update LastRefreshed timestamp for successful refresh
                     dto.LastRefreshed = DateTime.UtcNow;
                     _logger.LogDebug("Updated LastRefreshed timestamp for collection: {CollectionName}", dto.Name);
@@ -376,12 +373,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 {
                     _logger.LogInformation("Deleting Jellyfin collection '{CollectionName}' (ID: {CollectionId})",
                         existingCollection.Name, existingCollection.Id);
-                    // DeleteFileLocation = false to ensure we only delete the BoxSet entity and its metadata,
-                    // not the underlying media items that are part of the collection
-                    _libraryManager.DeleteItem(existingCollection, new DeleteOptions { DeleteFileLocation = false }, true);
-                    
-                    // Trigger library scan to update UI
-                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
+                    // DeleteFileLocation = true to properly delete the BoxSet entity and its metadata
+                    _libraryManager.DeleteItem(existingCollection, new DeleteOptions { DeleteFileLocation = true }, true);
                 }
 
                 return Task.CompletedTask;
@@ -439,9 +432,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         // Save the changes
                         await existingCollection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
 
-                        // Trigger library scan to update UI
-                        LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
-
                         _logger.LogDebug("Successfully renamed collection from '{OldName}' to '{NewName}'",
                             oldName, dto.Name);
                     }
@@ -465,9 +455,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
 
                                 // Save the changes
                                 await existingCollection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-
-                                // Trigger library scan to update UI
-                                LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
 
                                 _logger.LogDebug("Successfully renamed collection from '{OldName}' to '{NewName}' (removed prefix/suffix)",
                                     oldName, baseName);
@@ -833,19 +820,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     
                     // Set collection image if metadata refresh didn't generate one
                     await SetPhotoForCollection(retrievedItem, cancellationToken).ConfigureAwait(false);
-                }
-                
-                // Report the new collection to the library manager to trigger UI updates
-                try
-                {
-                    _logger.LogDebug("Reporting new collection {CollectionId} to library manager for UI visibility", collectionId);
-                    
-                    // Try to use QueueLibraryScan if available to trigger a refresh
-                    LibraryManagerHelper.QueueLibraryScan(_libraryManager, _logger);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to trigger UI refresh for collection {CollectionId}", collectionId);
                 }
 
                 return collectionId.ToString("D");
