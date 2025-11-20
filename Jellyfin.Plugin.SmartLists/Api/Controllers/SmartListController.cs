@@ -1024,6 +1024,20 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     logger.LogDebug("Preserved Jellyfin playlist ID {JellyfinPlaylistId} from existing playlist", existingPlaylist.JellyfinPlaylistId);
                 }
 
+                // Preserve statistics from existing playlist to avoid N/A display until refresh completes
+                if (existingPlaylist.ItemCount.HasValue)
+                {
+                    playlist.ItemCount = existingPlaylist.ItemCount;
+                }
+                if (existingPlaylist.TotalRuntimeMinutes.HasValue)
+                {
+                    playlist.TotalRuntimeMinutes = existingPlaylist.TotalRuntimeMinutes;
+                }
+                if (existingPlaylist.LastRefreshed.HasValue)
+                {
+                    playlist.LastRefreshed = existingPlaylist.LastRefreshed;
+                }
+
                 var updatedPlaylist = await playlistStore.SaveAsync(playlist);
 
                 // Update the auto-refresh cache with the updated playlist
@@ -1202,6 +1216,20 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 {
                     collection.JellyfinCollectionId = existingCollection.JellyfinCollectionId;
                     logger.LogDebug("Preserved Jellyfin collection ID {JellyfinCollectionId} from existing collection", existingCollection.JellyfinCollectionId);
+                }
+
+                // Preserve statistics from existing collection to avoid N/A display until refresh completes
+                if (existingCollection.ItemCount.HasValue)
+                {
+                    collection.ItemCount = existingCollection.ItemCount;
+                }
+                if (existingCollection.TotalRuntimeMinutes.HasValue)
+                {
+                    collection.TotalRuntimeMinutes = existingCollection.TotalRuntimeMinutes;
+                }
+                if (existingCollection.LastRefreshed.HasValue)
+                {
+                    collection.LastRefreshed = existingCollection.LastRefreshed;
                 }
 
                 var updatedCollection = await collectionStore.SaveAsync(collection);

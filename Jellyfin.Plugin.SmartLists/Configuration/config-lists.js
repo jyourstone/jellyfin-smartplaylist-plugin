@@ -823,10 +823,13 @@
             // No success notification needed since status page shows progress
 
             // Auto-refresh the playlist list to show updated LastRefreshed timestamp
+            // Commented out to prevent page jump/scroll to top
+            /*
             const page = document.querySelector('.SmartListsConfigurationPage');
             if (page) {
                 SmartLists.loadPlaylistList(page);
             }
+            */
         }).catch(async function (err) {
 
             // Extract error message using utility function
