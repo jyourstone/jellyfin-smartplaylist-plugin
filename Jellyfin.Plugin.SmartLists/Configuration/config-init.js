@@ -8,13 +8,13 @@
     }
 
     // ===== PAGE INITIALIZATION =====
-    SmartLists.initPage = function(page) {
+    SmartLists.initPage = function (page) {
         // Check if this specific page is already initialized
         if (page._pageInitialized) {
             return;
         }
         page._pageInitialized = true;
-        
+
         SmartLists.applyCustomStyles(page);
 
         // Show loading state
@@ -22,21 +22,21 @@
         if (userSelect) {
             userSelect.innerHTML = '<option value="">Loading users...</option>';
         }
-        
+
         // Disable form submission until initialization is complete
         const submitBtn = page.querySelector('#submitBtn');
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Loading...';
         }
-        
+
         // Coordinate all async initialization
         Promise.all([
             SmartLists.populateStaticSelects(page), // Make synchronous function async
             SmartLists.loadUsers(page),
             // Collections are server-wide, no library loading needed
             SmartLists.loadAndPopulateFields()
-        ]).then(function() {
+        ]).then(function () {
             // All async operations completed successfully
             const rulesContainer = page.querySelector('#rules-container');
             if (rulesContainer.children.length === 0) {
@@ -45,7 +45,7 @@
                 // Re-initialize existing rules to ensure event listeners are properly attached
                 SmartLists.reinitializeExistingRules(page);
             }
-            
+
             // Enable form submission
             const editState = SmartLists.getPageEditState(page);
             const submitBtn = page.querySelector('#submitBtn');
@@ -53,26 +53,26 @@
                 submitBtn.disabled = false;
                 submitBtn.textContent = editState.editMode ? 'Update Playlist' : 'Create Playlist';
             }
-            
+
             // Populate form defaults if we're on the create tab and not in edit mode
             const currentTab = SmartLists.getCurrentTab();
             if (currentTab === 'create' && !editState.editMode) {
                 // Set default list type on initial page load only
                 const apiClient = SmartLists.getApiClient();
-                apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+                apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function (config) {
                     SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
                     SmartLists.handleListTypeChange(page);
-                }).catch(function() {
+                }).catch(function () {
                     SmartLists.setElementValue(page, '#listType', 'Playlist');
                     SmartLists.handleListTypeChange(page);
                 });
-                
+
                 SmartLists.populateFormDefaults(page);
             }
-        }).catch(function(error) {
+        }).catch(function (error) {
             console.error('Error during page initialization:', error);
             SmartLists.showNotification('Some configuration options failed to load. Please refresh the page.');
-            
+
             // Still enable form submission even if some things failed
             const editState = SmartLists.getPageEditState(page);
             const submitBtn = page.querySelector('#submitBtn');
@@ -84,95 +84,95 @@
 
         // Set up event listeners (these don't depend on async operations)
         SmartLists.setupEventListeners(page);
-        
+
         // Set up navigation functionality
         SmartLists.setupNavigation(page);
-        
+
         // Load configuration (this can run independently)
         SmartLists.loadConfiguration(page);
     };
 
     // ===== STATIC SELECTS POPULATION =====
-    SmartLists.populateStaticSelects = function(page) {
+    SmartLists.populateStaticSelects = function (page) {
         // Initialize page elements (media types, schedules, sorts)
         SmartLists.initializePageElements(page);
-        
+
         // Populate all common selectors dynamically (DRY principle) - using safe DOM manipulation
         const scheduleTimeElement = page.querySelector('#scheduleTime');
         if (scheduleTimeElement) {
             SmartLists.populateSelectElement(scheduleTimeElement, SmartLists.generateTimeOptions('00:00')); // Default to midnight
         }
-        
+
         const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
         if (defaultScheduleTimeElement) {
             SmartLists.populateSelectElement(defaultScheduleTimeElement, SmartLists.generateTimeOptions('00:00')); // Default to midnight
         }
-        
+
         const autoRefreshElement = page.querySelector('#autoRefreshMode');
         if (autoRefreshElement) {
             SmartLists.populateSelectElement(autoRefreshElement, SmartLists.generateAutoRefreshOptions('OnLibraryChanges'));
         }
-        
+
         const defaultAutoRefreshElement = page.querySelector('#defaultAutoRefresh');
         if (defaultAutoRefreshElement) {
             SmartLists.populateSelectElement(defaultAutoRefreshElement, SmartLists.generateAutoRefreshOptions('OnLibraryChanges'));
         }
-        
+
         const scheduleTriggerElement = page.querySelector('#scheduleTrigger');
         if (scheduleTriggerElement) {
             SmartLists.populateSelectElement(scheduleTriggerElement, SmartLists.generateScheduleTriggerOptions('', true)); // Include "No schedule"
         }
-        
+
         const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
         if (defaultScheduleTriggerElement) {
             SmartLists.populateSelectElement(defaultScheduleTriggerElement, SmartLists.generateScheduleTriggerOptions('', true)); // Include "No schedule"
-            
+
             // Add event listener to update containers when trigger changes
-            defaultScheduleTriggerElement.addEventListener('change', function() {
+            defaultScheduleTriggerElement.addEventListener('change', function () {
                 SmartLists.updateDefaultScheduleContainers(page, this.value);
             });
         }
-        
+
         // Populate default schedule option dropdowns
         const defaultScheduleDayOfWeekElement = page.querySelector('#defaultScheduleDayOfWeek');
         if (defaultScheduleDayOfWeekElement) {
             SmartLists.populateSelectElement(defaultScheduleDayOfWeekElement, SmartLists.generateDayOfWeekOptions('0')); // Default Sunday
         }
-        
+
         const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
         if (defaultScheduleDayOfMonthElement) {
             SmartLists.populateSelectElement(defaultScheduleDayOfMonthElement, SmartLists.generateDayOfMonthOptions('1')); // Default 1st
         }
-        
+
         const defaultScheduleMonthElement = page.querySelector('#defaultScheduleMonth');
         if (defaultScheduleMonthElement) {
             SmartLists.populateSelectElement(defaultScheduleMonthElement, SmartLists.generateMonthOptions('1')); // Default January
         }
-        
+
         const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
         if (defaultScheduleIntervalElement) {
             SmartLists.populateSelectElement(defaultScheduleIntervalElement, SmartLists.generateIntervalOptions('00:15:00')); // Default 15 minutes
         }
-        
+
         // Populate sort options (legacy format for backward compatibility)
-        const SORT_OPTIONS_LEGACY = SmartLists.SORT_OPTIONS.map(function(opt) { return { Value: opt.value, Label: opt.label }; });
-        const SORT_ORDER_OPTIONS_LEGACY = SmartLists.SORT_ORDER_OPTIONS.map(function(opt) { return { Value: opt.value, Label: opt.label }; });
-        
+        const SORT_OPTIONS_LEGACY = SmartLists.SORT_OPTIONS.map(function (opt) { return { Value: opt.value, Label: opt.label }; });
+        const SORT_ORDER_OPTIONS_LEGACY = SmartLists.SORT_ORDER_OPTIONS.map(function (opt) { return { Value: opt.value, Label: opt.label }; });
+
         const defaultSortBySetting = page.querySelector('#defaultSortBy');
         const defaultSortOrderSetting = page.querySelector('#defaultSortOrder');
         const defaultIgnoreArticlesContainer = page.querySelector('#defaultIgnoreArticlesContainer');
         const defaultIgnoreArticlesCheckbox = page.querySelector('#defaultIgnoreArticles');
-        
+
         if (defaultSortBySetting && defaultSortBySetting.children.length === 0) {
-            SmartLists.populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, 'Name'); 
+            SmartLists.populateSelect(defaultSortBySetting, SORT_OPTIONS_LEGACY, 'Name');
         }
-        if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) { 
-            SmartLists.populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, 'Ascending'); 
+        if (defaultSortOrderSetting && defaultSortOrderSetting.children.length === 0) {
+            SmartLists.populateSelect(defaultSortOrderSetting, SORT_ORDER_OPTIONS_LEGACY, 'Ascending');
         }
-        
+
         // Add event listener to show/hide ignore articles checkbox based on sort selection
         if (defaultSortBySetting && defaultIgnoreArticlesContainer) {
-            defaultSortBySetting.addEventListener('change', function() {
+            defaultSortBySetting.addEventListener('change', function () {
                 const showCheckbox = (this.value === 'Name' || this.value === 'SeriesName');
                 defaultIgnoreArticlesContainer.style.display = showCheckbox ? '' : 'none';
                 if (!showCheckbox && defaultIgnoreArticlesCheckbox) {
@@ -180,24 +180,24 @@
                 }
             });
         }
-        
+
         // Add default sort option when creating a new playlist (not in edit mode)
         const editState = SmartLists.getPageEditState(page);
         if (!editState.editMode) {
             const apiClient = SmartLists.getApiClient();
-            
+
             // Initialize suffix first (before async operation)
             const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
             if (playlistNameSuffix && playlistNameSuffix.value === '') {
                 playlistNameSuffix.value = '[Smart]';
             }
-            
-            return apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+
+            return apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function (config) {
                 const sortsContainer = page.querySelector('#sorts-container');
                 if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
                     SmartLists.addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
                 }
-            }).catch(function() {
+            }).catch(function () {
                 // Fallback to default values if config load fails
                 const sortsContainer = page.querySelector('#sorts-container');
                 if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
@@ -205,27 +205,27 @@
                 }
             });
         }
-        
+
         // Populate playlist naming configuration fields (for edit mode path)
         const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
         if (playlistNameSuffix && playlistNameSuffix.value === '') {
             playlistNameSuffix.value = '[Smart]';
         }
-        
+
         // Return resolved promise (synchronous path when not adding default sort)
         return Promise.resolve();
     };
 
     // ===== PAGE ELEMENTS INITIALIZATION =====
-    SmartLists.initializePageElements = function(page) {
+    SmartLists.initializePageElements = function (page) {
         // Generate media type checkboxes from the mediaTypes array
         SmartLists.generateMediaTypeCheckboxes(page);
-        
+
         // Initialize schedule system
         if (SmartLists.initializeScheduleSystem) {
             SmartLists.initializeScheduleSystem(page);
         }
-        
+
         // Initialize sort system
         if (SmartLists.initializeSortSystem) {
             SmartLists.initializeSortSystem(page);
@@ -233,36 +233,36 @@
     };
 
     // ===== MEDIA TYPE CHECKBOXES GENERATION =====
-    SmartLists.generateMediaTypeCheckboxes = function(page) {
+    SmartLists.generateMediaTypeCheckboxes = function (page) {
         const container = page.querySelector('#media-types-container');
         if (!container) return;
-        
+
         // Clear existing content
         container.innerHTML = '';
-        
+
         // Create one big checkboxList paperList container
         const mainContainer = document.createElement('div');
         mainContainer.className = 'checkboxList paperList';
         mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
-        
+
         // Debounce timer and AbortController for media type updates (shared per page)
         page._mediaTypeUpdateTimer = page._mediaTypeUpdateTimer || null;
-        
+
         // Create AbortController for media type checkbox listeners
         if (page._mediaTypeAbortController) {
             page._mediaTypeAbortController.abort();
         }
         page._mediaTypeAbortController = SmartLists.createAbortController();
         const mediaTypeSignal = page._mediaTypeAbortController.signal;
-        
+
         // Batch update function for all media type changes
         // Order matters: repopulate fields first (may invalidate), then sync dependent UI
-        const batchUpdateMediaTypeChanges = function() {
+        const batchUpdateMediaTypeChanges = function () {
             // 1) Re-populate fields (may invalidate current selections)
             if (SmartLists.updateAllFieldSelects) {
                 SmartLists.updateAllFieldSelects(page);
             }
-            
+
             // 2) Re-sync dependent UI for all rules
             if (SmartLists.updateAllUserSelectorVisibility) {
                 SmartLists.updateAllUserSelectorVisibility(page);
@@ -282,35 +282,35 @@
             if (SmartLists.updateAllGenresOptionsVisibility) {
                 SmartLists.updateAllGenresOptionsVisibility(page);
             }
-            
+
             // 3) Update sort options visibility based on media types
             if (SmartLists.updateAllSortOptionsVisibility) {
                 SmartLists.updateAllSortOptionsVisibility(page);
             }
         };
-        
+
         // Generate checkboxes for each media type
         if (!SmartLists.mediaTypes || !Array.isArray(SmartLists.mediaTypes)) {
             console.error('SmartLists.mediaTypes is not available');
             return;
         }
-        
+
         // Get list type to filter media types
         const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
         const isCollection = listType === 'Collection';
-        
-        SmartLists.mediaTypes.forEach(function(mediaType) {
+
+        SmartLists.mediaTypes.forEach(function (mediaType) {
             // Skip collection-only media types for playlists
             if (mediaType.CollectionOnly && !isCollection) {
                 return;
             }
-            
+
             const sectionCheckbox = document.createElement('div');
             sectionCheckbox.className = 'sectioncheckbox';
-            
+
             const label = document.createElement('label');
             label.className = 'emby-checkbox-label';
-            
+
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.setAttribute('is', 'emby-checkbox');
@@ -318,90 +318,90 @@
             checkbox.id = 'mediaType' + mediaType.Value;
             checkbox.className = 'emby-checkbox media-type-checkbox';
             checkbox.value = mediaType.Value;
-            
+
             // Add debounced event listener to batch updates when media types change
-            checkbox.addEventListener('change', function() {
+            checkbox.addEventListener('change', function () {
                 // Skip processing if we're programmatically setting media types (e.g., during clone/edit)
                 if (page._skipMediaTypeChangeHandlers) {
                     return;
                 }
-                
+
                 // Clear any pending update
                 if (page._mediaTypeUpdateTimer) {
                     clearTimeout(page._mediaTypeUpdateTimer);
                 }
-                
+
                 // Schedule batched update after debounce delay
-                page._mediaTypeUpdateTimer = setTimeout(function() {
+                page._mediaTypeUpdateTimer = setTimeout(function () {
                     batchUpdateMediaTypeChanges();
                     page._mediaTypeUpdateTimer = null;
                 }, SmartLists.MEDIA_TYPE_UPDATE_DEBOUNCE_MS || 200);
             }, SmartLists.getEventListenerOptions(mediaTypeSignal));
-            
+
             const span = document.createElement('span');
             span.className = 'checkboxLabel';
             span.textContent = mediaType.Label;
-            
+
             const checkboxOutline = document.createElement('span');
             checkboxOutline.className = 'checkboxOutline';
-            
+
             const checkedIcon = document.createElement('span');
             checkedIcon.className = 'material-icons checkboxIcon checkboxIcon-checked check';
             checkedIcon.setAttribute('aria-hidden', 'true');
-            
+
             const uncheckedIcon = document.createElement('span');
             uncheckedIcon.className = 'material-icons checkboxIcon checkboxIcon-unchecked';
             uncheckedIcon.setAttribute('aria-hidden', 'true');
-            
+
             checkboxOutline.appendChild(checkedIcon);
             checkboxOutline.appendChild(uncheckedIcon);
-            
+
             label.appendChild(checkbox);
             label.appendChild(span);
             label.appendChild(checkboxOutline);
             sectionCheckbox.appendChild(label);
             mainContainer.appendChild(sectionCheckbox);
         });
-        
+
         container.appendChild(mainContainer);
     };
 
     // ===== FORM DEFAULTS POPULATION (DRY) =====
     // Helper function to apply all form defaults from config
-    SmartLists.applyFormDefaults = function(page, config) {
+    SmartLists.applyFormDefaults = function (page, config) {
         // Set default list type
         SmartLists.setElementValue(page, '#listType', config.DefaultListType || 'Playlist');
         SmartLists.handleListTypeChange(page);
-        
+
         // Set default values for Max Items and Max Playtime
         const defaultMaxItems = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
         SmartLists.setElementValue(page, '#playlistMaxItems', defaultMaxItems);
-        
+
         const defaultMaxPlayTimeMinutes = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
         SmartLists.setElementValue(page, '#playlistMaxPlayTimeMinutes', defaultMaxPlayTimeMinutes);
-        
+
         // Set default auto refresh mode
         SmartLists.setElementValue(page, '#autoRefreshMode', config.DefaultAutoRefresh || 'OnLibraryChanges');
-        
+
         // Set default public/enabled checkboxes
         SmartLists.setElementChecked(page, '#playlistIsPublic', config.DefaultMakePublic || false);
         SmartLists.setElementChecked(page, '#playlistIsEnabled', true); // Default to enabled
-        
+
         // Reinitialize schedule system
         SmartLists.initializeScheduleSystem(page);
-        
+
         // Apply default schedule if configured
         if (SmartLists.applyDefaultScheduleFromConfig) {
             SmartLists.applyDefaultScheduleFromConfig(page, config);
         }
-        
+
         // Reinitialize sort system with defaults
         SmartLists.initializeSortSystem(page);
         const sortsContainer = page.querySelector('#sorts-container');
         if (sortsContainer && sortsContainer.querySelectorAll('.sort-box').length === 0) {
             SmartLists.addSortBox(page, { SortBy: config.DefaultSortBy || 'Name', SortOrder: config.DefaultSortOrder || 'Ascending' });
         }
-        
+
         // Reset user dropdown to currently logged-in user
         const userSelect = page.querySelector('#playlistUser');
         if (userSelect) {
@@ -409,9 +409,9 @@
             SmartLists.setCurrentUserAsDefault(page);
         }
     };
-    
+
     // Fallback defaults when config fails to load
-    SmartLists.applyFallbackDefaults = function(page) {
+    SmartLists.applyFallbackDefaults = function (page) {
         SmartLists.setElementValue(page, '#listType', 'Playlist');
         SmartLists.handleListTypeChange(page);
         SmartLists.setElementValue(page, '#playlistMaxItems', 500);
@@ -419,59 +419,59 @@
         SmartLists.setElementValue(page, '#autoRefreshMode', 'OnLibraryChanges');
         SmartLists.setElementChecked(page, '#playlistIsPublic', false);
         SmartLists.setElementChecked(page, '#playlistIsEnabled', true);
-        
+
         // Reinitialize schedule system with fallback defaults
         SmartLists.initializeScheduleSystem(page);
-        
+
         // Reinitialize sort system with fallback defaults
         SmartLists.initializeSortSystem(page);
         SmartLists.addSortBox(page, { SortBy: 'Name', SortOrder: 'Ascending' });
     };
-    
-    SmartLists.populateFormDefaults = function(page) {
+
+    SmartLists.populateFormDefaults = function (page) {
         const apiClient = SmartLists.getApiClient();
-        apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+        apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function (config) {
             SmartLists.applyFormDefaults(page, config);
-        }).catch(function() {
+        }).catch(function () {
             SmartLists.applyFallbackDefaults(page);
         });
     };
 
     // ===== USER LOADING =====
-    SmartLists.loadUsers = async function(page) {
+    SmartLists.loadUsers = async function (page) {
         const apiClient = SmartLists.getApiClient();
         const userSelect = page.querySelector('#playlistUser');
-        
+
         if (!userSelect) {
             console.warn('SmartLists.loadUsers: #playlistUser element not found');
             return;
         }
-        
+
         try {
             const response = await apiClient.ajax({
                 type: "GET",
                 url: apiClient.getUrl(SmartLists.ENDPOINTS.users),
                 contentType: 'application/json'
             });
-            
+
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`Failed to load users: ${errorText || response.statusText}`);
             }
-            
+
             const users = await response.json();
-            
+
             // Clear existing options
             userSelect.innerHTML = '';
-            
+
             // Add user options
-            users.forEach(function(user) {
+            users.forEach(function (user) {
                 const option = document.createElement('option');
                 option.value = user.Id;
                 option.textContent = user.Name;
                 userSelect.appendChild(option);
             });
-            
+
             // Set current user as default if no user is selected
             SmartLists.setCurrentUserAsDefault(page);
         } catch (err) {
@@ -481,13 +481,13 @@
     };
 
     // ===== NAVIGATION =====
-    SmartLists.getCurrentTab = function() {
+    SmartLists.getCurrentTab = function () {
         const hash = window.location.hash;
         const match = hash.match(/[?&]tab=([^&]*)/);
         return match ? decodeURIComponent(match[1]) : 'create';
     };
-    
-    SmartLists.updateUrl = function(tabId) {
+
+    SmartLists.updateUrl = function (tabId) {
         let hash = window.location.hash;
         let newHash;
 
@@ -504,17 +504,17 @@
             const separator = hash.includes('?') ? '&' : '?';
             newHash = hash + separator + 'tab=' + encodeURIComponent(tabId);
         }
-        
+
         window.history.replaceState({}, '', window.location.pathname + window.location.search + newHash);
     };
-    
-    SmartLists.switchToTab = function(page, tabId) {
+
+    SmartLists.switchToTab = function (page, tabId) {
         var navContainer = page.querySelector('.localnav');
         var navButtons = navContainer ? navContainer.querySelectorAll('a[data-tab]') : [];
         var tabContents = page.querySelectorAll('[data-tab-content]');
 
         // Update navigation buttons
-        navButtons.forEach(function(btn) {
+        navButtons.forEach(function (btn) {
             if (btn.getAttribute('data-tab') === tabId) {
                 btn.classList.add('ui-btn-active');
             } else {
@@ -523,14 +523,14 @@
         });
 
         // Update tab content visibility
-        tabContents.forEach(function(content) {
+        tabContents.forEach(function (content) {
             var contentTabId = content.getAttribute('data-tab-content');
             if (contentTabId === tabId) {
                 content.classList.remove('hide');
                 // If this is the status tab, ensure status page loads after tab becomes visible
                 if (contentTabId === 'status' && window.SmartLists && window.SmartLists.Status) {
                     // Use requestAnimationFrame to ensure DOM update is complete
-                    requestAnimationFrame(function() {
+                    requestAnimationFrame(function () {
                         window.SmartLists.Status.initializeStatusPage();
                         window.SmartLists.Status.loadStatusPage();
                     });
@@ -550,7 +550,7 @@
                 SmartLists.loadPlaylistList(page);
             }
         }
-        
+
         // Populate defaults when switching to create tab
         if (tabId === 'create') {
             // Check if form is empty (not in edit mode) and populate defaults
@@ -571,12 +571,12 @@
         SmartLists.updateUrl(tabId);
     };
 
-    SmartLists.setupNavigation = function(page) {
+    SmartLists.setupNavigation = function (page) {
         var navContainer = page.querySelector('.localnav');
         if (!navContainer) {
             return;
         }
-        
+
         // Prevent multiple setups on the same navigation
         if (navContainer._navInitialized) return;
         navContainer._navInitialized = true;
@@ -598,17 +598,17 @@
         // Create AbortController for navigation click listeners
         var navAbortController = SmartLists.createAbortController();
         var navSignal = navAbortController.signal;
-        
+
         // Store controller for cleanup
         navContainer._navAbortController = navAbortController;
 
         // Handle navigation clicks
         var navButtons = navContainer.querySelectorAll('a[data-tab]');
-        navButtons.forEach(function(button) {
-            button.addEventListener('click', function(e) {
+        navButtons.forEach(function (button) {
+            button.addEventListener('click', function (e) {
                 e.preventDefault();
                 var tabId = button.getAttribute('data-tab');
-                
+
                 // Hide any open modals when switching tabs
                 var deleteModal = page.querySelector('#delete-confirm-modal');
                 if (deleteModal && !deleteModal.classList.contains('hide')) {
@@ -620,10 +620,10 @@
                     refreshModal.classList.add('hide');
                     SmartLists.cleanupModalListeners(refreshModal);
                 }
-                
+
                 // Use shared tab switching helper (includes URL update)
                 setActiveTab(tabId);
-                
+
                 // Initialize status page when status tab is clicked
                 if (tabId === 'status' && window.SmartLists && window.SmartLists.Status) {
                     window.SmartLists.Status.initializeStatusPage();
@@ -638,35 +638,35 @@
                 }
             }, SmartLists.getEventListenerOptions(navSignal));
         });
-        
+
         // Note: No popstate handler - tab navigation uses replaceState for URL bookmarking only
-        
+
         // Initial tab already set above to prevent flash
     };
 
     // ===== EVENT LISTENERS SETUP =====
-    SmartLists.setupEventListeners = function(page) {
+    SmartLists.setupEventListeners = function (page) {
         // Create AbortController for page event listeners
         const pageAbortController = SmartLists.createAbortController();
         const pageSignal = pageAbortController.signal;
-        
+
         // Store controller on the page for cleanup
         page._pageAbortController = pageAbortController;
-        
+
         // Setup playlist naming event listeners
         SmartLists.setupPlaylistNamingListeners(page, pageSignal);
-        
+
         // Setup list type change handler
         const listTypeSelect = page.querySelector('#listType');
         if (listTypeSelect) {
-            listTypeSelect.addEventListener('change', function() {
+            listTypeSelect.addEventListener('change', function () {
                 SmartLists.handleListTypeChange(page);
             }, SmartLists.getEventListenerOptions(pageSignal));
         }
-        
+
         page.addEventListener('click', function (e) {
             const target = e.target;
-            
+
             // Handle rule action buttons
             if (target.classList.contains('and-btn')) {
                 const ruleRow = target.closest('.rule-row');
@@ -686,7 +686,7 @@
                     SmartLists.removeRule(page, ruleRow);
                 }
             }
-            
+
             // Handle other buttons
             if (target.closest('#clearFormBtn')) {
                 if (SmartLists.clearForm) {
@@ -768,7 +768,7 @@
                     SmartLists.togglePlaylistCard(playlistCard);
                 }
             }
-            
+
             // Bulk operations
             if (target.closest('#selectAllCheckbox')) {
                 if (SmartLists.toggleSelectAll) {
@@ -790,6 +790,11 @@
                     SmartLists.bulkDeletePlaylists(page);
                 }
             }
+            if (target.closest('#bulkRefreshBtn')) {
+                if (SmartLists.bulkRefreshPlaylists) {
+                    SmartLists.bulkRefreshPlaylists(page);
+                }
+            }
             if (target.classList.contains('playlist-checkbox')) {
                 e.stopPropagation(); // Prevent triggering playlist header click
                 if (SmartLists.updateSelectedCount) {
@@ -805,7 +810,7 @@
                 }
             }
         }, SmartLists.getEventListenerOptions(pageSignal));
-        
+
         const playlistForm = page.querySelector('#playlistForm');
         if (playlistForm) {
             playlistForm.addEventListener('submit', function (e) {
@@ -815,26 +820,26 @@
                 }
             }, SmartLists.getEventListenerOptions(pageSignal));
         }
-        
+
         // Add search input event listener
         const searchInput = page.querySelector('#playlistSearchInput');
         const clearSearchBtn = page.querySelector('#clearSearchBtn');
         if (searchInput) {
             // Store search timeout on the page for cleanup
             page._searchTimeout = null;
-            
+
             // Function to update clear button visibility
-            const updateClearButtonVisibility = function() {
+            const updateClearButtonVisibility = function () {
                 if (clearSearchBtn) {
                     clearSearchBtn.style.display = searchInput.value.trim() ? 'flex' : 'none';
                 }
             };
-            
+
             // Use debounced search to avoid too many re-renders
-            searchInput.addEventListener('input', function() {
+            searchInput.addEventListener('input', function () {
                 updateClearButtonVisibility();
                 clearTimeout(page._searchTimeout);
-                page._searchTimeout = setTimeout(async function() {
+                page._searchTimeout = setTimeout(async function () {
                     try {
                         if (SmartLists.applySearchFilter) {
                             await SmartLists.applySearchFilter(page);
@@ -845,28 +850,28 @@
                     }
                 }, 300); // 300ms delay
             }, SmartLists.getEventListenerOptions(pageSignal));
-            
+
             // Also search on Enter key
-            searchInput.addEventListener('keydown', function(e) {
+            searchInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     clearTimeout(page._searchTimeout);
                     if (SmartLists.applySearchFilter) {
-                        SmartLists.applySearchFilter(page).catch(function(err) {
+                        SmartLists.applySearchFilter(page).catch(function (err) {
                             console.error('Error during search:', err);
                             SmartLists.showNotification('Search error: ' + err.message);
                         });
                     }
                 }
             }, SmartLists.getEventListenerOptions(pageSignal));
-            
+
             // Handle clear button click
             if (clearSearchBtn) {
-                clearSearchBtn.addEventListener('click', function() {
+                clearSearchBtn.addEventListener('click', function () {
                     searchInput.value = '';
                     updateClearButtonVisibility();
                     clearTimeout(page._searchTimeout);
                     if (SmartLists.applySearchFilter) {
-                        SmartLists.applySearchFilter(page).catch(function(err) {
+                        SmartLists.applySearchFilter(page).catch(function (err) {
                             console.error('Error during search:', err);
                             SmartLists.showNotification('Search error: ' + err.message);
                         });
@@ -874,33 +879,33 @@
                     searchInput.focus(); // Return focus to search input
                 }, SmartLists.getEventListenerOptions(pageSignal));
             }
-            
+
             // Initialize clear button visibility
             updateClearButtonVisibility();
         }
-        
+
         // Generic event listener setup - eliminates DRY violations
         if (SmartLists.setupFilterEventListeners) {
             SmartLists.setupFilterEventListeners(page, pageSignal);
         }
-        
+
         const clearFiltersBtn = page.querySelector('#clearFiltersBtn');
         if (clearFiltersBtn) {
-            clearFiltersBtn.addEventListener('click', function() {
+            clearFiltersBtn.addEventListener('click', function () {
                 if (SmartLists.clearAllFilters) {
                     SmartLists.clearAllFilters(page);
                 }
             }, SmartLists.getEventListenerOptions(pageSignal));
         }
-        
+
         // Add import file input event listener
         const importFileInput = page.querySelector('#importPlaylistsFile');
         const importBtn = page.querySelector('#importPlaylistsBtn');
         const selectedFileName = page.querySelector('#selectedFileName');
         if (importFileInput && importBtn) {
-            importFileInput.addEventListener('change', function() {
+            importFileInput.addEventListener('change', function () {
                 const hasFile = this.files && this.files.length > 0;
-                
+
                 // Show/hide and enable/disable import button based on file selection
                 if (hasFile) {
                     importBtn.style.display = 'inline-block';
@@ -909,7 +914,7 @@
                     importBtn.style.display = 'none';
                     importBtn.disabled = true;
                 }
-                
+
                 // Update filename display
                 if (selectedFileName) {
                     if (hasFile) {
@@ -924,23 +929,23 @@
     };
 
     // ===== PLAYLIST NAMING =====
-    SmartLists.updatePlaylistNamePreview = function(page) {
+    SmartLists.updatePlaylistNamePreview = function (page) {
         const prefixElement = page.querySelector('#playlistNamePrefix');
         const suffixElement = page.querySelector('#playlistNameSuffix');
         const previewText = page.querySelector('#previewText');
-        
+
         // Return early if preview text element is missing
         if (!previewText) {
             return;
         }
-        
+
         // Use safe defaults: empty string for prefix, "[Smart]" for suffix
         const prefix = prefixElement ? prefixElement.value : '';
         const suffix = suffixElement ? suffixElement.value : '[Smart]';
-        
+
         const exampleName = 'My Awesome List';
         let finalName = '';
-        
+
         if (prefix) {
             finalName += prefix + ' ';
         }
@@ -948,31 +953,31 @@
         if (suffix) {
             finalName += ' ' + suffix;
         }
-        
+
         previewText.textContent = finalName;
     };
 
-    SmartLists.setupPlaylistNamingListeners = function(page, signal) {
+    SmartLists.setupPlaylistNamingListeners = function (page, signal) {
         const prefixInput = page.querySelector('#playlistNamePrefix');
         const suffixInput = page.querySelector('#playlistNameSuffix');
-        
+
         if (prefixInput) {
-            prefixInput.addEventListener('input', function() {
+            prefixInput.addEventListener('input', function () {
                 SmartLists.updatePlaylistNamePreview(page);
             }, SmartLists.getEventListenerOptions(signal));
         }
-        
+
         if (suffixInput) {
-            suffixInput.addEventListener('input', function() {
+            suffixInput.addEventListener('input', function () {
                 SmartLists.updatePlaylistNamePreview(page);
             }, SmartLists.getEventListenerOptions(signal));
         }
     };
 
     // ===== CONFIGURATION MANAGEMENT =====
-    SmartLists.loadConfiguration = function(page) {
+    SmartLists.loadConfiguration = function (page) {
         Dashboard.showLoadingMsg();
-        SmartLists.getApiClient().getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+        SmartLists.getApiClient().getPluginConfiguration(SmartLists.getPluginId()).then(function (config) {
             const defaultSortByEl = page.querySelector('#defaultSortBy');
             const defaultSortOrderEl = page.querySelector('#defaultSortOrder');
             const defaultIgnoreArticlesCheckbox = page.querySelector('#defaultIgnoreArticles');
@@ -984,11 +989,11 @@
             const defaultAutoRefreshEl = page.querySelector('#defaultAutoRefresh');
             const playlistNamePrefixEl = page.querySelector('#playlistNamePrefix');
             const playlistNameSuffixEl = page.querySelector('#playlistNameSuffix');
-            
+
             // Handle backwards compatibility for DefaultSortBy with "(Ignore Articles)"
             let sortBy = config.DefaultSortBy || 'Name';
             let ignoreArticles = false;
-            
+
             if (sortBy === 'Name (Ignore Articles)') {
                 sortBy = 'Name';
                 ignoreArticles = true;
@@ -996,47 +1001,47 @@
                 sortBy = 'SeriesName';
                 ignoreArticles = true;
             }
-            
+
             if (defaultSortByEl) defaultSortByEl.value = sortBy;
             if (defaultSortOrderEl) defaultSortOrderEl.value = config.DefaultSortOrder || 'Ascending';
             if (defaultIgnoreArticlesCheckbox) defaultIgnoreArticlesCheckbox.checked = ignoreArticles;
-            
+
             // Show/hide ignore articles checkbox based on current sort selection
             if (defaultIgnoreArticlesContainer) {
                 const showCheckbox = (sortBy === 'Name' || sortBy === 'SeriesName');
                 defaultIgnoreArticlesContainer.style.display = showCheckbox ? '' : 'none';
             }
-            
+
             if (defaultListTypeEl) defaultListTypeEl.value = config.DefaultListType || 'Playlist';
             if (defaultMakePublicEl) defaultMakePublicEl.checked = config.DefaultMakePublic || false;
             if (defaultMaxItemsEl) defaultMaxItemsEl.value = config.DefaultMaxItems !== undefined && config.DefaultMaxItems !== null ? config.DefaultMaxItems : 500;
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
-            
+
             if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
             if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
-            
+
             // Load processing batch size setting
             const processingBatchSizeEl = page.querySelector('#processingBatchSize');
             if (processingBatchSizeEl) {
                 processingBatchSizeEl.value = config.ProcessingBatchSize !== undefined && config.ProcessingBatchSize !== null && config.ProcessingBatchSize > 0 ? config.ProcessingBatchSize : 300;
             }
-            
+
             // Load schedule configuration values
             const defaultScheduleTriggerElement = page.querySelector('#defaultScheduleTrigger');
             if (defaultScheduleTriggerElement) {
                 // DefaultScheduleTrigger is nullable enum - null means no schedule
                 defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
-                
+
                 // Add event listener to update containers when trigger changes
-                defaultScheduleTriggerElement.addEventListener('change', function() {
+                defaultScheduleTriggerElement.addEventListener('change', function () {
                     SmartLists.updateDefaultScheduleContainers(page, this.value);
                 });
-                
+
                 // Update containers based on current value
                 SmartLists.updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
             }
-            
+
             const defaultScheduleTimeElement = page.querySelector('#defaultScheduleTime');
             if (defaultScheduleTimeElement && config.DefaultScheduleTime) {
                 // Parse time from "HH:mm:ss" format and convert to "HH:mm" for the select
@@ -1046,49 +1051,49 @@
                     defaultScheduleTimeElement.value = timeValue;
                 }
             }
-            
+
             const defaultScheduleDayOfWeekElement = page.querySelector('#defaultScheduleDayOfWeek');
             if (defaultScheduleDayOfWeekElement && config.DefaultScheduleDayOfWeek !== undefined) {
                 defaultScheduleDayOfWeekElement.value = SmartLists.convertDayOfWeekToValue(config.DefaultScheduleDayOfWeek);
             }
-            
+
             const defaultScheduleDayOfMonthElement = page.querySelector('#defaultScheduleDayOfMonth');
             if (defaultScheduleDayOfMonthElement && config.DefaultScheduleDayOfMonth !== undefined) {
                 defaultScheduleDayOfMonthElement.value = config.DefaultScheduleDayOfMonth.toString();
             }
-            
+
             const defaultScheduleMonthElement = page.querySelector('#defaultScheduleMonth');
             if (defaultScheduleMonthElement && config.DefaultScheduleMonth !== undefined) {
                 defaultScheduleMonthElement.value = config.DefaultScheduleMonth.toString();
             }
-            
+
             const defaultScheduleIntervalElement = page.querySelector('#defaultScheduleInterval');
             if (defaultScheduleIntervalElement && config.DefaultScheduleInterval) {
                 defaultScheduleIntervalElement.value = config.DefaultScheduleInterval;
             }
-            
+
             // Update preview after loading configuration
             SmartLists.updatePlaylistNamePreview(page);
-            
+
             Dashboard.hideLoadingMsg();
-        }).catch(function(err) {
+        }).catch(function (err) {
             console.error('Error loading configuration:', err);
             Dashboard.hideLoadingMsg();
         });
     };
 
-    SmartLists.saveConfiguration = function(page) {
+    SmartLists.saveConfiguration = function (page) {
         Dashboard.showLoadingMsg();
         const apiClient = SmartLists.getApiClient();
-        apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function(config) {
+        apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function (config) {
             // Handle DefaultSortBy with ignore articles checkbox
             let sortBy = page.querySelector('#defaultSortBy').value;
             const ignoreArticlesCheckbox = page.querySelector('#defaultIgnoreArticles');
-            
+
             if ((sortBy === 'Name' || sortBy === 'SeriesName') && ignoreArticlesCheckbox && ignoreArticlesCheckbox.checked) {
                 sortBy = sortBy + ' (Ignore Articles)';
             }
-            
+
             config.DefaultSortBy = sortBy;
             config.DefaultSortOrder = page.querySelector('#defaultSortOrder').value;
             config.DefaultListType = page.querySelector('#defaultListType').value;
@@ -1100,7 +1105,7 @@
                 const parsedValue = parseInt(defaultMaxItemsInput);
                 config.DefaultMaxItems = isNaN(parsedValue) ? 500 : parsedValue;
             }
-            
+
             const defaultMaxPlayTimeMinutesInput = page.querySelector('#defaultMaxPlayTimeMinutes').value;
             if (defaultMaxPlayTimeMinutesInput === '') {
                 config.DefaultMaxPlayTimeMinutes = 0;
@@ -1108,14 +1113,14 @@
                 const parsedValue = parseInt(defaultMaxPlayTimeMinutesInput);
                 config.DefaultMaxPlayTimeMinutes = isNaN(parsedValue) ? 0 : parsedValue;
             }
-            
+
             config.DefaultAutoRefresh = page.querySelector('#defaultAutoRefresh').value || 'OnLibraryChanges';
-            
+
             // Save default schedule settings
             // DefaultScheduleTrigger is nullable ScheduleTrigger enum - send null for empty, otherwise the enum value
             const defaultScheduleTriggerValue = page.querySelector('#defaultScheduleTrigger').value;
             config.DefaultScheduleTrigger = defaultScheduleTriggerValue === '' ? null : (defaultScheduleTriggerValue || null);
-            
+
             // DefaultScheduleTime is TimeSpan - send in format "HH:mm:ss" or "HH:mm:ss.fffffff"
             const defaultScheduleTimeValue = page.querySelector('#defaultScheduleTime').value;
             if (defaultScheduleTimeValue) {
@@ -1130,19 +1135,19 @@
             } else {
                 config.DefaultScheduleTime = '00:00:00';
             }
-            
+
             // DefaultScheduleDayOfWeek is DayOfWeek enum (not nullable) - default to 0 (Sunday) if empty
             const defaultScheduleDayOfWeekValue = page.querySelector('#defaultScheduleDayOfWeek').value;
             config.DefaultScheduleDayOfWeek = defaultScheduleDayOfWeekValue ? parseInt(defaultScheduleDayOfWeekValue, 10) : 0;
-            
+
             // DefaultScheduleDayOfMonth is int (not nullable) - default to 1 if empty
             const defaultScheduleDayOfMonthValue = page.querySelector('#defaultScheduleDayOfMonth').value;
             config.DefaultScheduleDayOfMonth = defaultScheduleDayOfMonthValue ? parseInt(defaultScheduleDayOfMonthValue, 10) : 1;
-            
+
             // DefaultScheduleMonth is int (not nullable) - default to 1 (January) if empty
             const defaultScheduleMonthValue = page.querySelector('#defaultScheduleMonth').value;
             config.DefaultScheduleMonth = defaultScheduleMonthValue ? parseInt(defaultScheduleMonthValue, 10) : 1;
-            
+
             // DefaultScheduleInterval is TimeSpan - send in format "HH:mm:ss" or "d.HH:mm:ss"
             const defaultScheduleIntervalValue = page.querySelector('#defaultScheduleInterval').value;
             if (defaultScheduleIntervalValue) {
@@ -1174,10 +1179,10 @@
                 // Default to 15 minutes if empty
                 config.DefaultScheduleInterval = '00:15:00';
             }
-            
+
             config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value || '';
             config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value || '[Smart]';
-            
+
             // Save processing batch size setting
             const processingBatchSizeInput = page.querySelector('#processingBatchSize').value;
             if (processingBatchSizeInput === '') {
@@ -1186,38 +1191,38 @@
                 const parsedValue = parseInt(processingBatchSizeInput, 10);
                 config.ProcessingBatchSize = (isNaN(parsedValue) || parsedValue <= 0) ? 300 : parsedValue;
             }
-            
-            apiClient.updatePluginConfiguration(SmartLists.getPluginId(), config).then(function() {
+
+            apiClient.updatePluginConfiguration(SmartLists.getPluginId(), config).then(function () {
                 Dashboard.hideLoadingMsg();
                 SmartLists.showNotification('Configuration saved successfully.', 'success');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-            }).catch(function(err) {
+            }).catch(function (err) {
                 console.error('Error saving configuration:', err);
                 Dashboard.hideLoadingMsg();
                 SmartLists.showNotification('Failed to save configuration: ' + err.message, 'error');
             });
-        }).catch(function(err) {
+        }).catch(function (err) {
             console.error('Error loading configuration for save:', err);
             Dashboard.hideLoadingMsg();
             SmartLists.showNotification('Failed to load configuration: ' + err.message, 'error');
         });
     };
 
-    SmartLists.refreshAllPlaylists = function() {
+    SmartLists.refreshAllPlaylists = function () {
         // Show notification that refresh has started
         var statusLink = SmartLists.createStatusPageLink('status page');
         var refreshMessage = 'List refresh started, check the ' + statusLink + ' for progress.';
         SmartLists.showNotification(refreshMessage, 'info', { html: true });
-        
+
         // Start the refresh operation (fire and forget - status page will show progress)
         SmartLists.getApiClient().ajax({
             type: "POST",
             url: SmartLists.getApiClient().getUrl(SmartLists.ENDPOINTS.refreshDirect),
             contentType: 'application/json'
-        }).then(function(response) {
+        }).then(function (response) {
             if (!response.ok) {
                 // Try to parse error message from response
-                return response.text().then(function(errorText) {
+                return response.text().then(function (errorText) {
                     var errorMessage;
                     try {
                         var parsed = JSON.parse(errorText);
@@ -1237,19 +1242,19 @@
             }
             // Success - operations are queued and will be processed in the background
             // No success notification needed since status page shows progress
-        }).catch(async function(err) {
+        }).catch(async function (err) {
             // Extract error message using utility function
             const errorMessage = await SmartLists.extractErrorMessage(
-                err, 
+                err,
                 'An unexpected error occurred, check the logs for more details.'
             );
-            
+
             SmartLists.showNotification('Failed to refresh all lists: ' + errorMessage, 'error');
         });
     };
 
     // ===== STYLING =====
-    SmartLists.applyCustomStyles = function() {
+    SmartLists.applyCustomStyles = function () {
         // Check if styles are already added
         if (document.getElementById('smartlists-custom-styles')) {
             return;
@@ -1308,15 +1313,15 @@
     };
 
     // ===== CLEANUP =====
-    SmartLists.cleanupAllEventListeners = function(page) {
+    SmartLists.cleanupAllEventListeners = function (page) {
         // Clean up rule event listeners
         const allRules = page.querySelectorAll('.rule-row');
-        allRules.forEach(function(rule) {
+        allRules.forEach(function (rule) {
             if (SmartLists.cleanupRuleEventListeners) {
                 SmartLists.cleanupRuleEventListeners(rule);
             }
         });
-        
+
         // Clean up modal listeners
         const deleteModal = page.querySelector('#delete-confirm-modal');
         if (deleteModal) {
@@ -1326,37 +1331,37 @@
         if (refreshModal) {
             SmartLists.cleanupModalListeners(refreshModal);
         }
-        
+
         // Clean up page event listeners
         if (page._pageAbortController) {
             page._pageAbortController.abort();
             page._pageAbortController = null;
         }
-        
+
         // Clean up tab listeners
         if (page._tabAbortController) {
             page._tabAbortController.abort();
             page._tabAbortController = null;
         }
-        
+
         // Clean up search timeout
         if (page._searchTimeout) {
             clearTimeout(page._searchTimeout);
             page._searchTimeout = null;
         }
-        
+
         // Clean up media type debounce timer
         if (page._mediaTypeUpdateTimer) {
             clearTimeout(page._mediaTypeUpdateTimer);
             page._mediaTypeUpdateTimer = null;
         }
-        
+
         // Abort media type checkbox listeners
         if (page._mediaTypeAbortController) {
             page._mediaTypeAbortController.abort();
             page._mediaTypeAbortController = null;
         }
-        
+
         // Stop status polling timers
         if (window.SmartLists && window.SmartLists.Status) {
             window.SmartLists.Status.stopPolling();
@@ -1364,12 +1369,12 @@
                 window.SmartLists.Status.stopAggressivePolling();
             }
         }
-        
+
         // Clean up notification timer
         if (SmartLists.clearNotification) {
             SmartLists.clearNotification();
         }
-        
+
         // Clean up navigation listeners
         const navContainer = page.querySelector('.localnav');
         if (navContainer) {
@@ -1382,12 +1387,12 @@
                 }
                 navContainer._navAbortController = null;
             }
-            
+
             // Note: No popstate listener to clean up
-            
+
             navContainer._navInitialized = false;
         }
-        
+
         // Reset page-specific initialization flags and edit state
         page._pageInitialized = false;
         page._tabListenersInitialized = false;
@@ -1404,7 +1409,7 @@
             SmartLists.initPage(page);
         }
     });
-    
+
     // Clean up all event listeners when page is hidden/unloaded
     document.addEventListener('pagehide', function (e) {
         const page = e.target;
@@ -1414,42 +1419,42 @@
     });
 
     // ===== LIST TYPE CHANGE HANDLER =====
-    SmartLists.handleListTypeChange = function(page) {
+    SmartLists.handleListTypeChange = function (page) {
         const listTypeSelect = page.querySelector('#listType');
         if (!listTypeSelect) return;
-        
+
         const listType = listTypeSelect.value;
         const isCollection = listType === 'Collection';
-        
+
         // Show/hide playlist-only fields
         const playlistOnlyFields = page.querySelectorAll('.playlist-only-field');
-        playlistOnlyFields.forEach(function(field) {
+        playlistOnlyFields.forEach(function (field) {
             field.style.display = isCollection ? 'none' : '';
         });
-        
+
         // Show/hide collection-only fields
         const collectionOnlyFields = page.querySelectorAll('.collection-only-field');
-        collectionOnlyFields.forEach(function(field) {
+        collectionOnlyFields.forEach(function (field) {
             field.style.display = isCollection ? '' : 'none';
         });
-        
+
         // Show/hide playlist-only and collection-only descriptions
         const playlistOnlyDescriptions = page.querySelectorAll('.playlist-only-description');
-        playlistOnlyDescriptions.forEach(function(desc) {
+        playlistOnlyDescriptions.forEach(function (desc) {
             desc.style.display = isCollection ? 'none' : '';
         });
-        
+
         const collectionOnlyDescriptions = page.querySelectorAll('.collection-only-description');
-        collectionOnlyDescriptions.forEach(function(desc) {
+        collectionOnlyDescriptions.forEach(function (desc) {
             desc.style.display = isCollection ? '' : 'none';
         });
-        
+
         // Update list type label text
         const listTypeLabel = page.querySelector('.list-type-label');
         if (listTypeLabel) {
             listTypeLabel.textContent = isCollection ? 'Collection' : 'Playlist';
         }
-        
+
         // Update required attributes
         const userSelect = page.querySelector('#playlistUser');
         if (userSelect) {
@@ -1459,7 +1464,7 @@
                 userSelect.setAttribute('required', 'required');
             }
         }
-        
+
         // Update submit button text
         const submitBtn = page.querySelector('#submitBtn');
         const editState = SmartLists.getPageEditState(page);
@@ -1470,28 +1475,28 @@
                 submitBtn.textContent = 'Create ' + listType;
             }
         }
-        
+
         // Save currently selected media types before regenerating checkboxes
         const currentlySelectedMediaTypes = [];
         const existingCheckboxes = page.querySelectorAll('.media-type-checkbox');
-        existingCheckboxes.forEach(function(checkbox) {
+        existingCheckboxes.forEach(function (checkbox) {
             if (checkbox.checked) {
                 currentlySelectedMediaTypes.push(checkbox.value);
             }
         });
-        
+
         // Update Collections options visibility for all rules when list type changes
         SmartLists.updateAllCollectionsOptionsVisibility(page);
-        
+
         // Regenerate media type checkboxes to show/hide collection-only types
         if (SmartLists.generateMediaTypeCheckboxes) {
             // Set flag to prevent change handlers from firing during regeneration
             page._skipMediaTypeChangeHandlers = true;
             SmartLists.generateMediaTypeCheckboxes(page);
-            
+
             // Restore previously selected media types, excluding collection-only types when switching to Playlist
             const newCheckboxes = page.querySelectorAll('.media-type-checkbox');
-            newCheckboxes.forEach(function(checkbox) {
+            newCheckboxes.forEach(function (checkbox) {
                 // Restore if it was previously selected
                 if (currentlySelectedMediaTypes.indexOf(checkbox.value) !== -1) {
                     // Skip Series if switching to Playlist mode (Series is collection-only)
@@ -1501,16 +1506,16 @@
                     checkbox.checked = true;
                 }
             });
-            
+
             // Clear flag to re-enable change handlers
             page._skipMediaTypeChangeHandlers = false;
         }
-        
+
         // Update field selects when list type changes
         if (SmartLists.updateAllFieldSelects) {
             SmartLists.updateAllFieldSelects(page);
         }
-        
+
         // Update visibility of parent series options based on media types
         if (SmartLists.updateAllTagsOptionsVisibility) {
             SmartLists.updateAllTagsOptionsVisibility(page);
@@ -1521,7 +1526,7 @@
         if (SmartLists.updateAllGenresOptionsVisibility) {
             SmartLists.updateAllGenresOptionsVisibility(page);
         }
-        
+
         // Collections are server-wide, no library loading needed
     };
 

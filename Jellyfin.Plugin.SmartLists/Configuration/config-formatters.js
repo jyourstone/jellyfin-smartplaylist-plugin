@@ -344,7 +344,7 @@
         html += '</label>';
 
         // Selected count display
-        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em; font-style: italic;">(0 selected)</span>';
+        html += '<span id="selectedCountDisplay" class="fieldDescription" style="color: #999; margin-right: 0.75em; font-style: italic;">(0)</span>';
 
         // 2. Enable button
         html += '<button type="button" id="bulkEnableBtn" class="emby-button raised" disabled>Enable</button>';
@@ -352,7 +352,10 @@
         // 3. Disable button
         html += '<button type="button" id="bulkDisableBtn" class="emby-button raised" disabled>Disable</button>';
 
-        // 4. Delete button
+        // 4. Refresh button
+        html += '<button type="button" id="bulkRefreshBtn" class="emby-button raised" disabled>Refresh</button>';
+
+        // 5. Delete button
         html += '<button type="button" id="bulkDeleteBtn" class="emby-button raised button-delete" disabled>Delete</button>';
 
         html += '</div>'; // End left side
