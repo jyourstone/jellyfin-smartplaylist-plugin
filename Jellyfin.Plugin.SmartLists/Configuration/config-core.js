@@ -749,9 +749,8 @@
                 prefixedMessage = '⚠ ' + message;
             } else if (type === 'error') {
                 prefixedMessage = '✗ ' + message;
-            } else if (type === 'info') {
-                prefixedMessage = 'ℹ ' + message;
             }
+            // Info type notifications don't have a prefix icon
         }
 
         // Create individual notification element

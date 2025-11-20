@@ -6,7 +6,6 @@ The web interface provides access to all available fields for creating list rule
 
 ### Content Fields
 
-- **Album** - Album name (for music)
 - **Audio Languages** - The audio language of the movie/TV show
 - **Audio Bitrate** - Audio bitrate in kbps (e.g., 128, 256, 320, 1411)
 - **Audio Sample Rate** - Audio sample rate in Hz (e.g., 44100, 48000, 96000, 192000)
@@ -66,6 +65,7 @@ The web interface provides access to all available fields for creating list rule
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
+- **Album** - Album name (for music)
 - **Artists** - Track-level artists (for music)
 - **Album Artists** - Album-level primary artists (for music)
 

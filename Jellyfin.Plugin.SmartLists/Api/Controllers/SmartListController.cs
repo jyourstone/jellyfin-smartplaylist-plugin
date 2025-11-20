@@ -1357,7 +1357,6 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             {
                 ContentFields = new[]
                 {
-                    new { Value = "Album", Label = "Album" },
                     new { Value = "Name", Label = "Name" },
                     new { Value = "SeriesName", Label = "Series Name" },
                     new { Value = "SimilarTo", Label = "Similar To" },
@@ -1449,6 +1448,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     new { Value = "Genres", Label = "Genres" },
                     new { Value = "Studios", Label = "Studios" },
                     new { Value = "Tags", Label = "Tags" },
+                    new { Value = "Album", Label = "Album" },
                     new { Value = "Artists", Label = "Artists" },
                     new { Value = "AlbumArtists", Label = "Album Artists" },
                 },
