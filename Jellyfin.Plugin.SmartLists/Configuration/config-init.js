@@ -477,6 +477,9 @@
         } catch (err) {
             console.error('Error loading users:', err);
             userSelect.innerHTML = '<option value="">Error loading users</option>';
+            if (SmartLists.showNotification) {
+                SmartLists.showNotification('Failed to load users. Please refresh the page.', 'error');
+            }
         }
     };
 
@@ -1033,10 +1036,7 @@
                 // DefaultScheduleTrigger is nullable enum - null means no schedule
                 defaultScheduleTriggerElement.value = config.DefaultScheduleTrigger || '';
 
-                // Add event listener to update containers when trigger changes
-                defaultScheduleTriggerElement.addEventListener('change', function () {
-                    SmartLists.updateDefaultScheduleContainers(page, this.value);
-                });
+                // Event listener is already added in populateStaticSelects to avoid duplication
 
                 // Update containers based on current value
                 SmartLists.updateDefaultScheduleContainers(page, defaultScheduleTriggerElement.value);
@@ -1486,7 +1486,9 @@
         });
 
         // Update Collections options visibility for all rules when list type changes
-        SmartLists.updateAllCollectionsOptionsVisibility(page);
+        if (SmartLists.updateAllCollectionsOptionsVisibility) {
+            SmartLists.updateAllCollectionsOptionsVisibility(page);
+        }
 
         // Regenerate media type checkboxes to show/hide collection-only types
         if (SmartLists.generateMediaTypeCheckboxes) {

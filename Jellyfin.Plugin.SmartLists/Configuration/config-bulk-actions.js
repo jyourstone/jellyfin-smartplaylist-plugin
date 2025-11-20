@@ -86,21 +86,7 @@
                     });
 
                     if (!response.ok) {
-                        // Parse error message from response
-                        let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
-                        try {
-                            const errorText = await response.text();
-                            if (errorText) {
-                                try {
-                                    const parsed = JSON.parse(errorText);
-                                    errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
-                                } catch (e) {
-                                    errorMessage = errorText;
-                                }
-                            }
-                        } catch (parseErr) {
-                            // Use default error message if parsing fails
-                        }
+                        const errorMessage = await SmartLists.extractErrorMessage(response, 'HTTP ' + response.status + ': ' + response.statusText);
                         console.error('Error ' + options.actionType + ' list:', listId, errorMessage);
                         errorCount++;
                     } else {
@@ -180,21 +166,7 @@
             });
 
             if (!response.ok) {
-                // Parse error message from response
-                let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
-                try {
-                    const errorText = await response.text();
-                    if (errorText) {
-                        try {
-                            const parsed = JSON.parse(errorText);
-                            errorMessage = parsed.message || parsed.error || parsed.detail || errorText;
-                        } catch (e) {
-                            errorMessage = errorText;
-                        }
-                    }
-                } catch (parseErr) {
-                    // Use default error message if parsing fails
-                }
+                const errorMessage = await SmartLists.extractErrorMessage(response, 'HTTP ' + response.status + ': ' + response.statusText);
                 throw new Error(errorMessage);
             }
 
@@ -526,24 +498,14 @@
                 contentType: 'application/json'
             }).then(function (response) {
                 if (!response.ok) {
-                    // Parse error message from response
-                    return response.text().then(function (errorText) {
-                        let errorMessage = 'HTTP ' + response.status + ': ' + response.statusText;
-                        if (errorText) {
-                            try {
-                                const parsed = JSON.parse(errorText);
-                                const parsedMsg = parsed.message || parsed.error || parsed.detail || errorText;
-                                errorMessage = 'HTTP ' + response.status + ': ' + parsedMsg;
-                            } catch (e) {
-                                // keep default HTTP + statusText or raw body
-                            }
-                        }
-                        console.error('Error deleting list:', listId, errorMessage);
-                        errorCount++;
-                        const err = new Error(errorMessage);
-                        err._smartListsHttpError = true;
-                        throw err;
-                    });
+                    return SmartLists.extractErrorMessage(response, 'HTTP ' + response.status + ': ' + response.statusText)
+                        .then(function (errorMessage) {
+                            console.error('Error deleting list:', listId, errorMessage);
+                            errorCount++;
+                            const err = new Error(errorMessage);
+                            err._smartListsHttpError = true;
+                            throw err;
+                        });
                 } else {
                     successCount++;
                 }
