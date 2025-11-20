@@ -197,9 +197,12 @@
 
     SmartLists.handleDateFieldInput = function(valueContainer, currentOperator, currentValue) {
         const isRelativeDateOperator = SmartLists.RELATIVE_DATE_OPERATORS.indexOf(currentOperator) !== -1;
+        const isWeekdayOperator = currentOperator === 'Weekday';
         
         if (isRelativeDateOperator) {
             SmartLists.handleRelativeDateInput(valueContainer, currentValue);
+        } else if (isWeekdayOperator) {
+            SmartLists.handleWeekdayInput(valueContainer, currentValue);
         } else {
             SmartLists.handleAbsoluteDateInput(valueContainer, currentValue);
         }
@@ -254,6 +257,28 @@
         input.className = 'emby-input rule-value-input';
         input.style.width = '100%';
         valueContainer.appendChild(input);
+    };
+
+    SmartLists.handleWeekdayInput = function(valueContainer, currentValue) {
+        const select = document.createElement('select');
+        select.className = 'emby-select rule-value-input';
+        select.setAttribute('is', 'emby-select');
+        select.style.width = '100%';
+        
+        // Use existing generateDayOfWeekOptions function from config-formatters.js
+        const dayOptions = SmartLists.generateDayOfWeekOptions(currentValue);
+        
+        dayOptions.forEach(function(opt) {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (opt.selected) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        
+        valueContainer.appendChild(select);
     };
 
     SmartLists.handleResolutionFieldInput = function(valueContainer, currentValue) {
@@ -354,9 +379,15 @@
 
     SmartLists.restoreDateValue = function(valueContainer, currentOperator, currentValue, newValueInput) {
         const isRelativeDateOperator = SmartLists.RELATIVE_DATE_OPERATORS.indexOf(currentOperator) !== -1;
+        const isWeekdayOperator = currentOperator === 'Weekday';
         
         if (isRelativeDateOperator) {
             SmartLists.restoreRelativeDateValue(valueContainer, currentValue, newValueInput);
+        } else if (isWeekdayOperator) {
+            // For weekday, restore the select value directly
+            if (newValueInput.tagName === 'SELECT' && currentValue) {
+                newValueInput.value = currentValue;
+            }
         } else {
             // For regular date operators, restore the date value directly
             if (newValueInput.tagName === 'INPUT') {

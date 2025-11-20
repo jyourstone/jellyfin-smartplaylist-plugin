@@ -177,6 +177,7 @@ This allows you to create more specific rules, such as "Movies directed by Chris
 - **greater than or equal** / **less than or equal** - Numeric comparisons
 - **after** / **before** - Date comparisons
 - **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
+- **weekday** - Day of week matching (Monday, Tuesday, etc.)
 - **matches regex** - Advanced pattern matching using .NET regex syntax
 
 ### Using "Is In" to Simplify Lists
@@ -208,6 +209,23 @@ Rule Group 1:
 Both approaches produce the same result, but the second is much simpler and easier to maintain! The "is in" operator checks if the field value contains any of the semicolon-separated items.
 
 **Syntax**: Separate multiple values with semicolons: `value1; value2; value3`
+
+### Using the Weekday Operator
+
+The **weekday** operator allows you to filter items based on the day of week for any date field. This is particularly useful for:
+
+- Filtering TV shows that originally aired on specific weekdays (e.g., "Release Date weekday Monday")
+- Finding items created or modified on specific days of the week
+- Combining with other date operators for more complex filters
+
+**Example Use Cases**:
+- "Release Date weekday Friday" - Shows that premiered on Fridays
+- "Release Date weekday Monday AND Release Date newer than 6 months" - Recent Monday releases
+- "DateCreated weekday Sunday" - Items added to your library on Sundays
+
+**Important Notes**:
+- Weekday matching uses UTC timezone, consistent with all other date operations in the plugin
+- You can combine weekday with other date operators (After, Before, NewerThan, OlderThan) using AND logic
 
 ## Rule Logic
 
