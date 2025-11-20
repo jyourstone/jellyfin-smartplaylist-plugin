@@ -970,6 +970,11 @@
                         if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
                         if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
 
+                        // Format weekday operator value to show day name instead of number
+                        if (rule.Operator === 'Weekday') {
+                            value = SmartLists.getDayNameFromValue(value);
+                        }
+
                         // Check if this rule has a specific user and resolve username
                         let userInfo = '';
                         if (rule.UserId && rule.UserId !== '00000000-0000-0000-0000-000000000000') {

@@ -33,7 +33,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
             new OperatorInfo("After", "after"),
             new OperatorInfo("Before", "before"),
             new OperatorInfo("NewerThan", "newer than"),
-            new OperatorInfo("OlderThan", "older than")
+            new OperatorInfo("OlderThan", "older than"),
+            new OperatorInfo("Weekday", "weekday")
         ];
 
         /// <summary>
@@ -77,7 +78,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
         /// <summary>
         /// Operators for date fields.
         /// </summary>
-        public static readonly string[] DateFieldOperators = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan"];
+        public static readonly string[] DateFieldOperators = ["Equal", "NotEqual", "After", "Before", "NewerThan", "OlderThan", "Weekday"];
 
         /// <summary>
         /// Operators for resolution fields that support both equality and numeric comparisons.

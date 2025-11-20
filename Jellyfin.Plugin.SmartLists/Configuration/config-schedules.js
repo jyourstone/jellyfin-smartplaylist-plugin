@@ -91,7 +91,7 @@
         fieldsContainer.appendChild(dayOfMonthField.container);
         
         // Day of Week field (for Weekly)
-        const dayOfWeekField = SmartLists.createScheduleField('Day of Week', 'schedule-dayofweek-' + scheduleId, 'select');
+        const dayOfWeekField = SmartLists.createScheduleField('Weekday', 'schedule-dayofweek-' + scheduleId, 'select');
         SmartLists.populateSelectElement(dayOfWeekField.input, SmartLists.generateDayOfWeekOptions(scheduleData && scheduleData.DayOfWeek !== undefined ? scheduleData.DayOfWeek.toString() : '0'));
         dayOfWeekField.container.style.display = 'none';
         fieldsContainer.appendChild(dayOfWeekField.container);

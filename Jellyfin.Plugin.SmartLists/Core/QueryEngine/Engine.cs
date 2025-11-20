@@ -325,6 +325,12 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         private static BinaryExpression BuildDateExpressionForMethodCall(Expression r, System.Linq.Expressions.Expression methodCall, ILogger? logger)
         {
+            // Handle Weekday operator
+            if (r.Operator == "Weekday")
+            {
+                return BuildWeekdayExpressionForMethodCall(r, methodCall, logger);
+            }
+
             // Handle relative date operators
             if (r.Operator == "NewerThan" || r.Operator == "OlderThan")
             {
@@ -386,6 +392,64 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 // methodCall < cutoffTimestamp (older than cutoff)
                 return System.Linq.Expressions.Expression.LessThan(methodCall, cutoffConstant);
             }
+        }
+
+        /// <summary>
+        /// Builds expressions for Weekday operator for method calls (user-specific LastPlayedDate).
+        /// </summary>
+        private static BinaryExpression BuildWeekdayExpressionForMethodCall(Expression r, System.Linq.Expressions.Expression methodCall, ILogger? logger)
+        {
+            logger?.LogDebug("SmartLists handling 'Weekday' operator for user-specific field {Field} with value {Value}", r.MemberName, r.TargetValue);
+
+            if (string.IsNullOrWhiteSpace(r.TargetValue))
+            {
+                logger?.LogError("SmartLists weekday comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                throw new ArgumentException($"Weekday comparison requires a valid day of week value (0-6) for field '{r.MemberName}', but got: '{r.TargetValue}'");
+            }
+
+            // Parse target value as integer (0-6)
+            if (!int.TryParse(r.TargetValue, out int targetDayOfWeek) || targetDayOfWeek < 0 || targetDayOfWeek > 6)
+            {
+                logger?.LogError("SmartLists weekday comparison failed: Invalid day of week value '{Value}' for field '{Field}'. Expected 0-6.", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid day of week value '{r.TargetValue}' for field '{r.MemberName}'. Expected integer 0-6 (0=Sunday, 6=Saturday).");
+            }
+
+            // Convert to DayOfWeek enum
+            var targetDayOfWeekEnum = (DayOfWeek)targetDayOfWeek;
+
+            // Create expression that:
+            // 1. Converts Unix timestamp to DateTimeOffset in UTC
+            // 2. Extracts DayOfWeek property
+            // 3. Compares to target day of week
+
+            // Get the method to convert timestamp to DateTimeOffset
+            var fromUnixTimeSecondsMethod = typeof(DateTimeOffset).GetMethod("FromUnixTimeSeconds", [typeof(long)]);
+            if (fromUnixTimeSecondsMethod == null)
+                throw new InvalidOperationException("DateTimeOffset.FromUnixTimeSeconds method not found");
+
+            // Convert double timestamp to long for the method call
+            var timestampLong = System.Linq.Expressions.Expression.Convert(methodCall, typeof(long));
+
+            // Call FromUnixTimeSeconds
+            var dateTimeOffsetExpr = System.Linq.Expressions.Expression.Call(fromUnixTimeSecondsMethod, timestampLong);
+
+            // Get UtcDateTime property
+            var utcDateTimeProperty = typeof(DateTimeOffset).GetProperty("UtcDateTime");
+            if (utcDateTimeProperty == null)
+                throw new InvalidOperationException("DateTimeOffset.UtcDateTime property not found");
+
+            var utcDateTimeExpr = System.Linq.Expressions.Expression.Property(dateTimeOffsetExpr, utcDateTimeProperty);
+
+            // Get DayOfWeek property
+            var dayOfWeekProperty = typeof(DateTime).GetProperty("DayOfWeek");
+            if (dayOfWeekProperty == null)
+                throw new InvalidOperationException("DateTime.DayOfWeek property not found");
+
+            var dayOfWeekExpr = System.Linq.Expressions.Expression.Property(utcDateTimeExpr, dayOfWeekProperty);
+
+            // Compare to target day of week
+            var targetConstant = System.Linq.Expressions.Expression.Constant(targetDayOfWeekEnum);
+            return System.Linq.Expressions.Expression.Equal(dayOfWeekExpr, targetConstant);
         }
 
         /// <summary>
@@ -634,6 +698,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         private static BinaryExpression BuildStandardDateExpression(Expression r, MemberExpression left, ILogger? logger)
         {
+            // Handle Weekday operator
+            if (r.Operator == "Weekday")
+            {
+                return BuildWeekdayExpression(r, left, logger);
+            }
 
             // Handle NewerThan and OlderThan operators first
             if (r.Operator == "NewerThan" || r.Operator == "OlderThan")
@@ -721,6 +790,64 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 // operand.DateCreated < cutoffTimestamp
                 return System.Linq.Expressions.Expression.LessThan(left, cutoffConstant);
             }
+        }
+
+        /// <summary>
+        /// Builds expressions for Weekday operator (filters by day of week).
+        /// </summary>
+        private static BinaryExpression BuildWeekdayExpression(Expression r, MemberExpression left, ILogger? logger)
+        {
+            logger?.LogDebug("SmartLists handling 'Weekday' operator for field {Field} with value {Value}", r.MemberName, r.TargetValue);
+
+            if (string.IsNullOrWhiteSpace(r.TargetValue))
+            {
+                logger?.LogError("SmartLists weekday comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                throw new ArgumentException($"Weekday comparison requires a valid day of week value (0-6) for field '{r.MemberName}', but got: '{r.TargetValue}'");
+            }
+
+            // Parse target value as integer (0-6)
+            if (!int.TryParse(r.TargetValue, out int targetDayOfWeek) || targetDayOfWeek < 0 || targetDayOfWeek > 6)
+            {
+                logger?.LogError("SmartLists weekday comparison failed: Invalid day of week value '{Value}' for field '{Field}'. Expected 0-6.", r.TargetValue, r.MemberName);
+                throw new ArgumentException($"Invalid day of week value '{r.TargetValue}' for field '{r.MemberName}'. Expected integer 0-6 (0=Sunday, 6=Saturday).");
+            }
+
+            // Convert to DayOfWeek enum
+            var targetDayOfWeekEnum = (DayOfWeek)targetDayOfWeek;
+
+            // Create expression that:
+            // 1. Converts Unix timestamp to DateTimeOffset in UTC
+            // 2. Extracts DayOfWeek property
+            // 3. Compares to target day of week
+
+            // Get the method to convert timestamp to DateTimeOffset
+            var fromUnixTimeSecondsMethod = typeof(DateTimeOffset).GetMethod("FromUnixTimeSeconds", [typeof(long)]);
+            if (fromUnixTimeSecondsMethod == null)
+                throw new InvalidOperationException("DateTimeOffset.FromUnixTimeSeconds method not found");
+
+            // Convert double timestamp to long for the method call
+            var timestampLong = System.Linq.Expressions.Expression.Convert(left, typeof(long));
+
+            // Call FromUnixTimeSeconds
+            var dateTimeOffsetExpr = System.Linq.Expressions.Expression.Call(fromUnixTimeSecondsMethod, timestampLong);
+
+            // Get UtcDateTime property
+            var utcDateTimeProperty = typeof(DateTimeOffset).GetProperty("UtcDateTime");
+            if (utcDateTimeProperty == null)
+                throw new InvalidOperationException("DateTimeOffset.UtcDateTime property not found");
+
+            var utcDateTimeExpr = System.Linq.Expressions.Expression.Property(dateTimeOffsetExpr, utcDateTimeProperty);
+
+            // Get DayOfWeek property
+            var dayOfWeekProperty = typeof(DateTime).GetProperty("DayOfWeek");
+            if (dayOfWeekProperty == null)
+                throw new InvalidOperationException("DateTime.DayOfWeek property not found");
+
+            var dayOfWeekExpr = System.Linq.Expressions.Expression.Property(utcDateTimeExpr, dayOfWeekProperty);
+
+            // Compare to target day of week
+            var targetConstant = System.Linq.Expressions.Expression.Constant(targetDayOfWeekEnum);
+            return System.Linq.Expressions.Expression.Equal(dayOfWeekExpr, targetConstant);
         }
 
         /// <summary>
