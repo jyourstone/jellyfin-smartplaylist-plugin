@@ -642,7 +642,16 @@
             }, SmartLists.getEventListenerOptions(navSignal));
         });
 
-        // Note: No popstate handler - tab navigation uses replaceState for URL bookmarking only
+        // Handle browser back/forward navigation via hashchange
+        // This ensures status page data loads when navigating via browser buttons
+        window.addEventListener('hashchange', function () {
+            // Get the current tab from the URL hash
+            const currentTab = SmartLists.getCurrentTab();
+            // Switch to that tab, which will trigger data loading for status page
+            SmartLists.switchToTab(page, currentTab);
+        }, SmartLists.getEventListenerOptions(navSignal));
+
+        // Note: No popstate handler needed - hashchange handles browser navigation
 
         // Initial tab already set above to prevent flash
     };
