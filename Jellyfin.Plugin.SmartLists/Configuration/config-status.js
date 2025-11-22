@@ -1,4 +1,4 @@
-(function() {
+(function () {
     'use strict';
 
     let statusPollingInterval = null;
@@ -13,6 +13,13 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Get the active configuration page element
+     */
+    function getActiveConfigPage() {
+        return document.querySelector('.SmartListsConfigurationPage:not(.hide)');
     }
 
     /**
@@ -34,36 +41,39 @@
         }
 
         const url = apiClient.getUrl('Plugins/SmartLists/Status');
-        
+
         apiClient.ajax({
             type: 'GET',
             url: url,
             contentType: 'application/json'
-        }).then(function(response) {
+        }).then(function (response) {
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status + ': ' + response.statusText);
             }
             return response.json();
-        }).then(function(data) {
+        }).then(function (data) {
             if (!data) {
                 console.warn('No data received from status endpoint');
                 showError('No data received from server');
                 return;
             }
             renderStatusPage(data);
-        }).catch(function(error) {
+        }).catch(function (error) {
             console.error('Error fetching status:', error);
             const errorMsg = error.message || error.toString() || 'Unknown error';
             showError('Error loading status data: ' + errorMsg);
-            
+
             // Show error in all containers
-            const containers = ['ongoing-operations-container', 'statistics-container', 'refresh-history-container'];
-            containers.forEach(function(containerId) {
-                const container = document.getElementById(containerId);
-                if (container) {
-                    container.innerHTML = '<p style="color: #ff6b6b;">Error: ' + escapeHtml(errorMsg) + '</p>';
-                }
-            });
+            const page = getActiveConfigPage();
+            if (page) {
+                const containers = ['ongoing-operations-container', 'statistics-container', 'refresh-history-container'];
+                containers.forEach(function (containerId) {
+                    const container = page.querySelector('#' + containerId);
+                    if (container) {
+                        container.innerHTML = '<p style="color: #ff6b6b;">Error: ' + escapeHtml(errorMsg) + '</p>';
+                    }
+                });
+            }
         });
     }
 
@@ -77,7 +87,7 @@
 
         // Auto-refresh polling: Poll every 2 seconds when operations are active, every 30 seconds when idle
         const hasOngoing = (data.ongoingOperations || []).length > 0;
-        
+
         if (hasOngoing) {
             // Operations are active - use 2-second polling
             stopAggressivePolling(); // Stop aggressive polling if operations are found
@@ -99,7 +109,10 @@
      * Render ongoing operations
      */
     function renderOngoingOperations(operations) {
-        const container = document.getElementById('ongoing-operations-container');
+        // Query within the visible page to avoid duplicate container issues
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
+        const container = page ? page.querySelector('#ongoing-operations-container') : null;
         if (!container) return;
 
         if (!operations || operations.length === 0) {
@@ -113,7 +126,7 @@
             const progressPercent = Math.round(progress);
             const elapsedTime = formatDuration(op.elapsedTime);
             const estimatedTime = op.estimatedTimeRemaining ? formatDuration(op.estimatedTimeRemaining) : 'Calculating...';
-            
+
             html += `
                 <div style="padding: 1em; background: rgba(255,255,255,0.05); border-radius: 4px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5em;">
@@ -152,13 +165,18 @@
      * Render statistics
      */
     function renderStatistics(stats, ongoingOperations) {
-        const container = document.getElementById('statistics-container');
-        if (!container) return;
+        // Query within the visible page to avoid duplicate container issues
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
+        const container = page ? page.querySelector('#statistics-container') : null;
+        if (!container) {
+            return;
+        }
 
         // Always show the statistics table, even if there are no stats yet
         const lastRefresh = stats?.lastRefreshTime ? formatDateTime(stats.lastRefreshTime) : 'Never';
         const avgDuration = stats?.averageRefreshDuration ? formatDuration(stats.averageRefreshDuration) : 'N/A';
-        
+
         // Find batch progress info from ongoing operations
         // Show the highest batch index (current operation being processed) or count of ongoing operations
         const batchOps = ongoingOperations?.filter(op => op.batchCurrentIndex != null && op.batchTotalCount != null) || [];
@@ -175,7 +193,7 @@
         // Get queue count from statistics
         const queuedCount = stats.queuedOperationsCount || 0;
 
-        container.innerHTML = `
+        const newHTML = `
             <div style="display: flex; flex-direction: column; gap: 1em;">
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em;">
                     <div style="padding: 1em; background: rgba(255,255,255,0.05); border-radius: 4px;">
@@ -207,13 +225,18 @@
                 </div>
             </div>
         `;
+
+        container.innerHTML = newHTML;
     }
 
     /**
      * Render refresh history
      */
     function renderRefreshHistory(history) {
-        const container = document.getElementById('refresh-history-container');
+        // Query within the visible page to avoid duplicate container issues
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
+        const container = page ? page.querySelector('#refresh-history-container') : null;
         if (!container) return;
 
         if (!history || history.length === 0) {
@@ -263,7 +286,7 @@
      */
     function formatDuration(seconds) {
         if (!seconds && seconds !== 0) return 'N/A';
-        
+
         const totalSeconds = Math.round(seconds);
         if (totalSeconds < 60) {
             return `${totalSeconds}s`;
@@ -295,7 +318,8 @@
      * Show error message
      */
     function showError(message) {
-        const container = document.getElementById('ongoing-operations-container');
+        const page = getActiveConfigPage();
+        const container = page ? page.querySelector('#ongoing-operations-container') : null;
         if (container) {
             container.innerHTML = `<p style="color: #ff6b6b;">${escapeHtml(message)}</p>`;
         }
@@ -309,7 +333,7 @@
         if (aggressivePollingInterval) {
             return;
         }
-        
+
         if (statusPollingInterval) {
             clearInterval(statusPollingInterval);
         }
@@ -336,12 +360,12 @@
         // Stop any existing polling before starting aggressive mode
         stopPolling();
         stopAggressivePolling();
-        
+
         // Poll every 1 second
         aggressivePollingInterval = setInterval(() => {
             fetchStatusData();
         }, 1000);
-        
+
         // After 15 seconds, stop aggressive polling
         // The next fetchStatusData call (which happens every 1s) will trigger renderStatusPage
         // which will then start appropriate polling (2s if operations active, 30s if idle)
@@ -377,9 +401,12 @@
      * Setup refresh button - can be called multiple times safely
      */
     function setupRefreshButton() {
-        const refreshBtn = document.getElementById('refresh-status-btn');
+        // Query within the visible page to avoid duplicate container issues
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
+        const refreshBtn = page ? page.querySelector('#refresh-status-btn') : null;
         if (refreshBtn && !refreshBtn._statusListenerAttached) {
-            refreshBtn.addEventListener('click', function() {
+            refreshBtn.addEventListener('click', function () {
                 fetchStatusData();
             });
             refreshBtn._statusListenerAttached = true;
@@ -396,7 +423,7 @@
         startAggressivePolling: startAggressivePolling,
         stopAggressivePolling: stopAggressivePolling
     };
-    
+
     // Auto-setup refresh button when DOM is ready (if script loads after DOM)
     if (document.readyState !== 'loading') {
         // DOM already loaded, try to setup button immediately
