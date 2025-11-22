@@ -531,17 +531,28 @@
             if (contentTabId === tabId) {
                 content.classList.remove('hide');
                 // If this is the status tab, ensure status page loads after tab becomes visible
-                if (contentTabId === 'status' && window.SmartLists && window.SmartLists.Status) {
-                    // Use requestAnimationFrame to ensure DOM update is complete
-                    requestAnimationFrame(function () {
-                        window.SmartLists.Status.initializeStatusPage();
-                        window.SmartLists.Status.loadStatusPage();
-                    });
-                }
             } else {
                 content.classList.add('hide');
             }
         });
+
+        // Handle Status Page Polling (Centralized Logic)
+        if (window.SmartLists && window.SmartLists.Status) {
+            if (tabId === 'status') {
+                // Use requestAnimationFrame to ensure DOM update is complete
+                requestAnimationFrame(function () {
+                    window.SmartLists.Status.initializeStatusPage();
+                    window.SmartLists.Status.loadStatusPage();
+                });
+            } else {
+                // Stop polling when leaving status tab
+                window.SmartLists.Status.stopPolling();
+                // Also stop aggressive polling if it's running
+                if (window.SmartLists.Status.stopAggressivePolling) {
+                    window.SmartLists.Status.stopAggressivePolling();
+                }
+            }
+        }
 
         // Load playlist list when switching to manage tab
         if (tabId === 'manage') {
@@ -628,17 +639,7 @@
                 setActiveTab(tabId);
 
                 // Initialize status page when status tab is clicked
-                if (tabId === 'status' && window.SmartLists && window.SmartLists.Status) {
-                    window.SmartLists.Status.initializeStatusPage();
-                    window.SmartLists.Status.loadStatusPage();
-                } else if (tabId !== 'status' && window.SmartLists && window.SmartLists.Status) {
-                    // Stop polling when leaving status tab
-                    window.SmartLists.Status.stopPolling();
-                    // Also stop aggressive polling if it's running
-                    if (window.SmartLists.Status.stopAggressivePolling) {
-                        window.SmartLists.Status.stopAggressivePolling();
-                    }
-                }
+                // Logic moved to switchToTab to handle all navigation methods (clicks, hashchange, etc.)
             }, SmartLists.getEventListenerOptions(navSignal));
         });
 

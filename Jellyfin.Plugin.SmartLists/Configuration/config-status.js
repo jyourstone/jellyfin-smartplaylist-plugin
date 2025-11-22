@@ -16,6 +16,13 @@
     }
 
     /**
+     * Get the active configuration page element
+     */
+    function getActiveConfigPage() {
+        return document.querySelector('.SmartListsConfigurationPage:not(.hide)');
+    }
+
+    /**
      * Load and display the status page
      */
     function loadStatusPage() {
@@ -57,13 +64,16 @@
             showError('Error loading status data: ' + errorMsg);
 
             // Show error in all containers
-            const containers = ['ongoing-operations-container', 'statistics-container', 'refresh-history-container'];
-            containers.forEach(function (containerId) {
-                const container = document.getElementById(containerId);
-                if (container) {
-                    container.innerHTML = '<p style="color: #ff6b6b;">Error: ' + escapeHtml(errorMsg) + '</p>';
-                }
-            });
+            const page = getActiveConfigPage();
+            if (page) {
+                const containers = ['ongoing-operations-container', 'statistics-container', 'refresh-history-container'];
+                containers.forEach(function (containerId) {
+                    const container = page.querySelector('#' + containerId);
+                    if (container) {
+                        container.innerHTML = '<p style="color: #ff6b6b;">Error: ' + escapeHtml(errorMsg) + '</p>';
+                    }
+                });
+            }
         });
     }
 
@@ -100,7 +110,8 @@
      */
     function renderOngoingOperations(operations) {
         // Query within the visible page to avoid duplicate container issues
-        const page = document.querySelector('.SmartListsConfigurationPage:not(.hide)');
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
         const container = page ? page.querySelector('#ongoing-operations-container') : null;
         if (!container) return;
 
@@ -155,7 +166,8 @@
      */
     function renderStatistics(stats, ongoingOperations) {
         // Query within the visible page to avoid duplicate container issues
-        const page = document.querySelector('.SmartListsConfigurationPage:not(.hide)');
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
         const container = page ? page.querySelector('#statistics-container') : null;
         if (!container) {
             return;
@@ -222,7 +234,8 @@
      */
     function renderRefreshHistory(history) {
         // Query within the visible page to avoid duplicate container issues
-        const page = document.querySelector('.SmartListsConfigurationPage:not(.hide)');
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
         const container = page ? page.querySelector('#refresh-history-container') : null;
         if (!container) return;
 
@@ -305,7 +318,8 @@
      * Show error message
      */
     function showError(message) {
-        const container = document.getElementById('ongoing-operations-container');
+        const page = getActiveConfigPage();
+        const container = page ? page.querySelector('#ongoing-operations-container') : null;
         if (container) {
             container.innerHTML = `<p style="color: #ff6b6b;">${escapeHtml(message)}</p>`;
         }
@@ -388,7 +402,8 @@
      */
     function setupRefreshButton() {
         // Query within the visible page to avoid duplicate container issues
-        const page = document.querySelector('.SmartListsConfigurationPage:not(.hide)');
+        // Query within the visible page to avoid duplicate container issues
+        const page = getActiveConfigPage();
         const refreshBtn = page ? page.querySelector('#refresh-status-btn') : null;
         if (refreshBtn && !refreshBtn._statusListenerAttached) {
             refreshBtn.addEventListener('click', function () {
