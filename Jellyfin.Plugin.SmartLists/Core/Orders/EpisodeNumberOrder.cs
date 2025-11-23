@@ -100,7 +100,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
                 -seasonNumber,
                 name,
                 "", // Fourth element not used, but ComparableTuple4 requires 4 elements
-                comparer3: OrderUtilities.SharedNaturalComparer);
+                comparer3: Comparer<string>.Create((x, y) => OrderUtilities.SharedNaturalComparer.Compare(y, x)));
         }
     }
 }
