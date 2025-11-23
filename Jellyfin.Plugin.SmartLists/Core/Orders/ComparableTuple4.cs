@@ -41,7 +41,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         public int CompareTo(object? obj)
         {
             if (obj is not ComparableTuple4<T1, T2, T3, T4> other)
-                return 1;
+                throw new ArgumentException($"Object must be of type {typeof(ComparableTuple4<T1, T2, T3, T4>).Name}", nameof(obj));
 
             // Compare each level in order, returning if there's a difference
             var cmp1 = _comparer1.Compare(_item1, other._item1);

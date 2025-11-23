@@ -58,14 +58,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var collectionService = new CollectionService(libraryManager, collectionManager, userManager, userDataManager, collectionServiceLogger, providerManager);
 
                 // Get RefreshStatusService from DI - it should be registered as singleton
-                var refreshStatusService = _serviceProvider.GetService<RefreshStatusService>();
-                if (refreshStatusService == null)
-                {
-                    // Fallback: create instance if not registered (shouldn't happen, but be safe)
-                    var refreshStatusLogger = loggerFactory.CreateLogger<RefreshStatusService>();
-                    refreshStatusService = new RefreshStatusService(refreshStatusLogger);
-                    _logger.LogWarning("RefreshStatusService not found in DI container, created new instance. This may cause status tracking issues.");
-                }
+                // Use GetRequiredService to prevent creating duplicate instances that cause split-brain state
+                var refreshStatusService = _serviceProvider.GetRequiredService<RefreshStatusService>();
 
                 // Get RefreshQueueService from DI - it's registered as singleton and required
                 var refreshQueueService = _serviceProvider.GetRequiredService<RefreshQueueService>();

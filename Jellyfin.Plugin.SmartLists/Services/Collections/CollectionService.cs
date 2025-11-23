@@ -327,6 +327,13 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
 
                     var newCollectionId = await CreateNewCollectionAsync(collectionName, newLinkedChildren, dto, cancellationToken);
 
+                    // Check if collection creation actually succeeded
+                    if (string.IsNullOrEmpty(newCollectionId))
+                    {
+                        _logger.LogError("Failed to create collection '{CollectionName}' - no valid collection ID returned", collectionName);
+                        return (false, $"Failed to create collection '{collectionName}' - the collection could not be retrieved after creation", string.Empty);
+                    }
+
                     // Update the DTO with the new Jellyfin collection ID
                     dto.JellyfinCollectionId = newCollectionId;
 
@@ -338,7 +345,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         collectionName, newLinkedChildren.Length);
 
                     return (true, $"Created collection '{collectionName}' with {newLinkedChildren.Length} items", newCollectionId);
-            }
+                }
         }
 
         public Task DeleteAsync(SmartCollectionDto dto, CancellationToken cancellationToken = default)

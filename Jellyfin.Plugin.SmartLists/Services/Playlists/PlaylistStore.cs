@@ -136,19 +136,17 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             return smartPlaylist;
         }
 
-        public async Task DeleteAsync(Guid id)
+        public Task DeleteAsync(Guid id)
         {
-            var playlist = await GetByIdAsync(id).ConfigureAwait(false);
-            if (playlist == null)
-                return;
-
-            // Use the playlist Id, which is validated and used as the canonical filename elsewhere
-            var fileName = playlist.Id;
-
-            if (string.IsNullOrWhiteSpace(fileName))
+            // Validate GUID format to prevent path injection
+            if (id == Guid.Empty)
             {
-                throw new ArgumentException("Playlist ID cannot be null or empty", nameof(id));
+                throw new ArgumentException("Playlist ID cannot be empty", nameof(id));
             }
+
+            // Use the passed Guid id parameter (converted to string) to construct the filename
+            // This avoids deserializing file content and prevents potential security issues
+            var fileName = id.ToString();
 
             var filePath = _fileSystem.GetSmartListPath(fileName);
             if (File.Exists(filePath))
@@ -162,6 +160,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             {
                 File.Delete(legacyPath);
             }
+
+            return Task.CompletedTask;
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "File path is validated upstream - only valid GUIDs are passed to this method")]
