@@ -186,11 +186,7 @@
         if (!editState.editMode) {
             const apiClient = SmartLists.getApiClient();
 
-            // Initialize suffix first (before async operation)
-            const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
-            if (playlistNameSuffix && playlistNameSuffix.value === '') {
-                playlistNameSuffix.value = '[Smart]';
-            }
+            // Suffix initialization removed - allow blank values
 
             return apiClient.getPluginConfiguration(SmartLists.getPluginId()).then(function (config) {
                 const sortsContainer = page.querySelector('#sorts-container');
@@ -206,11 +202,7 @@
             });
         }
 
-        // Populate playlist naming configuration fields (for edit mode path)
-        const playlistNameSuffix = page.querySelector('#playlistNameSuffix');
-        if (playlistNameSuffix && playlistNameSuffix.value === '') {
-            playlistNameSuffix.value = '[Smart]';
-        }
+        // Suffix initialization removed - allow blank values
 
         // Return resolved promise (synchronous path when not adding default sort)
         return Promise.resolve();
@@ -1031,7 +1023,7 @@
             if (defaultMaxPlayTimeMinutesEl) defaultMaxPlayTimeMinutesEl.value = config.DefaultMaxPlayTimeMinutes !== undefined && config.DefaultMaxPlayTimeMinutes !== null ? config.DefaultMaxPlayTimeMinutes : 0;
             if (defaultAutoRefreshEl) defaultAutoRefreshEl.value = config.DefaultAutoRefresh || 'OnLibraryChanges';
 
-            if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix || '';
+            if (playlistNamePrefixEl) playlistNamePrefixEl.value = config.PlaylistNamePrefix !== undefined && config.PlaylistNamePrefix !== null ? config.PlaylistNamePrefix : '';
             if (playlistNameSuffixEl) playlistNameSuffixEl.value = config.PlaylistNameSuffix !== undefined && config.PlaylistNameSuffix !== null ? config.PlaylistNameSuffix : '[Smart]';
 
             // Load processing batch size setting
@@ -1190,8 +1182,11 @@
                 config.DefaultScheduleInterval = '00:15:00';
             }
 
-            config.PlaylistNamePrefix = page.querySelector('#playlistNamePrefix').value || '';
-            config.PlaylistNameSuffix = page.querySelector('#playlistNameSuffix').value || '[Smart]';
+            // Allow empty strings for prefix and suffix - only use defaults if undefined/null
+            const prefixValue = page.querySelector('#playlistNamePrefix').value;
+            const suffixValue = page.querySelector('#playlistNameSuffix').value;
+            config.PlaylistNamePrefix = prefixValue !== undefined && prefixValue !== null ? prefixValue : '';
+            config.PlaylistNameSuffix = suffixValue !== undefined && suffixValue !== null ? suffixValue : '[Smart]';
 
             // Save processing batch size setting
             const processingBatchSizeInput = page.querySelector('#processingBatchSize').value;
