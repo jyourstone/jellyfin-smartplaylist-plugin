@@ -40,6 +40,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
 
         public int CompareTo(object? obj)
         {
+            if (obj is null) return 1;
             if (obj is not ComparableTuple4<T1, T2, T3, T4> other)
                 throw new ArgumentException($"Object must be of type {typeof(ComparableTuple4<T1, T2, T3, T4>).Name}", nameof(obj));
 

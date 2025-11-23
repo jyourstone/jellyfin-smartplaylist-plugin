@@ -60,7 +60,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
                 // Sort using cached values with DateCreated as tie-breaker
                 return IsDescending
                     ? list.OrderByDescending(item => sortValueCache[item]).ThenByDescending(item => item.DateCreated)
-                    : list.OrderBy(item => sortValueCache[item]).ThenByDescending(item => item.DateCreated);
+                    : list.OrderBy(item => sortValueCache[item]).ThenBy(item => item.DateCreated);
             }
             catch (Exception ex)
             {
