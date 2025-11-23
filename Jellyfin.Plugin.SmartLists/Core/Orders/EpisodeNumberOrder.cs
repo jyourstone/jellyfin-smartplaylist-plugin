@@ -44,7 +44,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             Dictionary<Guid, int>? itemRandomKeys = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            return OrderUtilities.GetEpisodeNumber(item);
+            // Return composite key matching OrderBy logic: EpisodeNumber -> SeasonNumber -> Name
+            var episodeNumber = OrderUtilities.GetEpisodeNumber(item);
+            var seasonNumber = OrderUtilities.GetSeasonNumber(item);
+            var name = item.Name ?? "";
+            return new ComparableTuple4<int, int, string, string>(
+                episodeNumber,
+                seasonNumber,
+                name,
+                "", // Fourth element not used, but ComparableTuple4 requires 4 elements
+                comparer3: OrderUtilities.SharedNaturalComparer);
         }
     }
 
@@ -82,7 +91,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             Dictionary<Guid, int>? itemRandomKeys = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            return OrderUtilities.GetEpisodeNumber(item);
+            // Return composite key matching OrderBy logic: EpisodeNumber (descending) -> SeasonNumber (descending) -> Name (descending)
+            var episodeNumber = OrderUtilities.GetEpisodeNumber(item);
+            var seasonNumber = OrderUtilities.GetSeasonNumber(item);
+            var name = item.Name ?? "";
+            return new ComparableTuple4<int, int, string, string>(
+                episodeNumber,
+                seasonNumber,
+                name,
+                "", // Fourth element not used, but ComparableTuple4 requires 4 elements
+                comparer3: OrderUtilities.SharedNaturalComparer);
         }
     }
 }

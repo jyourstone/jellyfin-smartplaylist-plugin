@@ -77,8 +77,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             Dictionary<Guid, int>? itemRandomKeys = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            // Delegate to unified method
-            return GetUserDataValue(item, user, userDataManager, logger, refreshCache);
+            try
+            {
+                // Delegate to unified method
+                return GetUserDataValue(item, user, userDataManager, logger, refreshCache);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error getting user data value for item {ItemName} in {OrderType}, returning default value 0", item?.Name ?? "Unknown", GetType().Name);
+                return 0;
+            }
         }
     }
 }

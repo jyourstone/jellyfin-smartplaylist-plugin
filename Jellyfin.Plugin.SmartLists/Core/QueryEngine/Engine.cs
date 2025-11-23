@@ -378,19 +378,18 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             logger?.LogDebug("SmartLists handling '{Operator}' for user-specific field {Field} with value {Value}", r.Operator, r.MemberName, r.TargetValue);
 
-            // Use shared helper to parse relative date and get cutoff timestamp
-            var cutoffTimestamp = ParseRelativeDateAndGetCutoffTimestamp(r, logger);
-            var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
+            // Build Expression that calculates cutoff timestamp at runtime (prevents stale dates in rule cache)
+            var cutoffTimestampExpr = BuildRelativeDateCutoffExpression(r, logger);
 
             if (r.Operator == "NewerThan")
             {
                 // methodCall >= cutoffTimestamp (more recent than cutoff)
-                return System.Linq.Expressions.Expression.GreaterThanOrEqual(methodCall, cutoffConstant);
+                return System.Linq.Expressions.Expression.GreaterThanOrEqual(methodCall, cutoffTimestampExpr);
             }
             else
             {
                 // methodCall < cutoffTimestamp (older than cutoff)
-                return System.Linq.Expressions.Expression.LessThan(methodCall, cutoffConstant);
+                return System.Linq.Expressions.Expression.LessThan(methodCall, cutoffTimestampExpr);
             }
         }
 
@@ -454,7 +453,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
         /// <summary>
         /// Parses relative date string (e.g., "3:days", "1:month") and returns cutoff timestamp.
+        /// DEPRECATED: This method calculates a compile-time constant which becomes stale.
+        /// Use BuildRelativeDateCutoffExpression instead for runtime calculation.
         /// </summary>
+        [Obsolete("Use BuildRelativeDateCutoffExpression to generate runtime Expression instead of compile-time constant")]
         private static double ParseRelativeDateAndGetCutoffTimestamp(Expression r, ILogger? logger)
         {
             // Parse value as number:unit
@@ -480,6 +482,52 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             logger?.LogDebug("SmartLists '{Operator}' cutoff: {CutoffDate} (timestamp: {Timestamp})", r.Operator, cutoffDate, cutoffTimestamp);
 
             return cutoffTimestamp;
+        }
+
+        /// <summary>
+        /// Builds an Expression that calculates the cutoff timestamp at runtime based on relative date string (e.g., "3:days", "1:month").
+        /// This prevents "NewerThan" rules from becoming stale in the rule cache.
+        /// </summary>
+        private static System.Linq.Expressions.Expression BuildRelativeDateCutoffExpression(Expression r, ILogger? logger)
+        {
+            // Parse value as number:unit
+            var parts = (r.TargetValue ?? "").Split(':');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out int num) || num < 0)
+            {
+                logger?.LogError("SmartLists '{Operator}' requires value in format number:unit, got: '{Value}'", r.Operator, r.TargetValue);
+                throw new ArgumentException($"'{r.Operator}' requires value in format number:unit, but got: '{r.TargetValue}'");
+            }
+
+            string unit = parts[1].ToLowerInvariant();
+
+            // Get DateTimeOffset.UtcNow as an Expression
+            var utcNowProperty = typeof(DateTimeOffset).GetProperty("UtcNow");
+            if (utcNowProperty == null)
+                throw new InvalidOperationException("DateTimeOffset.UtcNow property not found");
+            var utcNowExpr = System.Linq.Expressions.Expression.Property(null, utcNowProperty);
+
+            // Build Expression that calculates cutoff date at runtime
+            System.Linq.Expressions.Expression cutoffDateExpr = unit switch
+            {
+                "hours" => System.Linq.Expressions.Expression.Call(utcNowExpr, typeof(DateTimeOffset).GetMethod("AddHours", new[] { typeof(double) })!, System.Linq.Expressions.Expression.Constant((double)-num)),
+                "days" => System.Linq.Expressions.Expression.Call(utcNowExpr, typeof(DateTimeOffset).GetMethod("AddDays", new[] { typeof(double) })!, System.Linq.Expressions.Expression.Constant((double)-num)),
+                "weeks" => System.Linq.Expressions.Expression.Call(utcNowExpr, typeof(DateTimeOffset).GetMethod("AddDays", new[] { typeof(double) })!, System.Linq.Expressions.Expression.Constant((double)(-num * 7))),
+                "months" => System.Linq.Expressions.Expression.Call(utcNowExpr, typeof(DateTimeOffset).GetMethod("AddMonths", new[] { typeof(int) })!, System.Linq.Expressions.Expression.Constant(-num)),
+                "years" => System.Linq.Expressions.Expression.Call(utcNowExpr, typeof(DateTimeOffset).GetMethod("AddYears", new[] { typeof(int) })!, System.Linq.Expressions.Expression.Constant(-num)),
+                _ => throw new ArgumentException($"Unknown unit '{unit}' for '{r.Operator}'"),
+            };
+
+            // Convert DateTimeOffset to Unix timestamp (double)
+            var toUnixTimeSecondsMethod = typeof(DateTimeOffset).GetMethod("ToUnixTimeSeconds");
+            if (toUnixTimeSecondsMethod == null)
+                throw new InvalidOperationException("DateTimeOffset.ToUnixTimeSeconds method not found");
+            
+            var unixTimeSecondsExpr = System.Linq.Expressions.Expression.Call(cutoffDateExpr, toUnixTimeSecondsMethod);
+            var cutoffTimestampExpr = System.Linq.Expressions.Expression.Convert(unixTimeSecondsExpr, typeof(double));
+
+            logger?.LogDebug("SmartLists '{Operator}' built runtime Expression for cutoff calculation: {Num} {Unit} ago", r.Operator, num, unit);
+
+            return cutoffTimestampExpr;
         }
 
         /// <summary>
@@ -776,19 +824,18 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             logger?.LogDebug("SmartLists handling '{Operator}' for field {Field} with value {Value}", r.Operator, r.MemberName, r.TargetValue);
 
-            // Use shared helper to parse relative date and get cutoff timestamp
-            var cutoffTimestamp = ParseRelativeDateAndGetCutoffTimestamp(r, logger);
-            var cutoffConstant = System.Linq.Expressions.Expression.Constant(cutoffTimestamp);
+            // Build Expression that calculates cutoff timestamp at runtime (prevents stale dates in rule cache)
+            var cutoffTimestampExpr = BuildRelativeDateCutoffExpression(r, logger);
 
             if (r.Operator == "NewerThan")
             {
                 // operand.DateCreated >= cutoffTimestamp
-                return System.Linq.Expressions.Expression.GreaterThanOrEqual(left, cutoffConstant);
+                return System.Linq.Expressions.Expression.GreaterThanOrEqual(left, cutoffTimestampExpr);
             }
             else
             {
                 // operand.DateCreated < cutoffTimestamp
-                return System.Linq.Expressions.Expression.LessThan(left, cutoffConstant);
+                return System.Linq.Expressions.Expression.LessThan(left, cutoffTimestampExpr);
             }
         }
 
@@ -1189,7 +1236,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             return list.Any(s => 
                 s != null && 
                 (s.Equals(value, StringComparison.OrdinalIgnoreCase) ||
-                 NameFormatter.StripPrefixAndSuffix(s).Equals(value, StringComparison.OrdinalIgnoreCase)));
+                 (NameFormatter.StripPrefixAndSuffix(s) is string stripped && stripped.Equals(value, StringComparison.OrdinalIgnoreCase))));
         }
 
         internal static bool AnyRegexMatch(IEnumerable<string> list, string pattern)

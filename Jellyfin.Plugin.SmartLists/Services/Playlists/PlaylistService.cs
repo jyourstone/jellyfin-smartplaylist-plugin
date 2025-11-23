@@ -650,22 +650,23 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
 
         public IEnumerable<BaseItem> GetAllUserMediaForPlaylist(User user, List<string> mediaTypes, SmartPlaylistDto? dto = null)
         {
-            // Validate media types before processing
-            if (dto != null)
+            // Validate media types before processing (always validate, not just when dto is provided)
+            _logger?.LogDebug("GetAllUserMediaForPlaylist validation{PlaylistName}: MediaTypes={MediaTypes}", 
+                dto != null ? $" for '{dto.Name}'" : "", 
+                mediaTypes != null ? string.Join(",", mediaTypes) : "null");
+
+            if (mediaTypes?.Contains(Core.Constants.MediaTypes.Series) == true)
             {
-                _logger?.LogDebug("GetAllUserMediaForPlaylist validation for '{PlaylistName}': MediaTypes={MediaTypes}", dto.Name, mediaTypes != null ? string.Join(",", mediaTypes) : "null");
+                var playlistName = dto?.Name ?? "Unknown";
+                _logger?.LogError("Smart playlist '{PlaylistName}' uses 'Series' media type. Series playlists are not supported due to Jellyfin playlist limitations. Use 'Episode' media type instead, or create a Collection for Series support.", playlistName);
+                throw new InvalidOperationException("Series media type is not supported for Playlists. Use Episode media type, or create a Collection instead.");
+            }
 
-                if (mediaTypes?.Contains(Core.Constants.MediaTypes.Series) == true)
-                {
-                    _logger?.LogError("Smart playlist '{PlaylistName}' uses 'Series' media type. Series playlists are not supported due to Jellyfin playlist limitations. Use 'Episode' media type instead, or create a Collection for Series support.", dto.Name);
-                    throw new InvalidOperationException("Series media type is not supported for Playlists. Use Episode media type, or create a Collection instead.");
-                }
-
-                if (mediaTypes == null || mediaTypes.Count == 0)
-                {
-                    _logger?.LogError("Smart playlist '{PlaylistName}' has no media types specified. At least one media type must be selected.", dto.Name);
-                    throw new InvalidOperationException("No media types specified. At least one media type must be selected.");
-                }
+            if (mediaTypes == null || mediaTypes.Count == 0)
+            {
+                var playlistName = dto?.Name ?? "Unknown";
+                _logger?.LogError("Smart playlist '{PlaylistName}' has no media types specified. At least one media type must be selected.", playlistName);
+                throw new InvalidOperationException("No media types specified. At least one media type must be selected.");
             }
 
             return GetAllUserMedia(user, mediaTypes, dto);

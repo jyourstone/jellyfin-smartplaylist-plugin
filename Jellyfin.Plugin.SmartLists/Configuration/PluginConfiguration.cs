@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.SmartLists.Configuration
         /// <summary>
         /// Gets or sets the default list type for new lists (Playlist or Collection).
         /// </summary>
-        public string DefaultListType { get; set; } = "Playlist";
+        public SmartListType DefaultListType { get; set; } = SmartListType.Playlist;
 
         /// <summary>
         /// Gets or sets whether new playlists should be public by default.
@@ -84,12 +84,18 @@ namespace Jellyfin.Plugin.SmartLists.Configuration
         public TimeSpan DefaultScheduleInterval { get; set; } = TimeSpan.FromMinutes(15); // 15 minutes default
 
 
+        private int _processingBatchSize = 300;
+
         /// <summary>
         /// Gets or sets the processing batch size for list refreshes.
         /// Items are processed in batches of this size for memory management and progress reporting.
-        /// 0 or invalid = Default to 300
+        /// Minimum value: 1
         /// Default: 300
         /// </summary>
-        public int ProcessingBatchSize { get; set; } = 300;
+        public int ProcessingBatchSize
+        {
+            get => _processingBatchSize;
+            set => _processingBatchSize = value < 1 ? 300 : value;
+        }
     }
 }
