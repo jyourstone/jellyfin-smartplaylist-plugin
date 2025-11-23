@@ -1182,11 +1182,11 @@
                 config.DefaultScheduleInterval = '00:15:00';
             }
 
-            // Allow empty strings for prefix and suffix - only use defaults if undefined/null
+            // Allow empty strings for prefix and suffix
             const prefixValue = page.querySelector('#playlistNamePrefix').value;
             const suffixValue = page.querySelector('#playlistNameSuffix').value;
-            config.PlaylistNamePrefix = prefixValue !== undefined && prefixValue !== null ? prefixValue : '';
-            config.PlaylistNameSuffix = suffixValue !== undefined && suffixValue !== null ? suffixValue : '[Smart]';
+            config.PlaylistNamePrefix = prefixValue;
+            config.PlaylistNameSuffix = suffixValue;
 
             // Save processing batch size setting
             const processingBatchSizeInput = page.querySelector('#processingBatchSize').value;
