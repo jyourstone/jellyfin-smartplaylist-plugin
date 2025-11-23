@@ -318,7 +318,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     dto.LastRefreshed = DateTime.UtcNow;
                     _logger.LogDebug("Updated LastRefreshed timestamp for collection: {CollectionName}", dto.Name);
 
-                    return (true, $"Updated collection '{existingCollection.Name}' with {newLinkedChildren.Length} items", existingCollection.Id.ToString());
+                    return (true, $"Updated collection '{existingCollection.Name}' with {newLinkedChildren.Length} items", existingCollection.Id.ToString("N"));
                 }
                 else
                 {
@@ -822,7 +822,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                     await SetPhotoForCollection(retrievedItem, cancellationToken).ConfigureAwait(false);
                 }
 
-                return collectionId.ToString("D");
+                return collectionId.ToString("N");
             }
             else
             {

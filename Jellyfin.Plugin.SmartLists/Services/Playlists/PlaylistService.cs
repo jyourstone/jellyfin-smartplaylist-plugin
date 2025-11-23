@@ -246,7 +246,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     logger.LogDebug("Successfully updated existing playlist: {PlaylistName} with {ItemCount} items",
                         existingPlaylist.Name, newLinkedChildren.Length);
 
-                    return (true, $"Updated playlist '{existingPlaylist.Name}' with {newLinkedChildren.Length} items", existingPlaylist.Id.ToString("D"));
+                    return (true, $"Updated playlist '{existingPlaylist.Name}' with {newLinkedChildren.Length} items", existingPlaylist.Id.ToString("N"));
                 }
                 else
                 {
@@ -616,7 +616,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 // Refresh metadata to generate cover images
                 await RefreshPlaylistMetadataAsync(newPlaylist, cancellationToken).ConfigureAwait(false);
 
-                return newPlaylist.Id.ToString("D");
+                return newPlaylist.Id.ToString("N");
             }
             else
             {
