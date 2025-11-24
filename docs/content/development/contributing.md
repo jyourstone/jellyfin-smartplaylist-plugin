@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to the SmartPlaylist plugin! This guide will help you get started.
+Thank you for your interest in contributing to the SmartLists plugin! This guide will help you get started.
 
 ## Prerequisites
 
@@ -21,8 +21,8 @@ Before contributing, make sure you:
 ### 2. Clone Your Fork
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/jellyfin-smartplaylist-plugin.git
-cd jellyfin-smartplaylist-plugin
+git clone https://github.com/YOUR_USERNAME/jellyfin-smartlists-plugin.git
+cd jellyfin-smartlists-plugin
 ```
 
 ### 3. Make Your Changes

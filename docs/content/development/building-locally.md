@@ -1,8 +1,8 @@
 # Building Locally
 
-This guide explains how to set up a local development environment for the SmartPlaylist plugin.
+This guide explains how to set up a local development environment for the SmartLists plugin.
 
-For the source code and repository, see: [jellyfin-smartplaylist-plugin](https://github.com/jyourstone/jellyfin-smartlists-plugin)
+For the source code and repository, see: [jellyfin-smartlists-plugin](https://github.com/jyourstone/jellyfin-smartlists-plugin)
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ Make sure you have the following installed on your system:
 
 ## Development Environment
 
-The development environment is contained in the [`/dev` directory](https://github.com/jyourstone/jellyfin-smartlists-plugin/tree/main/dev). This folder contains all the files needed for local development and testing of the SmartPlaylist plugin.
+The development environment is contained in the [`/dev` directory](https://github.com/jyourstone/jellyfin-smartlists-plugin/tree/main/dev). This folder contains all the files needed for local development and testing of the SmartLists plugin.
 
 ### Files in the Dev Folder
 
@@ -52,7 +52,7 @@ The build scripts automatically:
 
 - Open [http://localhost:8096](http://localhost:8096) in your browser  
 - Complete the initial setup if it's your first time  
-- The plugin will appear as **"SmartPlaylist"** in the plugin list
+- The plugin will appear as **"SmartLists"** in the plugin list
 
 ### 3. Add Test Media
 
@@ -75,7 +75,7 @@ The **`jellyfin-data`** directory stores Jellyfin's configuration and data, incl
 - User information
 - Plugin configurations
 
-This directory is mounted into the container so your data persists across restarts. The `smartplaylists` folder inside `jellyfin-data/config/data` is where your created playlists are stored.
+This directory is mounted into the container so your data persists across restarts. The `smartlists` folder inside `jellyfin-data/config/data` is where your created playlists are stored.
 
 ### Logs
 
