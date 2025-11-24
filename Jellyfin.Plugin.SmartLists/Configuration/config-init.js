@@ -1454,6 +1454,17 @@
             desc.style.display = isCollection ? '' : 'none';
         });
 
+        // Show/hide playlist-only and collection-only labels
+        const playlistOnlyLabels = page.querySelectorAll('.playlist-only-label');
+        playlistOnlyLabels.forEach(function (label) {
+            label.style.display = isCollection ? 'none' : '';
+        });
+
+        const collectionOnlyLabels = page.querySelectorAll('.collection-only-label');
+        collectionOnlyLabels.forEach(function (label) {
+            label.style.display = isCollection ? '' : 'none';
+        });
+
         // Update list type label text
         const listTypeLabel = page.querySelector('.list-type-label');
         if (listTypeLabel) {
