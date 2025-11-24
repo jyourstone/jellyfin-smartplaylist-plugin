@@ -476,7 +476,13 @@
                 );
             }
 
-            return Promise.all(promises);
+            return Promise.all(promises).then(function () {
+                // Restore user filter preference now that options are populated
+                // This fixes the issue where the preference is loaded before options exist and gets rejected
+                if (SmartLists.loadPlaylistFilterPreferences) {
+                    SmartLists.loadPlaylistFilterPreferences(page);
+                }
+            });
         } catch (err) {
             console.error('Error populating user filter:', err);
             return Promise.resolve();
