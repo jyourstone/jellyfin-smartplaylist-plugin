@@ -2,11 +2,10 @@
 
 ## Available Fields
 
-The web interface provides access to all available fields for creating playlist rules.
+The web interface provides access to all available fields for creating list rules.
 
 ### Content Fields
 
-- **Album** - Album name (for music)
 - **Audio Languages** - The audio language of the movie/TV show
 - **Audio Bitrate** - Audio bitrate in kbps (e.g., 128, 256, 320, 1411)
 - **Audio Sample Rate** - Audio sample rate in Hz (e.g., 44100, 48000, 96000, 192000)
@@ -66,8 +65,107 @@ The web interface provides access to all available fields for creating playlist 
 - **Genres** - Content genres
 - **Studios** - Production studios
 - **Tags** - Custom tags assigned to media items
+- **Album** - Album name (for music)
 - **Artists** - Track-level artists (for music)
 - **Album Artists** - Album-level primary artists (for music)
+
+## Optional Field Options
+
+Some fields have additional optional settings that appear when you select them. These options allow you to fine-tune how the field is evaluated:
+
+### User-Specific Fields
+
+The following fields support an optional **user selector** that allows you to check playback data for a specific user instead of the playlist/collection owner:
+
+- **Is Played**
+- **Is Favorite**
+- **Play Count**
+- **Next Unwatched**
+- **Last Played**
+
+By default, these fields check the owner's data. You can optionally select a specific user from the dropdown to check their playback status instead. This is useful for creating shared playlists that show different content based on who is viewing them.
+
+### Next Unwatched Options
+
+When using the **Next Unwatched** field, you can configure:
+
+- **Include unwatched series** (default: Yes) - When enabled, includes the first episode of series that haven't been started yet. When disabled, only shows the next episode from series that have been partially watched.
+
+### Collections Options
+
+The **Collections** field allows you to filter items based on which Jellyfin collections they belong to. The behavior differs depending on whether you're creating a Playlist or a Collection:
+
+**For Playlists:**
+- Items *from within* the specified collections are always fetched and added to the playlist
+- Playlists cannot contain collection objects themselves (Jellyfin limitation)
+- Example: A playlist with "Collections contains Marvel" will include all movies/episodes from your Marvel collection
+
+**For Collections:**
+- By default, items *from within* the specified collections are fetched (same as playlists)
+- Optionally, you can include the collection objects themselves instead (see options below)
+- Example: A collection with "Collections contains Marvel" can either contain the movies from Marvel collection, or the Marvel collection object itself
+
+**Available Options:**
+
+- **Include collection only** (Collections only, default: No) - When enabled, the collection object itself is included instead of its contents. This allows you to create "collections of collections" (meta-collections). **Important:** When this option is enabled, your selected media types are ignored for this rule, since you're fetching collection objects rather than media items.
+- **Include episodes within series** (Playlists with Episode media type, default: No) - When enabled, individual episodes from series in collections are included. When disabled, only the series themselves are included in the collection match. This option is hidden when "Include collection only" is enabled.
+
+!!! important "Self-Reference Prevention"
+    A smart collection will **never include itself** in its results, even if it matches the rule criteria. This prevents circular references and infinite loops.
+    
+    **Example:** If you create a smart collection called "Marvel Collection" (or "My Marvel Collection - Smart" with a prefix/suffix) and use the rule "Collections contains Marvel", the system will:
+    - ✅ Include other collections that match "Marvel" (e.g., a regular Jellyfin collection named "Marvel")
+    - ❌ **Exclude itself** from the results, even though it technically matches the pattern
+    
+    The system compares the base names (after removing any configured prefix/suffix) to detect and prevent self-reference. This means you can safely create smart collections with names that match your collection rules without worrying about them including themselves.
+
+### Episode-Specific Collection Field Options
+
+When using **Tags**, **Studios**, or **Genres** fields with episodes selected as a media type, you can configure whether to also check the parent series:
+
+- **Include parent series tags** (Tags field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified tag.
+- **Include parent series studios** (Studios field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified studio.
+- **Include parent series genres** (Genres field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified genre.
+
+These options are useful when series-level metadata is more complete than episode-level metadata, or when you want to match episodes based on series characteristics.
+
+### Similar To Options
+
+When using the **Similar To** field, you can configure which metadata fields to use for similarity comparison:
+
+**Default fields**: Genre + Tags
+
+You can optionally select additional fields to include in the similarity calculation:
+- Genre
+- Tags
+- Actors
+- Writers
+- Producers
+- Directors
+- Studios
+- Audio Languages
+- Name
+- Production Year
+- Parental Rating
+
+The more fields you select, the more comprehensive the similarity matching becomes. However, using too many fields may make matches less likely.
+
+### People Field Options
+
+When using the **People** field, you can select a specific person type to filter by:
+
+- **People (All)** - Matches any cast or crew member (default)
+- **Actors** - Only actors
+- **Directors** - Only directors
+- **Writers** - Only writers/screenwriters
+- **Producers** - Only producers
+- **Guest Stars** - Only guest stars (TV episodes)
+- **Composers** - Only composers
+- **Conductors** - Only conductors
+- **Lyricists** - Only lyricists
+- And many more specialized roles...
+
+This allows you to create more specific rules, such as "Movies directed by Christopher Nolan" instead of "Movies with Christopher Nolan in any role."
 
 ## Available Operators
 
@@ -79,11 +177,12 @@ The web interface provides access to all available fields for creating playlist 
 - **greater than or equal** / **less than or equal** - Numeric comparisons
 - **after** / **before** - Date comparisons
 - **newer than** / **older than** - Relative date comparisons (days, weeks, months, years)
+- **weekday** - Day of week matching (Monday, Tuesday, etc.)
 - **matches regex** - Advanced pattern matching using .NET regex syntax
 
-### Using "Is In" to Simplify Playlists
+### Using "Is In" to Simplify Lists
 
-The **"is in"** and **"is not in"** operators are powerful tools that can help you simplify your playlists. Instead of creating multiple OR rule groups, you can combine multiple values in a single rule using semicolons.
+The **"is in"** and **"is not in"** operators are powerful tools that can help you simplify your lists. Instead of creating multiple OR rule groups, you can combine multiple values in a single rule using semicolons.
 
 **Example: Instead of this (multiple OR rule groups):**
 ```
@@ -111,9 +210,26 @@ Both approaches produce the same result, but the second is much simpler and easi
 
 **Syntax**: Separate multiple values with semicolons: `value1; value2; value3`
 
+### Using the Weekday Operator
+
+The **weekday** operator allows you to filter items based on the day of week for any date field. This is particularly useful for:
+
+- Filtering TV shows that originally aired on specific weekdays (e.g., "Release Date weekday Monday")
+- Finding items created or modified on specific days of the week
+- Combining with other date operators for more complex filters
+
+**Example Use Cases**:
+- "Release Date weekday Friday" - Shows that premiered on Fridays
+- "Release Date weekday Monday AND Release Date newer than 6 months" - Recent Monday releases
+- "DateCreated weekday Sunday" - Items added to your library on Sundays
+
+**Important Notes**:
+- Weekday matching uses UTC timezone, consistent with all other date operations in the plugin
+- You can combine weekday with other date operators (After, Before, NewerThan, OlderThan) using AND logic
+
 ## Rule Logic
 
-Understanding how rule groups work is key to creating effective playlists. The plugin uses two types of logic:
+Understanding how rule groups work is key to creating effective lists. The plugin uses two types of logic:
 
 ### Within a Rule Group (AND Logic)
 
@@ -170,7 +286,7 @@ Rule Group 2:
   - Is Favorite = True
 ```
 
-This playlist will include items that are:
+This list will include items that are:
 - **(Action AND After 2010 AND Rating > 7)** **OR**
 - **(Sci-Fi AND Favorite)**
 
@@ -181,7 +297,7 @@ So you'll get highly-rated recent action movies, plus any sci-fi movies you've m
 The **matches regex** operator allows you to create complex pattern matching rules using .NET regular expression syntax.
 
 !!! important "Important: .NET Syntax Required"
-    SmartPlaylist uses **.NET regex syntax**, not JavaScript-style regex. Do not use JavaScript-style patterns like `/pattern/flags`.
+    SmartLists uses **.NET regex syntax**, not JavaScript-style regex. Do not use JavaScript-style patterns like `/pattern/flags`.
 
 **Common Examples:**
 

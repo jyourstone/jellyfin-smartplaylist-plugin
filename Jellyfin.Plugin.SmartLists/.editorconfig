@@ -1,0 +1,101 @@
+# EditorConfig for SmartLists Plugin
+# Suppressions for Recommended analysis mode
+# Note: Some suppressions are necessary for plugin compatibility and code style preferences
+
+root = true
+
+[*.cs]
+
+# Suppress XML documentation warnings - not critical for internal plugin code
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.CS1573.severity = none
+
+# StyleCop: File header (not required for plugin code)
+dotnet_diagnostic.SA1633.severity = none
+
+# StyleCop: Using directives placement (preference to keep outside namespace)
+dotnet_diagnostic.SA1200.severity = none
+
+# StyleCop: Using directive ordering (non-critical formatting)
+dotnet_diagnostic.SA1208.severity = none
+dotnet_diagnostic.SA1209.severity = none
+dotnet_diagnostic.SA1210.severity = none
+
+# StyleCop: Blank line formatting (non-critical style preferences)
+dotnet_diagnostic.SA1507.severity = none
+dotnet_diagnostic.SA1512.severity = none
+dotnet_diagnostic.SA1513.severity = none
+dotnet_diagnostic.SA1515.severity = none
+dotnet_diagnostic.SA1518.severity = none
+
+# StyleCop: Whitespace formatting (non-critical)
+dotnet_diagnostic.SA1009.severity = none
+dotnet_diagnostic.SA1025.severity = none
+dotnet_diagnostic.SA1028.severity = none
+
+# StyleCop: File organization (design choice to have multiple types in one file)
+dotnet_diagnostic.SA1402.severity = none
+dotnet_diagnostic.SA1649.severity = none
+
+# StyleCop: Member ordering (non-critical organizational preference)
+dotnet_diagnostic.SA1201.severity = none
+dotnet_diagnostic.SA1202.severity = none
+
+# StyleCop: Parameter formatting (non-critical style preference)
+dotnet_diagnostic.SA1116.severity = none
+dotnet_diagnostic.SA1117.severity = none
+
+# StyleCop: this. prefix (style preference)
+dotnet_diagnostic.SA1101.severity = none
+
+# StyleCop: Braces and comment formatting (style preference)
+dotnet_diagnostic.SA1005.severity = none
+dotnet_diagnostic.SA1111.severity = none
+dotnet_diagnostic.SA1122.severity = none
+dotnet_diagnostic.SA1503.severity = none
+
+# StyleCop: Code style and conventions (style preferences)
+dotnet_diagnostic.SA1107.severity = none
+dotnet_diagnostic.SA1108.severity = none
+dotnet_diagnostic.SA1119.severity = none
+dotnet_diagnostic.SA1127.severity = none
+dotnet_diagnostic.SA1129.severity = none
+dotnet_diagnostic.SA1203.severity = none
+dotnet_diagnostic.SA1204.severity = none
+dotnet_diagnostic.SA1211.severity = none
+dotnet_diagnostic.SA1214.severity = none
+dotnet_diagnostic.SA1309.severity = none
+dotnet_diagnostic.SA1310.severity = none
+dotnet_diagnostic.SA1312.severity = none
+dotnet_diagnostic.SA1316.severity = none
+dotnet_diagnostic.SA1407.severity = none
+dotnet_diagnostic.SA1413.severity = none
+dotnet_diagnostic.SA1501.severity = none
+dotnet_diagnostic.SA1505.severity = none
+dotnet_diagnostic.SA1508.severity = none
+dotnet_diagnostic.SA1510.severity = none
+dotnet_diagnostic.SA1514.severity = none
+dotnet_diagnostic.SA1516.severity = none
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1602.severity = none
+dotnet_diagnostic.SA1611.severity = none
+dotnet_diagnostic.SA1615.severity = none
+dotnet_diagnostic.SA1618.severity = none
+dotnet_diagnostic.SA1623.severity = none
+dotnet_diagnostic.SA1625.severity = none
+dotnet_diagnostic.SA1629.severity = none
+
+# Code Analysis: Performance and design
+# CA1001: Disposable pattern - Keep active to catch resource leaks
+# CA1305: IFormatProvider - Keep active to catch globalization issues
+# CA1825: Zero-length array allocations - Keep active to catch performance anti-patterns
+# Other CA rules suppressed for plugin compatibility or non-critical issues
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CA1805.severity = none
+dotnet_diagnostic.CA1816.severity = none
+dotnet_diagnostic.CA1836.severity = none
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1859.severity = none
+dotnet_diagnostic.CA1860.severity = none
+dotnet_diagnostic.CA1310.severity = none
+dotnet_diagnostic.CA2254.severity = none

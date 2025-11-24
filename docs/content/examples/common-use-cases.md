@@ -1,6 +1,6 @@
 # Common Use Cases
 
-Here are some popular playlist types you can create:
+Here are some popular playlist and collection types you can create:
 
 ## TV Shows & Movies
 
@@ -22,6 +22,14 @@ Here are some popular playlist types you can create:
 
 ### Complete Franchise Collection
 - **Collections** contains "Movie Franchise" (includes all movies in the franchise)
+- **Note**: For Playlists, this fetches all media items from within the collection. For Collections, you can optionally enable "Include collection only" to create a meta-collection that contains the collection object itself
+
+### Meta-Collection (Collection of Collections)
+- **Collections** is in "Marvel;DC;Star Wars" with "Include collection only" enabled
+- **List Type**: Collection
+- **Note**: When "Include collection only" is enabled, your selected media types are ignored, and the collection will contain the actual collection objects rather than the media items within them
+- Creates a single collection that organizes multiple collections together (e.g., a "Superhero Universes" collection containing your Marvel, DC, and other superhero collections)
+- **Important**: The smart collection will never include itself in the results, even if its name matches the rule. So you can safely name your meta-collection "Superhero Universes" and use rules that match "Marvel" without worrying about it including itself
 
 ### Unplayed Sitcom Episodes
 - **Tags** contains "Sitcom" (with parent series tags enabled) AND **Is Played** = False
@@ -29,7 +37,7 @@ Here are some popular playlist types you can create:
 ## Music
 
 ### Workout Mix
-- **Genre** contains "Electronic" OR "Rock" AND **Max Play Time** 45 minutes
+- **Genre** contains "Electronic" OR "Rock" AND **Max Playtime** 45 minutes
 
 ### Discover New Music
 - **Play Count** = 0 AND **Date Created** newer than "1 month"
@@ -53,4 +61,24 @@ Here are some popular playlist types you can create:
 
 ### Birthday Memories
 - **File Name** contains "birthday" OR **Tags** contain "Birthday"
+
+## Collections
+
+Collections are great for organizing related content that you want to browse together:
+
+### Action Movie Collection
+- **Genre** contains "Action"
+- **Media Type**: Movie
+- **List Type**: Collection
+- Creates a collection that groups all action movies together for easy browsing
+
+### Holiday Collection
+- **Tags** contain "Christmas" OR "Holiday"
+- **List Type**: Collection
+- Groups all holiday-themed content (movies, TV shows, music) into one collection
+
+### Director's Collection
+- **People** contains "Christopher Nolan" (Director role)
+- **List Type**: Collection
+- Creates a collection of all movies by a specific director
 

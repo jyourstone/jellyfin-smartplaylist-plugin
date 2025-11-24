@@ -1,10 +1,10 @@
 # Debugging
 
-Enable debug logging for the SmartPlaylist plugin to troubleshoot issues or get detailed information about playlist operations.
+Enable debug logging for the SmartLists plugin to troubleshoot issues or get detailed information about playlist operations.
 
 ## Enable Debug Logging
 
-To enable debug logging specifically for the SmartPlaylist plugin:
+To enable debug logging specifically for the SmartLists plugin:
 
 1. **Create a logging configuration file** in your Jellyfin config directory:
    ```
@@ -22,7 +22,7 @@ To enable debug logging specifically for the SmartPlaylist plugin:
      "Serilog": {
        "MinimumLevel": {
          "Override": {
-           "Jellyfin.Plugin.SmartPlaylist": "Debug"
+           "Jellyfin.Plugin.SmartLists": "Debug"
          }
        }
      }
@@ -58,13 +58,13 @@ When seeking help with issues, you may need to share log files. The easiest way 
    - Go to [gist.github.com](https://gist.github.com/)
    - Sign in with your GitHub account (or create one if needed)
    - Paste the log content
-   - Optionally add a description (e.g., "SmartPlaylist debug log - playlist refresh issue")
+   - Optionally add a description (e.g., "SmartLists debug log - playlist refresh issue")
    - Click "Create secret gist"
    - Share the gist URL when reporting issues
 
 3. **For very large logs**:
    - Focus on the time period when the issue occurred
-   - Copy only the relevant sections containing SmartPlaylist entries
+   - Copy only the relevant sections containing SmartLists entries
 
 !!! tip "Privacy Note"
     Logs may contain sensitive information. Review logs before sharing and consider redacting any personal information if needed.
@@ -76,7 +76,7 @@ To disable debug logging:
 1. **Delete or rename** the `logging.json` file
 2. **Restart Jellyfin**
 
-Or modify the file to remove the SmartPlaylist override section.
+Or modify the file to remove the SmartLists override section.
 
 !!! tip "Performance Note"
     Debug logging generates significantly more log output and may impact performance. Only enable it when troubleshooting issues or during development.

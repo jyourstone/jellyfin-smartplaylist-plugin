@@ -1,6 +1,6 @@
 # Advanced Examples
 
-Here are some more complex playlist examples:
+Here are some more complex playlist and collection examples:
 
 ## Weekend Binge Queue
 - **Next Unwatched** = True (excluding unwatched series) for started shows only

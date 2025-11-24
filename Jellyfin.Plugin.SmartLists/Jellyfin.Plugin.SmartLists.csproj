@@ -1,0 +1,72 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.SmartLists</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <!-- Version will be set dynamically during build from git tag -->
+    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(Version).0</AssemblyVersion>
+    <PackageIcon>logo.jpg</PackageIcon>
+    <!-- CodeAnalysisRuleSet is optional - only include if jellyfin.ruleset file exists -->
+    <!-- <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet> -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\images\logo.jpg" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration\config.html" />
+    <!-- Core utilities and constants (must load first) -->
+    <EmbeddedResource Include="Configuration\config-core.js" />
+    <!-- Formatters and option generators -->
+    <EmbeddedResource Include="Configuration\config-formatters.js" />
+    <!-- Schedule management -->
+    <EmbeddedResource Include="Configuration\config-schedules.js" />
+    <!-- Sort management -->
+    <EmbeddedResource Include="Configuration\config-sorts.js" />
+    <!-- Rule management -->
+    <EmbeddedResource Include="Configuration\config-rules.js" />
+    <!-- Playlist CRUD operations -->
+    <EmbeddedResource Include="Configuration\config-lists.js" />
+    <!-- Filtering and search -->
+    <EmbeddedResource Include="Configuration\config-filters.js" />
+    <!-- Bulk actions -->
+    <EmbeddedResource Include="Configuration\config-bulk-actions.js" />
+    <!-- Status page -->
+    <EmbeddedResource Include="Configuration\config-status.js" />
+    <!-- API calls -->
+    <EmbeddedResource Include="Configuration\config-api.js" />
+    <!-- Initialization (must load last) -->
+    <EmbeddedResource Include="Configuration\config-init.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.0" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.0" />
+    <!-- ImageSharp is bundled with the plugin as Jellyfin doesn't provide it -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12">
+      <Private>true</Private>
+      <CopyLocal>true</CopyLocal>
+    </PackageReference>
+  </ItemGroup>
+
+  <Target Name="CopyImageSharpDll" AfterTargets="ResolveReferences">
+    <ItemGroup>
+      <ImageSharpReference Include="@(ReferencePath)" Condition="'%(Filename)' == 'SixLabors.ImageSharp'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ImageSharpReference)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="All" />
+    <PackageReference Include="SmartAnalyzers.MultithreadingAnalyzer" Version="1.1.31" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>
+

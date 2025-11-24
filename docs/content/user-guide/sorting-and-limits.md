@@ -1,8 +1,14 @@
 # Sorting and Limits
 
+!!! important "Collections Don't Support Sorting"
+    **Collections** do not support sorting - items appear in library order. The sorting options described below apply only to **Playlists**.
+
 ## Multiple Sorting Levels
 
 You can add up to **3 sorting options** to create cascading sorts. Items are first sorted by the first option, then items with equal values are sorted by the second option, and so on.
+
+!!! note "Playlists Only"
+    Sorting is only available for playlists. Collections display items in their library order and do not support custom sorting.
 
 ### Example Use Cases
 
@@ -21,8 +27,8 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 - **Series Name** - Sort by series name (for TV episodes)
 - **Community Rating** - Sort by user ratings
 - **Date Created** - Sort by when added to library
-- **Play Count (owner)** - Sort by how many times the playlist owner has played each item
-- **Last Played (owner)** - Sort by when the playlist owner last played each item
+- **Play Count (owner)** - Sort by how many times the list owner has played each item
+- **Last Played (owner)** - Sort by when the list owner last played each item
 - **Runtime** - Sort by duration/runtime in minutes
 - **Album Name** - Sort by album name (for music and music videos)
 - **Artist** - Sort by artist name (for music and music videos)
@@ -30,20 +36,32 @@ You can add up to **3 sorting options** to create cascading sorts. Items are fir
 - **Similarity** - Sort by similarity score (highest first) - only available when using the "Similar To" field
 - **Random** - Randomize the order of items
 
+!!! tip "Sort Title Metadata Support"
+    All **Name** and **Series Name** sort options (including "Ignore Articles" variants) automatically respect Jellyfin's **Sort Title** metadata field. When you set a custom Sort Title for a media item in Jellyfin's metadata editor:
+    
+    - The plugin will use the Sort Title **as-is** for sorting (without any modifications)
+    - This applies to both regular and "Ignore Articles" sorting options
+    - If Sort Title is not set, the plugin falls back to the regular title (and strips "The" for "Ignore Articles" options)
+    
+    This allows you to control the exact sort order without changing the displayed title.
+
 ## Max Items
 
-You can optionally set a maximum number of items for your smart playlist. This is useful for:
+You can optionally set a maximum number of items for your smart list. This is useful for:
 
-- Limiting large playlists to a manageable size
-- Creating "Top 10" or "Best of" style playlists
+- Limiting large lists to a manageable size
+- Creating "Top 10" or "Best of" style playlists or collections
 - Improving performance for very large libraries
 
+!!! note "Collections and Sorting"
+    For collections, the max items limit applies to items in library order (since collections don't support sorting). For playlists, the max items limit applies after sorting is applied.
+
 !!! warning "Performance"
-    Setting this to unlimited (0) might cause performance issues or even crashes for very large playlists.
+    Setting this to unlimited (0) might cause performance issues or even crashes for very large lists.
 
-## Max Play Time
+## Max Playtime
 
-You can optionally set a maximum play time in minutes for your smart playlist. This is useful for:
+You can optionally set a maximum playtime in minutes for your smart playlist (this option is only available for playlists, not collections). This is useful for:
 
 - Creating workout playlists that match your exercise duration
 - Setting up Pomodoro-style work sessions with music
