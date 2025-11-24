@@ -91,17 +91,19 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             Dictionary<Guid, int>? itemRandomKeys = null,
             RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            // Return composite key matching OrderBy logic: EpisodeNumber (descending) -> SeasonNumber (descending) -> Name (descending)
+            // Return composite key matching OrderBy logic: EpisodeNumber -> SeasonNumber -> Name
+            // NOTE: Do NOT negate values here! The sorting direction is controlled by
+            // OrderBy vs OrderByDescending in ApplyMultipleOrders for multi-level sorting.
+            // Negating here would cause a double reversal.
             var episodeNumber = OrderUtilities.GetEpisodeNumber(item);
             var seasonNumber = OrderUtilities.GetSeasonNumber(item);
             var name = item.Name ?? "";
             return new ComparableTuple4<int, int, string, string>(
-                -episodeNumber,
-                -seasonNumber,
+                episodeNumber,
+                seasonNumber,
                 name,
                 "", // Fourth element not used, but ComparableTuple4 requires 4 elements
-                comparer3: Comparer<string>.Create((x, y) => OrderUtilities.SharedNaturalComparer.Compare(y, x)));
+                comparer3: OrderUtilities.SharedNaturalComparer);
         }
     }
 }
-
