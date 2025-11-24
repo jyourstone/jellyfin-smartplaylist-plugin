@@ -135,7 +135,7 @@ jobs:
               --arg description "Create smart, rule-based playlists and collections in Jellyfin." \
               --arg category "General" \
               --arg owner "jyourstone" \
-              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" \
+              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/logo.jpg" \
               '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
             jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
           fi
@@ -198,7 +198,7 @@ jobs:
               --arg description "Create smart, rule-based playlists and collections in Jellyfin. This is an unstable/preview version." \
               --arg category "General" \
               --arg owner "jyourstone" \
-              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" \
+              --arg imageUrl "https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/logo.jpg" \
               '{name: $name, guid: $guid, overview: $overview, description: $description, category: $category, owner: $owner, imageUrl: $imageUrl, versions: []}')
             jq --argjson new_entry "$PLUGIN_ENTRY" '. += [$new_entry]' "$MANIFEST_FILE" > tmp && mv tmp "$MANIFEST_FILE"
           fi

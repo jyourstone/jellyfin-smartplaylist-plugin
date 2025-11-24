@@ -2,7 +2,7 @@
 
 This guide explains how to set up a local development environment for the SmartPlaylist plugin.
 
-For the source code and repository, see: [jellyfin-smartplaylist-plugin](https://github.com/jyourstone/jellyfin-smartplaylist-plugin)
+For the source code and repository, see: [jellyfin-smartplaylist-plugin](https://github.com/jyourstone/jellyfin-smartlists-plugin)
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ Make sure you have the following installed on your system:
 
 ## Development Environment
 
-The development environment is contained in the [`/dev` directory](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/tree/main/dev). This folder contains all the files needed for local development and testing of the SmartPlaylist plugin.
+The development environment is contained in the [`/dev` directory](https://github.com/jyourstone/jellyfin-smartlists-plugin/tree/main/dev). This folder contains all the files needed for local development and testing of the SmartPlaylist plugin.
 
 ### Files in the Dev Folder
 

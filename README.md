@@ -1,8 +1,8 @@
 # Jellyfin SmartLists Plugin
 <div align="center">
     <p>
-        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/logo.jpg" height="350"/><br />
-        <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Total GitHub Downloads" src="https://img.shields.io/github/downloads/jyourstone/jellyfin-smartplaylist-plugin/total"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/jyourstone/jellyfin-smartplaylist-plugin"/></a> <a href="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases"><img alt="Build and Release" src="https://github.com/jyourstone/jellyfin-smartplaylist-plugin/actions/workflows/release.yml/badge.svg"/></a> <a href="https://jellyfin.org/"><img alt="Jellyfin Version" src="https://img.shields.io/badge/Jellyfin-10.11-blue.svg"/></a>
+        <img alt="Logo" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/logo.jpg" height="350"/><br />
+        <a href="https://github.com/jyourstone/jellyfin-smartlists-plugin/releases"><img alt="Total GitHub Downloads" src="https://img.shields.io/github/downloads/jyourstone/jellyfin-smartlists-plugin/total"/></a> <a href="https://github.com/jyourstone/jellyfin-smartlists-plugin/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/jyourstone/jellyfin-smartlists-plugin"/></a> <a href="https://github.com/jyourstone/jellyfin-smartlists-plugin/releases"><img alt="Build and Release" src="https://github.com/jyourstone/jellyfin-smartlists-plugin/actions/workflows/release.yml/badge.svg"/></a> <a href="https://jellyfin.org/"><img alt="Jellyfin Version" src="https://img.shields.io/badge/Jellyfin-10.11-blue.svg"/></a>
     </p>        
 </div>
 
@@ -42,19 +42,19 @@ SmartLists features a modern web-based configuration interface with four main ta
 
 <div align="center">
     <p>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/main/images/config_page_create.png" target="_blank" style="cursor: pointer;">
-            <img alt="Create list page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_create_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_create.png" target="_blank" style="cursor: pointer;">
+            <img alt="Create list page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_create_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
         </a>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_manage.png" target="_blank" style="cursor: pointer;">
-            <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_manage_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_manage.png" target="_blank" style="cursor: pointer;">
+            <img alt="Manage lists page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_manage_cropped.png" width="400" style="margin-right: 10px; margin-bottom: 10px;"/>
         </a>
     </p>
     <p>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_status.png" target="_blank" style="cursor: pointer;">
-            <img alt="Status page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_status.png" width="400" style="margin-right: 10px;"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_status.png" target="_blank" style="cursor: pointer;">
+            <img alt="Status page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_status.png" width="400" style="margin-right: 10px;"/>
         </a>
-        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_settings.png" target="_blank" style="cursor: pointer;">
-            <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartplaylist-plugin/refactor/images/config_page_settings_cropped.png" width="400"/>
+        <a href="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_settings.png" target="_blank" style="cursor: pointer;">
+            <img alt="Settings page" src="https://raw.githubusercontent.com/jyourstone/jellyfin-smartlists-plugin/main/images/config_page_settings_cropped.png" width="400"/>
         </a>
     </p>
 </div>
@@ -79,7 +79,7 @@ https://raw.githubusercontent.com/jyourstone/jellyfin-plugin-manifest/main/manif
 ```
 
 ### Manual Installation
-Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartLists`).
+Download the latest release from the [Releases page](https://github.com/jyourstone/jellyfin-smartlists-plugin/releases) and extract it to a subfolder in your Jellyfin plugins directory (for example `/config/plugins/SmartLists`).
 
 ### Try RC Releases (Unstable)
 Want to test the latest features before they're officially released? You can try release candidate (RC) versions using the unstable manifest:

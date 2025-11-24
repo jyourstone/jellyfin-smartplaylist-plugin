@@ -14,7 +14,7 @@ Before contributing, make sure you:
 
 ### 1. Fork the Repository
 
-1. Go to the [repository page](https://github.com/jyourstone/jellyfin-smartplaylist-plugin)
+1. Go to the [repository page](https://github.com/jyourstone/jellyfin-smartlists-plugin)
 2. Click the **Fork** button in the top right
 3. This creates a copy of the repository in your GitHub account
 
