@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>SmartLists</title>
     <!-- All CSS styling is handled dynamically via JavaScript -->
 </head>
+
 <body>
     <div data-role="page" class="page type-interior pluginConfigurationPage SmartListsConfigurationPage">
         <div data-role="content">
             <div class="content-primary">
                 <div style="display: flex; align-items: center; margin-bottom: 1em;">
                     <h1>SmartLists</h1>
-                    <a class="emby-button raised button-alt headerHelpButton" href="https://github.com/jyourstone/jellyfin-smartlists-plugin" target="_blank" rel="noopener noreferrer" style="padding: 0.4em 0.8em; margin-left: 1em;">Help</a>
+                    <a class="emby-button raised button-alt headerHelpButton"
+                        href="https://github.com/jyourstone/jellyfin-smartlists-plugin" target="_blank"
+                        rel="noopener noreferrer" style="padding: 0.4em 0.8em; margin-left: 1em;">Help</a>
                 </div>
                 <form style="margin: 0;">
                     <!-- Notification area removed - now using floating notifications -->
@@ -23,9 +27,11 @@
                     <a class="emby-button" href="#" data-role="button" data-tab="settings">Settings</a>
                 </div>
 
-                <div id="edit-mode-indicator" style="display: none; color: #ffa500; font-weight: bold; margin: 0.5em 0;">
+                <div id="edit-mode-indicator"
+                    style="display: none; color: #ffa500; font-weight: bold; margin: 0.5em 0;">
                     <span>✏️ Editing Mode - Modifying existing list</span>
-                    <button type="button" id="cancelEditBtn" class="emby-button raised" style="margin-left: 1em;">Cancel Edit</button>
+                    <button type="button" id="cancelEditBtn" class="emby-button raised" style="margin-left: 1em;">Cancel
+                        Edit</button>
                 </div>
 
                 <!-- Create Tab -->
@@ -42,38 +48,50 @@
 
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel" for="playlistName">List Name</label>
-                            <input type="text" id="playlistName" class="emby-input" required placeholder="e.g., 90s Action Movies">
-                            <div class="fieldDescription">The name of the list that will be created in Jellyfin. The suffix/prefix provided in Settings will always be added.</div>
+                            <input type="text" id="playlistName" class="emby-input" required
+                                placeholder="e.g., 90s Action Movies">
+                            <div class="fieldDescription">The name of the list that will be created in Jellyfin. The
+                                suffix/prefix provided in Settings will always be added.</div>
                         </div>
-                       
+
                         <div class="inputContainer">
                             <label class="inputLabel">Media Types</label>
                             <div id="media-types-container" class="media-type-flex">
                                 <!-- Media type checkboxes will be generated here -->
                             </div>
-                            <div class="fieldDescription">Select the types of media items to include in your list. At least one type must be selected. Choose types that match your Jellyfin library content (e.g., Movies from a Movies library, Episodes from a TV Shows library, Audio from a Music library).</div>
+                            <div class="fieldDescription">Select the types of media items to include in your list. At
+                                least one type must be selected. Choose types that match your Jellyfin library content
+                                (e.g., Movies from a Movies library, Episodes from a TV Shows library, Audio from a
+                                Music library).</div>
                         </div>
 
                         <div class="inputContainer">
                             <label class="inputLabel">Rules</label>
                             <div id="rules-container"></div>
-                            <div class="fieldDescription" style="margin-bottom: 1.5em; margin-top: -0.7em;">Build your rules using logical groups. Rules within a group are combined with AND, groups are combined with OR.</div>
+                            <div class="fieldDescription" style="margin-bottom: 1.5em; margin-top: -0.7em;">Build your
+                                rules using logical groups. Rules within a group are combined with AND, groups are
+                                combined with OR.</div>
                         </div>
 
-                        <div class="inputContainer playlist-only-field" style="margin-bottom: 1em; margin-top: 1em;">
+                        <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel">Sort Options</label>
-                            <div class="fieldDescription" style="margin-bottom: 0.5em;">Add up to 3 sorting options. Items are sorted by the first option, then by the second for items with equal values, and so on. Collections do not support custom sorting due to Jellyfin limitations.</div>
+                            <div class="fieldDescription" style="margin-bottom: 0.5em;">Add up to 3 sorting options.
+                                Items are sorted by the first option, then by the second for items with equal values,
+                                and so on.</div>
                             <div id="sorts-container"></div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em;">
-                            <label class="inputLabel" for="playlistUser"><span class="list-type-label">List</span> Owner</label>
+                            <label class="inputLabel" for="playlistUser"><span class="list-type-label">List</span>
+                                Owner</label>
                             <select is="emby-select" id="playlistUser" class="emby-select">
                                 <option value="">Loading users...</option>
                             </select>
                             <div class="fieldDescription">
                                 <span class="playlist-only-description">The user who this playlist belongs to.</span>
-                                <span class="collection-only-description">The user context for creating the collection and rule evaluation (e.g., IsPlayed, IsFavorite). The collection itself is visible to all users.</span>
+                                <span class="collection-only-description">The user context for creating the collection
+                                    and rule evaluation (e.g., IsPlayed, IsFavorite). The collection itself is visible
+                                    to all users.</span>
                             </div>
                         </div>
 
@@ -81,37 +99,48 @@
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistMaxItems">Max Items</label>
                             <input type="number" id="playlistMaxItems" class="emby-input" min="0" step="1">
-                            <div class="fieldDescription">Maximum number of items in this list. Set to 0 for no limit.</div>
+                            <div class="fieldDescription">Maximum number of items in this list. Set to 0 for no limit.
+                            </div>
                         </div>
 
                         <div class="inputContainer playlist-only-field" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistMaxPlayTimeMinutes">Max Playtime (Minutes)</label>
                             <input type="number" id="playlistMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
-                            <div class="fieldDescription">Maximum playtime in minutes for this list. Set to 0 for no limit.</div>
+                            <div class="fieldDescription">Maximum playtime in minutes for this list. Set to 0 for no
+                                limit.</div>
                         </div>
 
-                        <div class="checkboxList paperList playlist-only-field" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
+                        <div class="checkboxList paperList playlist-only-field"
+                            style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
                             <label class="emby-checkbox-label">
-                                <input type="checkbox" is="emby-checkbox" id="playlistIsPublic" data-embycheckbox="true" class="emby-checkbox">
+                                <input type="checkbox" is="emby-checkbox" id="playlistIsPublic" data-embycheckbox="true"
+                                    class="emby-checkbox">
                                 <span class="checkboxLabel">Make playlist public</span>
                                 <span class="checkboxOutline">
-                                    <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
-                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                    <span class="material-icons checkboxIcon checkboxIcon-checked check"
+                                        aria-hidden="true"></span>
+                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked"
+                                        aria-hidden="true"></span>
                                 </span>
                             </label>
                             <div class="fieldDescription">Allow this playlist to be viewed by any logged in user.</div>
                         </div>
 
-                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
+                        <div class="checkboxList paperList"
+                            style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
                             <label class="emby-checkbox-label">
-                                <input type="checkbox" is="emby-checkbox" id="playlistIsEnabled" data-embycheckbox="true" class="emby-checkbox" checked>
+                                <input type="checkbox" is="emby-checkbox" id="playlistIsEnabled"
+                                    data-embycheckbox="true" class="emby-checkbox" checked>
                                 <span class="checkboxLabel">Enable list</span>
                                 <span class="checkboxOutline">
-                                    <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
-                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                    <span class="material-icons checkboxIcon checkboxIcon-checked check"
+                                        aria-hidden="true"></span>
+                                    <span class="material-icons checkboxIcon checkboxIcon-unchecked"
+                                        aria-hidden="true"></span>
                                 </span>
                             </label>
-                            <div class="fieldDescription">When enabled, the list will be created and updated automatically. When disabled, the list will be removed from Jellyfin.</div>
+                            <div class="fieldDescription">When enabled, the list will be created and updated
+                                automatically. When disabled, the list will be removed from Jellyfin.</div>
                         </div>
 
                         <div class="selectContainer" style="margin-bottom: 1em;">
@@ -119,17 +148,20 @@
                             <select id="autoRefreshMode" is="emby-select" class="emby-select-withcolor emby-select">
                                 <!-- Auto-refresh options populated dynamically by JavaScript -->
                             </select>
-                            <div class="fieldDescription">Controls when this list automatically refreshes. Note: Choosing "On all changes" may impact performance.</div>
+                            <div class="fieldDescription">Controls when this list automatically refreshes. Note:
+                                Choosing "On all changes" may impact performance.</div>
                         </div>
 
                         <div class="inputContainer">
                             <label class="inputLabel">Scheduled Refresh</label>
                             <div id="schedules-container"></div>
-                            <div class="fieldDescription">Configure custom refresh schedule(s) for this list. You can add multiple schedules (e.g., run on Sundays AND on the 1st of each month).</div>
+                            <div class="fieldDescription">Configure custom refresh schedule(s) for this list. You can
+                                add multiple schedules (e.g., run on Sundays AND on the 1st of each month).</div>
                         </div>
 
                         <div style="margin-top: 2em;">
-                            <button type="submit" id="submitBtn" class="button-submit emby-button block">Create List</button>
+                            <button type="submit" id="submitBtn" class="button-submit emby-button block">Create
+                                List</button>
                             <button type="button" id="clearFormBtn" class="emby-button raised block">Clear Form</button>
                         </div>
                     </form>
@@ -139,16 +171,20 @@
                 <div id="manage-tab" class="page-content hide" data-tab-content="manage">
                     <form style="margin-top:2em;">
                         <div class="inputContainer" style="margin-bottom: 2em;">
-                            <button type="button" is="emby-button" id="refreshPlaylistsBtn" class="emby-button raised block">Refresh All Lists</button>
+                            <button type="button" is="emby-button" id="refreshPlaylistsBtn"
+                                class="emby-button raised block">Refresh All Lists</button>
                         </div>
-                        
+
                         <!-- Filters Section -->
                         <div class="inputContainer" style="margin-bottom: 2em;">
                             <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1em; align-items: end;">
+                                <div
+                                    style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1em; align-items: end;">
                                     <div>
                                         <label class="inputLabel" for="playlistSortSelect">Sort By</label>
-                                        <select id="playlistSortSelect" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                        <select id="playlistSortSelect" is="emby-select"
+                                            class="emby-select-withcolor emby-select"
+                                            style="background-color: #2A2A2A;">
                                             <option value="name-asc">Name (A-Z)</option>
                                             <option value="name-desc">Name (Z-A)</option>
                                             <option value="created-desc">Created Date (Newest)</option>
@@ -159,19 +195,23 @@
                                             <option value="disabled-first">Disabled First</option>
                                         </select>
                                     </div>
-                                    
+
                                     <div>
                                         <label class="inputLabel" for="typeFilter">Type</label>
-                                        <select id="typeFilter" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                        <select id="typeFilter" is="emby-select"
+                                            class="emby-select-withcolor emby-select"
+                                            style="background-color: #2A2A2A;">
                                             <option value="all">All Types</option>
                                             <option value="Playlist">Playlists</option>
                                             <option value="Collection">Collections</option>
                                         </select>
                                     </div>
-                                    
+
                                     <div>
                                         <label class="inputLabel" for="mediaTypeFilter">Media Type</label>
-                                        <select id="mediaTypeFilter" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                        <select id="mediaTypeFilter" is="emby-select"
+                                            class="emby-select-withcolor emby-select"
+                                            style="background-color: #2A2A2A;">
                                             <option value="all">All Types</option>
                                             <option value="Movie">Movie</option>
                                             <option value="Episode">Episode (TV Show)</option>
@@ -184,29 +224,37 @@
                                             <option value="AudioBook">Audiobook</option>
                                         </select>
                                     </div>
-                                    
+
                                     <div>
                                         <label class="inputLabel" for="userFilter">User</label>
-                                        <select id="userFilter" is="emby-select" class="emby-select-withcolor emby-select" style="background-color: #2A2A2A;">
+                                        <select id="userFilter" is="emby-select"
+                                            class="emby-select-withcolor emby-select"
+                                            style="background-color: #2A2A2A;">
                                             <option value="all">All Users</option>
                                             <!-- Options will be populated dynamically -->
                                         </select>
                                     </div>
                                 </div>
-                                
+
                                 <!-- Search field below the select fields -->
                                 <div style="margin-top: 1em;">
                                     <div style="display: flex; gap: 1em; align-items: end;">
-                                        <div class="search-inputContainer" style="position: relative; display: flex; align-items: center; flex: 1;">
-                                            <input type="search" id="playlistSearchInput" class="emby-input" autocomplete="off" inputmode="search" placeholder="Search lists..." style="padding: 0.75em 2.5em 0.75em 0.75em; width: 100%; box-sizing: border-box; background-color: #2A2A2A;">
-                                            <button type="button" id="clearSearchBtn" class="search-clear-btn" style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;" title="Clear search" aria-label="Clear search">×</button>
+                                        <div class="search-inputContainer"
+                                            style="position: relative; display: flex; align-items: center; flex: 1;">
+                                            <input type="search" id="playlistSearchInput" class="emby-input"
+                                                autocomplete="off" inputmode="search" placeholder="Search lists..."
+                                                style="padding: 0.75em 2.5em 0.75em 0.75em; width: 100%; box-sizing: border-box; background-color: #2A2A2A;">
+                                            <button type="button" id="clearSearchBtn" class="search-clear-btn"
+                                                style="position: absolute; right: 0.5em; background: none; border: none; color: #999; cursor: pointer; padding: 0.25em; font-size: 1.2em; display: none;"
+                                                title="Clear search" aria-label="Clear search">×</button>
                                         </div>
-                                        <button type="button" id="clearFiltersBtn" class="emby-button raised">Clear All Filters</button>
+                                        <button type="button" id="clearFiltersBtn" class="emby-button raised">Clear All
+                                            Filters</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div id="playlist-list-container">
                             <p>Loading lists...</p>
                         </div>
@@ -217,14 +265,15 @@
                 <div id="settings-tab" class="page-content hide" data-tab-content="settings">
                     <form style="margin-top:2em;">
                         <h2 class="sectionTitle">General Settings</h2>
-                        
+
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="defaultListType">Default List Type</label>
                             <select is="emby-select" id="defaultListType" class="emby-select">
                                 <option value="Playlist">Playlist</option>
                                 <option value="Collection">Collection</option>
                             </select>
-                            <div class="fieldDescription">Default type for new lists. Playlists are user-specific, Collections are server-wide.</div>
+                            <div class="fieldDescription">Default type for new lists. Playlists are user-specific,
+                                Collections are server-wide.</div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
@@ -239,44 +288,58 @@
                             <div class="fieldDescription">Default sorting direction for new smart lists.</div>
                         </div>
 
-                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em; display: none;" id="defaultIgnoreArticlesContainer">
+                        <div class="checkboxList paperList"
+                            style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em; display: none;"
+                            id="defaultIgnoreArticlesContainer">
                             <div class="sectioncheckbox">
                                 <label class="emby-checkbox-label">
-                                    <input type="checkbox" is="emby-checkbox" id="defaultIgnoreArticles" data-embycheckbox="true" class="emby-checkbox">
+                                    <input type="checkbox" is="emby-checkbox" id="defaultIgnoreArticles"
+                                        data-embycheckbox="true" class="emby-checkbox">
                                     <span class="checkboxLabel">Ignore Article 'The' for default sort</span>
                                     <span class="checkboxOutline">
-                                        <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
-                                        <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                        <span class="material-icons checkboxIcon checkboxIcon-checked check"
+                                            aria-hidden="true"></span>
+                                        <span class="material-icons checkboxIcon checkboxIcon-unchecked"
+                                            aria-hidden="true"></span>
                                     </span>
                                 </label>
-                                <div class="fieldDescription">When enabled, items starting with "The" will be sorted ignoring the article.</div>
+                                <div class="fieldDescription">When enabled, items starting with "The" will be sorted
+                                    ignoring the article.</div>
                             </div>
                         </div>
 
-                        <div class="checkboxList paperList" style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
+                        <div class="checkboxList paperList"
+                            style="padding: 0.5em 1em; margin-bottom: 1em; margin-top: 1em;">
                             <div class="sectioncheckbox">
                                 <label class="emby-checkbox-label">
-                                    <input type="checkbox" is="emby-checkbox" id="defaultMakePublic" data-embycheckbox="true" class="emby-checkbox">
+                                    <input type="checkbox" is="emby-checkbox" id="defaultMakePublic"
+                                        data-embycheckbox="true" class="emby-checkbox">
                                     <span class="checkboxLabel">Make playlists public by default</span>
                                     <span class="checkboxOutline">
-                                        <span class="material-icons checkboxIcon checkboxIcon-checked check" aria-hidden="true"></span>
-                                        <span class="material-icons checkboxIcon checkboxIcon-unchecked" aria-hidden="true"></span>
+                                        <span class="material-icons checkboxIcon checkboxIcon-checked check"
+                                            aria-hidden="true"></span>
+                                        <span class="material-icons checkboxIcon checkboxIcon-unchecked"
+                                            aria-hidden="true"></span>
                                     </span>
                                 </label>
-                                <div class="fieldDescription">New smart lists will be public by default when this is enabled.</div>
+                                <div class="fieldDescription">New smart lists will be public by default when this is
+                                    enabled.</div>
                             </div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="defaultMaxItems">Default Max Items</label>
                             <input type="number" id="defaultMaxItems" class="emby-input" min="0" step="1">
-                            <div class="fieldDescription">Default maximum number of items for new smart lists. Set to 0 for no limit.</div>
+                            <div class="fieldDescription">Default maximum number of items for new smart lists. Set to 0
+                                for no limit.</div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="inputLabel" for="defaultMaxPlayTimeMinutes">Default Max Playtime (Minutes)</label>
+                            <label class="inputLabel" for="defaultMaxPlayTimeMinutes">Default Max Playtime
+                                (Minutes)</label>
                             <input type="number" id="defaultMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
-                            <div class="fieldDescription">Default maximum playtime in minutes for new smart lists. Set to 0 for no limit.</div>
+                            <div class="fieldDescription">Default maximum playtime in minutes for new smart lists. Set
+                                to 0 for no limit.</div>
                         </div>
 
                         <h2 class="sectionTitle" style="margin-top: 2em;">Refresh Settings</h2>
@@ -291,7 +354,8 @@
 
                         <div class="selectContainer" style="margin-bottom: 1em;">
                             <label class="selectLabel" for="defaultScheduleTrigger">Default scheduled refresh:</label>
-                            <select id="defaultScheduleTrigger" is="emby-select" class="emby-select-withcolor emby-select">
+                            <select id="defaultScheduleTrigger" is="emby-select"
+                                class="emby-select-withcolor emby-select">
                                 <!-- Schedule trigger options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Default schedule type for new smart lists.</div>
@@ -300,25 +364,30 @@
                         <!-- Default Day of Week -->
                         <div id="defaultscheduleDayContainer" class="selectContainer hide" style="margin-bottom: 1em;">
                             <label class="selectLabel" for="defaultScheduleDayOfWeek">Default weekday:</label>
-                            <select id="defaultScheduleDayOfWeek" is="emby-select" class="emby-select-withcolor emby-select">
+                            <select id="defaultScheduleDayOfWeek" is="emby-select"
+                                class="emby-select-withcolor emby-select">
                                 <!-- Day of week options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Default day of the week for Weekly schedules.</div>
                         </div>
 
                         <!-- Default Day of Month -->
-                        <div id="defaultscheduleDayOfMonthContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                        <div id="defaultscheduleDayOfMonthContainer" class="selectContainer hide"
+                            style="margin-bottom: 1em;">
                             <label class="selectLabel" for="defaultScheduleDayOfMonth">Default day of month:</label>
-                            <select id="defaultScheduleDayOfMonth" is="emby-select" class="emby-select-withcolor emby-select">
+                            <select id="defaultScheduleDayOfMonth" is="emby-select"
+                                class="emby-select-withcolor emby-select">
                                 <!-- Day of month options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Default day of the month for Monthly/Yearly schedules.</div>
                         </div>
 
                         <!-- Default Month -->
-                        <div id="defaultscheduleMonthContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                        <div id="defaultscheduleMonthContainer" class="selectContainer hide"
+                            style="margin-bottom: 1em;">
                             <label class="selectLabel" for="defaultScheduleMonth">Default month:</label>
-                            <select id="defaultScheduleMonth" is="emby-select" class="emby-select-withcolor emby-select">
+                            <select id="defaultScheduleMonth" is="emby-select"
+                                class="emby-select-withcolor emby-select">
                                 <!-- Month options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Default month for Yearly schedules.</div>
@@ -334,9 +403,11 @@
                         </div>
 
                         <!-- Default Interval -->
-                        <div id="defaultscheduleIntervalContainer" class="selectContainer hide" style="margin-bottom: 1em;">
+                        <div id="defaultscheduleIntervalContainer" class="selectContainer hide"
+                            style="margin-bottom: 1em;">
                             <label class="selectLabel" for="defaultScheduleInterval">Default interval:</label>
-                            <select id="defaultScheduleInterval" is="emby-select" class="emby-select-withcolor emby-select">
+                            <select id="defaultScheduleInterval" is="emby-select"
+                                class="emby-select-withcolor emby-select">
                                 <!-- Interval options populated dynamically by JavaScript -->
                             </select>
                             <div class="fieldDescription">Default interval for Interval schedules.</div>
@@ -348,59 +419,79 @@
                             <label class="inputLabel" for="processingBatchSize">Processing Batch Size</label>
                             <input type="number" id="processingBatchSize" class="emby-input" min="1" step="1">
                             <div class="fieldDescription">
-                                Number of items processed in each batch during list refreshes. Smaller batches provide more frequent progress updates on the Status page, while larger batches improve processing efficiency. Default: 300. Recommended: 200-500 for libraries with 1,000-20,000 items.
+                                Number of items processed in each batch during list refreshes. Smaller batches provide
+                                more frequent progress updates on the Status page, while larger batches improve
+                                processing efficiency. Default: 300. Recommended: 200-500 for libraries with
+                                1,000-20,000 items.
                             </div>
                         </div>
 
                         <h2 class="sectionTitle" style="margin-top: 2em;">List Naming</h2>
-                        
+
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
                             <input type="text" id="playlistNamePrefix" class="emby-input">
-                            <div class="fieldDescription">Text to add before the list name. Leave blank for no prefix.</div>
+                            <div class="fieldDescription">Text to add before the list name. Leave blank for no prefix.
+                            </div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistNameSuffix">Suffix Text</label>
                             <input type="text" id="playlistNameSuffix" class="emby-input">
-                            <div class="fieldDescription">Text to add after the list name. Leave blank for no suffix.</div>
+                            <div class="fieldDescription">Text to add after the list name. Leave blank for no suffix.
+                            </div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em;">
                             <label class="inputLabel">Preview</label>
-                            <div id="playlistNamePreview" style="padding: 0.5em; background-color: #2a2a2a; border: 1px solid #555; border-radius: 4px; font-family: monospace; width: 100%; box-sizing: border-box;">
+                            <div id="playlistNamePreview"
+                                style="padding: 0.5em; background-color: #2a2a2a; border: 1px solid #555; border-radius: 4px; font-family: monospace; width: 100%; box-sizing: border-box;">
                                 <span style="color: #888;">Example: </span><span id="previewText">My Awesome List</span>
                             </div>
-                            <div class="fieldDescription">Live preview of how list names will appear in Jellyfin. You can use both prefix and suffix, or just one, or neither.</div>
+                            <div class="fieldDescription">Live preview of how list names will appear in Jellyfin. You
+                                can use both prefix and suffix, or just one, or neither.</div>
                         </div>
 
-                        <div>After you have changed this setting, you need to refresh all lists for it to take effect.</div>
+                        <div>After you have changed this setting, you need to refresh all lists for it to take effect.
+                        </div>
 
                         <h2 class="sectionTitle" style="margin-top: 2em;">Export/Import</h2>
 
                         <h3 class="sectionTitle" style="margin-top: 2em;">Export</h3>
-                        
+
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
-                            <button type="button" is="emby-button" id="exportPlaylistsBtn" class="emby-button raised block">Export All Lists</button>
-                            <div class="fieldDescription">Download a ZIP file containing all your smart list configurations. This can be used as a backup or to transfer lists to another Jellyfin instance.</div>
+                            <button type="button" is="emby-button" id="exportPlaylistsBtn"
+                                class="emby-button raised block">Export All Lists</button>
+                            <div class="fieldDescription">Download a ZIP file containing all your smart list
+                                configurations. This can be used as a backup or to transfer lists to another Jellyfin
+                                instance.</div>
                         </div>
 
                         <h3 class="sectionTitle" style="margin-top: 2em;">Import</h3>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <input type="file" id="importPlaylistsFile" accept=".zip" style="display: none;">
-                            <label for="importPlaylistsFile" class="emby-button raised block" style="display: inline-block; margin-bottom: 0.5em; cursor: pointer;">Choose ZIP File</label>
-                            <div id="selectedFileName" style="margin-bottom: 0.5em; color: #ccc; font-size: 0.9em;"></div>
-                            <button type="button" is="emby-button" id="importPlaylistsBtn" class="emby-button raised block" style="display: none;">Import Selected File</button>
-                            <div class="fieldDescription">Select a ZIP file exported from SmartLists plugin. Lists with duplicate IDs will be skipped to avoid conflicts. After importing, you need to refresh all lists to create them in Jellyfin.</div>
+                            <label for="importPlaylistsFile" class="emby-button raised block"
+                                style="display: inline-block; margin-bottom: 0.5em; cursor: pointer;">Choose ZIP
+                                File</label>
+                            <div id="selectedFileName" style="margin-bottom: 0.5em; color: #ccc; font-size: 0.9em;">
+                            </div>
+                            <button type="button" is="emby-button" id="importPlaylistsBtn"
+                                class="emby-button raised block" style="display: none;">Import Selected File</button>
+                            <div class="fieldDescription">Select a ZIP file exported from SmartLists plugin. Lists with
+                                duplicate IDs will be skipped to avoid conflicts. After importing, you need to refresh
+                                all lists to create them in Jellyfin.</div>
                         </div>
 
                         <div style="margin-top: 2em;">
-                            <button type="button" is="emby-button" id="saveSettingsBtn" class="button-submit emby-button block">Save Settings</button>
+                            <button type="button" is="emby-button" id="saveSettingsBtn"
+                                class="button-submit emby-button block">Save Settings</button>
                         </div>
-                        
-                        <div class="fieldDescription" style="margin-top: 1em; padding: 0.75em; background: rgba(255,255,255,0.05); border-radius: 1px;">
-                            <strong>Note:</strong> After saving settings, refresh your browser to see the new default values in the "Create List" tab.
+
+                        <div class="fieldDescription"
+                            style="margin-top: 1em; padding: 0.75em; background: rgba(255,255,255,0.05); border-radius: 1px;">
+                            <strong>Note:</strong> After saving settings, refresh your browser to see the new default
+                            values in the "Create List" tab.
                         </div>
                     </form>
                 </div>
@@ -409,9 +500,10 @@
                 <div id="status-tab" class="page-content hide" data-tab-content="status">
                     <form style="margin-top:2em;">
                         <div class="inputContainer" style="margin-bottom: 2em;">
-                            <button type="button" is="emby-button" id="refresh-status-btn" class="emby-button raised block">Refresh</button>
+                            <button type="button" is="emby-button" id="refresh-status-btn"
+                                class="emby-button raised block">Refresh</button>
                         </div>
-                        
+
                         <div class="inputContainer" style="margin-bottom: 2em;">
                             <h3 class="sectionTitle">Ongoing Operations</h3>
                             <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
@@ -423,20 +515,24 @@
 
                         <div class="inputContainer" style="margin-bottom: 2em;">
                             <h3 class="sectionTitle">Statistics</h3>
-                            <div class="fieldDescription" style="margin-bottom: 1em;">Statistics are tracked since the last server restart. Historical data is not persisted across restarts.</div>
+                            <div class="fieldDescription" style="margin-bottom: 1em;">Statistics are tracked since the
+                                last server restart. Historical data is not persisted across restarts.</div>
                             <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
                                 <div id="statistics-container">
-                                    <p style="color: #aaa;">No statistics available yet. Statistics will appear after refreshing lists.</p>
+                                    <p style="color: #aaa;">No statistics available yet. Statistics will appear after
+                                        refreshing lists.</p>
                                 </div>
                             </div>
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 2em;">
                             <h3 class="sectionTitle">Refresh History</h3>
-                            <div class="fieldDescription" style="margin-bottom: 1em;">Shows the last refresh for each list since the last server restart.</div>
+                            <div class="fieldDescription" style="margin-bottom: 1em;">Shows the last refresh for each
+                                list since the last server restart.</div>
                             <div class="paperList" style="padding: 1em; background-color: #202020; border-radius: 4px;">
                                 <div id="refresh-history-container">
-                                    <p style="color: #aaa;">No refresh history available. History will appear after refreshing lists.</p>
+                                    <p style="color: #aaa;">No refresh history available. History will appear after
+                                        refreshing lists.</p>
                                 </div>
                             </div>
                         </div>
@@ -457,23 +553,27 @@
                         <p id="delete-confirm-text"></p>
                         <div style="margin-top: 1em; margin-bottom: 1em; padding: 0.5em; background-color: #181818;">
                             <label style="display: flex; align-items: center; cursor: pointer;">
-                                <input type="checkbox" id="delete-jellyfin-playlist-checkbox" checked style="margin-right: 0.5em;">
+                                <input type="checkbox" id="delete-jellyfin-playlist-checkbox" checked
+                                    style="margin-right: 0.5em;">
                                 <span>Also delete the Jellyfin list</span>
                             </label>
                             <div style="font-size: 0.9em; color: #aaa; margin-top: 0.5em; margin-bottom: 0.5em;">
-                                <strong>Unchecked:</strong> Only delete the SmartList configuration. The Jellyfin list will remain and can be managed manually.<br><br>
+                                <strong>Unchecked:</strong> Only delete the SmartList configuration. The Jellyfin list
+                                will remain and can be managed manually.<br><br>
                                 <strong>Checked:</strong> Delete both the SmartList configuration and the Jellyfin list.
                             </div>
                         </div>
                     </div>
                     <div class="custom-modal-footer">
-                        <button type="button" is="emby-button" class="emby-button raised" id="delete-cancel-btn">Cancel</button>
-                        <button type="button" is="emby-button" class="emby-button raised button-delete" id="delete-confirm-btn">Delete</button>
+                        <button type="button" is="emby-button" class="emby-button raised"
+                            id="delete-cancel-btn">Cancel</button>
+                        <button type="button" is="emby-button" class="emby-button raised button-delete"
+                            id="delete-confirm-btn">Delete</button>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <!-- Refresh All Lists Confirmation Modal -->
         <div id="refresh-confirm-modal" class="custom-modal hide">
             <div class="custom-modal-container">
@@ -482,16 +582,19 @@
                         <h2 class="custom-modal-title">Refresh All Lists</h2>
                     </div>
                     <div class="custom-modal-body">
-                        <p>This will refresh all smart lists, which may take a while depending on the number of lists and their complexity. Are you sure you want to continue?</p>
+                        <p>This will refresh all smart lists, which may take a while depending on the number of lists
+                            and their complexity. Are you sure you want to continue?</p>
                     </div>
                     <div class="custom-modal-footer">
-                        <button type="button" is="emby-button" class="emby-button raised modal-cancel-btn">Cancel</button>
-                        <button type="button" is="emby-button" class="emby-button raised modal-confirm-btn">Refresh All</button>
+                        <button type="button" is="emby-button"
+                            class="emby-button raised modal-cancel-btn">Cancel</button>
+                        <button type="button" is="emby-button" class="emby-button raised modal-confirm-btn">Refresh
+                            All</button>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <!-- Core utilities and constants (must load first) -->
         <script src="configurationpage?name=config-core.js"></script>
         <!-- Formatters and option generators -->
@@ -516,4 +619,5 @@
         <script src="configurationpage?name=config-init.js"></script>
     </div>
 </body>
-</html> 
+
+</html>

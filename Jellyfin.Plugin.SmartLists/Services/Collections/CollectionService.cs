@@ -528,6 +528,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                 return;
             }
 
+
             // Save the changes
             await collection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
 
@@ -546,6 +547,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                         expectedName, collectionAfterRefresh.Name);
                 }
                 collectionAfterRefresh.Name = expectedName;
+                
+                // Set DisplayOrder to "Default" to preserve our sorted LinkedChildren order
+                // Must be done AFTER metadata refresh to prevent metadata providers from resetting it
+                var displayOrderProperty = collectionAfterRefresh.GetType().GetProperty("DisplayOrder");
+                if (displayOrderProperty != null && displayOrderProperty.CanWrite)
+                {
+                    displayOrderProperty.SetValue(collectionAfterRefresh, "Default");
+                    _logger.LogDebug("Set DisplayOrder to 'Default' for collection {CollectionName} to preserve plugin sort order", collectionAfterRefresh.Name);
+                }
+                else
+                {
+                    _logger.LogWarning("DisplayOrder property not found or not writable on collection {CollectionName}, sort order may not be preserved", collectionAfterRefresh.Name);
+                }
+                
                 await collectionAfterRefresh.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 
                 // Set collection image if metadata refresh didn't generate one
@@ -823,6 +838,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                             formattedName, retrievedItem.Name);
                     }
                     retrievedItem.Name = formattedName;
+                    
+                    // Set DisplayOrder to "Default" to preserve our sorted LinkedChildren order
+                    // Without this, Jellyfin sorts by PremiereDate (default) and ignores our sort order
+                    var displayOrderProperty = retrievedItem.GetType().GetProperty("DisplayOrder");
+                    if (displayOrderProperty != null && displayOrderProperty.CanWrite)
+                    {
+                        displayOrderProperty.SetValue(retrievedItem, "Default");
+                        _logger.LogDebug("Set DisplayOrder to 'Default' for new collection {CollectionName} to preserve plugin sort order", retrievedItem.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("DisplayOrder property not found or not writable on new collection {CollectionName}, sort order may not be preserved", retrievedItem.Name);
+                    }
+                    
                     await retrievedItem.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                     
                     // Set collection image if metadata refresh didn't generate one

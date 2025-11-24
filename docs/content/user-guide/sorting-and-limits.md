@@ -1,14 +1,8 @@
 # Sorting and Limits
 
-!!! important "Collections Don't Support Sorting"
-    **Collections** do not support sorting - items appear in library order. The sorting options described below apply only to **Playlists**.
-
 ## Multiple Sorting Levels
 
 You can add up to **3 sorting options** to create cascading sorts. Items are first sorted by the first option, then items with equal values are sorted by the second option, and so on.
-
-!!! note "Playlists Only"
-    Sorting is only available for playlists. Collections display items in their library order and do not support custom sorting.
 
 ### Example Use Cases
 
@@ -53,8 +47,8 @@ You can optionally set a maximum number of items for your smart list. This is us
 - Creating "Top 10" or "Best of" style playlists or collections
 - Improving performance for very large libraries
 
-!!! note "Collections and Sorting"
-    For collections, the max items limit applies to items in library order (since collections don't support sorting). For playlists, the max items limit applies after sorting is applied.
+!!! note "Max Items and Sorting"
+    The max items limit applies after sorting is applied.
 
 !!! warning "Performance"
     Setting this to unlimited (0) might cause performance issues or even crashes for very large lists.
