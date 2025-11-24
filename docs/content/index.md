@@ -32,6 +32,7 @@ This plugin allows you to create dynamic playlists and collections based on a se
 SmartLists works with all media types supported by Jellyfin:
 
 - **🎬 Movie** - Individual movie files
+- **📺 Series** - TV shows as a whole (can only be used when creating a Collection)
 - **📺 Episode** - Individual TV show episodes
 - **🎵 Audio (Music)** - Music tracks and albums
 - **🎬 Music Video** - Music video files
@@ -39,9 +40,6 @@ SmartLists works with all media types supported by Jellyfin:
 - **📸 Photo (Home Photo)** - Personal photos and images
 - **📚 Book** - eBooks, comics, and other readable content
 - **🎧 Audiobook** - Spoken word audio books
-
-!!! warning "Series Media Type"
-    The "Series" media type has been removed due to Jellyfin playlist limitations. Series objects are not valid in playlists. Use "Episode" media type instead to create TV show playlists with individual episodes.
 
 ## Quick Start
 
