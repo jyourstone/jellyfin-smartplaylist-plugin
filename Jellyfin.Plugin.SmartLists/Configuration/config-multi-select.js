@@ -106,18 +106,35 @@
         }
     };
 
+    // ===== HELPER FUNCTIONS FOR ELEMENT ID DERIVATION =====
+
     /**
-     * Load items into a multi-select component
+     * Derive the canonical options ID from a container ID
+     * @param {string} containerId - ID of the container element
+     * @returns {string} Canonical options ID
+     */
+    SmartLists.deriveOptionsId = function (containerId) {
+        return containerId.replace('MultiSelect', 'MultiSelectOptions');
+    };
+
+    /**
+     * Derive the canonical display ID from a container ID
+     * @param {string} containerId - ID of the container element
+     * @returns {string} Canonical display ID
+     */
+    SmartLists.deriveDisplayId = function (containerId) {
+        return containerId.replace('MultiSelect', 'MultiSelectDisplay');
+    };
+
+    /**
+     * Get the options element for a multi-select component, handling fallback patterns
      * @param {HTMLElement} page - The page element
      * @param {string} containerId - ID of the container element
-     * @param {Array} items - Array of items to populate (each item should have value and label properties)
-     * @param {string} checkboxClass - CSS class for checkboxes
-     * @param {Function} getItemLabel - Optional function to extract label from item (default: item.Label or item.label or item.Name or item.name)
-     * @param {Function} getItemValue - Optional function to extract value from item (default: item.Value or item.value or item.Id or item.id)
+     * @returns {HTMLElement|null} The options element or null if not found
      */
-    SmartLists.loadItemsIntoMultiSelect = function (page, containerId, items, checkboxClass, getItemLabel, getItemValue) {
-        // Derive optionsId from containerId - try different patterns
-        let optionsId = containerId.replace('MultiSelect', 'MultiSelectOptions');
+    SmartLists.getOptionsElement = function (page, containerId) {
+        // Try the canonical derived ID first
+        let optionsId = SmartLists.deriveOptionsId(containerId);
         let options = page.querySelector('#' + optionsId);
         
         // If that doesn't work, try alternative pattern (for user multi-select)
@@ -132,8 +149,49 @@
             options = page.querySelector('#' + optionsId);
         }
         
+        return options;
+    };
+
+    /**
+     * Get the display element for a multi-select component, handling fallback patterns
+     * @param {HTMLElement} page - The page element
+     * @param {string} containerId - ID of the container element
+     * @returns {HTMLElement|null} The display element or null if not found
+     */
+    SmartLists.getDisplayElement = function (page, containerId) {
+        // Try the canonical derived ID first
+        let displayId = SmartLists.deriveDisplayId(containerId);
+        let display = page.querySelector('#' + displayId);
+        
+        // If that doesn't work, try alternative pattern (for user multi-select)
+        if (!display && containerId === 'playlistUserMultiSelect') {
+            displayId = 'userMultiSelectDisplay';
+            display = page.querySelector('#' + displayId);
+        }
+        
+        // If still not found, try removing "playlist" prefix
+        if (!display && containerId.startsWith('playlist')) {
+            displayId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectDisplay');
+            display = page.querySelector('#' + displayId);
+        }
+        
+        return display;
+    };
+
+    /**
+     * Load items into a multi-select component
+     * @param {HTMLElement} page - The page element
+     * @param {string} containerId - ID of the container element
+     * @param {Array} items - Array of items to populate (each item should have value and label properties)
+     * @param {string} checkboxClass - CSS class for checkboxes
+     * @param {Function} getItemLabel - Optional function to extract label from item (default: item.Label or item.label or item.Name or item.name)
+     * @param {Function} getItemValue - Optional function to extract value from item (default: item.Value or item.value or item.Id or item.id)
+     */
+    SmartLists.loadItemsIntoMultiSelect = function (page, containerId, items, checkboxClass, getItemLabel, getItemValue) {
+        const options = SmartLists.getOptionsElement(page, containerId);
+        
         if (!options) {
-            console.error('SmartLists.loadItemsIntoMultiSelect: Options container not found for', containerId, 'tried:', containerId.replace('MultiSelect', 'MultiSelectOptions'));
+            console.error('SmartLists.loadItemsIntoMultiSelect: Options container not found for', containerId, 'tried:', SmartLists.deriveOptionsId(containerId));
             return;
         }
 
@@ -208,7 +266,7 @@
         if (currentlySelected && currentlySelected.length > 0) {
             // Use setTimeout to ensure checkboxes are fully rendered
             setTimeout(function () {
-                SmartLists.setSelectedItems(page, containerId, currentlySelected, checkboxClass);
+                SmartLists.setSelectedItems(page, containerId, currentlySelected, checkboxClass, undefined);
             }, 0);
         }
     };
@@ -221,21 +279,7 @@
      * @returns {Array} Array of selected values
      */
     SmartLists.getSelectedItems = function (page, containerId, checkboxClass) {
-        // Derive optionsId from containerId - try different patterns
-        let optionsId = containerId.replace('MultiSelect', 'MultiSelectOptions');
-        let options = page.querySelector('#' + optionsId);
-        
-        // If that doesn't work, try alternative pattern (for user multi-select)
-        if (!options && containerId === 'playlistUserMultiSelect') {
-            optionsId = 'userMultiSelectOptions';
-            options = page.querySelector('#' + optionsId);
-        }
-        
-        // If still not found, try removing "playlist" prefix
-        if (!options && containerId.startsWith('playlist')) {
-            optionsId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectOptions');
-            options = page.querySelector('#' + optionsId);
-        }
+        const options = SmartLists.getOptionsElement(page, containerId);
         
         if (!options) {
             console.warn('SmartLists.getSelectedItems: Options container not found for', containerId);
@@ -259,27 +303,14 @@
      * @param {string} containerId - ID of the container element
      * @param {Array} values - Array of values to select
      * @param {string} checkboxClass - CSS class for checkboxes
+     * @param {string} placeholderText - Optional placeholder text when nothing is selected
      */
-    SmartLists.setSelectedItems = function (page, containerId, values, checkboxClass) {
+    SmartLists.setSelectedItems = function (page, containerId, values, checkboxClass, placeholderText) {
         if (!values || !Array.isArray(values)) {
             values = [];
         }
 
-        // Derive optionsId from containerId - try different patterns
-        let optionsId = containerId.replace('MultiSelect', 'MultiSelectOptions');
-        let options = page.querySelector('#' + optionsId);
-        
-        // If that doesn't work, try alternative pattern (for user multi-select)
-        if (!options && containerId === 'playlistUserMultiSelect') {
-            optionsId = 'userMultiSelectOptions';
-            options = page.querySelector('#' + optionsId);
-        }
-        
-        // If still not found, try removing "playlist" prefix
-        if (!options && containerId.startsWith('playlist')) {
-            optionsId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectOptions');
-            options = page.querySelector('#' + optionsId);
-        }
+        const options = SmartLists.getOptionsElement(page, containerId);
         
         if (!options) {
             console.warn('SmartLists.setSelectedItems: Options container not found for', containerId);
@@ -303,7 +334,7 @@
             checkbox.checked = normalizedValues.indexOf(checkboxValue) !== -1;
         });
 
-        SmartLists.updateMultiSelectDisplay(page, containerId);
+        SmartLists.updateMultiSelectDisplay(page, containerId, placeholderText, checkboxClass);
     };
 
     /**
@@ -316,42 +347,14 @@
     SmartLists.updateMultiSelectDisplay = function (page, containerId, placeholderText, checkboxClass) {
         placeholderText = placeholderText || 'Select items...';
 
-        // Derive displayId from containerId - try different patterns
-        let displayId = containerId.replace('MultiSelect', 'MultiSelectDisplay');
-        let display = page.querySelector('#' + displayId);
-        
-        // If that doesn't work, try alternative pattern (for user multi-select)
-        if (!display && containerId === 'playlistUserMultiSelect') {
-            displayId = 'userMultiSelectDisplay';
-            display = page.querySelector('#' + displayId);
-        }
-        
-        // If still not found, try removing "playlist" prefix
-        if (!display && containerId.startsWith('playlist')) {
-            displayId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectDisplay');
-            display = page.querySelector('#' + displayId);
-        }
+        const display = SmartLists.getDisplayElement(page, containerId);
         
         if (!display) {
             console.warn('SmartLists.updateMultiSelectDisplay: Display element not found for', containerId);
             return;
         }
 
-        // Derive optionsId from containerId - try different patterns
-        let optionsId = containerId.replace('MultiSelect', 'MultiSelectOptions');
-        let options = page.querySelector('#' + optionsId);
-        
-        // If that doesn't work, try alternative pattern (for user multi-select)
-        if (!options && containerId === 'playlistUserMultiSelect') {
-            optionsId = 'userMultiSelectOptions';
-            options = page.querySelector('#' + optionsId);
-        }
-        
-        // If still not found, try removing "playlist" prefix
-        if (!options && containerId.startsWith('playlist')) {
-            optionsId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectOptions');
-            options = page.querySelector('#' + optionsId);
-        }
+        const options = SmartLists.getOptionsElement(page, containerId);
         
         if (!options) return;
 

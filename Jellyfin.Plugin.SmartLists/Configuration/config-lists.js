@@ -367,7 +367,7 @@
         }
 
         // Clear media type selections
-        SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', [], 'media-type-multi-select-checkbox');
+        SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', [], 'media-type-multi-select-checkbox', 'Select media types...');
 
         // Apply all form defaults using shared helper (DRY)
         const apiClient = SmartLists.getApiClient();
@@ -482,9 +482,9 @@
                 page._skipMediaTypeChangeHandlers = true;
 
                 if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
-                    SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', playlist.MediaTypes, 'media-type-multi-select-checkbox');
+                    SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', playlist.MediaTypes, 'media-type-multi-select-checkbox', 'Select media types...');
                 } else {
-                    SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', [], 'media-type-multi-select-checkbox');
+                    SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', [], 'media-type-multi-select-checkbox', 'Select media types...');
                 }
 
                 // Clear flag to re-enable change event handlers
@@ -722,7 +722,7 @@
                 // Set media types BEFORE populating rules so that rule population can check selected media types
                 // Flag was already set at the beginning of clone process to prevent interference
                 // Set the media types from the cloned playlist
-                SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', clonedMediaTypes, 'media-type-multi-select-checkbox');
+                SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', clonedMediaTypes, 'media-type-multi-select-checkbox', 'Select media types...');
 
                 // Set the list owner (for both playlists and collections)
                 // isCollection is already declared above on line 650

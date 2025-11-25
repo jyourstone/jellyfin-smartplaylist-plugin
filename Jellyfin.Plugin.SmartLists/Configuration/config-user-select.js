@@ -52,7 +52,7 @@
      * Set selected users by user ID array
      */
     SmartLists.setSelectedUserIds = function (page, userIds) {
-        SmartLists.setSelectedItems(page, 'playlistUserMultiSelect', userIds, 'user-multi-select-checkbox');
+        SmartLists.setSelectedItems(page, 'playlistUserMultiSelect', userIds, 'user-multi-select-checkbox', 'Select users...');
         SmartLists.updatePublicCheckboxVisibility(page);
     };
 

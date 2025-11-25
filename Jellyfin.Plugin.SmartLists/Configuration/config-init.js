@@ -1565,7 +1565,7 @@
             });
 
             if (filteredMediaTypes.length > 0) {
-                SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', filteredMediaTypes, 'media-type-multi-select-checkbox');
+                SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', filteredMediaTypes, 'media-type-multi-select-checkbox', 'Select media types...');
             }
 
             // Clear flag to re-enable change handlers
