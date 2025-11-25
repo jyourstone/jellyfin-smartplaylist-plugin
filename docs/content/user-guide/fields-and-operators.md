@@ -6,7 +6,7 @@ The web interface provides access to all available fields for creating list rule
 
 ### Content Fields
 
-- **Audio Languages** - The audio language of the movie/TV show
+- **Audio Languages** - The audio language of the movie/TV show. You can optionally restrict this to only match the default audio language (excluding dub tracks) by checking the "Must be the default language" checkbox.
 - **Audio Bitrate** - Audio bitrate in kbps (e.g., 128, 256, 320, 1411)
 - **Audio Sample Rate** - Audio sample rate in Hz (e.g., 44100, 48000, 96000, 192000)
 - **Audio Bit Depth** - Audio bit depth in bits (e.g., 16, 24)
@@ -141,6 +141,16 @@ When using **Tags**, **Studios**, or **Genres** fields with episodes selected as
 - **Include parent series genres** (Genres field only, default: No) - When enabled, episodes will match if either the episode or its parent series has the specified genre.
 
 These options are useful when series-level metadata is more complete than episode-level metadata, or when you want to match episodes based on series characteristics.
+
+### Audio Languages Options
+
+When using the **Audio Languages** field with any audio-capable media type (Movie, Episode, Audio, AudioBook, MusicVideo, Video), you can configure whether to match only the default audio language:
+
+- **Must be the default language** (default: No) - When enabled, the filter will only match items where the specified language is marked as the default audio track (IsDefault=true). This excludes items that merely have additional audio tracks (dubs) in that language. When disabled, the filter matches any item with an audio track in the specified language, regardless of whether it's the default track.
+
+**Example Use Cases:**
+- **French films only**: Use "Audio Languages contains fra" with "Must be the default language" enabled to find films originally produced in French, excluding English films with French dubs.
+- **Any French audio**: Use "Audio Languages contains fra" with "Must be the default language" disabled to find any content with French audio tracks, including dubbed content.
 
 ### Similar To Options
 

@@ -29,6 +29,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         public double RuntimeMinutes { get; set; } = 0;
         public string OfficialRating { get; set; } = string.Empty;
         public List<string> AudioLanguages { get; set; } = [];
+        public List<string> DefaultAudioLanguages { get; set; } = [];
         public List<string> People { get; set; } = [];
         public List<string> Actors { get; set; } = [];
         public List<string> Directors { get; set; } = [];

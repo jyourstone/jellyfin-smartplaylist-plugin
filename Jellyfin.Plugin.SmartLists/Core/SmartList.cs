@@ -404,6 +404,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
                         hashBuilder.Append(':');
                         hashBuilder.Append(expr.IncludeParentSeriesGenres?.ToString() ?? "null");
                         hashBuilder.Append(':');
+                        hashBuilder.Append(expr.OnlyDefaultAudioLanguage?.ToString() ?? "null");
+                        hashBuilder.Append(':');
                         hashBuilder.Append(expr.IncludeUnwatchedSeries?.ToString() ?? "null");
                         hashBuilder.Append(':');
                         hashBuilder.Append(expr.IncludeEpisodesWithinSeries?.ToString() ?? "null");

@@ -591,6 +591,7 @@
                 SmartLists.updateAllTagsOptionsVisibility(page);
                 SmartLists.updateAllStudiosOptionsVisibility(page);
                 SmartLists.updateAllGenresOptionsVisibility(page);
+                SmartLists.updateAllAudioLanguagesOptionsVisibility(page);
                 SmartLists.updateAllCollectionsOptionsVisibility(page);
                 SmartLists.updateAllNextUnwatchedOptionsVisibility(page);
 
@@ -727,6 +728,26 @@
                 // Store media types to set later (after all updates are complete)
                 const clonedMediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? playlist.MediaTypes : [];
 
+                // Set media types BEFORE populating rules so that rule population can check selected media types
+                // Flag was already set at the beginning of clone process to prevent interference
+                const mediaTypesCheckboxes = Array.from(page.querySelectorAll('.media-type-checkbox'));
+
+                // First clear all checkboxes
+                mediaTypesCheckboxes.forEach(function (checkbox) {
+                    checkbox.checked = false;
+                });
+                // Then set the ones from the cloned playlist
+                if (clonedMediaTypes.length > 0) {
+                    clonedMediaTypes.forEach(function (type) {
+                        const checkbox = mediaTypesCheckboxes.find(function (cb) {
+                            return cb.value === type;
+                        });
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                }
+
                 // Set the list owner (for both playlists and collections)
                 // isCollection is already declared above on line 650
                 if (isCollection) {
@@ -800,6 +821,7 @@
                 SmartLists.updateAllTagsOptionsVisibility(page);
                 SmartLists.updateAllStudiosOptionsVisibility(page);
                 SmartLists.updateAllGenresOptionsVisibility(page);
+                SmartLists.updateAllAudioLanguagesOptionsVisibility(page);
                 SmartLists.updateAllCollectionsOptionsVisibility(page);
                 SmartLists.updateAllNextUnwatchedOptionsVisibility(page);
 
@@ -808,25 +830,7 @@
                 // Update sort options visibility based on populated rules
                 SmartLists.updateAllSortOptionsVisibility(page);
 
-                // Set media types AFTER all field updates are complete to prevent them from being cleared
-                // Flag was already set at the beginning of clone process to prevent interference
-                const mediaTypesCheckboxes = Array.from(page.querySelectorAll('.media-type-checkbox'));
 
-                // First clear all checkboxes
-                mediaTypesCheckboxes.forEach(function (checkbox) {
-                    checkbox.checked = false;
-                });
-                // Then set the ones from the cloned playlist
-                if (clonedMediaTypes.length > 0) {
-                    clonedMediaTypes.forEach(function (type) {
-                        const checkbox = mediaTypesCheckboxes.find(function (cb) {
-                            return cb.value === type;
-                        });
-                        if (checkbox) {
-                            checkbox.checked = true;
-                        }
-                    });
-                }
 
                 // Clear flag to re-enable change event handlers
                 page._skipMediaTypeChangeHandlers = false;
@@ -1134,6 +1138,12 @@
                             genresInfo = ' (including parent series genres)';
                         }
 
+                        // Add AudioLanguages configuration info
+                        let audioLanguagesInfo = '';
+                        if (rule.MemberName === 'AudioLanguages' && rule.OnlyDefaultAudioLanguage === true) {
+                            audioLanguagesInfo = ' (default only)';
+                        }
+
                         // Add SimilarTo comparison fields info
                         let similarityInfo = '';
                         if (rule.MemberName === 'SimilarTo') {
@@ -1145,7 +1155,7 @@
                         }
 
                         rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
-                        rulesHtml += SmartLists.escapeHtml(fieldName) + ' ' + SmartLists.escapeHtml(operator) + ' "' + SmartLists.escapeHtml(value) + '"' + SmartLists.escapeHtml(userInfo) + SmartLists.escapeHtml(nextUnwatchedInfo) + SmartLists.escapeHtml(collectionsInfo) + SmartLists.escapeHtml(tagsInfo) + SmartLists.escapeHtml(studiosInfo) + SmartLists.escapeHtml(genresInfo) + SmartLists.escapeHtml(similarityInfo);
+                        rulesHtml += SmartLists.escapeHtml(fieldName) + ' ' + SmartLists.escapeHtml(operator) + ' "' + SmartLists.escapeHtml(value) + '"' + SmartLists.escapeHtml(userInfo) + SmartLists.escapeHtml(nextUnwatchedInfo) + SmartLists.escapeHtml(collectionsInfo) + SmartLists.escapeHtml(tagsInfo) + SmartLists.escapeHtml(studiosInfo) + SmartLists.escapeHtml(genresInfo) + SmartLists.escapeHtml(audioLanguagesInfo) + SmartLists.escapeHtml(similarityInfo);
                         rulesHtml += '</span>';
                     }
                     rulesHtml += '</div>';

@@ -522,6 +522,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         private static void ExtractAudioLanguages(Operand operand, BaseItem baseItem, RefreshQueueServiceRefreshCache? cache, ILogger? logger)
         {
             operand.AudioLanguages = [];
+            operand.DefaultAudioLanguages = [];
             try
             {
                 // Check cache first if available
@@ -548,18 +549,29 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     {
                         var typeProperty = stream.GetType().GetProperty("Type");
                         var languageProperty = stream.GetType().GetProperty("Language");
+                        var isDefaultProperty = stream.GetType().GetProperty("IsDefault");
 
                         if (typeProperty != null)
                         {
                             var streamType = typeProperty.GetValue(stream);
                             var language = languageProperty?.GetValue(stream) as string;
+                            var isDefault = isDefaultProperty?.GetValue(stream) as bool? ?? false;
 
                             // Check if it's an audio stream
                             if (streamType != null && streamType.ToString() == "Audio")
                             {
-                                if (!string.IsNullOrEmpty(language) && !operand.AudioLanguages.Contains(language))
+                                if (!string.IsNullOrEmpty(language))
                                 {
-                                    operand.AudioLanguages.Add(language);
+                                    if (!operand.AudioLanguages.Contains(language))
+                                    {
+                                        operand.AudioLanguages.Add(language);
+                                    }
+
+                                    // Track default languages separately
+                                    if (isDefault && !operand.DefaultAudioLanguages.Contains(language))
+                                    {
+                                        operand.DefaultAudioLanguages.Add(language);
+                                    }
                                 }
                             }
                         }
