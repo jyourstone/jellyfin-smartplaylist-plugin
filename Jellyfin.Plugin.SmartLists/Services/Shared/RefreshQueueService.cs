@@ -338,6 +338,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             {
                 _logger.LogDebug("Processing multi-user playlist '{PlaylistName}' with {UserCount} users", dto.Name, dto.UserPlaylists.Count);
                 
+                var validUserCount = 0;
                 foreach (var userMapping in dto.UserPlaylists)
                 {
                     if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
@@ -355,6 +356,14 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
                     _logger.LogDebug("Processing playlist '{PlaylistName}' for user '{Username}'", dto.Name, user.Username);
                     await ProcessPlaylistForUserAsync(dto, user, cancellationToken);
+                    validUserCount++;
+                }
+
+                // Warn if no valid users were processed
+                if (validUserCount == 0)
+                {
+                    _logger.LogWarning("Playlist '{PlaylistName}' had no valid users to refresh (all {UserCount} users were invalid or missing)", 
+                        dto.Name, dto.UserPlaylists.Count);
                 }
             }
             // Single-user playlist (backwards compatibility): Use top-level UserId

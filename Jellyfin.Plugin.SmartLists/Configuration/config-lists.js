@@ -1260,15 +1260,6 @@
             }
         };
 
-        // Helper function to get username from cache
-        const getUserNameFromCache = function (userId) {
-            const normalizedId = normalizeUserId(userId);
-            if (userNameCache.has(normalizedId)) {
-                return userNameCache.get(normalizedId);
-            }
-            return null;
-        };
-
         // Build Jellyfin playlist/collection link info
         // For playlists: show current user's link (if any) + count of others
         // For collections: show single link

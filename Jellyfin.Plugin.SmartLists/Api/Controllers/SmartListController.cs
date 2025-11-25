@@ -258,6 +258,69 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         }
 
         /// <summary>
+        /// Normalizes and validates UserPlaylists array, ensuring all user IDs are valid GUIDs
+        /// in standard "N" format (no dashes) and removing duplicates.
+        /// </summary>
+        /// <param name="playlist">The playlist to normalize</param>
+        /// <param name="errorMessage">Output parameter containing error message if validation fails</param>
+        /// <returns>True if validation succeeded, false otherwise</returns>
+        private bool NormalizeAndValidateUserPlaylists(SmartPlaylistDto playlist, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
+            {
+                errorMessage = "At least one playlist user is required";
+                return false;
+            }
+
+            var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
+            var seenUserIds = new HashSet<Guid>();
+
+            foreach (var userMapping in playlist.UserPlaylists)
+            {
+                if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
+                {
+                    errorMessage = "All user IDs must be valid GUIDs";
+                    return false;
+                }
+
+                // Normalize UserId to standard format (without dashes) and check for duplicates
+                // HashSet.Add() returns true if item was added (didn't exist), false if already exists
+                if (seenUserIds.Add(userId))
+                {
+                    normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
+                    {
+                        UserId = userId.ToString("N"), // Standard format without dashes
+                        JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                    });
+                }
+                else
+                {
+                    logger.LogWarning("Duplicate user ID {UserId} detected in UserPlaylists for playlist {Name}, skipping duplicate", userId, playlist.Name);
+                }
+            }
+
+            // Replace with normalized and deduplicated list
+            playlist.UserPlaylists = normalizedUserPlaylists;
+
+            // Validate we still have at least one user after deduplication
+            if (playlist.UserPlaylists.Count == 0)
+            {
+                errorMessage = "At least one playlist user is required after removing duplicates";
+                return false;
+            }
+
+            // Set Public = false for multi-user playlists (multi-user playlists are always private)
+            if (playlist.UserPlaylists.Count > 1)
+            {
+                playlist.Public = false;
+                logger.LogDebug("Multi-user playlist detected ({UserCount} users), setting Public=false", playlist.UserPlaylists.Count);
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Get all smart lists (playlists and collections).
         /// </summary>
         /// <param name="type">Optional filter by type (Playlist or Collection).</param>
@@ -456,71 +519,16 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
             }
 
-            // Validate UserPlaylists array
-            if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
+            // Normalize and validate UserPlaylists
+            if (!NormalizeAndValidateUserPlaylists(playlist, out var validationError))
             {
-                logger.LogWarning("CreateSmartPlaylist called with no users. Name={Name}", playlist.Name);
+                logger.LogWarning("CreateSmartPlaylist validation failed: {Error}. Name={Name}", validationError, playlist.Name);
                 return BadRequest(new ProblemDetails
                 {
                     Title = "Validation Error",
-                    Detail = "At least one playlist user is required",
+                    Detail = validationError,
                     Status = StatusCodes.Status400BadRequest
                 });
-            }
-
-            // Normalize and deduplicate UserPlaylists by normalizing UserIds to consistent format
-            var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
-            var seenUserIds = new HashSet<Guid>();
-
-            foreach (var userMapping in playlist.UserPlaylists)
-            {
-                if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
-                {
-                    logger.LogWarning("CreateSmartPlaylist called with invalid user ID in UserPlaylists. Name={Name}", playlist.Name);
-                    return BadRequest(new ProblemDetails
-                    {
-                        Title = "Validation Error",
-                        Detail = "All user IDs must be valid GUIDs",
-                        Status = StatusCodes.Status400BadRequest
-                    });
-                }
-
-                // Normalize UserId to standard format (without dashes) and check for duplicates
-                // HashSet.Add() returns true if item was added (didn't exist), false if already exists
-                if (seenUserIds.Add(userId))
-                {
-                    normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
-                    {
-                        UserId = userId.ToString("N"), // Standard format without dashes
-                        JellyfinPlaylistId = userMapping.JellyfinPlaylistId
-                    });
-                }
-                else
-                {
-                    logger.LogWarning("Duplicate user ID {UserId} detected in UserPlaylists for playlist {Name}, skipping duplicate", userId, playlist.Name);
-                }
-            }
-
-            // Replace with normalized and deduplicated list
-            playlist.UserPlaylists = normalizedUserPlaylists;
-
-            // Validate we still have at least one user after deduplication
-            if (playlist.UserPlaylists.Count == 0)
-            {
-                logger.LogWarning("CreateSmartPlaylist called with no valid users after deduplication. Name={Name}", playlist.Name);
-                return BadRequest(new ProblemDetails
-                {
-                    Title = "Validation Error",
-                    Detail = "At least one playlist user is required",
-                    Status = StatusCodes.Status400BadRequest
-                });
-            }
-
-            // Set Public = false for multi-user playlists (multi-user playlists are always private)
-            if (playlist.UserPlaylists.Count > 1)
-            {
-                playlist.Public = false;
-                logger.LogDebug("Multi-user playlist detected ({UserCount} users), setting Public=false", playlist.UserPlaylists.Count);
             }
 
             // Remove old fields when using new UserPlaylists format (they will be set to null in JSON)
@@ -594,9 +602,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
                                 {
                                     // Validate regex pattern to prevent injection attacks
-                                    if (!IsValidRegexPattern(expression.TargetValue, out var validationError))
+                                    if (!IsValidRegexPattern(expression.TargetValue, out var regexError))
                                     {
-                                        return BadRequest($"Invalid regex pattern: {validationError}");
+                                        return BadRequest($"Invalid regex pattern: {regexError}");
                                     }
 
                                     try
@@ -1060,9 +1068,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 if (expression.Operator == "MatchRegex" && !string.IsNullOrEmpty(expression.TargetValue))
                                 {
                                     // Validate regex pattern to prevent injection attacks
-                                    if (!IsValidRegexPattern(expression.TargetValue, out var validationError))
+                                    if (!IsValidRegexPattern(expression.TargetValue, out var regexError))
                                     {
-                                        return BadRequest($"Invalid regex pattern: {validationError}");
+                                        return BadRequest($"Invalid regex pattern: {regexError}");
                                     }
 
                                     try
@@ -1131,71 +1139,16 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     }
                 }
 
-                // Validate UserPlaylists
-                if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
+                // Normalize and validate UserPlaylists
+                if (!NormalizeAndValidateUserPlaylists(playlist, out var validationError))
                 {
-                    logger.LogWarning("UpdatePlaylistInternal called with no users. Name={Name}", playlist.Name);
+                    logger.LogWarning("UpdatePlaylist validation failed: {Error}. Name={Name}", validationError, playlist.Name);
                     return BadRequest(new ProblemDetails
                     {
                         Title = "Validation Error",
-                        Detail = "At least one playlist user is required",
+                        Detail = validationError,
                         Status = StatusCodes.Status400BadRequest
                     });
-                }
-
-                // Normalize and deduplicate UserPlaylists by normalizing UserIds to consistent format
-                var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
-                var seenUserIds = new HashSet<Guid>();
-
-                foreach (var userMapping in playlist.UserPlaylists)
-                {
-                    if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
-                    {
-                        logger.LogWarning("UpdatePlaylistInternal called with invalid user ID. Name={Name}", playlist.Name);
-                        return BadRequest(new ProblemDetails
-                        {
-                            Title = "Validation Error",
-                            Detail = "All user IDs must be valid GUIDs",
-                            Status = StatusCodes.Status400BadRequest
-                        });
-                    }
-
-                    // Normalize UserId to standard format (without dashes) and check for duplicates
-                    // HashSet.Add() returns true if item was added (didn't exist), false if already exists
-                    if (seenUserIds.Add(userId))
-                    {
-                        normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
-                        {
-                            UserId = userId.ToString("N"), // Standard format without dashes
-                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
-                        });
-                    }
-                    else
-                    {
-                        logger.LogWarning("Duplicate user ID {UserId} detected in UserPlaylists for playlist {Name}, skipping duplicate", userId, playlist.Name);
-                    }
-                }
-
-                // Replace with normalized and deduplicated list
-                playlist.UserPlaylists = normalizedUserPlaylists;
-
-                // Validate we still have at least one user after deduplication
-                if (playlist.UserPlaylists.Count == 0)
-                {
-                    logger.LogWarning("UpdatePlaylistInternal called with no valid users after deduplication. Name={Name}", playlist.Name);
-                    return BadRequest(new ProblemDetails
-                    {
-                        Title = "Validation Error",
-                        Detail = "At least one playlist user is required",
-                        Status = StatusCodes.Status400BadRequest
-                    });
-                }
-
-                // Set Public = false for multi-user playlists
-                if (playlist.UserPlaylists.Count > 1)
-                {
-                    playlist.Public = false;
-                    logger.LogDebug("Multi-user playlist detected ({UserCount} users), setting Public=false", playlist.UserPlaylists.Count);
                 }
 
                 // Compare old and new user lists to detect changes
@@ -1244,7 +1197,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 }
 
                 // Preserve JellyfinPlaylistId for kept users
-                if (existingPlaylist.UserPlaylists != null)
+                if (existingPlaylist.UserPlaylists != null && playlist.UserPlaylists != null)
                 {
                     foreach (var newMapping in playlist.UserPlaylists)
                     {
@@ -1287,9 +1240,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 // Ensure backwards compatibility: keep UserId and JellyfinPlaylistId populated (first user's values)
                 // DEPRECATED: This is for backwards compatibility with old single-user playlists.
                 // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
-                var firstUser = playlist.UserPlaylists[0];
-                playlist.UserId = firstUser.UserId;
-                playlist.JellyfinPlaylistId = firstUser.JellyfinPlaylistId;
+                if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+                {
+                    var firstUser = playlist.UserPlaylists[0];
+                    playlist.UserId = firstUser.UserId;
+                    playlist.JellyfinPlaylistId = firstUser.JellyfinPlaylistId;
+                }
 
                 playlist.Id = id;
 
@@ -2548,7 +2504,6 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
                             {
                                 var validUserMappings = new List<SmartPlaylistDto.UserPlaylistMapping>();
-                                var invalidUserIds = new List<string>();
 
                                 foreach (var userMapping in playlist.UserPlaylists)
                                 {
@@ -2556,15 +2511,12 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                         !Guid.TryParse(userMapping.UserId, out var userId) || 
                                         userId == Guid.Empty)
                                     {
-                                        invalidUserIds.Add(userMapping.UserId ?? "null");
                                         continue;
                                     }
 
                                     var user = _userManager.GetUserById(userId);
                                     if (user == null)
                                     {
-                                        invalidUserIds.Add(userMapping.UserId);
-                                        
                                         // Get current user ID for reassignment
                                         var reassignmentUserId = GetCurrentUserIdForReassignment();
                                         if (reassignmentUserId == Guid.Empty)
@@ -2582,7 +2534,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                         validUserMappings.Add(new SmartPlaylistDto.UserPlaylistMapping
                                         {
                                             UserId = reassignmentUserId.ToString("N"),
-                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                                            JellyfinPlaylistId = null  // Clear old ID - playlist doesn't exist for new user
                                         });
                                         reassignedUsers = true;
                                     }
@@ -2605,8 +2557,30 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 // Update UserPlaylists with valid/reassigned users
                                 playlist.UserPlaylists = validUserMappings;
 
+                                // Normalize and deduplicate UserPlaylists (consistent with create/update paths)
+                                var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
+                                var seenUserIds = new HashSet<Guid>();
+
+                                foreach (var userMapping in validUserMappings)
+                                {
+                                    if (Guid.TryParse(userMapping.UserId, out var userId) && seenUserIds.Add(userId))
+                                    {
+                                        normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
+                                        {
+                                            UserId = userId.ToString("N"), // Standard format without dashes
+                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                                        });
+                                    }
+                                    else
+                                    {
+                                        logger.LogDebug("Duplicate user ID {UserId} detected during import for playlist {Name}, skipping", userId, playlist.Name);
+                                    }
+                                }
+
+                                playlist.UserPlaylists = normalizedUserPlaylists;
+
                                 // Also update the deprecated UserId field for backwards compatibility (first user's ID)
-                                if (validUserMappings.Count > 0 && Guid.TryParse(validUserMappings[0].UserId, out var firstUserId))
+                                if (normalizedUserPlaylists.Count > 0 && Guid.TryParse(normalizedUserPlaylists[0].UserId, out var firstUserId))
                                 {
                                     playlist.UserId = firstUserId.ToString("D");
                                 }
