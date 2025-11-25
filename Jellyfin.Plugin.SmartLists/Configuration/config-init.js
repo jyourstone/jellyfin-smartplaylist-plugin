@@ -482,11 +482,11 @@
                     if (SmartLists.initializeUserMultiSelect) {
                         SmartLists.initializeUserMultiSelect(page);
                     }
-                    
+
                     // Check if there are pending userIds to set (from edit/clone mode)
                     if (page._pendingUserIds && Array.isArray(page._pendingUserIds) && page._pendingUserIds.length > 0) {
                         // Use setTimeout to ensure checkboxes are fully rendered
-                        setTimeout(function() {
+                        setTimeout(function () {
                             if (SmartLists.setSelectedUserIds) {
                                 SmartLists.setSelectedUserIds(page, page._pendingUserIds);
                             }
@@ -506,12 +506,12 @@
         } catch (err) {
             console.error('Error loading users:', err);
             const errorMessage = err.message || 'Failed to load users. Please refresh the page.';
-            
+
             // Show error in single-select (collections)
             if (userSelect) {
                 userSelect.innerHTML = '<option value="">Error loading users</option>';
             }
-            
+
             // Show error in multi-select (playlists)
             const multiSelectContainer = page.querySelector('#playlistUserMultiSelect');
             if (multiSelectContainer) {
@@ -529,7 +529,7 @@
                     }
                 }
             }
-            
+
             if (SmartLists.showNotification) {
                 SmartLists.showNotification('Failed to load users. Please refresh the page.', 'error');
             }
@@ -1384,7 +1384,7 @@
                 padding: 0.5em;
                 background-color: #2A2A2A;
                 cursor: pointer;
-                min-height: 2em;
+                min-height: 1.7em;
                 display: flex;
                 align-items: center;
                 color: #e0e0e0;
@@ -1393,10 +1393,12 @@
             
             .multi-select-placeholder {
                 color: #999;
+                font-size: 110%;
             }
             
             .multi-select-selected-users {
                 color: #e0e0e0;
+                font-size: 110%;
             }
             
             .multi-select-dropdown {
@@ -1420,10 +1422,12 @@
             
             .multi-select-option {
                 padding: 0;
+                font-size: 110%;
+                padding-left: 0.4em;
             }
             
             .multi-select-option:hover {
-                background-color: #383838;
+                background-color: #2A56B9;
                 border-radius: 0.5em;
             }
             
