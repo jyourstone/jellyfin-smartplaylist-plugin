@@ -36,7 +36,7 @@
     z-index: 1000;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     border-radius: 1em;
-    transform: translateY(-50%);
+    transform: translateY(-15%);
 }
 
 .multi-select-options {
