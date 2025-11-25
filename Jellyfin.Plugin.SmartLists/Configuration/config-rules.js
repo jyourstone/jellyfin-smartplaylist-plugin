@@ -780,6 +780,15 @@
             '<option value="true">Yes - Also check genres from parent series</option>' +
             '</select>' +
             '</div>' +
+            '<div class="rule-audiolanguages-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">' +
+            '<label style="display: block; margin-bottom: 0.25em; font-size: 0.85em; color: #ccc; font-weight: 500;">' +
+            'Must be the default language:' +
+            '</label>' +
+            '<select is="emby-select" class="emby-select rule-audiolanguages-select" style="width: 100%;">' +
+            '<option value="false">No - Match any audio language</option>' +
+            '<option value="true">Yes - Only match default audio language</option>' +
+            '</select>' +
+            '</div>' +
             '<div class="rule-similarity-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">' +
             '<label style="display: block; margin-bottom: 0.5em; font-size: 0.85em; color: #ccc; font-weight: 500;">' +
             'Compare using these metadata fields (default: Genre + Tags):' +
@@ -837,6 +846,9 @@
         // Initialize Genres options visibility
         SmartLists.updateGenresOptionsVisibility(newRuleRow, fieldSelect.value, page);
 
+        // Initialize AudioLanguages options visibility
+        SmartLists.updateAudioLanguagesOptionsVisibility(newRuleRow, fieldSelect.value, page);
+
         // Initialize Similarity options visibility
         SmartLists.updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
 
@@ -851,6 +863,7 @@
             SmartLists.updateTagsOptionsVisibility(newRuleRow, fieldSelect.value, page);
             SmartLists.updateStudiosOptionsVisibility(newRuleRow, fieldSelect.value, page);
             SmartLists.updateGenresOptionsVisibility(newRuleRow, fieldSelect.value, page);
+            SmartLists.updateAudioLanguagesOptionsVisibility(newRuleRow, fieldSelect.value, page);
             SmartLists.updateSimilarityOptionsVisibility(newRuleRow, fieldSelect.value);
             SmartLists.updatePeopleOptionsVisibility(newRuleRow, fieldSelect.value);
             SmartLists.updateRegexHelp(newRuleRow);
@@ -1493,6 +1506,32 @@
         SmartLists.updateAllRules(page, SmartLists.updateGenresOptionsVisibility);
     };
 
+    SmartLists.updateAudioLanguagesOptionsVisibility = function (ruleRow, fieldValue, page) {
+        const isAudioLanguagesField = fieldValue === 'AudioLanguages';
+        const audioLanguagesOptionsDiv = ruleRow.querySelector('.rule-audiolanguages-options');
+
+        if (audioLanguagesOptionsDiv) {
+            // Get selected media types to check if any audio-capable type is selected
+            const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
+            const hasAudioCapable = selectedMediaTypes.some(function(type) {
+                return SmartLists.AUDIO_CAPABLE_TYPES.indexOf(type) !== -1;
+            });
+
+            // Show only if AudioLanguages field is selected AND an audio-capable media type is selected
+            if (isAudioLanguagesField && hasAudioCapable) {
+                audioLanguagesOptionsDiv.style.display = 'block';
+            } else {
+                // Hide but preserve user's selection - don't reset value
+                audioLanguagesOptionsDiv.style.display = 'none';
+            }
+        }
+    };
+
+    // Update visibility of AudioLanguages options for all rules when media types change
+    SmartLists.updateAllAudioLanguagesOptionsVisibility = function (page) {
+        SmartLists.updateAllRules(page, SmartLists.updateAudioLanguagesOptionsVisibility);
+    };
+
     SmartLists.updateSimilarityOptionsVisibility = function (ruleRow, fieldValue, savedFields) {
         const isSimilarToField = fieldValue === 'SimilarTo';
         const similarityOptionsDiv = ruleRow.querySelector('.rule-similarity-options');
@@ -1639,6 +1678,9 @@
         const expressionSets = [];
         const selectedMediaTypes = SmartLists.getSelectedMediaTypes(page);
         const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
+        const hasAudioCapable = selectedMediaTypes.some(function(type) {
+            return SmartLists.AUDIO_CAPABLE_TYPES.indexOf(type) !== -1;
+        });
 
         page.querySelectorAll('.logic-group').forEach(function (logicGroup) {
             const expressions = [];
@@ -1745,6 +1787,17 @@
                         const includeParentSeriesGenres = genresSelect.value === 'true';
                         if (includeParentSeriesGenres) {
                             expression.IncludeParentSeriesGenres = true;
+                        }
+                        // If false (default), don't include the parameter to save space
+                    }
+
+                    // Handle AudioLanguages-specific options (only if audio-capable media type is selected)
+                    const audioLanguagesSelect = rule.querySelector('.rule-audiolanguages-select');
+                    if (audioLanguagesSelect && memberName === 'AudioLanguages' && hasAudioCapable) {
+                        // Convert string to boolean and only include if it's explicitly true
+                        const onlyDefaultAudioLanguage = audioLanguagesSelect.value === 'true';
+                        if (onlyDefaultAudioLanguage) {
+                            expression.OnlyDefaultAudioLanguage = true;
                         }
                         // If false (default), don't include the parameter to save space
                     }
@@ -1867,6 +1920,13 @@
                 if (genresSelect) {
                     const includeValue = expression.IncludeParentSeriesGenres === true ? 'true' : 'false';
                     genresSelect.value = includeValue;
+                }
+            }
+            if (expression.MemberName === 'AudioLanguages') {
+                const audioLanguagesSelect = ruleRow.querySelector('.rule-audiolanguages-select');
+                if (audioLanguagesSelect) {
+                    const includeValue = expression.OnlyDefaultAudioLanguage === true ? 'true' : 'false';
+                    audioLanguagesSelect.value = includeValue;
                 }
             }
             if (expression.MemberName === 'SimilarTo') {

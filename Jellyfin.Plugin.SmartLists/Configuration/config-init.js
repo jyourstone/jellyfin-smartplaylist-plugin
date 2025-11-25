@@ -274,6 +274,9 @@
             if (SmartLists.updateAllGenresOptionsVisibility) {
                 SmartLists.updateAllGenresOptionsVisibility(page);
             }
+            if (SmartLists.updateAllAudioLanguagesOptionsVisibility) {
+                SmartLists.updateAllAudioLanguagesOptionsVisibility(page);
+            }
 
             // 3) Update sort options visibility based on media types
             if (SmartLists.updateAllSortOptionsVisibility) {
@@ -1675,6 +1678,9 @@
         }
         if (SmartLists.updateAllGenresOptionsVisibility) {
             SmartLists.updateAllGenresOptionsVisibility(page);
+        }
+        if (SmartLists.updateAllAudioLanguagesOptionsVisibility) {
+            SmartLists.updateAllAudioLanguagesOptionsVisibility(page);
         }
 
         // Collections are server-wide, no library loading needed

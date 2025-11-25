@@ -591,6 +591,7 @@
                 SmartLists.updateAllTagsOptionsVisibility(page);
                 SmartLists.updateAllStudiosOptionsVisibility(page);
                 SmartLists.updateAllGenresOptionsVisibility(page);
+                SmartLists.updateAllAudioLanguagesOptionsVisibility(page);
                 SmartLists.updateAllCollectionsOptionsVisibility(page);
                 SmartLists.updateAllNextUnwatchedOptionsVisibility(page);
 
@@ -800,6 +801,7 @@
                 SmartLists.updateAllTagsOptionsVisibility(page);
                 SmartLists.updateAllStudiosOptionsVisibility(page);
                 SmartLists.updateAllGenresOptionsVisibility(page);
+                SmartLists.updateAllAudioLanguagesOptionsVisibility(page);
                 SmartLists.updateAllCollectionsOptionsVisibility(page);
                 SmartLists.updateAllNextUnwatchedOptionsVisibility(page);
 
@@ -1134,6 +1136,12 @@
                             genresInfo = ' (including parent series genres)';
                         }
 
+                        // Add AudioLanguages configuration info
+                        let audioLanguagesInfo = '';
+                        if (rule.MemberName === 'AudioLanguages' && rule.OnlyDefaultAudioLanguage === true) {
+                            audioLanguagesInfo = ' (default only)';
+                        }
+
                         // Add SimilarTo comparison fields info
                         let similarityInfo = '';
                         if (rule.MemberName === 'SimilarTo') {
@@ -1145,7 +1153,7 @@
                         }
 
                         rulesHtml += '<span style="font-family: monospace; background: #232323; padding: 4px 4px; border-radius: 3px;">';
-                        rulesHtml += SmartLists.escapeHtml(fieldName) + ' ' + SmartLists.escapeHtml(operator) + ' "' + SmartLists.escapeHtml(value) + '"' + SmartLists.escapeHtml(userInfo) + SmartLists.escapeHtml(nextUnwatchedInfo) + SmartLists.escapeHtml(collectionsInfo) + SmartLists.escapeHtml(tagsInfo) + SmartLists.escapeHtml(studiosInfo) + SmartLists.escapeHtml(genresInfo) + SmartLists.escapeHtml(similarityInfo);
+                        rulesHtml += SmartLists.escapeHtml(fieldName) + ' ' + SmartLists.escapeHtml(operator) + ' "' + SmartLists.escapeHtml(value) + '"' + SmartLists.escapeHtml(userInfo) + SmartLists.escapeHtml(nextUnwatchedInfo) + SmartLists.escapeHtml(collectionsInfo) + SmartLists.escapeHtml(tagsInfo) + SmartLists.escapeHtml(studiosInfo) + SmartLists.escapeHtml(genresInfo) + SmartLists.escapeHtml(audioLanguagesInfo) + SmartLists.escapeHtml(similarityInfo);
                         rulesHtml += '</span>';
                     }
                     rulesHtml += '</div>';

@@ -116,6 +116,22 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 return BuildCombinedStringEnumerableExpression(r, param, "Genres", "ParentSeriesGenres", logger);
             }
 
+            // Special handling for AudioLanguages field with OnlyDefaultAudioLanguage option
+            if (r.MemberName == "AudioLanguages" && r.OnlyDefaultAudioLanguage == true)
+            {
+                logger?.LogDebug("SmartLists building AudioLanguages expression with default language only");
+                // Get the DefaultAudioLanguages property and build expression using normal flow
+                var defaultAudioLanguagesProperty = System.Linq.Expressions.Expression.PropertyOrField(param, "DefaultAudioLanguages");
+                var defaultAudioLanguagesType = defaultAudioLanguagesProperty.Type;
+                // DefaultAudioLanguages is List<string>, same as AudioLanguages, so use the same enumerable expression builder
+                var enumerableExpr = BuildEnumerableExpression(r, defaultAudioLanguagesProperty, defaultAudioLanguagesType, logger);
+                if (enumerableExpr != null)
+                {
+                    return enumerableExpr;
+                }
+                // If BuildEnumerableExpression returns null, fall through to normal flow (shouldn't happen for List<string>)
+            }
+
             // Get the property/field expression for non-user-specific fields
             var left = System.Linq.Expressions.Expression.PropertyOrField(param, r.MemberName);
             var tProp = left.Type;
