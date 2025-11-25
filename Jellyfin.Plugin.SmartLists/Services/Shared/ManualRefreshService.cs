@@ -144,6 +144,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
         private static Task<Guid> GetPlaylistUserIdAsync(SmartPlaylistDto playlist)
         {
+            // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
             if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId))
             {
                 return Task.FromResult(userId);

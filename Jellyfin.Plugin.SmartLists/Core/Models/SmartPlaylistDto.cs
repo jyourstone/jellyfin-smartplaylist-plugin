@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Jellyfin.Plugin.SmartLists.Core.Models
@@ -15,8 +16,27 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         }
 
         // Playlist-specific properties
-        public string? JellyfinPlaylistId { get; set; }  // Jellyfin playlist ID for reliable lookup
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? JellyfinPlaylistId { get; set; }  // Jellyfin playlist ID for reliable lookup (backwards compatibility - first user's playlist)
         public bool Public { get; set; } = false; // Default to private
+
+        /// <summary>
+        /// Multi-user playlist support: Array of user-playlist mappings.
+        /// When multiple users are selected, one Jellyfin playlist is created per user.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<UserPlaylistMapping>? UserPlaylists { get; set; }
+
+        /// <summary>
+        /// Mapping between a user ID and their associated Jellyfin playlist ID
+        /// </summary>
+        [Serializable]
+        public class UserPlaylistMapping
+        {
+            public required string UserId { get; set; }
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? JellyfinPlaylistId { get; set; }
+        }
     }
 }
 

@@ -65,6 +65,8 @@ namespace Jellyfin.Plugin.SmartLists.Core
             Id = dto.Id ?? throw new ArgumentException("Playlist ID cannot be null", nameof(dto));
             Name = dto.Name;
             FileName = dto.FileName ?? $"{dto.Id}.json";
+            // DEPRECATED: dto.UserId is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
             UserId = Guid.TryParse(dto.UserId, out var userId) ? userId : Guid.Empty;
 
             // Initialize properties before calling InitializeFromDto
@@ -81,6 +83,9 @@ namespace Jellyfin.Plugin.SmartLists.Core
             Id = dto.Id ?? throw new ArgumentException("Collection ID cannot be null", nameof(dto));
             Name = dto.Name;
             FileName = dto.FileName ?? $"{dto.Id}.json";
+            // DEPRECATED: dto.UserId is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+            // Note: Collections still use UserId for owner context (IsPlayed, IsFavorite, etc.)
             UserId = Guid.TryParse(dto.UserId, out var userId) ? userId : Guid.Empty; // Owner user for rule context (IsPlayed, IsFavorite, etc.)
 
             // Initialize properties before calling InitializeFromDto
@@ -137,7 +142,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             }
         }
 
-        private List<List<Func<Operand, bool>>> CompileRuleSets(ILogger? logger = null)
+        private List<List<Func<Operand, bool>>> CompileRuleSets(string? defaultUserId = null, ILogger? logger = null)
         {
             try
             {
@@ -151,8 +156,14 @@ namespace Jellyfin.Plugin.SmartLists.Core
                     return [];
                 }
 
-                // OPTIMIZATION: Generate a cache key based on the rule set content
-                var ruleSetHash = GenerateRuleSetHash();
+                // Use provided defaultUserId or fall back to SmartList.UserId for backwards compatibility
+                // DEPRECATED: SmartList.UserId fallback is for backwards compatibility with old single-user playlists.
+                // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                // Normalize to "N" format (no dashes) to match UserPlaylists format
+                var effectiveDefaultUserId = defaultUserId ?? (UserId != Guid.Empty ? UserId.ToString("N") : null);
+
+                // OPTIMIZATION: Generate a cache key based on the rule set content and defaultUserId
+                var ruleSetHash = GenerateRuleSetHash(effectiveDefaultUserId);
 
                 return _ruleCache.GetOrAdd(ruleSetHash, _ =>
                 {
@@ -199,15 +210,14 @@ namespace Jellyfin.Plugin.SmartLists.Core
 
                                 try
                                 {
-                                    // Validate UserId before converting to string to prevent runtime errors
-                                    var userIdString = UserId != Guid.Empty ? UserId.ToString() : null;
-                                    if (string.IsNullOrEmpty(userIdString))
+                                    // Use effectiveDefaultUserId (passed parameter or SmartList.UserId fallback)
+                                    if (string.IsNullOrEmpty(effectiveDefaultUserId))
                                     {
-                                        logger?.LogError("SmartList '{PlaylistName}' has no valid owner user ID. Cannot compile rules.", Name);
+                                        logger?.LogError("SmartList '{PlaylistName}' has no valid default user ID. Cannot compile rules.", Name);
                                         continue; // Skip this rule set,
                                     }
 
-                                    var compiledRule = Engine.CompileRule<Operand>(expr, userIdString, logger);
+                                    var compiledRule = Engine.CompileRule<Operand>(expr, effectiveDefaultUserId, logger);
                                     if (compiledRule != null)
                                     {
                                         compiledRules.Add(compiledRule);
@@ -323,14 +333,14 @@ namespace Jellyfin.Plugin.SmartLists.Core
             return (_ruleCache.Count, MAX_CACHE_SIZE, CLEANUP_THRESHOLD, _lastCleanupTime);
         }
 
-        private string GenerateRuleSetHash()
+        private string GenerateRuleSetHash(string? defaultUserId = null)
         {
             try
             {
                 // Input validation
                 if (ExpressionSets == null)
                 {
-                    return $"id:{Id ?? ""}|sets:0";
+                    return $"id:{Id ?? ""}|sets:0|defaultUser:{defaultUserId ?? ""}";
                 }
 
                 // Use StringBuilder for efficient string concatenation
@@ -338,6 +348,9 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 hashBuilder.Append(Id ?? "");
                 hashBuilder.Append('|');
                 hashBuilder.Append(ExpressionSets.Count);
+                hashBuilder.Append('|');
+                hashBuilder.Append("defaultUser:");
+                hashBuilder.Append(defaultUserId ?? "");
 
                 for (int i = 0; i < ExpressionSets.Count; i++)
                 {
@@ -402,7 +415,7 @@ namespace Jellyfin.Plugin.SmartLists.Core
             catch (Exception)
             {
                 // If hash generation fails, return a fallback hash based on basic properties
-                return $"fallback:{Id ?? ""}:{ExpressionSets?.Count ?? 0}";
+                return $"fallback:{Id ?? ""}:{ExpressionSets?.Count ?? 0}:defaultUser:{defaultUserId ?? ""}";
             }
         }
 
@@ -681,10 +694,11 @@ namespace Jellyfin.Plugin.SmartLists.Core
                         includeUnwatchedSeries = !nextUnwatchedRules.Any(rule => rule.IncludeUnwatchedSeries == false);
 
                         // Collect unique user IDs from user-specific expressions
+                        // Normalize to "N" format (no dashes) to match UserPlaylists format
                         additionalUserIds = [..ExpressionSets
                             .SelectMany(set => set?.Expressions ?? [])
                             .Where(expr => expr?.IsUserSpecific == true && !string.IsNullOrEmpty(expr.UserId))
-                            .Select(expr => expr.UserId!)
+                            .Select(expr => Guid.TryParse(expr.UserId, out var guid) ? guid.ToString("N") : expr.UserId!)
                             .Distinct()];
 
                         if (additionalUserIds.Count > 0)
@@ -767,10 +781,13 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 }
 
                 // Compile rules with error handling
+                // Use the user parameter's ID as the default for user-specific fields without explicit UserId
+                // Normalize to "N" format (no dashes) to match UserPlaylists format
+                var defaultUserId = user.Id.ToString("N");
                 List<List<Func<Operand, bool>>>? compiledRules = null;
                 try
                 {
-                    compiledRules = CompileRuleSets(logger);
+                    compiledRules = CompileRuleSets(defaultUserId, logger);
                 }
                 catch (Exception ex)
                 {
@@ -1317,7 +1334,10 @@ namespace Jellyfin.Plugin.SmartLists.Core
                 var matchingEpisodes = new List<BaseItem>();
 
                 // Compile the rules if not already compiled
-                var compiledRules = CompileRuleSets(logger);
+                // Use the user parameter's ID as the default for user-specific fields without explicit UserId
+                // Normalize to "N" format (no dashes) to match UserPlaylists format
+                var defaultUserId = user.Id.ToString("N");
+                var compiledRules = CompileRuleSets(defaultUserId, logger);
                 if (compiledRules == null || compiledRules.Count == 0)
                 {
                     return episodes; // No rules to check against,

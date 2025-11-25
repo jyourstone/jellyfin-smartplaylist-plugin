@@ -75,7 +75,7 @@ Some fields have additional optional settings that appear when you select them. 
 
 ### User-Specific Fields
 
-The following fields support an optional **user selector** that allows you to check playback data for a specific user instead of the playlist/collection owner:
+The following fields support an optional **user selector** that allows you to check playback data for a specific user:
 
 - **Is Played**
 - **Is Favorite**
@@ -83,7 +83,20 @@ The following fields support an optional **user selector** that allows you to ch
 - **Next Unwatched**
 - **Last Played**
 
-By default, these fields check the owner's data. You can optionally select a specific user from the dropdown to check their playback status instead. This is useful for creating shared playlists that show different content based on who is viewing them.
+#### How User Selection Works
+
+**For Playlists:**
+- **Default behavior**: When you select users for a playlist (in the "Users" field), user-specific fields without an explicit user selection will automatically use the playlist user being processed. This means if you create a playlist with users "Alice" and "Bob", each user gets their own personalized playlist based on their own data.
+- **Explicit user selection**: You can optionally select a specific user from the dropdown in the rule itself to check that user's data, even if they're not one of the playlist users. This is useful for creating rules like "Is Favorite for Alice" in a playlist that belongs to Bob.
+
+**For Collections:**
+- **Default behavior**: User-specific fields use the collection's reference user (the user you selected when creating the collection).
+- **Explicit user selection**: You can optionally select a different user from the dropdown to check their playback status instead.
+
+**Examples:**
+- **Multi-user playlist**: Create a playlist with users "Alice" and "Bob", add rule "Is Favorite = True" (no user selected). Result: Alice sees her favorites, Bob sees his favorites.
+- **Cross-user rule**: Create a playlist for "Bob", add rule "Is Favorite = True" with user "Alice" selected. Result: Bob's playlist shows Alice's favorites.
+- **Collection**: Create a collection with reference user "Alice", add rule "Is Played = False" (no user selected). Result: Shows unwatched items from Alice's perspective.
 
 ### Next Unwatched Options
 

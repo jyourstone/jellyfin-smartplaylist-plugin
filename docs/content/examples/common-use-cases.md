@@ -8,6 +8,12 @@ Here are some popular playlist and collection types you can create:
 - **Next Unwatched** = True
 - Shows next episodes to watch for each series
 
+### Family Continue Watching (Multi-User)
+- **Next Unwatched** = True (no user selected - uses each playlist user's data)
+- **Users**: Select multiple family members
+- Each family member gets their own personalized "Continue Watching" playlist showing their next unwatched episodes
+- Auto-refreshes when any family member watches an episode
+
 ### Family Movie Night
 - **Next Unwatched** = True AND **Parental Rating** = "PG" or "G"
 
@@ -47,6 +53,12 @@ Here are some popular playlist and collection types you can create:
 
 ### Rediscover Music
 - **Last Played** older than 6 months
+
+### Family Favorites Playlist (Multi-User)
+- **Is Favorite** = True (no user selected - uses each playlist user's data)
+- **Users**: Select multiple family members (e.g., "Mom", "Dad", "Alice", "Bob")
+- Each family member gets their own personalized playlist showing their favorites
+- Auto-refreshes when any family member marks/unmarks items as favorites
 
 ## Home Videos & Photos
 

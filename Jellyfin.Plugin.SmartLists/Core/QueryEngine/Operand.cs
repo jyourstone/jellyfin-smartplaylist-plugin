@@ -105,7 +105,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
         public bool GetIsFavoriteByUser(string userId)
         {
-            return IsFavoriteByUser.TryGetValue(userId, out var value) && value;
+            var hasKey = IsFavoriteByUser.TryGetValue(userId, out var value);
+            // Note: We can't log here as this method is called from compiled expressions
+            // If lookup fails, it means the UserId format doesn't match what was used during population
+            return hasKey && value;
         }
 
         public bool GetNextUnwatchedByUser(string userId)

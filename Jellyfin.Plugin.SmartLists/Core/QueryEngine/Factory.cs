@@ -399,7 +399,32 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             if (isFavoriteProp != null)
             {
                 var isFavoriteValue = isFavoriteProp.GetValue(userData);
-                operand.IsFavoriteByUser[userId] = isFavoriteValue != null && (bool)isFavoriteValue;
+                // Handle nullable bool - check if it's a bool or bool?
+                bool isFavorite = false;
+                if (isFavoriteValue != null)
+                {
+                    if (isFavoriteValue is bool boolValue)
+                    {
+                        isFavorite = boolValue;
+                    }
+                    else if (isFavoriteValue.GetType().IsGenericType && 
+                             isFavoriteValue.GetType().GetGenericTypeDefinition() == typeof(Nullable<>) &&
+                             isFavoriteValue.GetType().GetGenericArguments()[0] == typeof(bool))
+                    {
+                        // Handle nullable bool
+                        var hasValueProp = isFavoriteValue.GetType().GetProperty("HasValue");
+                        var valueProp = isFavoriteValue.GetType().GetProperty("Value");
+                        if (hasValueProp != null && valueProp != null)
+                        {
+                            var hasValue = (bool)(hasValueProp.GetValue(isFavoriteValue) ?? false);
+                            if (hasValue)
+                            {
+                                isFavorite = (bool)(valueProp.GetValue(isFavoriteValue) ?? false);
+                            }
+                        }
+                    }
+                }
+                operand.IsFavoriteByUser[userId] = isFavorite;
             }
             else
             {
@@ -1612,17 +1637,20 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             {
                 if (userDataManager != null && userData != null)
                 {
-                    // Populate user-specific data for playlist owner
-                    PopulateUserData(operand, user.Id.ToString(), isPlayed, userData);
+                    // Populate user-specific data for playlist user
+                    // Normalize to "N" format (no dashes) to match UserPlaylists format
+                    var normalizedUserId = user.Id.ToString("N");
+                    PopulateUserData(operand, normalizedUserId, isPlayed, userData!);
                 }
                 else if (userDataManager != null)
                 {
-                    // Fallback when userData is null - treat as never played for playlist owner
-                    SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
+                    // Fallback when userData is null - treat as never played for playlist user
+                    // Normalize to "N" format (no dashes) to match UserPlaylists format
+                    SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
                 }
                 else
                 {
-                    // Fallback approach - try reflection and populate dictionaries for playlist owner
+                    // Fallback approach - try reflection and populate dictionaries for playlist user
                     var userDataProperty = baseItem.GetType().GetProperty("UserData");
                     if (userDataProperty != null)
                     {
@@ -1630,18 +1658,21 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                         if (reflectedUserData != null)
                         {
                             // Use our helper method to populate user data consistently
-                            PopulateUserData(operand, user.Id.ToString(), isPlayed, reflectedUserData);
+                            // Normalize to "N" format (no dashes) to match UserPlaylists format
+                            PopulateUserData(operand, user.Id.ToString("N"), isPlayed, reflectedUserData);
                         }
                         else
                         {
-                            // UserData is null - set fallback values for playlist owner
-                            SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
+                            // UserData is null - set fallback values for playlist user
+                            // Normalize to "N" format (no dashes) to match UserPlaylists format
+                            SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
                         }
                     }
                     else
                     {
-                        // UserData property not found - set fallback values for playlist owner
-                        SetUserDataFallbacks(operand, user.Id.ToString(), isPlayed);
+                        // UserData property not found - set fallback values for playlist user
+                        // Normalize to "N" format (no dashes) to match UserPlaylists format
+                        SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
                     }
                 }
             }
@@ -1660,6 +1691,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     {
                         if (Guid.TryParse(userId, out var userGuid))
                         {
+                            // Normalize the userId for dictionary keys
+                            var normalizedUserId = userGuid.ToString("N");
+                            
                             // Try to get user by ID
                             try
                             {
@@ -1683,16 +1717,17 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                         }
                                     }
                                     var userIsPlayed = targetUserData != null ? baseItem.IsPlayed(targetUser, targetUserData) : false;
-                                    operand.IsPlayedByUser[userId] = userIsPlayed;
+                                    // Use normalized ID for all dictionary operations
+                                    operand.IsPlayedByUser[normalizedUserId] = userIsPlayed;
 
                                     if (targetUserData != null)
                                     {
-                                        PopulateUserData(operand, userId, userIsPlayed, targetUserData);
+                                        PopulateUserData(operand, normalizedUserId, userIsPlayed, targetUserData);
                                     }
                                     else
                                     {
                                         // Fallback values when targetUserData is null
-                                        SetUserDataFallbacks(operand, userId, userIsPlayed);
+                                        SetUserDataFallbacks(operand, normalizedUserId, userIsPlayed);
                                     }
                                 }
                                 else
@@ -1933,9 +1968,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                 // Get all episodes in this series - use cache to avoid redundant database queries
                                 var allEpisodes = GetCachedSeriesEpisodes(seriesGuid, user, libraryManager, cache, logger);
 
-                                // First, calculate NextUnwatched for the main user (playlist owner)
+                                // First, calculate NextUnwatched for the main user (playlist user)
                                 var mainUserNextUnwatched = IsNextUnwatchedEpisodeCached(allEpisodes, baseItem, user, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, userDataManager, logger);
-                                operand.NextUnwatchedByUser[user.Id.ToString()] = mainUserNextUnwatched;
+                                // Normalize to "N" format (no dashes) to match UserPlaylists format
+                                operand.NextUnwatchedByUser[user.Id.ToString("N")] = mainUserNextUnwatched;
 
                                 // Then check for additional users
                                 if (additionalUserIds != null)
@@ -1944,12 +1980,14 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                     {
                                         if (Guid.TryParse(userId, out var userGuid))
                                         {
+                                            // Normalize before using as keys
+                                            var normalizedUserId = userGuid.ToString("N");
                                             var targetUser = GetUserById(userManager, userGuid);
                                             if (targetUser != null)
                                             {
                                                 var episodesForUser = GetCachedSeriesEpisodes(seriesGuid, targetUser, libraryManager, cache, logger);
                                                 var isNextUnwatched = IsNextUnwatchedEpisodeCached(episodesForUser, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, userDataManager, logger);
-                                                operand.NextUnwatchedByUser[userId] = isNextUnwatched;
+                                                operand.NextUnwatchedByUser[normalizedUserId] = isNextUnwatched;
                                             }
                                         }
                                         else

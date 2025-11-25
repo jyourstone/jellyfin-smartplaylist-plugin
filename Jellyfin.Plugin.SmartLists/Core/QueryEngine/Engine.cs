@@ -20,6 +20,32 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         private static readonly ConcurrentDictionary<string, Regex> _regexCache = new();
 
         /// <summary>
+        /// Normalizes a UserId string to "N" format (no dashes) for consistent dictionary lookups.
+        /// Handles various GUID formats and converts them to the standard format used by UserPlaylists.
+        /// </summary>
+        /// <param name="userId">The user ID string in any valid GUID format</param>
+        /// <returns>Normalized user ID in "N" format (no dashes), or original string if not a valid GUID</returns>
+        /// <remarks>
+        /// Note: Adding logging here would require passing ILogger through many call chains.
+        /// The current approach is acceptable since invalid GUIDs will fail with clear errors downstream.
+        /// </remarks>
+        private static string NormalizeUserId(string userId)
+        {
+            if (string.IsNullOrEmpty(userId))
+                return userId;
+
+            // Try to parse as GUID and convert to "N" format (no dashes)
+            if (Guid.TryParse(userId, out var guid))
+            {
+                return guid.ToString("N");
+            }
+
+            // If not a valid GUID, return as-is (shouldn't happen in normal operation)
+            // Invalid GUIDs will fail downstream with better context than logging here
+            return userId;
+        }
+
+        /// <summary>
         /// Gets or creates a compiled regex pattern from the cache.
         /// </summary>
         /// <param name="pattern">The regex pattern</param>
@@ -48,7 +74,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             // Check if this is a user-specific field that should always use method calls
             if (ModelExpression.IsUserSpecificField(r.MemberName))
             {
-                // Use the specified user ID or default to playlist owner
+                // Use the specified user ID or default to playlist user
                 var effectiveUserId = r.UserId ?? defaultUserId;
                 if (string.IsNullOrEmpty(effectiveUserId))
                 {
@@ -56,10 +82,13 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     throw new ArgumentException($"User-specific field '{r.MemberName}' requires a valid user ID, but no user ID was provided and no default user ID is available.");
                 }
 
+                // Normalize UserId to "N" format (no dashes) to match UserPlaylists format for consistent dictionary lookups
+                var normalizedUserId = NormalizeUserId(effectiveUserId);
+
                 // Create a new expression with all properties copied and effective user ID set
                 var userSpecificExpression = new Expression(r.MemberName, r.Operator, r.TargetValue)
                 {
-                    UserId = effectiveUserId,
+                    UserId = normalizedUserId,
                     IncludeUnwatchedSeries = r.IncludeUnwatchedSeries,
                 };
 
@@ -195,8 +224,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 throw new ArgumentException($"User-specific method '{methodName}' not found for field '{r.MemberName}'");
             }
 
-            // Create the method call: operand.GetIsPlayedByUser(userId)
-            var methodCall = System.Linq.Expressions.Expression.Call(param, method, System.Linq.Expressions.Expression.Constant(r.UserId));
+            // Create the method call: operand.GetIsFavoriteByUser(userId)
+            // Ensure UserId is normalized for consistent dictionary lookups
+            // Note: r.UserId should already be normalized and non-null from BuildExpr, but we validate defensively
+            if (string.IsNullOrEmpty(r.UserId))
+            {
+                logger?.LogError("SmartLists BuildUserSpecificExpression: UserId is null or empty for field '{Field}'", r.MemberName);
+                throw new ArgumentException($"UserId is required for user-specific field '{r.MemberName}'");
+            }
+            var normalizedUserId = NormalizeUserId(r.UserId);
+            var methodCall = System.Linq.Expressions.Expression.Call(param, method, System.Linq.Expressions.Expression.Constant(normalizedUserId));
 
             // Get the return type of the method to handle different data types properly
             var returnType = method.ReturnType;
@@ -239,9 +276,12 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 throw new ArgumentException($"Boolean comparison requires a valid true/false value for field '{fieldName}', but got: '{targetValue}'");
             }
 
-            if (!bool.TryParse(targetValue, out bool boolValue))
+            // Strip quotes if present (JSON serialization may add them)
+            var cleanedValue = targetValue.Trim().Trim('"').Trim('\'');
+
+            if (!bool.TryParse(cleanedValue, out bool boolValue))
             {
-                logger?.LogError("SmartLists boolean comparison failed: Invalid boolean value '{Value}' for field '{Field}'", targetValue, fieldName);
+                logger?.LogError("SmartLists boolean comparison failed: Invalid boolean value '{Value}' (cleaned: '{Cleaned}') for field '{Field}'", targetValue, cleanedValue, fieldName);
                 throw new ArgumentException($"Invalid boolean value '{targetValue}' for field '{fieldName}'. Expected 'true' or 'false'.");
             }
 

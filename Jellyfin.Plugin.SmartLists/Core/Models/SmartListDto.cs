@@ -32,8 +32,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         
         /// <summary>
         /// Owner user ID - the user this list belongs to or whose context is used for rule evaluation
+        /// For playlists using UserPlaylists array, this will be null. For collections, this contains the owner user ID.
         /// </summary>
-        public string UserId { get; set; } = string.Empty;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? UserId { get; set; }
 
         // Query and filtering
         public List<ExpressionSet> ExpressionSets { get; set; } = [];

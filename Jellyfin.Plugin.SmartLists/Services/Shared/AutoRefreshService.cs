@@ -1021,7 +1021,27 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         {
             try
             {
-                // Check if the user is the playlist owner
+                // Check if the user is in the UserPlaylists array (multi-user playlists)
+                // UserPlaylists stores UserId in "N" format (no dashes), so normalize for comparison
+                if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+                {
+                    var normalizedTriggeringUserId = userId.ToString("N");
+                    foreach (var userMapping in playlist.UserPlaylists)
+                    {
+                        if (!string.IsNullOrEmpty(userMapping.UserId))
+                        {
+                            var normalizedMappingUserId = NormalizeUserIdForComparison(userMapping.UserId);
+                            if (string.Equals(normalizedMappingUserId, normalizedTriggeringUserId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                // Check if the user is the playlist user (backwards compatibility for single-user playlists)
+                // DEPRECATED: This check is for backwards compatibility with old single-user playlists.
+                // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
                 if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var playlistUserId) && playlistUserId == userId)
                 {
                     return true;
@@ -1037,11 +1057,15 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             foreach (var expression in expressionSet.Expressions)
                             {
                                 // Check if this expression is user-specific and references our user
-                                if (!string.IsNullOrEmpty(expression.UserId) &&
-                                    Guid.TryParse(expression.UserId, out var expressionUserId) &&
-                                    expressionUserId == userId)
+                                // Normalize UserId to "N" format for comparison
+                                if (!string.IsNullOrEmpty(expression.UserId))
                                 {
-                                    return true;
+                                    var normalizedExpressionUserId = NormalizeUserIdForComparison(expression.UserId);
+                                    var normalizedTriggeringUserId = userId.ToString("N");
+                                    if (normalizedExpressionUserId == normalizedTriggeringUserId)
+                                    {
+                                        return true;
+                                    }
                                 }
                             }
                         }
@@ -1055,6 +1079,22 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 _logger.LogError(ex, "Error checking user relevance for playlist {PlaylistName}", playlist.Name);
                 return true; // Default to including the playlist if we can't determine relevance,
             }
+        }
+
+        /// <summary>
+        /// Normalizes a UserId string to "N" format (no dashes) for consistent comparison.
+        /// </summary>
+        private static string NormalizeUserIdForComparison(string userId)
+        {
+            if (string.IsNullOrEmpty(userId))
+                return userId;
+
+            if (Guid.TryParse(userId, out var guid))
+            {
+                return guid.ToString("N");
+            }
+
+            return userId;
         }
 
         /// <summary>

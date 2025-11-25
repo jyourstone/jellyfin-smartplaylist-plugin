@@ -7,6 +7,12 @@
         SmartLists = window.SmartLists;
     }
 
+    // Normalize user ID for consistent cache lookups (remove dashes, lowercase)
+    const normalizeUserId = function (userId) {
+        if (!userId || typeof userId !== 'string') return '';
+        return userId.replace(/-/g, '').toLowerCase();
+    };
+
     // Centralized filter configuration - eliminates DRY violations
     SmartLists.PLAYLIST_FILTER_CONFIGS = {
         search: {
@@ -59,18 +65,17 @@
             filterFn: function (playlists, userFilter) {
                 if (!userFilter || userFilter === 'all') return playlists;
 
-                // Normalize user IDs for comparison to handle both dashed and non-dashed formats
-                const normalizeUserId = function (userId) {
-                    if (!userId || typeof userId !== 'string') {
-                        return '';
-                    }
-                    return userId.replace(/-/g, '').toLowerCase();
-                };
-
                 const normalizedFilter = normalizeUserId(userFilter);
 
                 return playlists.filter(function (playlist) {
                     // User filter applies to both playlists (owner) and collections (rule context user)
+                    // Check UserPlaylists array (multi-user playlists)
+                    if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                        return playlist.UserPlaylists.some(function(mapping) {
+                            return normalizeUserId(mapping.UserId) === normalizedFilter;
+                        });
+                    }
+                    // Fallback to UserId (backwards compatibility)
                     const normalizedPlaylistUserId = normalizeUserId(playlist.UserId);
                     return normalizedPlaylistUserId === normalizedFilter;
                 });
@@ -165,11 +170,23 @@
                 return true;
             }
 
-            // Search in username (resolved from User ID)
-            if (page && page._usernameCache && playlist.UserId) {
-                const username = page._usernameCache.get(playlist.UserId);
-                if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
-                    return true;
+            // Search in username (resolved from User ID or UserPlaylists)
+            if (page && page._usernameCache) {
+                // Check UserPlaylists array (multi-user playlists)
+                if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                    for (let j = 0; j < playlist.UserPlaylists.length; j++) {
+                        const username = page._usernameCache.get(normalizeUserId(playlist.UserPlaylists[j].UserId));
+                        if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
+                            return true;
+                        }
+                    }
+                }
+                // Fallback to UserId (backwards compatibility)
+                if (playlist.UserId) {
+                    const username = page._usernameCache.get(normalizeUserId(playlist.UserId));
+                    if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
+                        return true;
+                    }
                 }
             }
 
@@ -385,7 +402,7 @@
         }
     };
 
-    SmartLists.populateUserFilter = function (page, playlists) {
+    SmartLists.populateUserFilter = async function (page, playlists) {
         const userFilter = page.querySelector('#userFilter');
         if (!userFilter || !playlists) return Promise.resolve();
 
@@ -418,16 +435,24 @@
             // Normalize IDs to prevent duplicates when both dashed and non-dashed formats exist
             const userIds = [];
             const seenIds = {};
-            const normalizeUserId = function (userId) {
-                if (!userId || typeof userId !== 'string') {
-                    return '';
-                }
-                return userId.replace(/-/g, '').toLowerCase();
-            };
 
             for (var i = 0; i < playlists.length; i++) {
-                const userId = playlists[i].UserId;  // UserId field contains the user ID
-                if (userId) {
+                const playlist = playlists[i];
+                // Check UserPlaylists array (multi-user playlists)
+                if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                    for (var j = 0; j < playlist.UserPlaylists.length; j++) {
+                        const userId = playlist.UserPlaylists[j].UserId;
+                        if (userId) {
+                            const normalizedId = normalizeUserId(userId);
+                            if (!seenIds[normalizedId]) {
+                                userIds.push(userId);
+                                seenIds[normalizedId] = true;
+                            }
+                        }
+                    }
+                } else if (playlist.UserId) {
+                    // Fallback to UserId (backwards compatibility)
+                    const userId = playlist.UserId;
                     const normalizedId = normalizeUserId(userId);
                     if (!seenIds[normalizedId]) {
                         userIds.push(userId);
@@ -461,8 +486,9 @@
                             option.value = userId;
                             option.textContent = userName;
                             userFilter.appendChild(option);
-                            // Cache the username
+                            // Cache the username (store both raw and normalized for robustness)
                             page._usernameCache.set(userId, userName);
+                            page._usernameCache.set(normalizeUserId(userId), userName);
                         }
                     }).catch(function (err) {
                         console.error('Error resolving user ID ' + userId + ':', err);
@@ -471,18 +497,19 @@
                         option.value = userId;
                         option.textContent = 'Unknown User';
                         userFilter.appendChild(option);
+                        // Cache the username (store both raw and normalized for robustness)
                         page._usernameCache.set(userId, 'Unknown User');
+                        page._usernameCache.set(normalizeUserId(userId), 'Unknown User');
                     })
                 );
             }
 
-            return Promise.all(promises).then(function () {
-                // Restore user filter preference now that options are populated
-                // This fixes the issue where the preference is loaded before options exist and gets rejected
-                if (SmartLists.loadPlaylistFilterPreferences) {
-                    SmartLists.loadPlaylistFilterPreferences(page);
-                }
-            });
+            await Promise.all(promises);
+            // Restore user filter preference now that options are populated
+            // This fixes the issue where the preference is loaded before options exist and gets rejected
+            if (SmartLists.loadPlaylistFilterPreferences) {
+                SmartLists.loadPlaylistFilterPreferences(page);
+            }
         } catch (err) {
             console.error('Error populating user filter:', err);
             return Promise.resolve();

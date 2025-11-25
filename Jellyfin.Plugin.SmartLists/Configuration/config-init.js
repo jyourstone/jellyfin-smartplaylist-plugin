@@ -433,9 +433,10 @@
     SmartLists.loadUsers = async function (page) {
         const apiClient = SmartLists.getApiClient();
         const userSelect = page.querySelector('#playlistUser');
+        const multiSelectContainer = page.querySelector('#playlistUserMultiSelect');
 
-        if (!userSelect) {
-            console.warn('SmartLists.loadUsers: #playlistUser element not found');
+        if (!userSelect && !multiSelectContainer) {
+            console.warn('SmartLists.loadUsers: #playlistUser or #playlistUserMultiSelect element not found');
             return;
         }
 
@@ -453,22 +454,79 @@
 
             const users = await response.json();
 
-            // Clear existing options
-            userSelect.innerHTML = '';
+            // Detect list type
+            const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
+            const isCollection = listType === 'Collection';
 
-            // Add user options
-            users.forEach(function (user) {
-                const option = document.createElement('option');
-                option.value = user.Id;
-                option.textContent = user.Name;
-                userSelect.appendChild(option);
-            });
-
-            // Set current user as default if no user is selected
-            SmartLists.setCurrentUserAsDefault(page);
+            if (isCollection) {
+                // Collections: populate single select
+                if (userSelect) {
+                    userSelect.innerHTML = '';
+                    users.forEach(function (user) {
+                        const option = document.createElement('option');
+                        option.value = user.Id;
+                        option.textContent = user.Name;
+                        userSelect.appendChild(option);
+                    });
+                    // Set current user as default if no user is selected
+                    SmartLists.setCurrentUserAsDefault(page);
+                }
+            } else {
+                // Playlists: populate multi-select component
+                if (multiSelectContainer && SmartLists.loadUsersIntoMultiSelect) {
+                    SmartLists.loadUsersIntoMultiSelect(page, users);
+                    // Initialize multi-select component
+                    if (SmartLists.initializeUserMultiSelect) {
+                        SmartLists.initializeUserMultiSelect(page);
+                    }
+                    
+                    // Check if there are pending userIds to set (from edit/clone mode)
+                    if (page._pendingUserIds && Array.isArray(page._pendingUserIds) && page._pendingUserIds.length > 0) {
+                        // Use setTimeout to ensure checkboxes are fully rendered
+                        setTimeout(function() {
+                            if (SmartLists.setSelectedUserIds) {
+                                SmartLists.setSelectedUserIds(page, page._pendingUserIds);
+                            }
+                            // Don't clear pending userIds immediately - keep it for subsequent loadUsers calls
+                            // It will be cleared when form is submitted or reset
+                        }, 0);
+                    } else {
+                        // Check if checkboxes already have selections before defaulting to current user
+                        const checkboxes = page.querySelectorAll('#userMultiSelectOptions .user-multi-select-checkbox:checked');
+                        if (checkboxes.length === 0) {
+                            // Set current user as default (only if not in edit/clone mode)
+                            SmartLists.setCurrentUserAsDefault(page);
+                        }
+                    }
+                }
+            }
         } catch (err) {
             console.error('Error loading users:', err);
-            userSelect.innerHTML = '<option value="">Error loading users</option>';
+            const errorMessage = err.message || 'Failed to load users. Please refresh the page.';
+            
+            // Show error in single-select (collections)
+            if (userSelect) {
+                userSelect.innerHTML = '<option value="">Error loading users</option>';
+            }
+            
+            // Show error in multi-select (playlists)
+            const multiSelectContainer = page.querySelector('#playlistUserMultiSelect');
+            if (multiSelectContainer) {
+                const options = page.querySelector('#userMultiSelectOptions');
+                if (options) {
+                    options.innerHTML = '<div class="multi-select-option" style="padding: 0.5em; color: #BB3932;">Error: ' + errorMessage + '</div>';
+                }
+                const display = page.querySelector('#userMultiSelectDisplay');
+                if (display) {
+                    const placeholder = display.querySelector('.multi-select-placeholder');
+                    if (placeholder) {
+                        placeholder.textContent = 'Error loading users';
+                        placeholder.style.color = '#BB3932';
+                        placeholder.style.display = 'inline';
+                    }
+                }
+            }
+            
             if (SmartLists.showNotification) {
                 SmartLists.showNotification('Failed to load users. Please refresh the page.', 'error');
             }
@@ -1313,6 +1371,67 @@
                 background-color: #BB3932 !important;
                 border-color: #BB3932 !important;
             }
+            
+            /* Multi-select user component styling */
+            .multi-select-container {
+                position: relative;
+            }
+            
+            .multi-select-display {
+                padding: 0.5em;
+                background-color: #2A2A2A;
+                cursor: pointer;
+                min-height: 2em;
+                display: flex;
+                align-items: center;
+                color: #e0e0e0;
+                border-radius: 3px;
+            }
+            
+            .multi-select-placeholder {
+                color: #999;
+            }
+            
+            .multi-select-selected-users {
+                color: #e0e0e0;
+            }
+            
+            .multi-select-dropdown {
+                position: absolute;
+                top: 50%;
+                left: 0;
+                right: 0;
+                max-height: 300px;
+                overflow-y: auto;
+                background-color: rgba(42, 42, 42, 0.95);
+                border: 1px solid #7a7a7a;
+                z-index: 1000;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                border-radius: 1em;
+                transform: translateY(-50%);
+            }
+            
+            .multi-select-options {
+                padding: 0.5em;
+            }
+            
+            .multi-select-option {
+                padding: 0;
+            }
+            
+            .multi-select-option:hover {
+                background-color: #383838;
+                border-radius: 0.5em;
+            }
+            
+            .multi-select-option label {
+                width: 100%;
+                margin: 0;
+            }
+            
+            .multi-select-option .checkboxLabel {
+                margin-left: 1.5em;
+            }
         `;
         document.head.appendChild(style);
     };
@@ -1335,6 +1454,11 @@
         const refreshModal = page.querySelector('#refresh-confirm-modal');
         if (refreshModal) {
             SmartLists.cleanupModalListeners(refreshModal);
+        }
+
+        // Cleanup user multi-select listeners
+        if (SmartLists.cleanupUserMultiSelect) {
+            SmartLists.cleanupUserMultiSelect(page);
         }
 
         // Clean up page event listeners
@@ -1460,6 +1584,14 @@
             label.style.display = isCollection ? 'none' : '';
         });
 
+        // Reload users with appropriate UI (single select for collections, multi-select for playlists)
+        SmartLists.loadUsers(page);
+
+        // Update public checkbox visibility
+        if (SmartLists.updatePublicCheckboxVisibility) {
+            SmartLists.updatePublicCheckboxVisibility(page);
+        }
+
         const collectionOnlyLabels = page.querySelectorAll('.collection-only-label');
         collectionOnlyLabels.forEach(function (label) {
             label.style.display = isCollection ? '' : 'none';
@@ -1475,9 +1607,9 @@
         const userSelect = page.querySelector('#playlistUser');
         if (userSelect) {
             if (isCollection) {
-                userSelect.removeAttribute('required');
-            } else {
                 userSelect.setAttribute('required', 'required');
+            } else {
+                userSelect.removeAttribute('required');
             }
         }
 

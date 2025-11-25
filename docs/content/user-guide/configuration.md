@@ -22,11 +22,12 @@ SmartLists features a modern web-based configuration interface through the plugi
 Before creating your first list, it's important to understand the differences between **Playlists** and **Collections**:
 
 ### Playlists
-- **User-specific**: Each playlist belongs to a specific user (the "owner")
+- **Multi-user support**: Playlists can be associated with one or more users. When multiple users are selected, a separate Jellyfin playlist is created for each user, allowing each user to have their own personalized version of the same smart playlist.
+- **User-specific data**: Each user's playlist is filtered based on their own playback data (watched status, favorites, play count, etc.), making it perfect for shared playlists that adapt to each user.
 - **Sorting**: Items can be sorted using multiple sorting levels (see [Sorting and Limits](sorting-and-limits.md))
 - **Max Playtime**: Can set a maximum playtime limit
-- **Visibility**: Can be set as public (visible to all users) or private (visible only to the owner)
-- **Use cases**: Personal music playlists, "Continue Watching" lists, workout mixes, etc.
+- **Visibility**: Can be set as public (visible to all users) or private (visible only to the selected users)
+- **Use cases**: Personal music playlists, "Continue Watching" lists, workout mixes, family playlists that adapt to each member, etc.
 
 ### Collections
 - **Server-wide**: Collections are visible to all users on the server (no individual ownership)
@@ -70,7 +71,9 @@ This is where you build new playlists and collections:
 - Choose whether to create a Playlist or Collection
 - Define the rules for including items
 - Choose the sort order (playlists only - collections don't support sorting)
-- Select which user should own the list (for playlists) or serve as reference user (for collections)
+- Select which user(s) should be associated with the list:
+  - **For Playlists**: You can select one or more users. Each selected user will get their own personalized Jellyfin playlist based on their playback data. This allows the same smart playlist to show different content for each user (e.g., "My Favorites" showing each user's actual favorites).
+  - **For Collections**: Select a single reference user whose context will be used for rule evaluation and library access permissions
 - Set the maximum number of items
 - Set the maximum playtime for the list (playlists only)
 - Decide if the list should be public or private (playlists only - collections are always server-wide)
