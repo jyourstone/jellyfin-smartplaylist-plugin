@@ -728,6 +728,26 @@
                 // Store media types to set later (after all updates are complete)
                 const clonedMediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? playlist.MediaTypes : [];
 
+                // Set media types BEFORE populating rules so that rule population can check selected media types
+                // Flag was already set at the beginning of clone process to prevent interference
+                const mediaTypesCheckboxes = Array.from(page.querySelectorAll('.media-type-checkbox'));
+
+                // First clear all checkboxes
+                mediaTypesCheckboxes.forEach(function (checkbox) {
+                    checkbox.checked = false;
+                });
+                // Then set the ones from the cloned playlist
+                if (clonedMediaTypes.length > 0) {
+                    clonedMediaTypes.forEach(function (type) {
+                        const checkbox = mediaTypesCheckboxes.find(function (cb) {
+                            return cb.value === type;
+                        });
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                }
+
                 // Set the list owner (for both playlists and collections)
                 // isCollection is already declared above on line 650
                 if (isCollection) {
@@ -810,25 +830,7 @@
                 // Update sort options visibility based on populated rules
                 SmartLists.updateAllSortOptionsVisibility(page);
 
-                // Set media types AFTER all field updates are complete to prevent them from being cleared
-                // Flag was already set at the beginning of clone process to prevent interference
-                const mediaTypesCheckboxes = Array.from(page.querySelectorAll('.media-type-checkbox'));
 
-                // First clear all checkboxes
-                mediaTypesCheckboxes.forEach(function (checkbox) {
-                    checkbox.checked = false;
-                });
-                // Then set the ones from the cloned playlist
-                if (clonedMediaTypes.length > 0) {
-                    clonedMediaTypes.forEach(function (type) {
-                        const checkbox = mediaTypesCheckboxes.find(function (cb) {
-                            return cb.value === type;
-                        });
-                        if (checkbox) {
-                            checkbox.checked = true;
-                        }
-                    });
-                }
 
                 // Clear flag to re-enable change event handlers
                 page._skipMediaTypeChangeHandlers = false;

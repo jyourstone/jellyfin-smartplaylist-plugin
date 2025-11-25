@@ -1079,6 +1079,7 @@
                     SmartLists.updateTagsOptionsVisibility(ruleRow, currentFieldValue, page);
                     SmartLists.updateStudiosOptionsVisibility(ruleRow, currentFieldValue, page);
                     SmartLists.updateGenresOptionsVisibility(ruleRow, currentFieldValue, page);
+                    SmartLists.updateAudioLanguagesOptionsVisibility(ruleRow, currentFieldValue, page);
                     SmartLists.updateSimilarityOptionsVisibility(ruleRow, currentFieldValue);
                 }
 
@@ -1093,6 +1094,7 @@
                     SmartLists.updateTagsOptionsVisibility(ruleRow, fieldSelect.value, page);
                     SmartLists.updateStudiosOptionsVisibility(ruleRow, fieldSelect.value, page);
                     SmartLists.updateGenresOptionsVisibility(ruleRow, fieldSelect.value, page);
+                    SmartLists.updateAudioLanguagesOptionsVisibility(ruleRow, fieldSelect.value, page);
                     SmartLists.updateSimilarityOptionsVisibility(ruleRow, fieldSelect.value);
                     SmartLists.updatePeopleOptionsVisibility(ruleRow, fieldSelect.value);
                     SmartLists.updateRegexHelp(ruleRow);
@@ -1513,7 +1515,7 @@
         if (audioLanguagesOptionsDiv) {
             // Get selected media types to check if any audio-capable type is selected
             const selectedMediaTypes = page ? SmartLists.getSelectedMediaTypes(page) : [];
-            const hasAudioCapable = selectedMediaTypes.some(function(type) {
+            const hasAudioCapable = selectedMediaTypes.some(function (type) {
                 return SmartLists.AUDIO_CAPABLE_TYPES.indexOf(type) !== -1;
             });
 
@@ -1678,7 +1680,7 @@
         const expressionSets = [];
         const selectedMediaTypes = SmartLists.getSelectedMediaTypes(page);
         const hasEpisode = selectedMediaTypes.indexOf('Episode') !== -1;
-        const hasAudioCapable = selectedMediaTypes.some(function(type) {
+        const hasAudioCapable = selectedMediaTypes.some(function (type) {
             return SmartLists.AUDIO_CAPABLE_TYPES.indexOf(type) !== -1;
         });
 
@@ -1850,6 +1852,7 @@
                 SmartLists.updateTagsOptionsVisibility(ruleRow, actualMemberName, page);
                 SmartLists.updateStudiosOptionsVisibility(ruleRow, actualMemberName, page);
                 SmartLists.updateGenresOptionsVisibility(ruleRow, actualMemberName, page);
+                SmartLists.updateAudioLanguagesOptionsVisibility(ruleRow, actualMemberName, page);
             }
 
             if (operatorSelect && expression.Operator) {
