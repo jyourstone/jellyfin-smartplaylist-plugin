@@ -544,16 +544,15 @@
         // Calculate summary statistics for filtered results
         const totalPlaylists = page._allPlaylists.length;
         const filteredCount = filteredPlaylists.length;
-        const enabledPlaylists = filteredPlaylists.filter(function (p) {
-            return p.Enabled !== false;
-        }).length;
-        const disabledPlaylists = filteredCount - enabledPlaylists;
+        // Count playlists and collections from the total unfiltered list
+        const playlistCount = page._allPlaylists.filter(function (p) { return p.Type === 'Playlist' || !p.Type; }).length;
+        const collectionCount = page._allPlaylists.filter(function (p) { return p.Type === 'Collection'; }).length;
 
         let html = '';
 
         // Add bulk actions container after summary
         let summaryText;
-        summaryText = SmartLists.generateSummaryText(totalPlaylists, enabledPlaylists, disabledPlaylists, filteredCount, searchTerm);
+        summaryText = SmartLists.generateSummaryText(totalPlaylists, playlistCount, collectionCount, filteredCount, searchTerm);
         html += SmartLists.generateBulkActionsHTML(summaryText);
 
         // Process filtered playlists using the helper function

@@ -292,7 +292,7 @@
     };
 
     // Helper function to generate summary text with consistent styling
-    SmartLists.generateSummaryText = function (totalPlaylists, enabledPlaylists, disabledPlaylists, filteredCount, searchTerm) {
+    SmartLists.generateSummaryText = function (totalPlaylists, playlistCount, collectionCount, filteredCount, searchTerm) {
         filteredCount = filteredCount !== undefined ? filteredCount : null;
         searchTerm = searchTerm || null;
         const bulletStyle = 'margin: 0 0.25em;';
@@ -311,7 +311,7 @@
             summaryText += totalPlaylists + ' list' + (totalPlaylists !== 1 ? 's' : '');
         }
 
-        summaryText += ' ' + bullet + ' ' + enabledPlaylists + ' enabled ' + bullet + ' ' + disabledPlaylists + ' disabled';
+        summaryText += ' ' + bullet + ' ' + playlistCount + ' playlist' + (playlistCount !== 1 ? 's' : '') + ' ' + bullet + ' ' + collectionCount + ' collection' + (collectionCount !== 1 ? 's' : '');
 
         return summaryText;
     };

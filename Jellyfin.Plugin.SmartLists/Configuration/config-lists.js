@@ -1543,16 +1543,16 @@
                 // Apply all filters and sorting and display results
                 const filteredPlaylists = SmartLists.applyAllFiltersAndSort ? SmartLists.applyAllFiltersAndSort(page, processedPlaylists) : processedPlaylists;
 
-                // Use the existing playlist display logic instead of the async function for now
+                // Count playlists and collections based on Type
                 const totalPlaylists = processedPlaylists.length;
                 const filteredCount = filteredPlaylists.length;
-                const enabledPlaylists = filteredPlaylists.filter(function (p) { return p.Enabled !== false; }).length;
-                const disabledPlaylists = filteredCount - enabledPlaylists;
+                const playlistCount = processedPlaylists.filter(function (p) { return p.Type === 'Playlist' || !p.Type; }).length;
+                const collectionCount = processedPlaylists.filter(function (p) { return p.Type === 'Collection'; }).length;
 
                 let html = '';
 
                 // Add bulk actions container after summary
-                const summaryText = SmartLists.generateSummaryText ? SmartLists.generateSummaryText(totalPlaylists, enabledPlaylists, disabledPlaylists, filteredCount, null) : '';
+                const summaryText = SmartLists.generateSummaryText ? SmartLists.generateSummaryText(totalPlaylists, playlistCount, collectionCount, filteredCount, null) : '';
                 html += SmartLists.generateBulkActionsHTML ? SmartLists.generateBulkActionsHTML(summaryText) : '';
 
                 // Process filtered playlists sequentially to resolve usernames
