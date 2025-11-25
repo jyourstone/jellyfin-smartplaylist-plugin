@@ -463,7 +463,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 return BadRequest(new ProblemDetails
                 {
                     Title = "Validation Error",
-                    Detail = "At least one playlist owner (User) is required",
+                    Detail = "At least one playlist user is required",
                     Status = StatusCodes.Status400BadRequest
                 });
             }
@@ -511,7 +511,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 return BadRequest(new ProblemDetails
                 {
                     Title = "Validation Error",
-                    Detail = "At least one playlist owner (User) is required",
+                    Detail = "At least one playlist user is required",
                     Status = StatusCodes.Status400BadRequest
                 });
             }
@@ -634,46 +634,23 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after creating playlist '{PlaylistName}'", playlist.Name);
 
-                // Enqueue refresh operation(s) - one per user for multi-user playlists
+                // Enqueue refresh operation - consumer will process all users from UserPlaylists
                 logger.LogDebug("Enqueuing refresh for newly created playlist {PlaylistName} with {UserCount} users", playlist.Name, createdPlaylist.UserPlaylists?.Count ?? 1);
                 var listId = createdPlaylist.Id ?? Guid.NewGuid().ToString();
                 
-                if (createdPlaylist.UserPlaylists != null && createdPlaylist.UserPlaylists.Count > 0)
+                var queueItem = new RefreshQueueItem
                 {
-                    // Queue refresh for each user
-                    foreach (var userMapping in createdPlaylist.UserPlaylists)
-                    {
-                        var queueItem = new RefreshQueueItem
-                        {
-                            ListId = listId,
-                            ListName = createdPlaylist.Name,
-                            ListType = Core.Enums.SmartListType.Playlist,
-                            OperationType = RefreshOperationType.Create,
-                            ListData = createdPlaylist,
-                            UserId = userMapping.UserId,
-                            TriggerType = Core.Enums.RefreshTriggerType.Manual
-                        };
+                    ListId = listId,
+                    ListName = createdPlaylist.Name,
+                    ListType = Core.Enums.SmartListType.Playlist,
+                    OperationType = RefreshOperationType.Create,
+                    ListData = createdPlaylist,
+                    UserId = createdPlaylist.UserPlaylists?.FirstOrDefault()?.UserId ?? createdPlaylist.UserId,
+                    TriggerType = Core.Enums.RefreshTriggerType.Manual
+                };
 
-                        _refreshQueueService.EnqueueOperation(queueItem);
-                        logger.LogDebug("Enqueued refresh for user {UserId} in playlist {PlaylistName}", userMapping.UserId, playlist.Name);
-                    }
-                }
-                else
-                {
-                    // Fallback to single user (backwards compatibility)
-                    var queueItem = new RefreshQueueItem
-                    {
-                        ListId = listId,
-                        ListName = createdPlaylist.Name,
-                        ListType = Core.Enums.SmartListType.Playlist,
-                        OperationType = RefreshOperationType.Create,
-                        ListData = createdPlaylist,
-                        UserId = createdPlaylist.UserId,
-                        TriggerType = Core.Enums.RefreshTriggerType.Manual
-                    };
-
-                    _refreshQueueService.EnqueueOperation(queueItem);
-                }
+                _refreshQueueService.EnqueueOperation(queueItem);
+                logger.LogDebug("Enqueued refresh for playlist {PlaylistName}", playlist.Name);
 
                 // Return the created playlist immediately (refresh will happen in background)
                 // Note: JellyfinPlaylistId will be populated after the queue processes the refresh
@@ -1161,7 +1138,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     return BadRequest(new ProblemDetails
                     {
                         Title = "Validation Error",
-                        Detail = "At least one playlist owner (User) is required",
+                        Detail = "At least one playlist user is required",
                         Status = StatusCodes.Status400BadRequest
                     });
                 }
@@ -1209,7 +1186,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     return BadRequest(new ProblemDetails
                     {
                         Title = "Validation Error",
-                        Detail = "At least one playlist owner (User) is required",
+                        Detail = "At least one playlist user is required",
                         Status = StatusCodes.Status400BadRequest
                     });
                 }
@@ -2672,7 +2649,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             }
 
                             // Note: We don't reassign user-specific expression rules if the referenced user doesn't exist.
-                            // The system will naturally fall back to the playlist owner for such rules.
+                            // The system will naturally fall back to the playlist user for such rules.
 
                             // Add note to import results if users were reassigned
                             if (reassignedUsers)

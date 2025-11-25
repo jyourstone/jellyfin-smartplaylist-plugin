@@ -1674,7 +1674,7 @@
                         expression.UserId = userSelect.value;
                     }
                     // If no user is selected or default is selected, the expression works as before
-                    // (for the playlist owner - backwards compatibility)
+                    // (for the playlist user - backwards compatibility)
 
                     // Check for NextUnwatched specific options (only if Episode is selected)
                     const nextUnwatchedSelect = rule.querySelector('.rule-nextunwatched-select');

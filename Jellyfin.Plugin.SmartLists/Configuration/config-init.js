@@ -502,9 +502,31 @@
             }
         } catch (err) {
             console.error('Error loading users:', err);
+            const errorMessage = err.message || 'Failed to load users. Please refresh the page.';
+            
+            // Show error in single-select (collections)
             if (userSelect) {
                 userSelect.innerHTML = '<option value="">Error loading users</option>';
             }
+            
+            // Show error in multi-select (playlists)
+            const multiSelectContainer = page.querySelector('#playlistUserMultiSelect');
+            if (multiSelectContainer) {
+                const options = page.querySelector('#userMultiSelectOptions');
+                if (options) {
+                    options.innerHTML = '<div class="multi-select-option" style="padding: 0.5em; color: #BB3932;">Error: ' + errorMessage + '</div>';
+                }
+                const display = page.querySelector('#userMultiSelectDisplay');
+                if (display) {
+                    const placeholder = display.querySelector('.multi-select-placeholder');
+                    if (placeholder) {
+                        placeholder.textContent = 'Error loading users';
+                        placeholder.style.color = '#BB3932';
+                        placeholder.style.display = 'inline';
+                    }
+                }
+            }
+            
             if (SmartLists.showNotification) {
                 SmartLists.showNotification('Failed to load users. Please refresh the page.', 'error');
             }

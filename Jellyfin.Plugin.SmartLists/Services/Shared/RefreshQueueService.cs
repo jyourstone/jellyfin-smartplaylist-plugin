@@ -640,7 +640,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             public ConcurrentDictionary<Guid, List<string>> SeriesGenresById { get; } = new();
             public ConcurrentDictionary<Guid, CategorizedPeople> ItemPeople { get; } = new();
             
-            // User-specific data cache - keyed by (ItemId, UserId) to support playlist owner + additional users in rules
+            // User-specific data cache - keyed by (ItemId, UserId) to support playlist user + additional users in rules
             public ConcurrentDictionary<(Guid ItemId, Guid UserId), MediaBrowser.Controller.Entities.UserItemData> UserDataCache { get; } = new();
             
             // Media streams cache - keyed by ItemId only (user-agnostic)

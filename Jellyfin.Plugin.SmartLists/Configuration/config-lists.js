@@ -189,7 +189,7 @@
             }
 
             if (!userIds || userIds.length === 0) {
-                SmartLists.showNotification('Please select at least one ' + (isCollection ? 'collection owner' : 'playlist owner') + '.');
+                SmartLists.showNotification('Please select at least one ' + (isCollection ? 'collection user' : 'playlist user') + '.');
                 return;
             }
 
@@ -520,7 +520,7 @@
                         page._pendingUserIds = null; // Clear since we set it
                     }
                     // If checkboxes don't exist yet, loadUsers will set them when it finishes
-                    
+
                     if (SmartLists.updatePublicCheckboxVisibility) {
                         SmartLists.updatePublicCheckboxVisibility(page);
                     }
@@ -748,7 +748,7 @@
                         page._pendingUserIds = null; // Clear since we set it
                     }
                     // If checkboxes don't exist yet, loadUsers will set them when it finishes
-                    
+
                     if (SmartLists.updatePublicCheckboxVisibility) {
                         SmartLists.updatePublicCheckboxVisibility(page);
                     }
@@ -1236,26 +1236,99 @@
         const eTotalRuntimeLong = totalRuntimeLong ? SmartLists.escapeHtml(totalRuntimeLong) : null;
         const eListType = SmartLists.escapeHtml(listType);
 
-        // Build Jellyfin playlist/collection URL if ID exists and list is enabled
-        let jellyfinListUrl = null;
-        const jellyfinId = isCollection ? playlist.JellyfinCollectionId : playlist.JellyfinPlaylistId;
-        const hasJellyfinId = jellyfinId && jellyfinId !== '' && jellyfinId !== '00000000-0000-0000-0000-000000000000';
-
-        if (hasJellyfinId && isEnabled) {
+        // Helper function to build Jellyfin URL from ID
+        const buildJellyfinUrl = function (jellyfinId) {
+            if (!jellyfinId || jellyfinId === '' || jellyfinId === '00000000-0000-0000-0000-000000000000') {
+                return null;
+            }
             try {
                 const apiClient = SmartLists.getApiClient();
                 const serverId = apiClient.serverId();
                 const baseUrl = apiClient.serverAddress();
-                jellyfinListUrl = baseUrl + '/web/#/details?id=' + encodeURIComponent(jellyfinId) + '&serverId=' + encodeURIComponent(serverId);
+                return baseUrl + '/web/#/details?id=' + encodeURIComponent(jellyfinId) + '&serverId=' + encodeURIComponent(serverId);
             } catch (err) {
-                console.error('Error building Jellyfin list URL:', err);
-                // Fallback: try to build URL without serverId if that fails
+                console.error('Error building Jellyfin URL:', err);
+                // Fallback: try without serverId
                 try {
                     const apiClient = SmartLists.getApiClient();
                     const baseUrl = apiClient.serverAddress();
-                    jellyfinListUrl = baseUrl + '/web/#/details?id=' + encodeURIComponent(jellyfinId);
+                    return baseUrl + '/web/#/details?id=' + encodeURIComponent(jellyfinId);
                 } catch (fallbackErr) {
-                    console.error('Error building Jellyfin list URL (fallback):', fallbackErr);
+                    console.error('Error building Jellyfin URL (fallback):', fallbackErr);
+                    return null;
+                }
+            }
+        };
+
+        // Helper function to get username from cache
+        const getUserNameFromCache = function (userId) {
+            const normalizedId = normalizeUserId(userId);
+            if (userNameCache.has(normalizedId)) {
+                return userNameCache.get(normalizedId);
+            }
+            return null;
+        };
+
+        // Build Jellyfin playlist/collection link info
+        // For playlists: show current user's link (if any) + count of others
+        // For collections: show single link
+        let jellyfinLinkHtml = '';
+
+        if (isEnabled) {
+            if (isCollection) {
+                // Collections: single ID, show simple link
+                const jellyfinId = playlist.JellyfinCollectionId;
+                const url = buildJellyfinUrl(jellyfinId);
+                if (url) {
+                    jellyfinLinkHtml = ' - <a href="' + SmartLists.escapeHtmlAttribute(url) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">View in Jellyfin</a>';
+                }
+            } else {
+                // Playlists: show current user's playlist (if they have one) + count of others
+                if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                    try {
+                        const apiClient = SmartLists.getApiClient();
+                        const currentUserId = apiClient.getCurrentUserId();
+                        const normalizedCurrentUserId = normalizeUserId(currentUserId);
+
+                        // Find current user's playlist
+                        let currentUserPlaylist = null;
+                        let otherUsersCount = 0;
+
+                        playlist.UserPlaylists.forEach(function (userPlaylist) {
+                            const normalizedUserId = normalizeUserId(userPlaylist.UserId);
+                            if (normalizedUserId === normalizedCurrentUserId) {
+                                currentUserPlaylist = userPlaylist;
+                            } else {
+                                otherUsersCount++;
+                            }
+                        });
+
+                        if (currentUserPlaylist) {
+                            const url = buildJellyfinUrl(currentUserPlaylist.JellyfinPlaylistId);
+                            if (url) {
+                                jellyfinLinkHtml = ' - <a href="' + SmartLists.escapeHtmlAttribute(url) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">View in Jellyfin</a>';
+
+                                // Add count of other users if any
+                                if (otherUsersCount > 0) {
+                                    jellyfinLinkHtml += ' <span style="color: #888; font-size: 0.9em;">(+' + otherUsersCount + ' other' + (otherUsersCount === 1 ? '' : 's') + ')</span>';
+                                }
+                            }
+                        } else if (otherUsersCount > 0) {
+                            // Current user doesn't have this playlist, just show count
+                            jellyfinLinkHtml = ' - <span style="color: #888; font-style: italic;">(' + playlist.UserPlaylists.length + ' user' + (playlist.UserPlaylists.length === 1 ? '' : 's') + ')</span>';
+                        }
+                    } catch (err) {
+                        console.error('Error getting current user ID:', err);
+                        // Fallback: show count only
+                        jellyfinLinkHtml = ' - <span style="color: #888; font-style: italic;">(' + playlist.UserPlaylists.length + ' user' + (playlist.UserPlaylists.length === 1 ? '' : 's') + ')</span>';
+                    }
+                } else {
+                    // Fallback: single playlist (backwards compatibility)
+                    const jellyfinId = playlist.JellyfinPlaylistId;
+                    const url = buildJellyfinUrl(jellyfinId);
+                    if (url) {
+                        jellyfinLinkHtml = ' - <a href="' + SmartLists.escapeHtmlAttribute(url) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">View in Jellyfin</a>';
+                    }
                 }
             }
         }
@@ -1300,13 +1373,7 @@
             '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
             '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">Type</td>' +
             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eListType +
-            (hasJellyfinId && isEnabled ?
-                (jellyfinListUrl ?
-                    ' - <a href="' + SmartLists.escapeHtmlAttribute(jellyfinListUrl) + '" target="_blank" rel="noopener noreferrer" style="color: #00a4dc; text-decoration: none;">View in Jellyfin</a>' :
-                    ' - <span style="color: #888; font-style: italic;">(Jellyfin ID: ' + SmartLists.escapeHtml(jellyfinId) + ')</span>'
-                ) :
-                ''
-            ) +
+            jellyfinLinkHtml +
             '</td>' +
             '</tr>' +
             '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +

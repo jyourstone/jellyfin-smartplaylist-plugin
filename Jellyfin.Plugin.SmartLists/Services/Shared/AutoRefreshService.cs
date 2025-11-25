@@ -1039,7 +1039,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     }
                 }
 
-                // Check if the user is the playlist owner (backwards compatibility for single-user playlists)
+                // Check if the user is the playlist user (backwards compatibility for single-user playlists)
                 // DEPRECATED: This check is for backwards compatibility with old single-user playlists.
                 // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
                 if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var playlistUserId) && playlistUserId == userId)

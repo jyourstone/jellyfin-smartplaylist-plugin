@@ -13,6 +13,11 @@
      * Initialize the multi-select user component for playlists
      */
     SmartLists.initializeUserMultiSelect = function (page) {
+        // Prevent double-initialization
+        if (page._userMultiSelectInitialized) {
+            return;
+        }
+
         const multiSelectContainer = page.querySelector('#playlistUserMultiSelect');
         if (!multiSelectContainer) return;
 
@@ -21,6 +26,9 @@
         const options = page.querySelector('#userMultiSelectOptions');
 
         if (!display || !dropdown || !options) return;
+
+        // Mark as initialized
+        page._userMultiSelectInitialized = true;
 
         // Create AbortController for this component if it doesn't exist
         if (!page._userMultiSelectAbortController) {
@@ -293,6 +301,8 @@
             page._userMultiSelectAbortController.abort();
             delete page._userMultiSelectAbortController;
         }
+        // Reset initialization flag on cleanup
+        page._userMultiSelectInitialized = false;
     };
 
 })(window.SmartLists);

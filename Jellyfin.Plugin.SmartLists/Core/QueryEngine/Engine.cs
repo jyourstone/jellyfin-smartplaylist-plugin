@@ -74,7 +74,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             // Check if this is a user-specific field that should always use method calls
             if (ModelExpression.IsUserSpecificField(r.MemberName))
             {
-                // Use the specified user ID or default to playlist owner
+                // Use the specified user ID or default to playlist user
                 var effectiveUserId = r.UserId ?? defaultUserId;
                 if (string.IsNullOrEmpty(effectiveUserId))
                 {

@@ -65,14 +65,6 @@
             filterFn: function (playlists, userFilter) {
                 if (!userFilter || userFilter === 'all') return playlists;
 
-                // Normalize user IDs for comparison to handle both dashed and non-dashed formats
-                const normalizeUserId = function (userId) {
-                    if (!userId || typeof userId !== 'string') {
-                        return '';
-                    }
-                    return userId.replace(/-/g, '').toLowerCase();
-                };
-
                 const normalizedFilter = normalizeUserId(userFilter);
 
                 return playlists.filter(function (playlist) {
@@ -443,12 +435,6 @@
             // Normalize IDs to prevent duplicates when both dashed and non-dashed formats exist
             const userIds = [];
             const seenIds = {};
-            const normalizeUserId = function (userId) {
-                if (!userId || typeof userId !== 'string') {
-                    return '';
-                }
-                return userId.replace(/-/g, '').toLowerCase();
-            };
 
             for (var i = 0; i < playlists.length; i++) {
                 const playlist = playlists[i];
