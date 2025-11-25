@@ -323,8 +323,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         currentState.Played != previousState.Played ||           // Watch/unwatch
                         currentState.PlayCount != previousState.PlayCount ||     // Play count changed
                         currentState.IsFavorite != previousState.IsFavorite ||   // Favorite status changed
-                        (currentState.LastPlayedDate != previousState.LastPlayedDate &&
-                         currentState.LastPlayedDate.HasValue);                  // Last played date set (not cleared)
+                        currentState.LastPlayedDate != previousState.LastPlayedDate; // Last played date changed (set or cleared)
 
                     if (hasSignificantChange)
                     {
@@ -348,10 +347,11 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 }
                 else
                 {
-                    // First time seeing this item/user combo - store state and be conservative
+                    // First time seeing this item/user combo - always store state for future comparisons
                     _userDataStateCache[cacheKey] = currentState;
 
                     // For first-time events, only trigger if it's a meaningful state (watched, favorite, etc.)
+                    // This avoids triggering on initial "empty" state loads
                     var isMeaningfulState = currentState.Played || currentState.PlayCount > 0 ||
                                           currentState.IsFavorite || currentState.LastPlayedDate.HasValue;
 
@@ -1056,7 +1056,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         {
                             foreach (var expression in expressionSet.Expressions)
                             {
-                                // Check if this expression is user-specific and references our user
+                                // Check if this expression is user-specific and references our user explicitly
                                 // Normalize UserId to "N" format for comparison
                                 if (!string.IsNullOrEmpty(expression.UserId))
                                 {
