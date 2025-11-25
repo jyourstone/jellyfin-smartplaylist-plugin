@@ -71,6 +71,13 @@
 
                 return playlists.filter(function (playlist) {
                     // User filter applies to both playlists (owner) and collections (rule context user)
+                    // Check UserPlaylists array (multi-user playlists)
+                    if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                        return playlist.UserPlaylists.some(function(mapping) {
+                            return normalizeUserId(mapping.UserId) === normalizedFilter;
+                        });
+                    }
+                    // Fallback to UserId (backwards compatibility)
                     const normalizedPlaylistUserId = normalizeUserId(playlist.UserId);
                     return normalizedPlaylistUserId === normalizedFilter;
                 });
@@ -165,11 +172,23 @@
                 return true;
             }
 
-            // Search in username (resolved from User ID)
-            if (page && page._usernameCache && playlist.UserId) {
-                const username = page._usernameCache.get(playlist.UserId);
-                if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
-                    return true;
+            // Search in username (resolved from User ID or UserPlaylists)
+            if (page && page._usernameCache) {
+                // Check UserPlaylists array (multi-user playlists)
+                if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                    for (var i = 0; i < playlist.UserPlaylists.length; i++) {
+                        const username = page._usernameCache.get(playlist.UserPlaylists[i].UserId);
+                        if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
+                            return true;
+                        }
+                    }
+                }
+                // Fallback to UserId (backwards compatibility)
+                if (playlist.UserId) {
+                    const username = page._usernameCache.get(playlist.UserId);
+                    if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
+                        return true;
+                    }
                 }
             }
 
@@ -385,7 +404,7 @@
         }
     };
 
-    SmartLists.populateUserFilter = function (page, playlists) {
+    SmartLists.populateUserFilter = async function (page, playlists) {
         const userFilter = page.querySelector('#userFilter');
         if (!userFilter || !playlists) return Promise.resolve();
 
@@ -426,8 +445,22 @@
             };
 
             for (var i = 0; i < playlists.length; i++) {
-                const userId = playlists[i].UserId;  // UserId field contains the user ID
-                if (userId) {
+                const playlist = playlists[i];
+                // Check UserPlaylists array (multi-user playlists)
+                if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                    for (var j = 0; j < playlist.UserPlaylists.length; j++) {
+                        const userId = playlist.UserPlaylists[j].UserId;
+                        if (userId) {
+                            const normalizedId = normalizeUserId(userId);
+                            if (!seenIds[normalizedId]) {
+                                userIds.push(userId);
+                                seenIds[normalizedId] = true;
+                            }
+                        }
+                    }
+                } else if (playlist.UserId) {
+                    // Fallback to UserId (backwards compatibility)
+                    const userId = playlist.UserId;
                     const normalizedId = normalizeUserId(userId);
                     if (!seenIds[normalizedId]) {
                         userIds.push(userId);
@@ -476,13 +509,12 @@
                 );
             }
 
-            return Promise.all(promises).then(function () {
-                // Restore user filter preference now that options are populated
-                // This fixes the issue where the preference is loaded before options exist and gets rejected
-                if (SmartLists.loadPlaylistFilterPreferences) {
-                    SmartLists.loadPlaylistFilterPreferences(page);
-                }
-            });
+            await Promise.all(promises);
+            // Restore user filter preference now that options are populated
+            // This fixes the issue where the preference is loaded before options exist and gets rejected
+            if (SmartLists.loadPlaylistFilterPreferences) {
+                SmartLists.loadPlaylistFilterPreferences(page);
+            }
         } catch (err) {
             console.error('Error populating user filter:', err);
             return Promise.resolve();

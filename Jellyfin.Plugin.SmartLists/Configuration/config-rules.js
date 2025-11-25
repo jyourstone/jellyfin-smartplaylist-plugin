@@ -721,7 +721,7 @@
             'Check for specific user (optional):' +
             '</label>' +
             '<select is="emby-select" class="emby-select rule-user-select" style="width: 100%;">' +
-            '<option value="">Default (owner)</option>' +
+            '<option value="">Default (list user)</option>' +
             '</select>' +
             '</div>' +
             '<div class="rule-nextunwatched-options" style="display: none; margin-bottom: 0.75em; padding: 0.5em; background: rgba(255,255,255,0.05); border-radius: 4px;">' +

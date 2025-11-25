@@ -29,6 +29,8 @@
     <EmbeddedResource Include="Configuration\config-schedules.js" />
     <!-- Sort management -->
     <EmbeddedResource Include="Configuration\config-sorts.js" />
+    <!-- User selection component -->
+    <EmbeddedResource Include="Configuration\config-user-select.js" />
     <!-- Rule management -->
     <EmbeddedResource Include="Configuration\config-rules.js" />
     <!-- Playlist CRUD operations -->

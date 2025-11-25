@@ -333,18 +333,55 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         /// </summary>
         private async Task ProcessPlaylistRefreshAsync(SmartPlaylistDto dto, CancellationToken cancellationToken)
         {
-            // Get user for this playlist
-            if (string.IsNullOrEmpty(dto.UserId) || !Guid.TryParse(dto.UserId, out var userId) || userId == Guid.Empty)
+            // Multi-user playlists: Process each user in the UserPlaylists array
+            if (dto.UserPlaylists != null && dto.UserPlaylists.Count > 0)
+            {
+                _logger.LogDebug("Processing multi-user playlist '{PlaylistName}' with {UserCount} users", dto.Name, dto.UserPlaylists.Count);
+                
+                foreach (var userMapping in dto.UserPlaylists)
+                {
+                    if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
+                    {
+                        _logger.LogWarning("Skipping invalid user ID in UserPlaylists for playlist {PlaylistName}", dto.Name);
+                        continue;
+                    }
+
+                    var user = _userManager.GetUserById(userId);
+                    if (user == null)
+                    {
+                        _logger.LogWarning("User {UserId} not found for playlist {PlaylistName}, skipping", userId, dto.Name);
+                        continue;
+                    }
+
+                    _logger.LogDebug("Processing playlist '{PlaylistName}' for user '{Username}'", dto.Name, user.Username);
+                    await ProcessPlaylistForUserAsync(dto, user, cancellationToken);
+                }
+            }
+            // Single-user playlist (backwards compatibility): Use top-level UserId
+            // DEPRECATED: This check is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+            else if (!string.IsNullOrEmpty(dto.UserId) && Guid.TryParse(dto.UserId, out var userId) && userId != Guid.Empty)
+            {
+                var user = _userManager.GetUserById(userId);
+                if (user == null)
+                {
+                    throw new InvalidOperationException($"User {userId} not found for playlist {dto.Name}");
+                }
+
+                _logger.LogDebug("Processing single-user playlist '{PlaylistName}' for user '{Username}'", dto.Name, user.Username);
+                await ProcessPlaylistForUserAsync(dto, user, cancellationToken);
+            }
+            else
             {
                 throw new InvalidOperationException($"Invalid user ID for playlist {dto.Name}");
             }
+        }
 
-            var user = _userManager.GetUserById(userId);
-            if (user == null)
-            {
-                throw new InvalidOperationException($"User {userId} not found for playlist {dto.Name}");
-            }
-
+        /// <summary>
+        /// Processes a playlist for a single user
+        /// </summary>
+        private async Task ProcessPlaylistForUserAsync(SmartPlaylistDto dto, User user, CancellationToken cancellationToken)
+        {
             // Get or create cache for this user
             var userCache = EnsureCacheForUser(user, dto);
             _logger.LogDebug("Processing playlist '{PlaylistName}' with user cache ({CacheEntryCount} entries)", dto.Name, userCache.Count);
@@ -383,7 +420,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             var playlistStore = new PlaylistStore(fileSystem);
 
             // Get or create RefreshCache for this user
-            var refreshCache = GetOrCreateRefreshCacheForUser(userId);
+            var refreshCache = GetOrCreateRefreshCacheForUser(user.Id);
             _logger.LogDebug("Using RefreshCache for user '{Username}' (shared across playlists/collections)", user.Username);
 
             // Process refresh
@@ -398,7 +435,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
 
             if (!success)
             {
-                throw new InvalidOperationException($"Playlist refresh failed: {message}");
+                throw new InvalidOperationException($"Playlist refresh failed for user {user.Username}: {message}");
             }
         }
 

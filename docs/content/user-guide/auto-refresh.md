@@ -58,6 +58,7 @@ Configure individual lists with their own refresh schedules:
 - **Continue Watching**: NextUnwatched playlist with auto-refresh on all changes → updates when episodes are watched (batched)
 - **New Releases**: Date-based list with auto-refresh on library changes → updates when new content is added
 - **Favorites Collection**: Favorite-based collection with auto-refresh on all changes → updates when items are favorited/unfavorited (batched)
+- **Multi-User Playlists**: When a playlist is associated with multiple users, it will auto-refresh when any of those users' playback data changes (watched status, favorites, etc.). Each user's personalized playlist is updated independently based on their own data changes.
 
 ### Mixed Approach
 

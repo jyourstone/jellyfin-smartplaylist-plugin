@@ -26,6 +26,30 @@
         if (!playlist) {
             return Promise.resolve('Unknown User');
         }
+
+        // Check for multi-user playlists (UserPlaylists array)
+        if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+            // Resolve all user IDs to names
+            const userIds = playlist.UserPlaylists.map(function (up) { return up.UserId; });
+            const namePromises = userIds.map(function (userId) {
+                return SmartLists.resolveUserIdToName(apiClient, userId).then(function (name) {
+                    return name || 'Unknown User';
+                });
+            });
+
+            return Promise.all(namePromises).then(function (names) {
+                // Return comma-separated names without count
+                if (names.length > 0) {
+                    return names.join(', ');
+                } else {
+                    return 'Unknown User';
+                }
+            }).catch(function () {
+                return 'Unknown User';
+            });
+        }
+
+        // Fallback to single UserId (backwards compatibility)
         const userId = playlist.UserId;  // User field contains the user ID (as string)
         if (userId && userId !== '' && userId !== '00000000-0000-0000-0000-000000000000') {
             return SmartLists.resolveUserIdToName(apiClient, userId).then(function (name) {
@@ -153,10 +177,19 @@
                 maxPlayTimeMinutes = (isNaN(parsedValue) || parsedValue < 0) ? 0 : parsedValue;
             }
 
-            // Get selected user ID from dropdown (required for both playlists and collections)
-            const userId = SmartLists.getElementValue(page, '#playlistUser');
-            if (!userId) {
-                SmartLists.showNotification('Please select a ' + (isCollection ? 'collection owner' : 'playlist owner') + '.');
+            // Get selected user ID(s) - collections use single select, playlists use multi-select
+            let userIds;
+            if (isCollection) {
+                // Collections: single user
+                const userId = SmartLists.getElementValue(page, '#playlistUser');
+                userIds = userId ? [userId] : [];
+            } else {
+                // Playlists: potentially multiple users
+                userIds = SmartLists.getSelectedUserIds ? SmartLists.getSelectedUserIds(page) : [];
+            }
+
+            if (!userIds || userIds.length === 0) {
+                SmartLists.showNotification('Please select at least one ' + (isCollection ? 'collection owner' : 'playlist owner') + '.');
                 return;
             }
 
@@ -191,12 +224,20 @@
             };
 
             // Add type-specific fields
-            playlistDto.UserId = userId;  // User field is shared by both playlists and collections
-
             if (isCollection) {
+                // Collections: single UserId
+                playlistDto.UserId = userIds[0];
                 // Collections are server-wide, no library assignment needed
             } else {
-                playlistDto.Public = isPublic;
+                // Playlists: send UserPlaylists array structure
+                playlistDto.UserPlaylists = userIds.map(function (userId) {
+                    return {
+                        UserId: userId,
+                        JellyfinPlaylistId: null  // Backend will populate on creation
+                    };
+                });
+                // Only set Public for single-user playlists (multi-user playlists are always private)
+                playlistDto.Public = userIds.length === 1 ? isPublic : false;
             }
 
             // Add similarity comparison fields if specified
@@ -379,6 +420,20 @@
                 const listType = playlist.Type || 'Playlist';
                 const isCollection = listType === 'Collection';
 
+                // Extract userIds BEFORE calling handleListTypeChange (which triggers loadUsers)
+                // This ensures pendingUserIds is set before loadUsers checks for it
+                let userIds = [];
+                if (!isCollection) {
+                    // Playlists can have multiple users
+                    if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                        userIds = playlist.UserPlaylists.map(function (up) { return up.UserId; });
+                    } else if (playlist.UserId) {
+                        userIds = [String(playlist.UserId)];
+                    }
+                    // Store userIds to set after users are loaded (loadUsers is async)
+                    page._pendingUserIds = userIds;
+                }
+
                 // Set list type
                 SmartLists.setElementValue(page, '#listType', listType);
 
@@ -445,10 +500,30 @@
                 page._skipMediaTypeChangeHandlers = false;
 
                 // Set the list owner (for both playlists and collections)
-                // Convert User to string if it's not already (handles both Guid and string formats)
-                const userIdString = playlist.UserId ? String(playlist.UserId) : null;
-                if (userIdString) {
-                    SmartLists.setUserIdValueWithRetry(page, userIdString);
+                // isCollection is already declared above on line 425
+                if (isCollection) {
+                    // Collections always have single user
+                    const userIdString = playlist.UserId ? String(playlist.UserId) : null;
+                    if (userIdString) {
+                        SmartLists.setUserIdValueWithRetry(page, userIdString);
+                    }
+                } else {
+                    // Playlists can have multiple users
+                    // userIds were already extracted and stored in page._pendingUserIds above
+                    // Try to set immediately if users are already loaded, otherwise wait for loadUsers
+                    const checkboxes = page.querySelectorAll('#userMultiSelectOptions .user-multi-select-checkbox');
+                    if (checkboxes.length > 0 && page._pendingUserIds) {
+                        // Users already loaded, set immediately
+                        if (SmartLists.setSelectedUserIds) {
+                            SmartLists.setSelectedUserIds(page, page._pendingUserIds);
+                        }
+                        page._pendingUserIds = null; // Clear since we set it
+                    }
+                    // If checkboxes don't exist yet, loadUsers will set them when it finishes
+                    
+                    if (SmartLists.updatePublicCheckboxVisibility) {
+                        SmartLists.updatePublicCheckboxVisibility(page);
+                    }
                 }
 
                 // Clear existing rules (applies to both playlists and collections)
@@ -585,6 +660,20 @@
                 const listType = playlist.Type || 'Playlist';
                 const isCollection = listType === 'Collection';
 
+                // Extract userIds BEFORE calling handleListTypeChange (which triggers loadUsers)
+                // This ensures pendingUserIds is set before loadUsers checks for it
+                let userIds = [];
+                if (!isCollection) {
+                    // Playlists can have multiple users
+                    if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
+                        userIds = playlist.UserPlaylists.map(function (up) { return up.UserId; });
+                    } else if (playlist.UserId) {
+                        userIds = [String(playlist.UserId)];
+                    }
+                    // Store userIds to set after users are loaded (loadUsers is async)
+                    page._pendingUserIds = userIds;
+                }
+
                 // Set playlist name FIRST (before switchToTab) to prevent populateFormDefaults from being called
                 // switchToTab checks if name is empty and calls populateFormDefaults if so, which would regenerate checkboxes
                 SmartLists.setElementValue(page, '#playlistName', (playlist.Name || '') + ' (Copy)');
@@ -639,9 +728,30 @@
                 const clonedMediaTypes = playlist.MediaTypes && playlist.MediaTypes.length > 0 ? playlist.MediaTypes : [];
 
                 // Set the list owner (for both playlists and collections)
-                const userIdString = playlist.UserId ? String(playlist.UserId) : null;
-                if (userIdString) {
-                    SmartLists.setUserIdValueWithRetry(page, userIdString);
+                // isCollection is already declared above on line 650
+                if (isCollection) {
+                    // Collections always have single user
+                    const userIdString = playlist.UserId ? String(playlist.UserId) : null;
+                    if (userIdString) {
+                        SmartLists.setUserIdValueWithRetry(page, userIdString);
+                    }
+                } else {
+                    // Playlists can have multiple users
+                    // userIds were already extracted and stored in page._pendingUserIds above
+                    // Try to set immediately if users are already loaded, otherwise wait for loadUsers
+                    const checkboxes = page.querySelectorAll('#userMultiSelectOptions .user-multi-select-checkbox');
+                    if (checkboxes.length > 0 && page._pendingUserIds) {
+                        // Users already loaded, set immediately
+                        if (SmartLists.setSelectedUserIds) {
+                            SmartLists.setSelectedUserIds(page, page._pendingUserIds);
+                        }
+                        page._pendingUserIds = null; // Clear since we set it
+                    }
+                    // If checkboxes don't exist yet, loadUsers will set them when it finishes
+                    
+                    if (SmartLists.updatePublicCheckboxVisibility) {
+                        SmartLists.updatePublicCheckboxVisibility(page);
+                    }
                 }
 
                 // Clear existing rules and populate with cloned rules (applies to both playlists and collections)
@@ -1204,7 +1314,7 @@
             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eFileName + '</td>' +
             '</tr>' +
             '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +
-            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">User</td>' +
+            '<td style="padding: 0.5em 0.75em; font-weight: bold; color: #ccc; width: 40%; border-right: 1px solid rgba(255,255,255,0.1);">User(s)</td>' +
             '<td style="padding: 0.5em 0.75em; color: #fff;">' + eUserName + '</td>' +
             '</tr>' +
             '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">' +

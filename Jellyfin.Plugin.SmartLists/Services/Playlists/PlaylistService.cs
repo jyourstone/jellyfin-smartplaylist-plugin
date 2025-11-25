@@ -167,21 +167,34 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                 // Try to find existing playlist by Jellyfin playlist ID first, then by current naming format, then by old format
                 Playlist? existingPlaylist = null;
 
+                // For multi-user playlists, find the JellyfinPlaylistId for this specific user
+                string? jellyfinPlaylistIdForUser = null;
+                if (dto.UserPlaylists != null && dto.UserPlaylists.Count > 0)
+                {
+                    var userMapping = dto.UserPlaylists.FirstOrDefault(m => string.Equals(m.UserId, user.Id.ToString("N"), StringComparison.OrdinalIgnoreCase));
+                    jellyfinPlaylistIdForUser = userMapping?.JellyfinPlaylistId;
+                }
+                else
+                {
+                    // Fallback to top-level JellyfinPlaylistId (backwards compatibility)
+                    jellyfinPlaylistIdForUser = dto.JellyfinPlaylistId;
+                }
+
                 logger.LogDebug("Looking for playlist: User={UserId}, JellyfinPlaylistId={JellyfinPlaylistId}",
-                    user.Id, dto.JellyfinPlaylistId);
+                    user.Id, jellyfinPlaylistIdForUser);
 
                 // First try to find by Jellyfin playlist ID (most reliable)
-                if (!string.IsNullOrEmpty(dto.JellyfinPlaylistId) && Guid.TryParse(dto.JellyfinPlaylistId, out var jellyfinPlaylistId))
+                if (!string.IsNullOrEmpty(jellyfinPlaylistIdForUser) && Guid.TryParse(jellyfinPlaylistIdForUser, out var parsedJellyfinPlaylistId))
                 {
-                    if (_libraryManager.GetItemById(jellyfinPlaylistId) is Playlist playlistById)
+                    if (_libraryManager.GetItemById(parsedJellyfinPlaylistId) is Playlist playlistById)
                     {
                         existingPlaylist = playlistById;
                         logger.LogDebug("Found existing playlist by Jellyfin playlist ID: {JellyfinPlaylistId} - {PlaylistName}",
-                            dto.JellyfinPlaylistId, existingPlaylist.Name);
+                            jellyfinPlaylistIdForUser, existingPlaylist.Name);
                     }
                     else
                     {
-                        logger.LogDebug("No playlist found by Jellyfin playlist ID: {JellyfinPlaylistId}", dto.JellyfinPlaylistId);
+                        logger.LogDebug("No playlist found by Jellyfin playlist ID: {JellyfinPlaylistId}", jellyfinPlaylistIdForUser);
                     }
                 }
 
@@ -263,7 +276,34 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     }
 
                     // Update the DTO with the new Jellyfin playlist ID
-                    dto.JellyfinPlaylistId = newPlaylistId;
+                    // For multi-user playlists, update the specific user's mapping
+                    if (dto.UserPlaylists != null && dto.UserPlaylists.Count > 0)
+                    {
+                        var userMapping = dto.UserPlaylists.FirstOrDefault(m => string.Equals(m.UserId, user.Id.ToString("N"), StringComparison.OrdinalIgnoreCase));
+                        if (userMapping != null)
+                        {
+                            userMapping.JellyfinPlaylistId = newPlaylistId;
+                            logger.LogDebug("Updated UserPlaylistMapping for user {UserId} with JellyfinPlaylistId {JellyfinPlaylistId}", user.Id, newPlaylistId);
+                        }
+                        else
+                        {
+                            logger.LogWarning("User {UserId} not found in UserPlaylists for playlist {PlaylistName}, adding mapping", user.Id, dto.Name);
+                            dto.UserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
+                            {
+                                UserId = user.Id.ToString("N"),
+                                JellyfinPlaylistId = newPlaylistId
+                            });
+                        }
+                        // Update backwards compatibility field (first user's playlist)
+                        dto.JellyfinPlaylistId = dto.UserPlaylists[0].JellyfinPlaylistId;
+                    }
+                    else
+                    {
+                        // Single-user playlist (backwards compatibility)
+                        // DEPRECATED: This is for backwards compatibility with old single-user playlists.
+                        // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                        dto.JellyfinPlaylistId = newPlaylistId;
+                    }
                     dto.LastRefreshed = DateTime.UtcNow;
 
                     // Save the DTO if a callback is provided
@@ -630,6 +670,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
         private User? GetPlaylistUser(SmartPlaylistDto playlist)
         {
             // Parse User field and get the user
+            // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
             if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId) && userId != Guid.Empty)
             {
                 return _userManager.GetUserById(userId);

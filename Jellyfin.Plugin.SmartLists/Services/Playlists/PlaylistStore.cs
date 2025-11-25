@@ -75,6 +75,16 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             // Ensure type is set
             smartPlaylist.Type = Core.Enums.SmartListType.Playlist;
 
+            // Migrate old format to new format if needed
+            MigrateToUserPlaylists(smartPlaylist);
+
+            // Remove old fields when using new UserPlaylists format
+            if (smartPlaylist.UserPlaylists != null && smartPlaylist.UserPlaylists.Count > 0)
+            {
+                smartPlaylist.UserId = null;
+                smartPlaylist.JellyfinPlaylistId = null;
+            }
+
             // Validate ID is a valid GUID to prevent path injection
             if (string.IsNullOrWhiteSpace(smartPlaylist.Id) || !Guid.TryParse(smartPlaylist.Id, out var parsedId) || parsedId == Guid.Empty)
             {
@@ -164,6 +174,61 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Migrates old UserId/JellyfinPlaylistId format to UserPlaylists array for backwards compatibility.
+        /// This ensures old playlists continue to work with the new multi-user system.
+        /// Also normalizes UserIds to consistent format and deduplicates entries.
+        /// </summary>
+        private static void MigrateToUserPlaylists(SmartPlaylistDto dto)
+        {
+            // If UserPlaylists already exists and has values, normalize and deduplicate
+            if (dto.UserPlaylists != null && dto.UserPlaylists.Count > 0)
+            {
+                var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
+                var seenUserIds = new HashSet<Guid>();
+
+                foreach (var userMapping in dto.UserPlaylists)
+                {
+                    if (!string.IsNullOrEmpty(userMapping.UserId) && Guid.TryParse(userMapping.UserId, out var userId) && userId != Guid.Empty)
+                    {
+                        // Normalize UserId to standard format (without dashes) and check for duplicates
+                        // HashSet.Add() returns true if item was added (didn't exist), false if already exists
+                        if (seenUserIds.Add(userId))
+                        {
+                            normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
+                            {
+                                UserId = userId.ToString("N"), // Standard format without dashes
+                                JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                            });
+                        }
+                    }
+                }
+
+                dto.UserPlaylists = normalizedUserPlaylists;
+                return;
+            }
+
+            // If UserId exists, migrate to UserPlaylists array
+            // DEPRECATED: dto.UserId is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+            if (!string.IsNullOrEmpty(dto.UserId) && Guid.TryParse(dto.UserId, out var parsedUserId) && parsedUserId != Guid.Empty)
+            {
+                dto.UserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>
+                {
+                    new SmartPlaylistDto.UserPlaylistMapping
+                    {
+                        UserId = parsedUserId.ToString("N"), // Normalize to standard format without dashes
+                        JellyfinPlaylistId = dto.JellyfinPlaylistId
+                    }
+                };
+
+                // Keep UserId and JellyfinPlaylistId populated for backwards compatibility with old clients
+                // DEPRECATED: This is for backwards compatibility with old single-user playlists.
+                // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                // They will be set to the first user's values
+            }
+        }
+
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities", Justification = "File path is validated upstream - only valid GUIDs are passed to this method")]
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Method is part of instance interface implementation")]
         private async Task<SmartPlaylistDto?> LoadPlaylistAsync(string filePath)
@@ -188,6 +253,9 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
             {
                 dto.Type = Core.Enums.SmartListType.Playlist;
             }
+
+            // Migrate old UserId/JellyfinPlaylistId format to UserPlaylists array
+            MigrateToUserPlaylists(dto);
 
             return dto;
         }

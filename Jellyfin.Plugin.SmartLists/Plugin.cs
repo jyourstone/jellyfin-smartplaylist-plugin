@@ -103,6 +103,12 @@ namespace Jellyfin.Plugin.SmartLists
                     Name = "config-sorts.js",
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-sorts.js",
                 },
+                // User selection component
+                new PluginPageInfo
+                {
+                    Name = "config-user-select.js",
+                    EmbeddedResourcePath = GetType().Namespace + ".Configuration.config-user-select.js",
+                },
                 // Rule management
                 new PluginPageInfo
                 {

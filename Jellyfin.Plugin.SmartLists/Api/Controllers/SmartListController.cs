@@ -130,13 +130,54 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
         /// <returns>The user ID, or Guid.Empty if not found.</returns>
         private static Guid GetPlaylistUserId(SmartPlaylistDto playlist)
         {
-            // If User field is set and not empty, parse and return it
-            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId) && userId != Guid.Empty)
+            // If UserPlaylists exists, use first user
+            if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
             {
-                return userId;
+                if (Guid.TryParse(playlist.UserPlaylists[0].UserId, out var userId) && userId != Guid.Empty)
+                {
+                    return userId;
+                }
+            }
+
+            // Fallback to UserId field (backwards compatibility)
+            // DEPRECATED: This check is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userIdFromField) && userIdFromField != Guid.Empty)
+            {
+                return userIdFromField;
             }
 
             return Guid.Empty;
+        }
+
+        /// <summary>
+        /// Gets all user IDs from a playlist, handling both old (UserId) and new (UserPlaylists) formats.
+        /// Normalizes UserIds to consistent format (with dashes) for comparison.
+        /// </summary>
+        private static HashSet<string> GetPlaylistUserIds(SmartPlaylistDto playlist)
+        {
+            var userIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+            {
+                foreach (var mapping in playlist.UserPlaylists)
+                {
+                    if (!string.IsNullOrEmpty(mapping.UserId) && Guid.TryParse(mapping.UserId, out var userId) && userId != Guid.Empty)
+                    {
+                        // Normalize to standard format without dashes for consistent comparison
+                        userIds.Add(userId.ToString("N"));
+                    }
+                }
+            }
+            else if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var parsedUserId) && parsedUserId != Guid.Empty)
+            {
+                // Fallback to old format, normalize to standard format without dashes
+                // DEPRECATED: This fallback is for backwards compatibility with old single-user playlists.
+                // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                userIds.Add(parsedUserId.ToString("N"));
+            }
+
+            return userIds;
         }
 
         /// <summary>
@@ -396,21 +437,100 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 });
             }
 
-            if (string.IsNullOrEmpty(playlist.UserId) || !Guid.TryParse(playlist.UserId, out var playlistUserId) || playlistUserId == Guid.Empty)
+            // Migrate old UserId format to UserPlaylists array if needed
+            // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+            if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
             {
-                logger.LogWarning("CreateSmartPlaylist called with empty or invalid User. Name={Name}", playlist.Name);
+                if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var userId) && userId != Guid.Empty)
+                {
+                    // Migrate single UserId to UserPlaylists array
+                    playlist.UserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>
+                    {
+                        new SmartPlaylistDto.UserPlaylistMapping
+                        {
+                            UserId = playlist.UserId,
+                            JellyfinPlaylistId = playlist.JellyfinPlaylistId
+                        }
+                    };
+                }
+            }
+
+            // Validate UserPlaylists array
+            if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
+            {
+                logger.LogWarning("CreateSmartPlaylist called with no users. Name={Name}", playlist.Name);
                 return BadRequest(new ProblemDetails
                 {
                     Title = "Validation Error",
-                    Detail = "Playlist owner (User) is required",
+                    Detail = "At least one playlist owner (User) is required",
                     Status = StatusCodes.Status400BadRequest
                 });
             }
 
+            // Normalize and deduplicate UserPlaylists by normalizing UserIds to consistent format
+            var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
+            var seenUserIds = new HashSet<Guid>();
+
+            foreach (var userMapping in playlist.UserPlaylists)
+            {
+                if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
+                {
+                    logger.LogWarning("CreateSmartPlaylist called with invalid user ID in UserPlaylists. Name={Name}", playlist.Name);
+                    return BadRequest(new ProblemDetails
+                    {
+                        Title = "Validation Error",
+                        Detail = "All user IDs must be valid GUIDs",
+                        Status = StatusCodes.Status400BadRequest
+                    });
+                }
+
+                // Normalize UserId to standard format (without dashes) and check for duplicates
+                // HashSet.Add() returns true if item was added (didn't exist), false if already exists
+                if (seenUserIds.Add(userId))
+                {
+                    normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
+                    {
+                        UserId = userId.ToString("N"), // Standard format without dashes
+                        JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                    });
+                }
+                else
+                {
+                    logger.LogWarning("Duplicate user ID {UserId} detected in UserPlaylists for playlist {Name}, skipping duplicate", userId, playlist.Name);
+                }
+            }
+
+            // Replace with normalized and deduplicated list
+            playlist.UserPlaylists = normalizedUserPlaylists;
+
+            // Validate we still have at least one user after deduplication
+            if (playlist.UserPlaylists.Count == 0)
+            {
+                logger.LogWarning("CreateSmartPlaylist called with no valid users after deduplication. Name={Name}", playlist.Name);
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Validation Error",
+                    Detail = "At least one playlist owner (User) is required",
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+
+            // Set Public = false for multi-user playlists (multi-user playlists are always private)
+            if (playlist.UserPlaylists.Count > 1)
+            {
+                playlist.Public = false;
+                logger.LogDebug("Multi-user playlist detected ({UserCount} users), setting Public=false", playlist.UserPlaylists.Count);
+            }
+
+            // Remove old fields when using new UserPlaylists format (they will be set to null in JSON)
+            playlist.UserId = null;
+            playlist.JellyfinPlaylistId = null;
+
             var stopwatch = Stopwatch.StartNew();
             logger.LogDebug("CreateSmartPlaylist called for playlist: {PlaylistName}", playlist.Name);
-            logger.LogDebug("Playlist data received: Name={Name}, User={User}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}",
-                playlist.Name, playlist.UserId, playlist.Public, playlist.ExpressionSets?.Count ?? 0,
+            logger.LogDebug("Playlist data received: Name={Name}, UserCount={UserCount}, Public={Public}, ExpressionSets={ExpressionSetCount}, MediaTypes={MediaTypes}",
+                playlist.Name, playlist.UserPlaylists?.Count ?? 0, playlist.Public, playlist.ExpressionSets?.Count ?? 0,
                 playlist.MediaTypes != null ? string.Join(",", playlist.MediaTypes) : "None");
 
             if (playlist.ExpressionSets != null)
@@ -514,26 +634,51 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after creating playlist '{PlaylistName}'", playlist.Name);
 
-                // Enqueue refresh operation instead of direct refresh
-                logger.LogDebug("Enqueuing refresh for newly created playlist {PlaylistName}", playlist.Name);
+                // Enqueue refresh operation(s) - one per user for multi-user playlists
+                logger.LogDebug("Enqueuing refresh for newly created playlist {PlaylistName} with {UserCount} users", playlist.Name, createdPlaylist.UserPlaylists?.Count ?? 1);
                 var listId = createdPlaylist.Id ?? Guid.NewGuid().ToString();
-                var queueItem = new RefreshQueueItem
+                
+                if (createdPlaylist.UserPlaylists != null && createdPlaylist.UserPlaylists.Count > 0)
                 {
-                    ListId = listId,
-                    ListName = createdPlaylist.Name,
-                    ListType = Core.Enums.SmartListType.Playlist,
-                    OperationType = RefreshOperationType.Create,
-                    ListData = createdPlaylist,
-                    UserId = createdPlaylist.UserId,
-                    TriggerType = Core.Enums.RefreshTriggerType.Manual
-                };
+                    // Queue refresh for each user
+                    foreach (var userMapping in createdPlaylist.UserPlaylists)
+                    {
+                        var queueItem = new RefreshQueueItem
+                        {
+                            ListId = listId,
+                            ListName = createdPlaylist.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Create,
+                            ListData = createdPlaylist,
+                            UserId = userMapping.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
 
-                _refreshQueueService.EnqueueOperation(queueItem);
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        logger.LogDebug("Enqueued refresh for user {UserId} in playlist {PlaylistName}", userMapping.UserId, playlist.Name);
+                    }
+                }
+                else
+                {
+                    // Fallback to single user (backwards compatibility)
+                    var queueItem = new RefreshQueueItem
+                    {
+                        ListId = listId,
+                        ListName = createdPlaylist.Name,
+                        ListType = Core.Enums.SmartListType.Playlist,
+                        OperationType = RefreshOperationType.Create,
+                        ListData = createdPlaylist,
+                        UserId = createdPlaylist.UserId,
+                        TriggerType = Core.Enums.RefreshTriggerType.Manual
+                    };
+
+                    _refreshQueueService.EnqueueOperation(queueItem);
+                }
 
                 // Return the created playlist immediately (refresh will happen in background)
                 // Note: JellyfinPlaylistId will be populated after the queue processes the refresh
                 stopwatch.Stop();
-                logger.LogInformation("Created smart playlist '{PlaylistName}' and enqueued for refresh", playlist.Name);
+                logger.LogInformation("Created smart playlist '{PlaylistName}' with {UserCount} users and enqueued for refresh", playlist.Name, createdPlaylist.UserPlaylists?.Count ?? 1);
 
                 return CreatedAtAction(nameof(GetSmartList), new { id = createdPlaylist.Id }, createdPlaylist);
             }
@@ -965,21 +1110,166 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     }
                 }
 
-                // Preserve User if not provided (frontend might not send it during edit)
-                var originalUserId = GetPlaylistUserId(existingPlaylist);
-                var newUserIdParsed = Guid.Empty;
-                if ((string.IsNullOrEmpty(playlist.UserId) || !Guid.TryParse(playlist.UserId, out newUserIdParsed) || newUserIdParsed == Guid.Empty) && originalUserId != Guid.Empty)
+                // Migrate old format to new format if needed
+                if (existingPlaylist.UserPlaylists == null || existingPlaylist.UserPlaylists.Count == 0)
                 {
-                    playlist.UserId = originalUserId.ToString("D");
-                    newUserIdParsed = originalUserId;
+                    if (!string.IsNullOrEmpty(existingPlaylist.UserId))
+                    {
+                        existingPlaylist.UserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>
+                        {
+                            new SmartPlaylistDto.UserPlaylistMapping
+                            {
+                                UserId = existingPlaylist.UserId,
+                                JellyfinPlaylistId = existingPlaylist.JellyfinPlaylistId
+                            }
+                        };
+                    }
                 }
-                else if (!string.IsNullOrEmpty(playlist.UserId) && !Guid.TryParse(playlist.UserId, out newUserIdParsed))
-                {
-                    newUserIdParsed = Guid.Empty;
-                }
-                var newUserId = newUserIdParsed;
 
-                bool ownershipChanging = originalUserId != Guid.Empty && newUserId != originalUserId;
+                if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
+                {
+                    // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+                    // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                    if (!string.IsNullOrEmpty(playlist.UserId))
+                    {
+                        playlist.UserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>
+                        {
+                            new SmartPlaylistDto.UserPlaylistMapping
+                            {
+                                UserId = playlist.UserId,
+                                JellyfinPlaylistId = null
+                            }
+                        };
+                    }
+                    else if (existingPlaylist.UserPlaylists != null && existingPlaylist.UserPlaylists.Count > 0)
+                    {
+                        // Preserve existing users if not provided
+                        playlist.UserPlaylists = existingPlaylist.UserPlaylists.Select(m => new SmartPlaylistDto.UserPlaylistMapping
+                        {
+                            UserId = m.UserId,
+                            JellyfinPlaylistId = m.JellyfinPlaylistId
+                        }).ToList();
+                    }
+                }
+
+                // Validate UserPlaylists
+                if (playlist.UserPlaylists == null || playlist.UserPlaylists.Count == 0)
+                {
+                    logger.LogWarning("UpdatePlaylistInternal called with no users. Name={Name}", playlist.Name);
+                    return BadRequest(new ProblemDetails
+                    {
+                        Title = "Validation Error",
+                        Detail = "At least one playlist owner (User) is required",
+                        Status = StatusCodes.Status400BadRequest
+                    });
+                }
+
+                // Normalize and deduplicate UserPlaylists by normalizing UserIds to consistent format
+                var normalizedUserPlaylists = new List<SmartPlaylistDto.UserPlaylistMapping>();
+                var seenUserIds = new HashSet<Guid>();
+
+                foreach (var userMapping in playlist.UserPlaylists)
+                {
+                    if (string.IsNullOrEmpty(userMapping.UserId) || !Guid.TryParse(userMapping.UserId, out var userId) || userId == Guid.Empty)
+                    {
+                        logger.LogWarning("UpdatePlaylistInternal called with invalid user ID. Name={Name}", playlist.Name);
+                        return BadRequest(new ProblemDetails
+                        {
+                            Title = "Validation Error",
+                            Detail = "All user IDs must be valid GUIDs",
+                            Status = StatusCodes.Status400BadRequest
+                        });
+                    }
+
+                    // Normalize UserId to standard format (without dashes) and check for duplicates
+                    // HashSet.Add() returns true if item was added (didn't exist), false if already exists
+                    if (seenUserIds.Add(userId))
+                    {
+                        normalizedUserPlaylists.Add(new SmartPlaylistDto.UserPlaylistMapping
+                        {
+                            UserId = userId.ToString("N"), // Standard format without dashes
+                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                        });
+                    }
+                    else
+                    {
+                        logger.LogWarning("Duplicate user ID {UserId} detected in UserPlaylists for playlist {Name}, skipping duplicate", userId, playlist.Name);
+                    }
+                }
+
+                // Replace with normalized and deduplicated list
+                playlist.UserPlaylists = normalizedUserPlaylists;
+
+                // Validate we still have at least one user after deduplication
+                if (playlist.UserPlaylists.Count == 0)
+                {
+                    logger.LogWarning("UpdatePlaylistInternal called with no valid users after deduplication. Name={Name}", playlist.Name);
+                    return BadRequest(new ProblemDetails
+                    {
+                        Title = "Validation Error",
+                        Detail = "At least one playlist owner (User) is required",
+                        Status = StatusCodes.Status400BadRequest
+                    });
+                }
+
+                // Set Public = false for multi-user playlists
+                if (playlist.UserPlaylists.Count > 1)
+                {
+                    playlist.Public = false;
+                    logger.LogDebug("Multi-user playlist detected ({UserCount} users), setting Public=false", playlist.UserPlaylists.Count);
+                }
+
+                // Compare old and new user lists to detect changes
+                var oldUserIds = GetPlaylistUserIds(existingPlaylist);
+                var newUserIds = GetPlaylistUserIds(playlist);
+                var usersToRemove = oldUserIds.Except(newUserIds, StringComparer.OrdinalIgnoreCase).ToList();
+                var usersToAdd = newUserIds.Except(oldUserIds, StringComparer.OrdinalIgnoreCase).ToList();
+                var usersToKeep = oldUserIds.Intersect(newUserIds, StringComparer.OrdinalIgnoreCase).ToList();
+
+                logger.LogDebug("User changes detected for playlist '{PlaylistName}': Remove={RemoveCount}, Add={AddCount}, Keep={KeepCount}",
+                    playlist.Name, usersToRemove.Count, usersToAdd.Count, usersToKeep.Count);
+
+                // Delete Jellyfin playlists for removed users
+                var playlistService = GetPlaylistService();
+                foreach (var removedUserId in usersToRemove)
+                {
+                    var removedMapping = existingPlaylist.UserPlaylists?.FirstOrDefault(m => string.Equals(m.UserId, removedUserId, StringComparison.OrdinalIgnoreCase));
+                    if (removedMapping != null && !string.IsNullOrEmpty(removedMapping.JellyfinPlaylistId))
+                    {
+                        logger.LogDebug("Deleting Jellyfin playlist {JellyfinPlaylistId} for removed user {UserId}", removedMapping.JellyfinPlaylistId, removedUserId);
+                        try
+                        {
+                            // Create a temporary DTO for deletion
+                            var tempDto = new SmartPlaylistDto
+                            {
+                                Id = existingPlaylist.Id,
+                                Name = existingPlaylist.Name,
+                                UserId = removedUserId,
+                                JellyfinPlaylistId = removedMapping.JellyfinPlaylistId
+                            };
+                            await playlistService.DeleteAsync(tempDto);
+                            logger.LogInformation("Deleted Jellyfin playlist {JellyfinPlaylistId} for removed user {UserId}", removedMapping.JellyfinPlaylistId, removedUserId);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to delete Jellyfin playlist {JellyfinPlaylistId} for removed user {UserId}, continuing", removedMapping.JellyfinPlaylistId, removedUserId);
+                        }
+                    }
+                }
+
+                // Preserve JellyfinPlaylistId for kept users
+                if (existingPlaylist.UserPlaylists != null)
+                {
+                    foreach (var newMapping in playlist.UserPlaylists)
+                    {
+                        var existingMapping = existingPlaylist.UserPlaylists.FirstOrDefault(m => string.Equals(m.UserId, newMapping.UserId, StringComparison.OrdinalIgnoreCase));
+                        if (existingMapping != null && !string.IsNullOrEmpty(existingMapping.JellyfinPlaylistId))
+                        {
+                            newMapping.JellyfinPlaylistId = existingMapping.JellyfinPlaylistId;
+                        }
+                    }
+                }
+
                 bool nameChanging = !string.Equals(existingPlaylist.Name, playlist.Name, StringComparison.OrdinalIgnoreCase);
                 bool enabledStatusChanging = existingPlaylist.Enabled != playlist.Enabled;
 
@@ -992,22 +1282,21 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         existingPlaylist.Name);
                 }
 
-                if (ownershipChanging)
+                if (nameChanging)
                 {
-                    logger.LogDebug("Playlist ownership changing from user {OldUserId} to {NewUserId} for playlist '{PlaylistName}'",
-                        originalUserId, newUserId, existingPlaylist.Name);
-
-                    // Note: Ownership changes will be handled by the PlaylistService during refresh
-                    // The playlist will be updated in place rather than recreated
-                }
-                else if (nameChanging)
-                {
-                    logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}' for user {UserId}",
-                        existingPlaylist.Name, playlist.Name, originalUserId);
+                    logger.LogDebug("Playlist name changing from '{OldName}' to '{NewName}'",
+                        existingPlaylist.Name, playlist.Name);
 
                     // Note: Name changes will be handled by the PlaylistService during refresh
                     // The playlist will be updated in place rather than recreated
                 }
+
+                // Ensure backwards compatibility: keep UserId and JellyfinPlaylistId populated (first user's values)
+                // DEPRECATED: This is for backwards compatibility with old single-user playlists.
+                // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                var firstUser = playlist.UserPlaylists[0];
+                playlist.UserId = firstUser.UserId;
+                playlist.JellyfinPlaylistId = firstUser.JellyfinPlaylistId;
 
                 playlist.Id = id;
 
@@ -1017,12 +1306,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     playlist.DateCreated = existingPlaylist.DateCreated;
                 }
 
-                // Preserve the Jellyfin playlist ID from the existing playlist if it exists
-                if (!string.IsNullOrEmpty(existingPlaylist.JellyfinPlaylistId))
-                {
-                    playlist.JellyfinPlaylistId = existingPlaylist.JellyfinPlaylistId;
-                    logger.LogDebug("Preserved Jellyfin playlist ID {JellyfinPlaylistId} from existing playlist", existingPlaylist.JellyfinPlaylistId);
-                }
+                // JellyfinPlaylistId is already set above from first user's mapping
 
                 // Preserve statistics from existing playlist to avoid N/A display until refresh completes
                 if (existingPlaylist.ItemCount.HasValue)
@@ -1047,21 +1331,46 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 SmartList.ClearRuleCache(logger);
                 logger.LogDebug("Cleared rule cache after updating playlist '{PlaylistName}'", playlist.Name);
 
-                // Enqueue refresh operation instead of direct refresh
-                logger.LogDebug("Enqueuing refresh for updated playlist {PlaylistName}", playlist.Name);
+                // Enqueue refresh operation(s) - one per user for multi-user playlists
+                logger.LogDebug("Enqueuing refresh for updated playlist {PlaylistName} with {UserCount} users", playlist.Name, updatedPlaylist.UserPlaylists?.Count ?? 1);
                 var listId = updatedPlaylist.Id ?? Guid.NewGuid().ToString();
-                var queueItem = new RefreshQueueItem
+                
+                if (updatedPlaylist.UserPlaylists != null && updatedPlaylist.UserPlaylists.Count > 0)
                 {
-                    ListId = listId,
-                    ListName = updatedPlaylist.Name,
-                    ListType = Core.Enums.SmartListType.Playlist,
-                    OperationType = RefreshOperationType.Edit,
-                    ListData = updatedPlaylist,
-                    UserId = updatedPlaylist.UserId,
-                    TriggerType = Core.Enums.RefreshTriggerType.Manual
-                };
+                    // Queue refresh for each user
+                    foreach (var userMapping in updatedPlaylist.UserPlaylists)
+                    {
+                        var queueItem = new RefreshQueueItem
+                        {
+                            ListId = listId,
+                            ListName = updatedPlaylist.Name,
+                            ListType = Core.Enums.SmartListType.Playlist,
+                            OperationType = RefreshOperationType.Edit,
+                            ListData = updatedPlaylist,
+                            UserId = userMapping.UserId,
+                            TriggerType = Core.Enums.RefreshTriggerType.Manual
+                        };
 
-                _refreshQueueService.EnqueueOperation(queueItem);
+                        _refreshQueueService.EnqueueOperation(queueItem);
+                        logger.LogDebug("Enqueued refresh for user {UserId} in playlist {PlaylistName}", userMapping.UserId, playlist.Name);
+                    }
+                }
+                else
+                {
+                    // Fallback to single user (backwards compatibility)
+                    var queueItem = new RefreshQueueItem
+                    {
+                        ListId = listId,
+                        ListName = updatedPlaylist.Name,
+                        ListType = Core.Enums.SmartListType.Playlist,
+                        OperationType = RefreshOperationType.Edit,
+                        ListData = updatedPlaylist,
+                        UserId = updatedPlaylist.UserId,
+                        TriggerType = Core.Enums.RefreshTriggerType.Manual
+                    };
+
+                    _refreshQueueService.EnqueueOperation(queueItem);
+                }
 
                 stopwatch.Stop();
                 logger.LogInformation("Updated SmartList: {PlaylistName} and enqueued for refresh in {ElapsedTime}ms", playlist.Name, stopwatch.ElapsedMilliseconds);
@@ -1301,12 +1610,72 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     var playlistService = GetPlaylistService();
                     if (deleteJellyfinList)
                     {
-                        await playlistService.DeleteAsync(playlist);
+                        // Delete all Jellyfin playlists for all users
+                        if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+                        {
+                            logger.LogDebug("Deleting {Count} Jellyfin playlists for multi-user playlist {PlaylistName}", playlist.UserPlaylists.Count, playlist.Name);
+                            foreach (var userMapping in playlist.UserPlaylists)
+                            {
+                                if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
+                                {
+                                    try
+                                    {
+                                        // Create a temporary DTO for deletion
+                                        var tempDto = new SmartPlaylistDto
+                                        {
+                                            Id = playlist.Id,
+                                            Name = playlist.Name,
+                                            UserId = userMapping.UserId,
+                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                                        };
+                                        await playlistService.DeleteAsync(tempDto);
+                                        logger.LogDebug("Deleted Jellyfin playlist {JellyfinPlaylistId} for user {UserId}", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        logger.LogWarning(ex, "Failed to delete Jellyfin playlist {JellyfinPlaylistId} for user {UserId}, continuing", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Fallback to single playlist deletion (backwards compatibility)
+                            await playlistService.DeleteAsync(playlist);
+                        }
                         logger.LogInformation("Deleted smart playlist: {PlaylistName}", playlist.Name);
                     }
                     else
                     {
-                        await playlistService.RemoveSmartSuffixAsync(playlist);
+                        // Remove smart suffix from all playlists
+                        if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+                        {
+                            foreach (var userMapping in playlist.UserPlaylists)
+                            {
+                                if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
+                                {
+                                    try
+                                    {
+                                        var tempDto = new SmartPlaylistDto
+                                        {
+                                            Id = playlist.Id,
+                                            Name = playlist.Name,
+                                            UserId = userMapping.UserId,
+                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                                        };
+                                        await playlistService.RemoveSmartSuffixAsync(tempDto);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        logger.LogWarning(ex, "Failed to remove smart suffix from Jellyfin playlist {JellyfinPlaylistId} for user {UserId}, continuing", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            await playlistService.RemoveSmartSuffixAsync(playlist);
+                        }
                         logger.LogInformation("Deleted smart playlist configuration: {PlaylistName}", playlist.Name);
                     }
 
@@ -1644,6 +2013,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 ListType = Core.Enums.SmartListType.Playlist,
                                 OperationType = RefreshOperationType.Refresh,
                                 ListData = playlist,
+                                // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+                                // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
                                 UserId = playlist.UserId,
                                 TriggerType = Core.Enums.RefreshTriggerType.Manual
                             };
@@ -2165,32 +2536,118 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                             bool reassignedUsers = false;
                             Guid currentUserId = Guid.Empty;
 
-                            // Check playlist owner
-                            if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
+                            // Helper function to get current user ID for reassignment
+                            Guid GetCurrentUserIdForReassignment()
+                            {
+                                if (currentUserId == Guid.Empty)
+                                {
+                                    currentUserId = GetCurrentUserId();
+                                }
+                                return currentUserId;
+                            }
+
+                            // Check multi-user playlists (UserPlaylists array)
+                            if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+                            {
+                                var validUserMappings = new List<SmartPlaylistDto.UserPlaylistMapping>();
+                                var invalidUserIds = new List<string>();
+
+                                foreach (var userMapping in playlist.UserPlaylists)
+                                {
+                                    if (string.IsNullOrEmpty(userMapping.UserId) || 
+                                        !Guid.TryParse(userMapping.UserId, out var userId) || 
+                                        userId == Guid.Empty)
+                                    {
+                                        invalidUserIds.Add(userMapping.UserId ?? "null");
+                                        continue;
+                                    }
+
+                                    var user = _userManager.GetUserById(userId);
+                                    if (user == null)
+                                    {
+                                        invalidUserIds.Add(userMapping.UserId);
+                                        
+                                        // Get current user ID for reassignment
+                                        var reassignmentUserId = GetCurrentUserIdForReassignment();
+                                        if (reassignmentUserId == Guid.Empty)
+                                        {
+                                            logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} in UserPlaylists but cannot determine importing user for reassignment",
+                                                playlist.Name, userMapping.UserId);
+                                            // Continue to next user - we'll handle the case where all users are invalid below
+                                            continue;
+                                        }
+
+                                        logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} in UserPlaylists, reassigning to importing user {CurrentUserId}",
+                                            playlist.Name, userMapping.UserId, reassignmentUserId);
+
+                                        // Reassign to importing user
+                                        validUserMappings.Add(new SmartPlaylistDto.UserPlaylistMapping
+                                        {
+                                            UserId = reassignmentUserId.ToString("N"),
+                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                                        });
+                                        reassignedUsers = true;
+                                    }
+                                    else
+                                    {
+                                        // User exists, keep the mapping
+                                        validUserMappings.Add(userMapping);
+                                    }
+                                }
+
+                                // Check if we have any valid users left
+                                if (validUserMappings.Count == 0)
+                                {
+                                    logger.LogWarning("Playlist '{PlaylistName}' has no valid users in UserPlaylists after validation", playlist.Name);
+                                    importResults.Add(new { fileName = entry.Name, status = "error", message = "Playlist has no valid users" });
+                                    errorCount++;
+                                    continue; // Skip this entire playlist
+                                }
+
+                                // Update UserPlaylists with valid/reassigned users
+                                playlist.UserPlaylists = validUserMappings;
+
+                                // Also update the deprecated UserId field for backwards compatibility (first user's ID)
+                                if (validUserMappings.Count > 0 && Guid.TryParse(validUserMappings[0].UserId, out var firstUserId))
+                                {
+                                    playlist.UserId = firstUserId.ToString("D");
+                                }
+                            }
+                            // Check single-user playlist (backwards compatibility - top-level UserId)
+                            // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+                            // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                            else if (!string.IsNullOrEmpty(playlist.UserId) && Guid.TryParse(playlist.UserId, out var playlistUserIdParsed) && playlistUserIdParsed != Guid.Empty)
                             {
                                 var user = _userManager.GetUserById(playlistUserIdParsed);
                                 if (user == null)
                                 {
-                                    // Only get current user ID when we need to reassign
-                                    if (currentUserId == Guid.Empty)
+                                    // Get current user ID for reassignment
+                                    var reassignmentUserId = GetCurrentUserIdForReassignment();
+                                    if (reassignmentUserId == Guid.Empty)
                                     {
-                                        currentUserId = GetCurrentUserId();
-                                        if (currentUserId == Guid.Empty)
-                                        {
-                                            logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} but cannot determine importing user for reassignment",
-                                                playlist.Name, playlist.UserId);
-                                            importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
-                                            errorCount++;
-                                            continue; // Skip this entire playlist,
-                                        }
+                                        logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User} but cannot determine importing user for reassignment",
+                                            playlist.Name, playlist.UserId);
+                                        importResults.Add(new { fileName = entry.Name, status = "error", message = "Cannot reassign playlist - unable to determine importing user" });
+                                        errorCount++;
+                                        continue; // Skip this entire playlist
                                     }
 
                                     logger.LogWarning("Playlist '{PlaylistName}' references non-existent user {User}, reassigning to importing user {CurrentUserId}",
-                                        playlist.Name, playlist.UserId, currentUserId);
+                                        playlist.Name, playlist.UserId, reassignmentUserId);
 
-                                    playlist.UserId = currentUserId.ToString("D");
+                                    // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
+                                    // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
+                                    playlist.UserId = reassignmentUserId.ToString("D");
                                     reassignedUsers = true;
                                 }
+                            }
+                            else
+                            {
+                                // No users specified at all - this is invalid
+                                logger.LogWarning("Playlist '{PlaylistName}' has no users specified (neither UserId nor UserPlaylists)", playlist.Name);
+                                importResults.Add(new { fileName = entry.Name, status = "error", message = "Playlist must have at least one user" });
+                                errorCount++;
+                                continue; // Skip this entire playlist
                             }
 
                             // Note: We don't reassign user-specific expression rules if the referenced user doesn't exist.

@@ -83,11 +83,29 @@ namespace Jellyfin.Plugin.SmartLists
             try
             {
                 // Handle playlists with missing/invalid User first
-                // Helper predicate to check if a playlist has a valid user ID
-                static bool IsValidUserId(SmartPlaylistDto p) => 
-                    !string.IsNullOrEmpty(p.UserId) && 
-                    Guid.TryParse(p.UserId, out var userId) && 
-                    userId != Guid.Empty;
+                // Helper predicate to check if a playlist has a valid user ID (either top-level UserId or UserPlaylists array)
+                static bool IsValidUserId(SmartPlaylistDto p)
+                {
+                    // Check for single-user playlist (backwards compatibility)
+                    if (!string.IsNullOrEmpty(p.UserId) && 
+                        Guid.TryParse(p.UserId, out var userId) && 
+                        userId != Guid.Empty)
+                    {
+                        return true;
+                    }
+                    
+                    // Check for multi-user playlist (UserPlaylists array)
+                    if (p.UserPlaylists != null && p.UserPlaylists.Count > 0)
+                    {
+                        // Validate that at least one user in UserPlaylists is valid
+                        return p.UserPlaylists.Any(up => 
+                            !string.IsNullOrEmpty(up.UserId) && 
+                            Guid.TryParse(up.UserId, out var upUserId) && 
+                            upUserId != Guid.Empty);
+                    }
+                    
+                    return false;
+                }
 
                 var playlistsWithInvalidUser = playlists
                     .Where(p => !IsValidUserId(p))
@@ -110,11 +128,43 @@ namespace Jellyfin.Plugin.SmartLists
                     }
                 }
 
-                // Group playlists by user (same as legacy tasks)
-                var playlistsByUser = playlists
-                    .Where(IsValidUserId)
-                    .GroupBy(p => Guid.Parse(p.UserId))
-                    .ToDictionary(g => g.Key, g => g.ToList());
+                // Group playlists by user, handling both single-user and multi-user playlists
+                // For multi-user playlists, create an entry for each user in UserPlaylists
+                var playlistsByUser = new Dictionary<Guid, List<SmartPlaylistDto>>();
+                
+                foreach (var playlist in playlists.Where(IsValidUserId))
+                {
+                    // Handle multi-user playlists (UserPlaylists array)
+                    if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+                    {
+                        foreach (var userMapping in playlist.UserPlaylists)
+                        {
+                            if (!string.IsNullOrEmpty(userMapping.UserId) && 
+                                Guid.TryParse(userMapping.UserId, out var userId) && 
+                                userId != Guid.Empty)
+                            {
+                                if (!playlistsByUser.TryGetValue(userId, out var userPlaylistList))
+                                {
+                                    userPlaylistList = new List<SmartPlaylistDto>();
+                                    playlistsByUser[userId] = userPlaylistList;
+                                }
+                                userPlaylistList.Add(playlist);
+                            }
+                        }
+                    }
+                    // Handle single-user playlists (backwards compatibility)
+                    else if (!string.IsNullOrEmpty(playlist.UserId) && 
+                             Guid.TryParse(playlist.UserId, out var singleUserId) && 
+                             singleUserId != Guid.Empty)
+                    {
+                        if (!playlistsByUser.TryGetValue(singleUserId, out var singleUserPlaylistList))
+                        {
+                            singleUserPlaylistList = new List<SmartPlaylistDto>();
+                            playlistsByUser[singleUserId] = singleUserPlaylistList;
+                        }
+                        singleUserPlaylistList.Add(playlist);
+                    }
+                }
 
                 if (!playlistsByUser.Any())
                 {

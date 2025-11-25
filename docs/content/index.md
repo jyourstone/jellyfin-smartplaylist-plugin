@@ -21,7 +21,7 @@ This plugin allows you to create dynamic playlists and collections based on a se
 - 🚀 **Modern Jellyfin Support** - Built for newer Jellyfin versions with improved compatibility
 - 🎨 **Modern Web Interface** - A full-featured UI to create, edit, view and delete smart playlists and collections
 - ✏️ **Edit Lists** - Modify existing smart playlists and collections directly from the UI
-- 👥 **User Selection** - Choose which user should own a playlist (or serve as reference user for collections) with an intuitive dropdown
+- 👥 **Multi-User Playlists** - Create playlists for multiple users, with each user getting their own personalized version based on their playback data
 - 🎯 **Flexible Rules** - Build simple or complex rules with an intuitive builder
 - 🔄 **Automatic Updates** - Playlists and collections refresh automatically on library updates or via scheduled tasks
 - 📦 **Export/Import** - Export all lists to a ZIP file for backup or transfer between Jellyfin instances
