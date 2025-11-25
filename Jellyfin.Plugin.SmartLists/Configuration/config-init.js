@@ -237,7 +237,6 @@
             page._mediaTypeAbortController.abort();
         }
         page._mediaTypeAbortController = SmartLists.createAbortController();
-        const mediaTypeSignal = page._mediaTypeAbortController.signal;
 
         // Batch update function for all media type changes
         // Order matters: repopulate fields first (may invalidate), then sync dependent UI
