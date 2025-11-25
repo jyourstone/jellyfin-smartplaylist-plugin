@@ -1434,6 +1434,11 @@
             SmartLists.cleanupModalListeners(refreshModal);
         }
 
+        // Cleanup user multi-select listeners
+        if (SmartLists.cleanupUserMultiSelect) {
+            SmartLists.cleanupUserMultiSelect(page);
+        }
+
         // Clean up page event listeners
         if (page._pageAbortController) {
             page._pageAbortController.abort();

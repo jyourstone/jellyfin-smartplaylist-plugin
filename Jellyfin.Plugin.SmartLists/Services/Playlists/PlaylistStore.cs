@@ -222,10 +222,12 @@ namespace Jellyfin.Plugin.SmartLists.Services.Playlists
                     }
                 };
 
-                // Keep UserId and JellyfinPlaylistId populated for backwards compatibility with old clients
+                // Note: This creates the UserPlaylists structure from legacy data.
+                // The legacy UserId and JellyfinPlaylistId fields will be cleared by SaveAsync
+                // when the playlist is saved (see lines 82-86). This is intentional to enforce
+                // the new multi-user format and prevent inconsistencies.
                 // DEPRECATED: This is for backwards compatibility with old single-user playlists.
                 // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
-                // They will be set to the first user's values
             }
         }
 

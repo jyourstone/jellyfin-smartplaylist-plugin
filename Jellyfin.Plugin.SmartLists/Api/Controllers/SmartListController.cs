@@ -152,7 +152,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
         /// <summary>
         /// Gets all user IDs from a playlist, handling both old (UserId) and new (UserPlaylists) formats.
-        /// Normalizes UserIds to consistent format (with dashes) for comparison.
+        /// Normalizes UserIds to consistent format (without dashes) for comparison.
         /// </summary>
         private static HashSet<string> GetPlaylistUserIds(SmartPlaylistDto playlist)
         {
@@ -1119,7 +1119,9 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         {
                             new SmartPlaylistDto.UserPlaylistMapping
                             {
-                                UserId = existingPlaylist.UserId,
+                                UserId = Guid.TryParse(existingPlaylist.UserId, out var userId) 
+                                    ? userId.ToString("N")  // Normalize to standard format
+                                    : existingPlaylist.UserId,
                                 JellyfinPlaylistId = existingPlaylist.JellyfinPlaylistId
                             }
                         };
@@ -1233,7 +1235,14 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var playlistService = GetPlaylistService();
                 foreach (var removedUserId in usersToRemove)
                 {
-                    var removedMapping = existingPlaylist.UserPlaylists?.FirstOrDefault(m => string.Equals(m.UserId, removedUserId, StringComparison.OrdinalIgnoreCase));
+                    // Normalize both sides for comparison
+                    var normalizedRemovedUserId = Guid.TryParse(removedUserId, out var removedGuid) 
+                        ? removedGuid.ToString("N") : removedUserId;
+                    var removedMapping = existingPlaylist.UserPlaylists?.FirstOrDefault(m =>
+                    {
+                        var normalized = Guid.TryParse(m.UserId, out var guid) ? guid.ToString("N") : m.UserId;
+                        return string.Equals(normalized, normalizedRemovedUserId, StringComparison.OrdinalIgnoreCase);
+                    });
                     if (removedMapping != null && !string.IsNullOrEmpty(removedMapping.JellyfinPlaylistId))
                     {
                         logger.LogDebug("Deleting Jellyfin playlist {JellyfinPlaylistId} for removed user {UserId}", removedMapping.JellyfinPlaylistId, removedUserId);
@@ -1262,7 +1271,14 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 {
                     foreach (var newMapping in playlist.UserPlaylists)
                     {
-                        var existingMapping = existingPlaylist.UserPlaylists.FirstOrDefault(m => string.Equals(m.UserId, newMapping.UserId, StringComparison.OrdinalIgnoreCase));
+                        var existingMapping = existingPlaylist.UserPlaylists.FirstOrDefault(m =>
+                        {
+                            var normalizedExisting = Guid.TryParse(m.UserId, out var existingGuid) 
+                                ? existingGuid.ToString("N") : m.UserId;
+                            var normalizedNew = Guid.TryParse(newMapping.UserId, out var newGuid) 
+                                ? newGuid.ToString("N") : newMapping.UserId;
+                            return string.Equals(normalizedExisting, normalizedNew, StringComparison.OrdinalIgnoreCase);
+                        });
                         if (existingMapping != null && !string.IsNullOrEmpty(existingMapping.JellyfinPlaylistId))
                         {
                             newMapping.JellyfinPlaylistId = existingMapping.JellyfinPlaylistId;
@@ -2003,6 +2019,11 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         AutoRefreshService.Instance?.UpdatePlaylistInCache(playlist);
 
                         // Enqueue refresh operation after successful save
+                        // Note: We enqueue a single item with deprecated UserId field, but the
+                        // queue consumer (RefreshQueueService.ProcessPlaylistRefreshAsync) ignores
+                        // this field and instead processes all users from ListData.UserPlaylists.
+                        // This works correctly but is inconsistent with create/update which enqueue
+                        // one item per user. Consider refactoring in future for consistency.
                         try
                         {
                             var listId = playlist.Id ?? Guid.NewGuid().ToString();
@@ -2015,7 +2036,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 ListData = playlist,
                                 // DEPRECATED: playlist.UserId is for backwards compatibility with old single-user playlists.
                                 // It is planned to be removed in version 10.12. Use UserPlaylists array instead.
-                                UserId = playlist.UserId,
+                                UserId = playlist.UserId, // DEPRECATED - ignored by queue consumer
                                 TriggerType = Core.Enums.RefreshTriggerType.Manual
                             };
 

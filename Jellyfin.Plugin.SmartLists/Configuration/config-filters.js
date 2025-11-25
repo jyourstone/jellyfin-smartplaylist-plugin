@@ -7,6 +7,12 @@
         SmartLists = window.SmartLists;
     }
 
+    // Normalize user ID for consistent cache lookups (remove dashes, lowercase)
+    const normalizeUserId = function (userId) {
+        if (!userId || typeof userId !== 'string') return '';
+        return userId.replace(/-/g, '').toLowerCase();
+    };
+
     // Centralized filter configuration - eliminates DRY violations
     SmartLists.PLAYLIST_FILTER_CONFIGS = {
         search: {
@@ -176,8 +182,8 @@
             if (page && page._usernameCache) {
                 // Check UserPlaylists array (multi-user playlists)
                 if (playlist.UserPlaylists && playlist.UserPlaylists.length > 0) {
-                    for (var i = 0; i < playlist.UserPlaylists.length; i++) {
-                        const username = page._usernameCache.get(playlist.UserPlaylists[i].UserId);
+                    for (let j = 0; j < playlist.UserPlaylists.length; j++) {
+                        const username = page._usernameCache.get(normalizeUserId(playlist.UserPlaylists[j].UserId));
                         if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
                             return true;
                         }
@@ -185,7 +191,7 @@
                 }
                 // Fallback to UserId (backwards compatibility)
                 if (playlist.UserId) {
-                    const username = page._usernameCache.get(playlist.UserId);
+                    const username = page._usernameCache.get(normalizeUserId(playlist.UserId));
                     if (username && username.toLowerCase().indexOf(searchTerm) !== -1) {
                         return true;
                     }
@@ -494,8 +500,9 @@
                             option.value = userId;
                             option.textContent = userName;
                             userFilter.appendChild(option);
-                            // Cache the username
+                            // Cache the username (store both raw and normalized for robustness)
                             page._usernameCache.set(userId, userName);
+                            page._usernameCache.set(normalizeUserId(userId), userName);
                         }
                     }).catch(function (err) {
                         console.error('Error resolving user ID ' + userId + ':', err);
@@ -504,7 +511,9 @@
                         option.value = userId;
                         option.textContent = 'Unknown User';
                         userFilter.appendChild(option);
+                        // Cache the username (store both raw and normalized for robustness)
                         page._usernameCache.set(userId, 'Unknown User');
+                        page._usernameCache.set(normalizeUserId(userId), 'Unknown User');
                     })
                 );
             }

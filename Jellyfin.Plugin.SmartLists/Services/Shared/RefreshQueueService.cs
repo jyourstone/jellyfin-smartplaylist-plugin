@@ -365,7 +365,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                 var user = _userManager.GetUserById(userId);
                 if (user == null)
                 {
-                    throw new InvalidOperationException($"User {userId} not found for playlist {dto.Name}");
+                    _logger.LogWarning("User {UserId} not found for playlist {PlaylistName}, skipping refresh for this user", userId, dto.Name);
+                    return; // Exit early instead of throwing
                 }
 
                 _logger.LogDebug("Processing single-user playlist '{PlaylistName}' for user '{Username}'", dto.Name, user.Username);

@@ -22,6 +22,11 @@
 
         if (!display || !dropdown || !options) return;
 
+        // Create AbortController for this component if it doesn't exist
+        if (!page._userMultiSelectAbortController) {
+            page._userMultiSelectAbortController = new AbortController();
+        }
+
         // Track if dropdown is open
         let isOpen = false;
 
@@ -37,7 +42,7 @@
                     firstCheckbox.focus();
                 }
             }
-        });
+        }, { signal: page._userMultiSelectAbortController.signal });
 
         // Close dropdown when clicking outside
         document.addEventListener('click', function (e) {
@@ -45,12 +50,12 @@
                 isOpen = false;
                 dropdown.style.display = 'none';
             }
-        });
+        }, { signal: page._userMultiSelectAbortController.signal });
 
         // Prevent dropdown from closing when clicking inside
         dropdown.addEventListener('click', function (e) {
             e.stopPropagation();
-        });
+        }, { signal: page._userMultiSelectAbortController.signal });
 
         // Update display when checkboxes change
         options.addEventListener('change', function (e) {
@@ -58,7 +63,7 @@
                 SmartLists.updateUserMultiSelectDisplay(page);
                 SmartLists.updatePublicCheckboxVisibility(page);
             }
-        });
+        }, { signal: page._userMultiSelectAbortController.signal });
 
         // Add dropdown arrow to display (only if not already added)
         if (!display.querySelector('.multi-select-arrow')) {
@@ -277,6 +282,16 @@
                 // Show public checkbox for single-user playlists
                 publicCheckboxContainer.style.display = '';
             }
+        }
+    };
+
+    /**
+     * Cleanup function to be called on page navigation to prevent memory leaks
+     */
+    SmartLists.cleanupUserMultiSelect = function (page) {
+        if (page._userMultiSelectAbortController) {
+            page._userMultiSelectAbortController.abort();
+            delete page._userMultiSelectAbortController;
         }
     };
 

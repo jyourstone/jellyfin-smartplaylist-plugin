@@ -1691,6 +1691,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     {
                         if (Guid.TryParse(userId, out var userGuid))
                         {
+                            // Normalize the userId for dictionary keys
+                            var normalizedUserId = userGuid.ToString("N");
+                            
                             // Try to get user by ID
                             try
                             {
@@ -1714,16 +1717,17 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                         }
                                     }
                                     var userIsPlayed = targetUserData != null ? baseItem.IsPlayed(targetUser, targetUserData) : false;
-                                    operand.IsPlayedByUser[userId] = userIsPlayed;
+                                    // Use normalized ID for all dictionary operations
+                                    operand.IsPlayedByUser[normalizedUserId] = userIsPlayed;
 
                                     if (targetUserData != null)
                                     {
-                                        PopulateUserData(operand, userId, userIsPlayed, targetUserData);
+                                        PopulateUserData(operand, normalizedUserId, userIsPlayed, targetUserData);
                                     }
                                     else
                                     {
                                         // Fallback values when targetUserData is null
-                                        SetUserDataFallbacks(operand, userId, userIsPlayed);
+                                        SetUserDataFallbacks(operand, normalizedUserId, userIsPlayed);
                                     }
                                 }
                                 else
@@ -1976,12 +1980,14 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                     {
                                         if (Guid.TryParse(userId, out var userGuid))
                                         {
+                                            // Normalize before using as keys
+                                            var normalizedUserId = userGuid.ToString("N");
                                             var targetUser = GetUserById(userManager, userGuid);
                                             if (targetUser != null)
                                             {
                                                 var episodesForUser = GetCachedSeriesEpisodes(seriesGuid, targetUser, libraryManager, cache, logger);
                                                 var isNextUnwatched = IsNextUnwatchedEpisodeCached(episodesForUser, baseItem, targetUser, seasonNumber.Value, episodeNumber.Value, includeUnwatchedSeries, seriesGuid, cache, userDataManager, logger);
-                                                operand.NextUnwatchedByUser[userId] = isNextUnwatched;
+                                                operand.NextUnwatchedByUser[normalizedUserId] = isNextUnwatched;
                                             }
                                         }
                                         else

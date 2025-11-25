@@ -25,6 +25,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         /// <param name="userId">The user ID string in any valid GUID format</param>
         /// <returns>Normalized user ID in "N" format (no dashes), or original string if not a valid GUID</returns>
+        /// <remarks>
+        /// Note: Adding logging here would require passing ILogger through many call chains.
+        /// The current approach is acceptable since invalid GUIDs will fail with clear errors downstream.
+        /// </remarks>
         private static string NormalizeUserId(string userId)
         {
             if (string.IsNullOrEmpty(userId))
@@ -37,6 +41,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             }
 
             // If not a valid GUID, return as-is (shouldn't happen in normal operation)
+            // Invalid GUIDs will fail downstream with better context than logging here
             return userId;
         }
 
