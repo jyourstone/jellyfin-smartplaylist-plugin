@@ -367,10 +367,7 @@
         }
 
         // Clear media type selections
-        const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
-        mediaTypesSelect.forEach(function (checkbox) {
-            checkbox.checked = false;
-        });
+        SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', [], 'media-type-multi-select-checkbox', 'Select media types...');
 
         // Apply all form defaults using shared helper (DRY)
         const apiClient = SmartLists.getApiClient();
@@ -484,16 +481,10 @@
                 // Set flag to skip change event handlers while we programmatically set checkbox states
                 page._skipMediaTypeChangeHandlers = true;
 
-                const mediaTypesSelect = Array.from(page.querySelectorAll('.media-type-checkbox'));
                 if (playlist.MediaTypes && playlist.MediaTypes.length > 0) {
-                    playlist.MediaTypes.forEach(function (type) {
-                        const checkbox = mediaTypesSelect.find(function (cb) {
-                            return cb.value === type;
-                        });
-                        if (checkbox) {
-                            checkbox.checked = true;
-                        }
-                    });
+                    SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', playlist.MediaTypes, 'media-type-multi-select-checkbox', 'Select media types...');
+                } else {
+                    SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', [], 'media-type-multi-select-checkbox', 'Select media types...');
                 }
 
                 // Clear flag to re-enable change event handlers
@@ -730,23 +721,8 @@
 
                 // Set media types BEFORE populating rules so that rule population can check selected media types
                 // Flag was already set at the beginning of clone process to prevent interference
-                const mediaTypesCheckboxes = Array.from(page.querySelectorAll('.media-type-checkbox'));
-
-                // First clear all checkboxes
-                mediaTypesCheckboxes.forEach(function (checkbox) {
-                    checkbox.checked = false;
-                });
-                // Then set the ones from the cloned playlist
-                if (clonedMediaTypes.length > 0) {
-                    clonedMediaTypes.forEach(function (type) {
-                        const checkbox = mediaTypesCheckboxes.find(function (cb) {
-                            return cb.value === type;
-                        });
-                        if (checkbox) {
-                            checkbox.checked = true;
-                        }
-                    });
-                }
+                // Set the media types from the cloned playlist
+                SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', clonedMediaTypes, 'media-type-multi-select-checkbox', 'Select media types...');
 
                 // Set the list owner (for both playlists and collections)
                 // isCollection is already declared above on line 650

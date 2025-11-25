@@ -86,14 +86,7 @@
 
     // Utility function to get selected media types from page
     SmartLists.getSelectedMediaTypes = function (page) {
-        const selectedMediaTypes = [];
-        const mediaTypesSelect = page.querySelectorAll('.media-type-checkbox');
-        mediaTypesSelect.forEach(function (checkbox) {
-            if (checkbox.checked) {
-                selectedMediaTypes.push(checkbox.value);
-            }
-        });
-        return selectedMediaTypes;
+        return SmartLists.getSelectedItems(page, 'mediaTypesMultiSelect', 'media-type-multi-select-checkbox');
     };
 
     // Check if any rule has "Similar To" field selected
