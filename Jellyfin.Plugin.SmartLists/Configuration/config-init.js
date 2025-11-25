@@ -226,16 +226,8 @@
 
     // ===== MEDIA TYPE CHECKBOXES GENERATION =====
     SmartLists.generateMediaTypeCheckboxes = function (page) {
-        const container = page.querySelector('#media-types-container');
+        const container = page.querySelector('#mediaTypesMultiSelect');
         if (!container) return;
-
-        // Clear existing content
-        container.innerHTML = '';
-
-        // Create one big checkboxList paperList container
-        const mainContainer = document.createElement('div');
-        mainContainer.className = 'checkboxList paperList';
-        mainContainer.style.cssText = 'padding: 0.5em 1em; margin: 0; display: block;';
 
         // Debounce timer and AbortController for media type updates (shared per page)
         page._mediaTypeUpdateTimer = page._mediaTypeUpdateTimer || null;
@@ -284,7 +276,7 @@
             }
         };
 
-        // Generate checkboxes for each media type
+        // Generate media types array filtered by list type
         if (!SmartLists.mediaTypes || !Array.isArray(SmartLists.mediaTypes)) {
             console.error('SmartLists.mediaTypes is not available');
             return;
@@ -294,28 +286,21 @@
         const listType = SmartLists.getElementValue(page, '#listType', 'Playlist');
         const isCollection = listType === 'Collection';
 
-        SmartLists.mediaTypes.forEach(function (mediaType) {
+        // Filter media types based on list type
+        const availableMediaTypes = SmartLists.mediaTypes.filter(function (mediaType) {
             // Skip collection-only media types for playlists
-            if (mediaType.CollectionOnly && !isCollection) {
-                return;
-            }
+            return !(mediaType.CollectionOnly && !isCollection);
+        });
 
-            const sectionCheckbox = document.createElement('div');
-            sectionCheckbox.className = 'sectioncheckbox';
-
-            const label = document.createElement('label');
-            label.className = 'emby-checkbox-label';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.setAttribute('is', 'emby-checkbox');
-            checkbox.setAttribute('data-embycheckbox', 'true');
-            checkbox.id = 'mediaType' + mediaType.Value;
-            checkbox.className = 'emby-checkbox media-type-checkbox';
-            checkbox.value = mediaType.Value;
-
-            // Add debounced event listener to batch updates when media types change
-            checkbox.addEventListener('change', function () {
+        // Initialize multi-select component
+        SmartLists.initializeMultiSelect(page, {
+            containerId: 'mediaTypesMultiSelect',
+            displayId: 'mediaTypesMultiSelectDisplay',
+            dropdownId: 'mediaTypesMultiSelectDropdown',
+            optionsId: 'mediaTypesMultiSelectOptions',
+            placeholderText: 'Select media types...',
+            checkboxClass: 'media-type-multi-select-checkbox',
+            onChange: function (selectedValues) {
                 // Skip processing if we're programmatically setting media types (e.g., during clone/edit)
                 if (page._skipMediaTypeChangeHandlers) {
                     return;
@@ -331,34 +316,21 @@
                     batchUpdateMediaTypeChanges();
                     page._mediaTypeUpdateTimer = null;
                 }, SmartLists.MEDIA_TYPE_UPDATE_DEBOUNCE_MS || 200);
-            }, SmartLists.getEventListenerOptions(mediaTypeSignal));
-
-            const span = document.createElement('span');
-            span.className = 'checkboxLabel';
-            span.textContent = mediaType.Label;
-
-            const checkboxOutline = document.createElement('span');
-            checkboxOutline.className = 'checkboxOutline';
-
-            const checkedIcon = document.createElement('span');
-            checkedIcon.className = 'material-icons checkboxIcon checkboxIcon-checked check';
-            checkedIcon.setAttribute('aria-hidden', 'true');
-
-            const uncheckedIcon = document.createElement('span');
-            uncheckedIcon.className = 'material-icons checkboxIcon checkboxIcon-unchecked';
-            uncheckedIcon.setAttribute('aria-hidden', 'true');
-
-            checkboxOutline.appendChild(checkedIcon);
-            checkboxOutline.appendChild(uncheckedIcon);
-
-            label.appendChild(checkbox);
-            label.appendChild(span);
-            label.appendChild(checkboxOutline);
-            sectionCheckbox.appendChild(label);
-            mainContainer.appendChild(sectionCheckbox);
+            }
         });
 
-        container.appendChild(mainContainer);
+        // Load media types into multi-select
+        SmartLists.loadItemsIntoMultiSelect(
+            page,
+            'mediaTypesMultiSelect',
+            availableMediaTypes,
+            'media-type-multi-select-checkbox',
+            function (item) { return item.Label; },
+            function (item) { return item.Value; }
+        );
+
+        // Update display after loading
+        SmartLists.updateMultiSelectDisplay(page, 'mediaTypesMultiSelect', 'Select media types...', 'media-type-multi-select-checkbox');
     };
 
     // ===== FORM DEFAULTS POPULATION (DRY) =====
@@ -1326,6 +1298,12 @@
             return;
         }
 
+        // Load multi-select CSS file
+        const multiSelectLink = document.createElement('link');
+        multiSelectLink.rel = 'stylesheet';
+        multiSelectLink.href = 'configurationpage?name=config-multi-select.css';
+        document.head.appendChild(multiSelectLink);
+
         const style = document.createElement('style');
         style.id = 'smartlists-custom-styles';
         style.textContent = `
@@ -1373,71 +1351,6 @@
             .SmartListsConfigurationPage .emby-button.button-delete {
                 background-color: #BB3932 !important;
                 border-color: #BB3932 !important;
-            }
-            
-            /* Multi-select user component styling */
-            .multi-select-container {
-                position: relative;
-            }
-            
-            .multi-select-display {
-                padding: 0.5em;
-                background-color: #2A2A2A;
-                cursor: pointer;
-                min-height: 1.7em;
-                display: flex;
-                align-items: center;
-                color: #e0e0e0;
-                border-radius: 3px;
-            }
-            
-            .multi-select-placeholder {
-                color: #999;
-                font-size: 110%;
-            }
-            
-            .multi-select-selected-users {
-                color: #e0e0e0;
-                font-size: 110%;
-            }
-            
-            .multi-select-dropdown {
-                position: absolute;
-                top: 50%;
-                left: 0;
-                right: 0;
-                max-height: 300px;
-                overflow-y: auto;
-                background-color: rgba(42, 42, 42, 0.95);
-                border: 1px solid #7a7a7a;
-                z-index: 1000;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-                border-radius: 1em;
-                transform: translateY(-50%);
-            }
-            
-            .multi-select-options {
-                padding: 0.5em;
-            }
-            
-            .multi-select-option {
-                padding: 0;
-                font-size: 110%;
-                padding-left: 0.4em;
-            }
-            
-            .multi-select-option:hover {
-                background-color: #2A56B9;
-                border-radius: 0.5em;
-            }
-            
-            .multi-select-option label {
-                width: 100%;
-                margin: 0;
-            }
-            
-            .multi-select-option .checkboxLabel {
-                margin-left: 1.5em;
             }
         `;
         document.head.appendChild(style);
@@ -1632,13 +1545,7 @@
         }
 
         // Save currently selected media types before regenerating checkboxes
-        const currentlySelectedMediaTypes = [];
-        const existingCheckboxes = page.querySelectorAll('.media-type-checkbox');
-        existingCheckboxes.forEach(function (checkbox) {
-            if (checkbox.checked) {
-                currentlySelectedMediaTypes.push(checkbox.value);
-            }
-        });
+        const currentlySelectedMediaTypes = SmartLists.getSelectedMediaTypes(page);
 
         // Update Collections options visibility for all rules when list type changes
         if (SmartLists.updateAllCollectionsOptionsVisibility) {
@@ -1652,17 +1559,14 @@
             SmartLists.generateMediaTypeCheckboxes(page);
 
             // Restore previously selected media types, excluding collection-only types when switching to Playlist
-            const newCheckboxes = page.querySelectorAll('.media-type-checkbox');
-            newCheckboxes.forEach(function (checkbox) {
-                // Restore if it was previously selected
-                if (currentlySelectedMediaTypes.indexOf(checkbox.value) !== -1) {
-                    // Skip Series if switching to Playlist mode (Series is collection-only)
-                    if (checkbox.value === 'Series' && !isCollection) {
-                        return;
-                    }
-                    checkbox.checked = true;
-                }
+            const filteredMediaTypes = currentlySelectedMediaTypes.filter(function (value) {
+                // Skip Series if switching to Playlist mode (Series is collection-only)
+                return !(value === 'Series' && !isCollection);
             });
+
+            if (filteredMediaTypes.length > 0) {
+                SmartLists.setSelectedItems(page, 'mediaTypesMultiSelect', filteredMediaTypes, 'media-type-multi-select-checkbox');
+            }
 
             // Clear flag to re-enable change handlers
             page._skipMediaTypeChangeHandlers = false;

@@ -29,6 +29,10 @@
     <EmbeddedResource Include="Configuration\config-schedules.js" />
     <!-- Sort management -->
     <EmbeddedResource Include="Configuration\config-sorts.js" />
+    <!-- Generic multi-select component -->
+    <EmbeddedResource Include="Configuration\config-multi-select.js" />
+    <!-- Multi-select component CSS -->
+    <EmbeddedResource Include="Configuration\config-multi-select.css" />
     <!-- User selection component -->
     <EmbeddedResource Include="Configuration\config-user-select.js" />
     <!-- Rule management -->

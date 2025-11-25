@@ -56,8 +56,17 @@
 
                         <div class="inputContainer">
                             <label class="inputLabel">Media Types</label>
-                            <div id="media-types-container" class="media-type-flex">
-                                <!-- Media type checkboxes will be generated here -->
+                            <div id="mediaTypesMultiSelect">
+                                <div class="multi-select-container">
+                                    <div class="multi-select-display" id="mediaTypesMultiSelectDisplay">
+                                        <span class="multi-select-placeholder">Select media types...</span>
+                                    </div>
+                                    <div class="multi-select-dropdown" id="mediaTypesMultiSelectDropdown" style="display: none;">
+                                        <div class="multi-select-options" id="mediaTypesMultiSelectOptions">
+                                            <!-- Checkboxes populated dynamically -->
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="fieldDescription">Select the types of media items to include in your list. At
                                 least one type must be selected. Choose types that match your Jellyfin library content
@@ -620,6 +629,8 @@
         <script src="configurationpage?name=config-schedules.js"></script>
         <!-- Sort management -->
         <script src="configurationpage?name=config-sorts.js"></script>
+        <!-- Generic multi-select component -->
+        <script src="configurationpage?name=config-multi-select.js"></script>
         <!-- User multi-select for playlists -->
         <script src="configurationpage?name=config-user-select.js"></script>
         <!-- Rule management -->

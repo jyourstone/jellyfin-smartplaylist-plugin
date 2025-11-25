@@ -1,0 +1,73 @@
+/* Multi-select component styling - centralized for reuse */
+
+.multi-select-container {
+    position: relative;
+}
+
+.multi-select-display {
+    padding: 0.5em;
+    background-color: #2A2A2A;
+    cursor: pointer;
+    min-height: 1.7em;
+    display: flex;
+    align-items: center;
+    color: #e0e0e0;
+    border-radius: 3px;
+}
+
+.multi-select-placeholder {
+    color: #999;
+    font-size: 110%;
+}
+
+.multi-select-selected-items {
+    color: #e0e0e0;
+    font-size: 110%;
+}
+
+.multi-select-dropdown {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    max-height: 400px;
+    overflow-y: auto;
+    background-color: rgba(42, 42, 42, 0.95);
+    border: 1px solid #7a7a7a;
+    z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    border-radius: 1em;
+    transform: translateY(-50%);
+}
+
+.multi-select-options {
+    padding: 0.5em;
+}
+
+.multi-select-option {
+    padding: 0;
+    font-size: 110%;
+    padding-left: 0.4em;
+}
+
+.multi-select-option:hover {
+    background-color: #2A56B9;
+    border-radius: 0.5em;
+}
+
+.multi-select-option label {
+    width: 100%;
+    margin: 0;
+}
+
+.multi-select-option .checkboxLabel {
+    margin-left: 1.5em;
+}
+
+.multi-select-arrow {
+    margin-left: auto;
+    margin-right: 1em;
+    font-size: 0.6em;
+    color: #999;
+}
+
