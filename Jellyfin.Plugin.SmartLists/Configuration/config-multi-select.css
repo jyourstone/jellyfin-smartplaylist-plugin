@@ -10,7 +10,6 @@
     min-height: 1.7em;
     display: flex;
     align-items: center;
-    color: #e0e0e0;
     border-radius: 3px;
 }
 
@@ -34,7 +33,6 @@
     background-color: rgba(42, 42, 42, 0.95);
     border: 1px solid #7a7a7a;
     z-index: 1000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     border-radius: 1em;
     backdrop-filter: blur(2px);
 }
@@ -44,9 +42,8 @@
 }
 
 .multi-select-option {
-    padding: 0;
     font-size: 110%;
-    padding-left: 0.3em;
+    padding-left: 0.1em;
 }
 
 .multi-select-option:hover {
@@ -56,12 +53,8 @@
 
 .multi-select-option .emby-checkbox-label {
     width: 100%;
-    margin: 0;
-    display: flex;
-    align-items: center;
     padding: 0.3em 1em;
     cursor: pointer;
-    min-height: 0;
     height: auto;
 }
 
@@ -71,7 +64,7 @@
 
 .multi-select-option .checkboxOutline {
     transform: scale(0.80);
-    transform-origin: center;
+    margin-top: -2px;
 }
 
 .multi-select-arrow {
