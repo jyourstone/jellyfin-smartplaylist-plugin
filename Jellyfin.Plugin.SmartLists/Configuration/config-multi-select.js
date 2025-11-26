@@ -136,19 +136,19 @@
         // Try the canonical derived ID first
         let optionsId = SmartLists.deriveOptionsId(containerId);
         let options = page.querySelector('#' + optionsId);
-        
+
         // If that doesn't work, try alternative pattern (for user multi-select)
         if (!options && containerId === 'playlistUserMultiSelect') {
             optionsId = 'userMultiSelectOptions';
             options = page.querySelector('#' + optionsId);
         }
-        
+
         // If still not found, try removing "playlist" prefix
         if (!options && containerId.startsWith('playlist')) {
             optionsId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectOptions');
             options = page.querySelector('#' + optionsId);
         }
-        
+
         return options;
     };
 
@@ -162,19 +162,19 @@
         // Try the canonical derived ID first
         let displayId = SmartLists.deriveDisplayId(containerId);
         let display = page.querySelector('#' + displayId);
-        
+
         // If that doesn't work, try alternative pattern (for user multi-select)
         if (!display && containerId === 'playlistUserMultiSelect') {
             displayId = 'userMultiSelectDisplay';
             display = page.querySelector('#' + displayId);
         }
-        
+
         // If still not found, try removing "playlist" prefix
         if (!display && containerId.startsWith('playlist')) {
             displayId = containerId.replace('playlist', '').replace('MultiSelect', 'MultiSelectDisplay');
             display = page.querySelector('#' + displayId);
         }
-        
+
         return display;
     };
 
@@ -189,7 +189,7 @@
      */
     SmartLists.loadItemsIntoMultiSelect = function (page, containerId, items, checkboxClass, getItemLabel, getItemValue) {
         const options = SmartLists.getOptionsElement(page, containerId);
-        
+
         if (!options) {
             console.error('SmartLists.loadItemsIntoMultiSelect: Options container not found for', containerId, 'tried:', SmartLists.deriveOptionsId(containerId));
             return;
@@ -226,7 +226,6 @@
 
             const label = document.createElement('label');
             label.className = 'emby-checkbox-label';
-            label.style.cssText = 'display: flex; align-items: center; padding: 0.75em 1em; cursor: pointer;';
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -280,7 +279,7 @@
      */
     SmartLists.getSelectedItems = function (page, containerId, checkboxClass) {
         const options = SmartLists.getOptionsElement(page, containerId);
-        
+
         if (!options) {
             console.warn('SmartLists.getSelectedItems: Options container not found for', containerId);
             return [];
@@ -311,7 +310,7 @@
         }
 
         const options = SmartLists.getOptionsElement(page, containerId);
-        
+
         if (!options) {
             console.warn('SmartLists.setSelectedItems: Options container not found for', containerId);
             return;
@@ -348,14 +347,14 @@
         placeholderText = placeholderText || 'Select items...';
 
         const display = SmartLists.getDisplayElement(page, containerId);
-        
+
         if (!display) {
             console.warn('SmartLists.updateMultiSelectDisplay: Display element not found for', containerId);
             return;
         }
 
         const options = SmartLists.getOptionsElement(page, containerId);
-        
+
         if (!options) return;
 
         const selector = checkboxClass ? '.' + checkboxClass + ':checked' : 'input[type="checkbox"]:checked';

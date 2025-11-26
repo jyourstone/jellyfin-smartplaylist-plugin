@@ -26,7 +26,7 @@
 
 .multi-select-dropdown {
     position: absolute;
-    top: 50%;
+    top: -15%;
     left: 0;
     right: 0;
     max-height: 400px;
@@ -36,7 +36,7 @@
     z-index: 1000;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     border-radius: 1em;
-    transform: translateY(-15%);
+    backdrop-filter: blur(2px);
 }
 
 .multi-select-options {
@@ -46,7 +46,7 @@
 .multi-select-option {
     padding: 0;
     font-size: 110%;
-    padding-left: 0.4em;
+    padding-left: 0.3em;
 }
 
 .multi-select-option:hover {
@@ -54,13 +54,24 @@
     border-radius: 0.5em;
 }
 
-.multi-select-option label {
+.multi-select-option .emby-checkbox-label {
     width: 100%;
     margin: 0;
+    display: flex;
+    align-items: center;
+    padding: 0.3em 1em;
+    cursor: pointer;
+    min-height: 0;
+    height: auto;
 }
 
 .multi-select-option .checkboxLabel {
-    margin-left: 1.5em;
+    margin-left: 1.2em;
+}
+
+.multi-select-option .checkboxOutline {
+    transform: scale(0.80);
+    transform-origin: center;
 }
 
 .multi-select-arrow {
