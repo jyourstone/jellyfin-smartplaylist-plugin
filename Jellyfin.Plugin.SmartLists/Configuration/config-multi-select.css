@@ -11,16 +11,19 @@
     display: flex;
     align-items: center;
     border-radius: 3px;
+    cursor: default;
 }
 
 .multi-select-placeholder {
     color: #999;
     font-size: 110%;
+    cursor: default;
 }
 
 .multi-select-selected-items {
     color: #e0e0e0;
     font-size: 110%;
+    cursor: default;
 }
 
 .multi-select-dropdown {
