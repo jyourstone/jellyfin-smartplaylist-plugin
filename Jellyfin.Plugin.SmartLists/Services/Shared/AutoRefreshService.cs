@@ -963,6 +963,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     {
                         affectedCollections.UnionWith(collectionIds.ToArray());
                     }
+
+                    // When an episode's watch status changes, also check for Series-based collections
+                    // This is needed because marking a series as watched/unwatched in Jellyfin only fires
+                    // UserDataSaved events for individual episodes, not for the Series item itself
+                    if (item is MediaBrowser.Controller.Entities.TV.Episode episode && episode.SeriesId != Guid.Empty)
+                    {
+                        // Also get collections that use Series media type
+                        if (_mediaTypeToCollectionsCache.TryGetValue(MediaTypes.Series, out var seriesCollectionIds))
+                        {
+                            affectedCollections.UnionWith(seriesCollectionIds.ToArray());
+                            _logger.LogDebug("Episode '{EpisodeName}' change also affects {SeriesCollectionCount} Series-based collections (parent series: {SeriesId})",
+                                item.Name, seriesCollectionIds.Count, episode.SeriesId);
+                        }
+                    }
                 }
 
                 // Apply filtering based on change type and auto-refresh mode
@@ -1001,6 +1015,20 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                             if (!string.IsNullOrEmpty(collection.Id))
                             {
                                 affectedCollections.Add(collection.Id);
+                            }
+                        }
+                        // Also check if this is an episode and the collection uses Series media type
+                        // This handles the case where marking a series as watched/unwatched only fires
+                        // UserDataSaved events for individual episodes
+                        else if (item is MediaBrowser.Controller.Entities.TV.Episode &&
+                                 collection.MediaTypes != null &&
+                                 collection.MediaTypes.Contains(MediaTypes.Series))
+                        {
+                            if (!string.IsNullOrEmpty(collection.Id))
+                            {
+                                affectedCollections.Add(collection.Id);
+                                _logger.LogDebug("Episode '{EpisodeName}' affects Series-based collection '{CollectionName}' (fallback path)",
+                                    item.Name, collection.Name);
                             }
                         }
                     }
