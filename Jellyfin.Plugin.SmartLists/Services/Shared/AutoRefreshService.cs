@@ -1020,7 +1020,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                         // Also check if this is an episode and the collection uses Series media type
                         // This handles the case where marking a series as watched/unwatched only fires
                         // UserDataSaved events for individual episodes
-                        else if (item is MediaBrowser.Controller.Entities.TV.Episode &&
+                        else if (item is MediaBrowser.Controller.Entities.TV.Episode episode &&
+                                 episode.SeriesId != Guid.Empty &&
                                  collection.MediaTypes != null &&
                                  collection.MediaTypes.Contains(MediaTypes.Series))
                         {
