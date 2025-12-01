@@ -1205,9 +1205,10 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
 
         /// <summary>
         /// Filters items to those with primary images, preferring Movies and Series.
+        /// For Episodes, fetches and returns their parent Series instead.
         /// Returns items in their original order (first items first).
         /// </summary>
-        private static List<BaseItem> GetItemsWithImages(List<BaseItem> items)
+        private List<BaseItem> GetItemsWithImages(List<BaseItem> items)
         {
             // First, get Movies and Series with images (preserving order)
             var mediaItemsWithImages = items
@@ -1216,10 +1217,43 @@ namespace Jellyfin.Plugin.SmartLists.Services.Collections
                                item.ImageInfos.Any(i => i.Type == ImageType.Primary))
                 .ToList();
 
-            // If we have media items with images, use those; otherwise use any items with images
+            // If we have media items with images, use those
             if (mediaItemsWithImages.Count > 0)
             {
                 return mediaItemsWithImages;
+            }
+
+            // Check if we have episodes - if so, fetch their parent series
+            var episodes = items.OfType<Episode>().ToList();
+            if (episodes.Count > 0)
+            {
+                _logger.LogDebug("Collection contains {EpisodeCount} episodes, fetching parent series for poster generation", episodes.Count);
+                
+                var seriesItems = new List<BaseItem>();
+                var seenSeriesIds = new HashSet<Guid>();
+                
+                foreach (var episode in episodes)
+                {
+                    if (episode.SeriesId != Guid.Empty && !seenSeriesIds.Contains(episode.SeriesId))
+                    {
+                        var parentSeries = _libraryManager.GetItemById(episode.SeriesId);
+                        if (parentSeries is Series series &&
+                            series.ImageInfos != null &&
+                            series.ImageInfos.Any(i => i.Type == ImageType.Primary))
+                        {
+                            seriesItems.Add(series);
+                            seenSeriesIds.Add(episode.SeriesId);
+                            _logger.LogDebug("Added parent series '{SeriesName}' for episode '{EpisodeName}'", 
+                                series.Name, episode.Name);
+                        }
+                    }
+                }
+                
+                if (seriesItems.Count > 0)
+                {
+                    _logger.LogDebug("Using {SeriesCount} unique parent series for collection poster", seriesItems.Count);
+                    return seriesItems;
+                }
             }
 
             // Fallback: use any items with images (preserving order)
