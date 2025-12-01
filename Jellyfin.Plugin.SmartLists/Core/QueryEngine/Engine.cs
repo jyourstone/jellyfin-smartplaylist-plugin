@@ -225,7 +225,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             logger?.LogDebug("SmartLists BuildExpr: User-specific query for Field={Field}, UserId={UserId}, Operator={Operator}", r.MemberName, r.UserId, r.Operator);
 
-            // Get the method to call (e.g., GetIsPlayedByUser)
+            // Get the method to call (e.g., GetPlaybackStatusByUser)
             var methodName = r.UserSpecificField;
             if (string.IsNullOrEmpty(methodName))
             {
@@ -267,6 +267,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             else if (returnType == typeof(double) && r.MemberName == "LastPlayedDate")
             {
                 return BuildUserSpecificLastPlayedDateExpression(r, methodCall, logger);
+            }
+            else if (returnType == typeof(string))
+            {
+                return BuildUserSpecificStringExpression(r, methodCall, logger);
             }
             else
             {
@@ -354,6 +358,43 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
                 throw new ArgumentException($"Operator '{r.Operator}' is not supported for integer user-specific field '{r.MemberName}'. Supported operators: {supportedOperators}");
             }
+        }
+
+        /// <summary>
+        /// Builds expressions for string user-specific fields (e.g., PlaybackStatus).
+        /// </summary>
+        private static BinaryExpression BuildUserSpecificStringExpression(Expression r, System.Linq.Expressions.Expression methodCall, ILogger? logger)
+        {
+            if (r.Operator != "Equal" && r.Operator != "NotEqual")
+            {
+                logger?.LogError("SmartLists unsupported operator '{Operator}' for string user-specific field '{Field}'", r.Operator, r.MemberName);
+                var supportedOperators = Operators.GetSupportedOperatorsString(r.MemberName);
+                throw new ArgumentException($"Operator '{r.Operator}' is not supported for string user-specific field '{r.MemberName}'. Supported operators: {supportedOperators}");
+            }
+
+            if (string.IsNullOrWhiteSpace(r.TargetValue))
+            {
+                logger?.LogError("SmartLists string comparison failed: TargetValue is null or empty for field '{Field}'", r.MemberName);
+                throw new ArgumentException($"String comparison requires a valid value for field '{r.MemberName}', but got: '{r.TargetValue}'");
+            }
+
+            // Use case-insensitive comparison for string fields
+            var cleanedTarget = r.TargetValue.Trim();
+            var targetConstant = System.Linq.Expressions.Expression.Constant(cleanedTarget, typeof(string));
+            var comparisonConstant = System.Linq.Expressions.Expression.Constant(StringComparison.OrdinalIgnoreCase);
+
+            // Call string.Equals(methodCall, targetValue, StringComparison.OrdinalIgnoreCase)
+            var equalsMethod = typeof(string).GetMethod("Equals", [typeof(string), typeof(string), typeof(StringComparison)]);
+            if (equalsMethod == null)
+            {
+                throw new InvalidOperationException("String.Equals method not found");
+            }
+
+            var equalsCall = System.Linq.Expressions.Expression.Call(equalsMethod, methodCall, targetConstant, comparisonConstant);
+
+            return r.Operator == "Equal"
+                ? System.Linq.Expressions.Expression.Equal(equalsCall, System.Linq.Expressions.Expression.Constant(true))
+                : System.Linq.Expressions.Expression.Equal(equalsCall, System.Linq.Expressions.Expression.Constant(false));
         }
 
         /// <summary>

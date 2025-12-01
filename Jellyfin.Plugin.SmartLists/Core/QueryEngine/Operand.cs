@@ -84,7 +84,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
         // User-specific data - Store user ID -> data mappings
         // These will be populated based on which users are referenced in rules
-        public Dictionary<string, bool> IsPlayedByUser { get; set; } = [];
+        public Dictionary<string, string> PlaybackStatusByUser { get; set; } = [];
         public Dictionary<string, int> PlayCountByUser { get; set; } = [];
         public Dictionary<string, bool> IsFavoriteByUser { get; set; } = [];
         public Dictionary<string, bool> NextUnwatchedByUser { get; set; } = [];
@@ -94,9 +94,9 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         public float? SimilarityScore { get; set; } = null;
 
         // Helper methods to check user-specific data
-        public bool GetIsPlayedByUser(string userId)
+        public string GetPlaybackStatusByUser(string userId)
         {
-            return IsPlayedByUser.TryGetValue(userId, out var value) && value;
+            return PlaybackStatusByUser.TryGetValue(userId, out var value) ? value : "Unplayed";
         }
 
         public int GetPlayCountByUser(string userId)

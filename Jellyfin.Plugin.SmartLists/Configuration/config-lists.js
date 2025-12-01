@@ -1060,7 +1060,11 @@
                             case 'MatchRegex': operator = 'matches regex'; break;
                         }
                         let value = rule.TargetValue;
-                        if (rule.MemberName === 'IsPlayed') { value = value === 'true' ? 'Yes (Played)' : 'No (Unplayed)'; }
+                        if (rule.MemberName === 'PlaybackStatus') {
+                            if (value === 'Played') { value = 'Played'; }
+                            else if (value === 'InProgress') { value = 'In Progress'; }
+                            else if (value === 'Unplayed') { value = 'Unplayed'; }
+                        }
                         if (rule.MemberName === 'NextUnwatched') { value = value === 'true' ? 'Yes (Next to Watch)' : 'No (Not Next)'; }
 
                         // Format weekday operator value to show day name instead of number

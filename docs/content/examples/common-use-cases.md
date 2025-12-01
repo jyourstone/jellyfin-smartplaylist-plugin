@@ -18,7 +18,12 @@ Here are some popular playlist and collection types you can create:
 - **Next Unwatched** = True AND **Parental Rating** = "PG" or "G"
 
 ### Unwatched Action Movies
-- **Is Played** = False AND **Genre** contains "Action"
+- **Playback Status** = Unplayed AND **Genre** contains "Action"
+
+### Continue Watching (In Progress)
+- **Playback Status** = In Progress
+- Shows all movies and episodes that have been started but not finished
+- Perfect for picking up where you left off
 
 ### Recent Additions
 - **Date Created** newer than "2 weeks"
@@ -38,7 +43,7 @@ Here are some popular playlist and collection types you can create:
 - **Important**: The smart collection will never include itself in the results, even if its name matches the rule. So you can safely name your meta-collection "Superhero Universes" and use rules that match "Marvel" without worrying about it including itself
 
 ### Unplayed Sitcom Episodes
-- **Tags** contains "Sitcom" (with parent series tags enabled) AND **Is Played** = False
+- **Tags** contains "Sitcom" (with parent series tags enabled) AND **Playback Status** = Unplayed
 
 ## Music
 

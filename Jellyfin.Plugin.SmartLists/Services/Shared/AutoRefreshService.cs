@@ -68,7 +68,7 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
         private const int MAX_USERDATA_CACHE_SIZE = 1000; // Limit cache size to prevent memory leaks
 
         // Performance optimization: Cache mapping rule types to playlists that use them
-        // Key format: "MediaType+FieldType" (e.g., "Movie+IsPlayed", "Episode+SeriesName")
+        // Key format: "MediaType+FieldType" (e.g., "Movie+PlaybackStatus", "Episode+SeriesName")
         private readonly ConcurrentDictionary<string, HashSet<string>> _ruleTypeToPlaylistsCache = new();
 
         // Simpler cache: MediaType -> All playlists for that media type (regardless of fields)
@@ -764,7 +764,8 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
             }
             else
             {
-                // Add field-based cache entries (collections don't use user-specific fields)
+                // Add field-based cache entries
+                // Note: Collections DO use user-specific fields (PlaybackStatus, IsFavorite, etc.) via the reference user
                 foreach (var expressionSet in collection.ExpressionSets)
                 {
                     if (expressionSet.Expressions == null) continue;
@@ -772,12 +773,6 @@ namespace Jellyfin.Plugin.SmartLists.Services.Shared
                     foreach (var expression in expressionSet.Expressions)
                     {
                         if (string.IsNullOrEmpty(expression.MemberName)) continue;
-
-                        // Skip user-specific fields for collections
-                        if (FieldDefinitions.UserDataFields.Contains(expression.MemberName))
-                        {
-                            continue;
-                        }
 
                         foreach (var mediaType in mediaTypes)
                         {

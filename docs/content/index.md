@@ -49,7 +49,7 @@ SmartLists works with all media types supported by Jellyfin:
 4. **Example**: Create a playlist or collection for "Unwatched Action Movies" with:
    - Media type: "Movie"
    - Genre contains "Action"
-   - Is Played = False
+   - Playback Status = Unplayed
 
 For more detailed instructions, see the [Quick Start Guide](getting-started/quick-start.md).
 

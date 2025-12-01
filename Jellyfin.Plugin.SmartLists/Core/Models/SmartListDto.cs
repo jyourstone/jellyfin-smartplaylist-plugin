@@ -90,6 +90,31 @@ namespace Jellyfin.Plugin.SmartLists.Core.Models
         // Similarity comparison fields
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<string> SimilarityComparisonFields { get; set; } = [];
+
+        /// <summary>
+        /// Migrates legacy IsPlayed rules to PlaybackStatus.
+        /// Called after deserialization.
+        /// </summary>
+        public void MigrateLegacyFields()
+        {
+            if (ExpressionSets != null)
+            {
+                foreach (var expressionSet in ExpressionSets)
+                {
+                    if (expressionSet.Expressions != null)
+                    {
+                        foreach (var expression in expressionSet.Expressions)
+                        {
+                            if (expression.MemberName == "IsPlayed")
+                            {
+                                expression.MemberName = "PlaybackStatus";
+                                expression.TargetValue = expression.TargetValue == "true" ? "Played" : "Unplayed";
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

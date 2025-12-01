@@ -152,15 +152,207 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
 
         /// <summary>
+        /// Calculates the playback status for a media item.
+        /// </summary>
+        /// <param name="userData">User data for the item</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculatePlaybackStatus(UserItemData? userData)
+        {
+            if (userData == null)
+            {
+                return "Unplayed";
+            }
+
+            // Check Jellyfin's Played flag first (authoritative)
+            if (userData.Played)
+            {
+                return "Played";
+            }
+
+            // Check if partially watched
+            if (userData.PlaybackPositionTicks > 0)
+            {
+                return "InProgress";
+            }
+
+            return "Unplayed";
+        }
+
+        /// <summary>
+        /// Calculates playback status from a reflected userData object using reflection.
+        /// Mirrors the logic of CalculatePlaybackStatus but works with reflected objects.
+        /// </summary>
+        /// <param name="reflectedUserData">The reflected userData object</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculatePlaybackStatusFromReflected(object reflectedUserData)
+        {
+            if (reflectedUserData == null)
+            {
+                return "Unplayed";
+            }
+
+            var userDataType = reflectedUserData.GetType();
+
+            // Check Played property
+            var playedProp = userDataType.GetProperty("Played");
+            if (playedProp != null)
+            {
+                var playedValue = playedProp.GetValue(reflectedUserData);
+                if (playedValue is bool isPlayed && isPlayed)
+                {
+                    return "Played";
+                }
+            }
+
+            // Check PlaybackPositionTicks property
+            var playbackPositionTicksProp = userDataType.GetProperty("PlaybackPositionTicks");
+            if (playbackPositionTicksProp != null)
+            {
+                var ticksValue = playbackPositionTicksProp.GetValue(reflectedUserData);
+                var ticks = ExtractLongValue(ticksValue);
+                if (ticks.HasValue && ticks.Value > 0)
+                {
+                    return "InProgress";
+                }
+            }
+
+            return "Unplayed";
+        }
+
+        /// <summary>
+        /// Calculates playback status for a user based on item type.
+        /// Handles both Series (episode-based) and other item types.
+        /// </summary>
+        /// <param name="baseItem">The base item</param>
+        /// <param name="user">The user</param>
+        /// <param name="libraryManager">Library manager to query episodes (for Series)</param>
+        /// <param name="userDataManager">User data manager (can be null)</param>
+        /// <param name="userData">User data for the item</param>
+        /// <param name="cache">Cache for performance</param>
+        /// <param name="logger">Logger</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculatePlaybackStatusForUser(
+            BaseItem baseItem,
+            User user,
+            ILibraryManager libraryManager,
+            IUserDataManager? userDataManager,
+            UserItemData? userData,
+            RefreshQueueServiceRefreshCache cache,
+            ILogger? logger)
+        {
+            if (baseItem is Series series && userDataManager != null)
+            {
+                return CalculateSeriesPlaybackStatus(series, user, libraryManager, userDataManager, cache, logger);
+            }
+            else
+            {
+                return CalculatePlaybackStatus(userData);
+            }
+        }
+
+        /// <summary>
+        /// Calculates playback status for a Series based on episode watch counts.
+        /// </summary>
+        /// <param name="series">The series item</param>
+        /// <param name="user">The user</param>
+        /// <param name="libraryManager">Library manager to query episodes</param>
+        /// <param name="userDataManager">User data manager</param>
+        /// <param name="cache">Cache for performance</param>
+        /// <param name="logger">Logger</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculateSeriesPlaybackStatus(
+            Series series,
+            User user,
+            ILibraryManager libraryManager,
+            IUserDataManager userDataManager,
+            RefreshQueueServiceRefreshCache cache,
+            ILogger? logger)
+        {
+            try
+            {
+                // Get all episodes in the series using cache
+                // Use GetCachedSeriesEpisodes helper to avoid code duplication
+                // Pass IsVirtualItem = false to match the original query semantics
+                var episodes = GetCachedSeriesEpisodes(series.Id, user, libraryManager, cache, logger, isVirtualItem: false);
+
+                // Filter out season 0 (specials) episodes to match NextUnwatched behavior
+                var validEpisodes = new List<BaseItem>();
+                foreach (var episode in episodes)
+                {
+                    var episodeType = episode.GetType();
+                    var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
+                    var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
+
+                    if (parentIndexProperty != null && indexProperty != null)
+                    {
+                        var seasonNum = ExtractIntValue(parentIndexProperty.GetValue(episode));
+                        var episodeNum = ExtractIntValue(indexProperty.GetValue(episode));
+
+                        // Skip season 0 (specials) and only include episodes with valid season/episode numbers
+                        if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
+                        {
+                            validEpisodes.Add(episode);
+                        }
+                    }
+                }
+
+                // Exclude series with 0 valid episodes (invalid data or only season 0 specials)
+                if (validEpisodes.Count == 0)
+                {
+                    logger?.LogDebug("Series '{SeriesName}' has 0 valid episodes (excluding season 0), excluding from results", series.Name);
+                    return "Unplayed"; // Will be filtered out by caller
+                }
+
+                // Use LINQ Count with cache retrieval to count watched episodes
+                int watchedCount = validEpisodes.Count(e =>
+                {
+                    // Use UserDataCache to avoid redundant DB lookups
+                    // Only cache non-null UserData to avoid polluting the cache
+                    var cacheKey = (e.Id, user.Id);
+                    if (!cache.UserDataCache.TryGetValue(cacheKey, out var userData))
+                    {
+                        userData = userDataManager.GetUserData(user, e);
+                        // Only add to cache if non-null
+                        if (userData != null)
+                        {
+                            cache.UserDataCache[cacheKey] = userData;
+                        }
+                    }
+                    return userData != null && e.IsPlayed(user, userData);
+                });
+                int totalCount = validEpisodes.Count;
+
+                // Determine status based on watched count
+                if (watchedCount == totalCount)
+                {
+                    return "Played";
+                }
+                else if (watchedCount >= 1)
+                {
+                    return "InProgress";
+                }
+                else
+                {
+                    return "Unplayed";
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error calculating playback status for series '{SeriesName}'", series.Name);
+                return "Unplayed";
+            }
+        }
+
+        /// <summary>
         /// Sets fallback values for user-specific data when userData is unavailable or invalid.
         /// </summary>
         /// <param name="operand">The operand to populate</param>
         /// <param name="userId">The user ID (as string)</param>
-        /// <param name="isPlayed">The IsPlayed value to use</param>
-        private static void SetUserDataFallbacks(Operand operand, string userId, bool isPlayed)
+        /// <param name="playbackStatus">The PlaybackStatus value to use</param>
+        private static void SetUserDataFallbacks(Operand operand, string userId, string playbackStatus)
         {
-            operand.IsPlayedByUser[userId] = isPlayed;
-            operand.PlayCountByUser[userId] = isPlayed ? 1 : 0;
+            operand.PlaybackStatusByUser[userId] = playbackStatus;
+            operand.PlayCountByUser[userId] = playbackStatus == "Played" ? 1 : 0;
             operand.IsFavoriteByUser[userId] = false;
             operand.LastPlayedDateByUser[userId] = -1; // Never played,
         }
@@ -372,11 +564,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         /// <param name="operand">The operand to populate</param>
         /// <param name="userId">The user ID (as string)</param>
-        /// <param name="isPlayed">The IsPlayed value</param>
+        /// <param name="playbackStatus">The PlaybackStatus value</param>
         /// <param name="userData">The userData object to extract from</param>
-        private static void PopulateUserData(Operand operand, string userId, bool isPlayed, object userData)
+        private static void PopulateUserData(Operand operand, string userId, string playbackStatus, object userData)
         {
-            operand.IsPlayedByUser[userId] = isPlayed;
+            operand.PlaybackStatusByUser[userId] = playbackStatus;
 
             // Use reflection to safely extract properties from userData
             var userDataType = userData.GetType();
@@ -509,6 +701,24 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             try
             {
                 return Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static long? ExtractLongValue(object? value)
+        {
+            if (value is long longValue)
+                return longValue;
+            if (value == null)
+                return null;
+
+            // Try to convert to long if it's some other numeric type
+            try
+            {
+                return Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
             }
             catch
             {
@@ -1616,8 +1826,15 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 }
             }
 
-            // Cache the IsPlayed result to avoid multiple expensive calls
-            var isPlayed = userData != null ? baseItem.IsPlayed(user, userData) : false;
+            // Calculate playback status based on item type
+            string playbackStatus = CalculatePlaybackStatusForUser(
+                baseItem,
+                user,
+                libraryManager,
+                userDataManager,
+                userData,
+                cache,
+                logger);
 
             var operand = new Operand(baseItem.Name)
             {
@@ -1652,13 +1869,13 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     // Populate user-specific data for playlist user
                     // Normalize to "N" format (no dashes) to match UserPlaylists format
                     var normalizedUserId = user.Id.ToString("N");
-                    PopulateUserData(operand, normalizedUserId, isPlayed, userData!);
+                    PopulateUserData(operand, normalizedUserId, playbackStatus, userData!);
                 }
                 else if (userDataManager != null)
                 {
                     // Fallback when userData is null - treat as never played for playlist user
                     // Normalize to "N" format (no dashes) to match UserPlaylists format
-                    SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
+                    SetUserDataFallbacks(operand, user.Id.ToString("N"), playbackStatus);
                 }
                 else
                 {
@@ -1669,22 +1886,27 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                         var reflectedUserData = userDataProperty.GetValue(baseItem);
                         if (reflectedUserData != null)
                         {
+                            // Recalculate playback status from reflected data to ensure consistency
+                            // The initial playbackStatus was calculated with null userData, so it's "Unplayed"
+                            // but reflectedUserData might have actual playback information
+                            var recalculatedPlaybackStatus = CalculatePlaybackStatusFromReflected(reflectedUserData);
+                            
                             // Use our helper method to populate user data consistently
                             // Normalize to "N" format (no dashes) to match UserPlaylists format
-                            PopulateUserData(operand, user.Id.ToString("N"), isPlayed, reflectedUserData);
+                            PopulateUserData(operand, user.Id.ToString("N"), recalculatedPlaybackStatus, reflectedUserData);
                         }
                         else
                         {
                             // UserData is null - set fallback values for playlist user
                             // Normalize to "N" format (no dashes) to match UserPlaylists format
-                            SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
+                            SetUserDataFallbacks(operand, user.Id.ToString("N"), playbackStatus);
                         }
                     }
                     else
                     {
                         // UserData property not found - set fallback values for playlist user
                         // Normalize to "N" format (no dashes) to match UserPlaylists format
-                        SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
+                        SetUserDataFallbacks(operand, user.Id.ToString("N"), playbackStatus);
                     }
                 }
             }
@@ -1728,18 +1950,24 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                             cache.UserDataCache[targetUserDataCacheKey] = targetUserData;
                                         }
                                     }
-                                    var userIsPlayed = targetUserData != null ? baseItem.IsPlayed(targetUser, targetUserData) : false;
-                                    // Use normalized ID for all dictionary operations
-                                    operand.IsPlayedByUser[normalizedUserId] = userIsPlayed;
+                                    // Calculate playback status for additional user
+                                    string userPlaybackStatus = CalculatePlaybackStatusForUser(
+                                        baseItem,
+                                        targetUser,
+                                        libraryManager,
+                                        userDataManager,
+                                        targetUserData,
+                                        cache,
+                                        logger);
 
                                     if (targetUserData != null)
                                     {
-                                        PopulateUserData(operand, normalizedUserId, userIsPlayed, targetUserData);
+                                        PopulateUserData(operand, normalizedUserId, userPlaybackStatus, targetUserData);
                                     }
                                     else
                                     {
                                         // Fallback values when targetUserData is null
-                                        SetUserDataFallbacks(operand, normalizedUserId, userIsPlayed);
+                                        SetUserDataFallbacks(operand, normalizedUserId, userPlaybackStatus);
                                     }
                                 }
                                 else
@@ -2077,36 +2305,52 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <param name="libraryManager">Library manager for database queries</param>
         /// <param name="cache">Per-refresh cache to store results</param>
         /// <param name="logger">Logger for debugging</param>
+        /// <param name="isVirtualItem">Optional filter for virtual items. If null, uses GetItemsResult. If specified, uses GetItemList with this value.</param>
         /// <returns>Array of all episodes in the series</returns>
-        private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger)
+        private static BaseItem[] GetCachedSeriesEpisodes(Guid seriesId, User user, ILibraryManager libraryManager, RefreshQueueServiceRefreshCache cache, ILogger? logger, bool? isVirtualItem = null)
         {
             var key = (seriesId, user.Id);
             if (cache.SeriesEpisodes.TryGetValue(key, out var cachedEpisodes))
             {
                 // Get series name for better logging
                 var seriesName = cache.SeriesNameById.TryGetValue(seriesId, out var name) ? name : "Unknown";
-                logger?.LogDebug("[NextUnwatched] Using cached episodes for series '{SeriesName}' ({SeriesId}), user {UserId}: {EpisodeCount} episodes",
+                logger?.LogDebug("[GetCachedSeriesEpisodes] Using cached episodes for series '{SeriesName}' ({SeriesId}), user {UserId}: {EpisodeCount} episodes",
                     seriesName, seriesId, user.Id, cachedEpisodes.Length);
                 return cachedEpisodes;
             }
 
-            logger?.LogDebug("[NextUnwatched] Fetching episodes for series {SeriesId}, user {UserId} from database (cache miss)", seriesId, user.Id);
+            logger?.LogDebug("[GetCachedSeriesEpisodes] Fetching episodes for series {SeriesId}, user {UserId} from database (cache miss)", seriesId, user.Id);
 
-            // Note: Using SeriesId as ParentId - this works for standard episodes but may need
-            // adjustment for special cases like virtual or merged series
-            var episodeQuery = new InternalItemsQuery(user)
+            BaseItem[] episodes;
+            
+            if (isVirtualItem.HasValue)
             {
-                IncludeItemTypes = [BaseItemKind.Episode],
-                ParentId = seriesId,
-                Recursive = true,
-            };
-
-            var episodes = libraryManager.GetItemsResult(episodeQuery).Items.ToArray();
+                // Use GetItemList when IsVirtualItem filter is specified (preserves IsVirtualItem semantics)
+                episodes = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = seriesId,
+                    IncludeItemTypes = [BaseItemKind.Episode],
+                    Recursive = true,
+                    IsVirtualItem = isVirtualItem.Value,
+                    User = user
+                }).ToArray();
+            }
+            else
+            {
+                // Use GetItemsResult when IsVirtualItem is not specified (original behavior for NextUnwatched)
+                var episodeQuery = new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = [BaseItemKind.Episode],
+                    ParentId = seriesId,
+                    Recursive = true,
+                };
+                episodes = libraryManager.GetItemsResult(episodeQuery).Items.ToArray();
+            }
 
             // Get series name for better logging
             var series = libraryManager.GetItemById(seriesId);
             var seriesNameForLog = series?.Name ?? "Unknown";
-            logger?.LogDebug("[NextUnwatched] Fetched {EpisodeCount} episodes for series '{SeriesName}' ({SeriesId}), user {UserId}",
+            logger?.LogDebug("[GetCachedSeriesEpisodes] Fetched {EpisodeCount} episodes for series '{SeriesName}' ({SeriesId}), user {UserId}",
                 episodes.Length, seriesNameForLog, seriesId, user.Id);
 
             cache.SeriesEpisodes[key] = episodes;

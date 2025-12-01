@@ -1,6 +1,13 @@
 (function (SmartLists) {
     'use strict';
 
+    // ===== CONSTANTS =====
+    SmartLists.PLAYBACK_STATUS_OPTIONS = [
+        { Value: 'Played', Label: 'Played (Fully Watched)' },
+        { Value: 'InProgress', Label: 'In Progress (Partially Watched)' },
+        { Value: 'Unplayed', Label: 'Unplayed (Not Started)' }
+    ];
+
     // ===== OPERATOR OPTIONS MANAGEMENT =====
     SmartLists.updateOperatorOptions = function (fieldValue, operatorSelect) {
         // Capture the previous operator value before clearing
@@ -115,6 +122,8 @@
             SmartLists.createTagBasedInput(valueContainer, currentValue);
         } else if (SmartLists.FIELD_TYPES.SIMPLE_FIELDS.indexOf(fieldValue) !== -1) {
             SmartLists.handleSimpleFieldInput(valueContainer, currentValue);
+        } else if (fieldValue === 'PlaybackStatus') {
+            SmartLists.handlePlaybackStatusFieldInput(valueContainer, currentValue);
         } else if (SmartLists.FIELD_TYPES.BOOLEAN_FIELDS.indexOf(fieldValue) !== -1) {
             SmartLists.handleBooleanFieldInput(valueContainer, fieldValue, currentValue);
         } else if (SmartLists.FIELD_TYPES.NUMERIC_FIELDS.indexOf(fieldValue) !== -1) {
@@ -154,9 +163,7 @@
         select.setAttribute('is', 'emby-select');
         select.style.width = '100%';
         let boolOptions;
-        if (fieldValue === 'IsPlayed') {
-            boolOptions = [{ Value: 'true', Label: 'Yes (Played)' }, { Value: 'false', Label: 'No (Unplayed)' }];
-        } else if (fieldValue === 'IsFavorite') {
+        if (fieldValue === 'IsFavorite') {
             boolOptions = [{ Value: 'true', Label: 'Yes (Favorite)' }, { Value: 'false', Label: 'No (Not Favorite)' }];
         } else if (fieldValue === 'NextUnwatched') {
             boolOptions = [{ Value: 'true', Label: 'Yes (Next to Watch)' }, { Value: 'false', Label: 'No (Not Next)' }];
@@ -172,6 +179,27 @@
             }
             select.appendChild(option);
         });
+        valueContainer.appendChild(select);
+    };
+
+    SmartLists.handlePlaybackStatusFieldInput = function (valueContainer, currentValue) {
+        const select = document.createElement('select');
+        select.className = 'emby-select rule-value-input';
+        select.setAttribute('is', 'emby-select');
+        select.style.width = '100%';
+
+        const statusOptions = SmartLists.PLAYBACK_STATUS_OPTIONS;
+
+        statusOptions.forEach(function (opt) {
+            const option = document.createElement('option');
+            option.value = opt.Value;
+            option.textContent = opt.Label;
+            if (currentValue && opt.Value === currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+
         valueContainer.appendChild(select);
     };
 
