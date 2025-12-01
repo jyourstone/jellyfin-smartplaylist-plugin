@@ -2987,6 +2987,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             // Remove smart suffix from all Jellyfin playlists for all users
             if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
             {
+                logger.LogDebug("Removing smart suffix from {Count} Jellyfin playlists for multi-user playlist {PlaylistName}", playlist.UserPlaylists.Count, playlist.Name);
                 foreach (var userMapping in playlist.UserPlaylists)
                 {
                     if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
@@ -3001,6 +3002,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                                 JellyfinPlaylistId = userMapping.JellyfinPlaylistId
                             };
                             await playlistService.RemoveSmartSuffixAsync(tempDto);
+                            logger.LogDebug("Removed smart suffix from Jellyfin playlist {JellyfinPlaylistId} for user {UserId}", userMapping.JellyfinPlaylistId, userMapping.UserId);
                         }
                         catch (Exception ex)
                         {
