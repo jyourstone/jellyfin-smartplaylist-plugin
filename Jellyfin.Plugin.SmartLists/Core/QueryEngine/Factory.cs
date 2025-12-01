@@ -181,6 +181,37 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         }
 
         /// <summary>
+        /// Calculates playback status for a user based on item type.
+        /// Handles both Series (episode-based) and other item types.
+        /// </summary>
+        /// <param name="baseItem">The base item</param>
+        /// <param name="user">The user</param>
+        /// <param name="libraryManager">Library manager to query episodes (for Series)</param>
+        /// <param name="userDataManager">User data manager (can be null)</param>
+        /// <param name="userData">User data for the item</param>
+        /// <param name="cache">Cache for performance</param>
+        /// <param name="logger">Logger</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculatePlaybackStatusForUser(
+            BaseItem baseItem,
+            User user,
+            ILibraryManager libraryManager,
+            IUserDataManager? userDataManager,
+            UserItemData? userData,
+            RefreshQueueServiceRefreshCache cache,
+            ILogger? logger)
+        {
+            if (baseItem is Series series && userDataManager != null)
+            {
+                return CalculateSeriesPlaybackStatus(series, user, libraryManager, userDataManager, cache, logger);
+            }
+            else
+            {
+                return CalculatePlaybackStatus(baseItem, user, userData);
+            }
+        }
+
+        /// <summary>
         /// Calculates playback status for a Series based on episode watch counts.
         /// </summary>
         /// <param name="series">The series item</param>
@@ -223,22 +254,17 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     return "Unplayed"; // Will be filtered out by caller
                 }
 
-                int watchedCount = 0;
-                int totalCount = episodes.Length;
-
-                foreach (var episode in episodes)
+                // Use LINQ Count with cache retrieval to count watched episodes
+                int watchedCount = episodes.Count(e =>
                 {
                     // Use UserDataCache to avoid redundant DB lookups
-                    var userData = cache.UserDataCache.GetOrAdd((episode.Id, user.Id), _ =>
+                    var userData = cache.UserDataCache.GetOrAdd((e.Id, user.Id), _ =>
                     {
-                        return userDataManager.GetUserData(user, episode)!;
+                        return userDataManager.GetUserData(user, e)!;
                     });
-
-                    if (userData != null && episode.IsPlayed(user, userData))
-                    {
-                        watchedCount++;
-                    }
-                }
+                    return userData != null && e.IsPlayed(user, userData);
+                });
+                int totalCount = episodes.Length;
 
                 // Determine status based on watched count
                 if (watchedCount == totalCount)
@@ -1727,15 +1753,14 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             }
 
             // Calculate playback status based on item type
-            string playbackStatus;
-            if (baseItem is Series series && userDataManager != null)
-            {
-                playbackStatus = CalculateSeriesPlaybackStatus(series, user, libraryManager, userDataManager, cache, logger);
-            }
-            else
-            {
-                playbackStatus = CalculatePlaybackStatus(baseItem, user, userData);
-            }
+            string playbackStatus = CalculatePlaybackStatusForUser(
+                baseItem,
+                user,
+                libraryManager,
+                userDataManager,
+                userData,
+                cache,
+                logger);
 
             var operand = new Operand(baseItem.Name)
             {
@@ -1837,7 +1862,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                     {
                                         targetUserData = cachedTargetUserData;
                                     }
-                                    else if (userDataManager != null)
+                                    else
                                     {
                                         targetUserData = userDataManager.GetUserData(targetUser, baseItem);
                                         // Cache the result
@@ -1847,15 +1872,14 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                         }
                                     }
                                     // Calculate playback status for additional user
-                                    string userPlaybackStatus;
-                                    if (baseItem is Series targetSeries && userDataManager != null)
-                                    {
-                                        userPlaybackStatus = CalculateSeriesPlaybackStatus(targetSeries, targetUser, libraryManager, userDataManager, cache, logger);
-                                    }
-                                    else
-                                    {
-                                        userPlaybackStatus = CalculatePlaybackStatus(baseItem, targetUser, targetUserData);
-                                    }
+                                    string userPlaybackStatus = CalculatePlaybackStatusForUser(
+                                        baseItem,
+                                        targetUser,
+                                        libraryManager,
+                                        userDataManager,
+                                        targetUserData,
+                                        cache,
+                                        logger);
 
                                     if (targetUserData != null)
                                     {
