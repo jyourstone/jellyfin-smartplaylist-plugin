@@ -225,7 +225,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             logger?.LogDebug("SmartLists BuildExpr: User-specific query for Field={Field}, UserId={UserId}, Operator={Operator}", r.MemberName, r.UserId, r.Operator);
 
-            // Get the method to call (e.g., GetIsPlayedByUser)
+            // Get the method to call (e.g., GetPlaybackStatusByUser)
             var methodName = r.UserSpecificField;
             if (string.IsNullOrEmpty(methodName))
             {
@@ -379,7 +379,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             }
 
             // Use case-insensitive comparison for string fields
-            var targetConstant = System.Linq.Expressions.Expression.Constant(r.TargetValue, typeof(string));
+            var cleanedTarget = r.TargetValue.Trim();
+            var targetConstant = System.Linq.Expressions.Expression.Constant(cleanedTarget, typeof(string));
             var comparisonConstant = System.Linq.Expressions.Expression.Constant(StringComparison.OrdinalIgnoreCase);
 
             // Call string.Equals(methodCall, targetValue, StringComparison.OrdinalIgnoreCase)

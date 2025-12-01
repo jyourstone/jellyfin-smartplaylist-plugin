@@ -118,7 +118,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
 
                 // PlaybackStatus field (string-based with specific values)
                 "PlaybackStatus"
-                    => new[] { "Equal", "NotEqual" },
+                    => ["Equal", "NotEqual"],
 
                 // Numeric fields
                 "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" or "Framerate"
@@ -173,7 +173,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
                 ["NextUnwatched"] = BooleanFieldOperators,
 
                 // PlaybackStatus field - string field with specific values
-                ["PlaybackStatus"] = new[] { "Equal", "NotEqual" },
+                ["PlaybackStatus"] = ["Equal", "NotEqual"],
 
                 // Numeric fields - number-based fields
                 ["ProductionYear"] = NumericFieldOperators,

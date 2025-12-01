@@ -200,29 +200,41 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             try
             {
-                // Get all episodes in the series
-                var allEpisodes = libraryManager.GetItemList(new InternalItemsQuery
+                // Get all episodes in the series using cache
+                // Key is (SeriesId, UserId) because visibility might depend on user (though usually series content is same, user access might differ)
+                // However, GetItemList for episodes usually just returns all episodes for the series.
+                // We use the cache key (SeriesId, UserId) to match the definition in RefreshCache
+                var episodes = cache.SeriesEpisodes.GetOrAdd((series.Id, user.Id), _ =>
                 {
-                    ParentId = series.Id,
-                    IncludeItemTypes = new[] { BaseItemKind.Episode },
-                    Recursive = true,
-                    IsVirtualItem = false
-                }).ToList();
+                    return libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        ParentId = series.Id,
+                        IncludeItemTypes = new[] { BaseItemKind.Episode },
+                        Recursive = true,
+                        IsVirtualItem = false,
+                        User = user // Pass user to ensure we only get episodes the user can see
+                    }).ToArray();
+                });
 
                 // Exclude series with 0 episodes (invalid data)
-                if (allEpisodes.Count == 0)
+                if (episodes.Length == 0)
                 {
                     logger?.LogDebug("Series '{SeriesName}' has 0 episodes, excluding from results", series.Name);
                     return "Unplayed"; // Will be filtered out by caller
                 }
 
                 int watchedCount = 0;
-                int totalCount = allEpisodes.Count;
+                int totalCount = episodes.Length;
 
-                foreach (var episode in allEpisodes)
+                foreach (var episode in episodes)
                 {
-                    var episodeUserData = userDataManager.GetUserData(user, episode);
-                    if (episodeUserData != null && episode.IsPlayed(user, episodeUserData))
+                    // Use UserDataCache to avoid redundant DB lookups
+                    var userData = cache.UserDataCache.GetOrAdd((episode.Id, user.Id), _ =>
+                    {
+                        return userDataManager.GetUserData(user, episode)!;
+                    });
+
+                    if (userData != null && episode.IsPlayed(user, userData))
                     {
                         watchedCount++;
                     }

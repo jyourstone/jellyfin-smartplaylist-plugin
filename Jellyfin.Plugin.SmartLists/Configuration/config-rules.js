@@ -1,6 +1,13 @@
 (function (SmartLists) {
     'use strict';
 
+    // ===== CONSTANTS =====
+    SmartLists.PLAYBACK_STATUS_OPTIONS = [
+        { Value: 'Played', Label: 'Played (Fully Watched)' },
+        { Value: 'InProgress', Label: 'In Progress (Partially Watched)' },
+        { Value: 'Unplayed', Label: 'Unplayed (Not Started)' }
+    ];
+
     // ===== OPERATOR OPTIONS MANAGEMENT =====
     SmartLists.updateOperatorOptions = function (fieldValue, operatorSelect) {
         // Capture the previous operator value before clearing
@@ -181,11 +188,7 @@
         select.setAttribute('is', 'emby-select');
         select.style.width = '100%';
 
-        const statusOptions = [
-            { Value: 'Played', Label: 'Played (Fully Watched)' },
-            { Value: 'InProgress', Label: 'In Progress (Partially Watched)' },
-            { Value: 'Unplayed', Label: 'Unplayed (Not Started)' }
-        ];
+        const statusOptions = SmartLists.PLAYBACK_STATUS_OPTIONS;
 
         statusOptions.forEach(function (opt) {
             const option = document.createElement('option');

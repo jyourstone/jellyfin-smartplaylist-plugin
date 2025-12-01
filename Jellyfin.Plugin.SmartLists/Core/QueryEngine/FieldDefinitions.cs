@@ -296,7 +296,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             allFields.Add("MediaType");
             allFields.Add("SeriesName");
             allFields.Add("SimilarTo");
-            allFields.Add("PlaybackStatus");
+            allFields.UnionWith(UserDataFields);
 
             return [.. allFields];
         }
