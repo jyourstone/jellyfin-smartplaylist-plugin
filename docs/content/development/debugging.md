@@ -54,13 +54,10 @@ When seeking help with issues, you may need to share log files. The easiest way 
    - Select the log file you want to view (e.g., `log_20251109.log`)
    - Copy the relevant log entries or download the whole log
 
-2. **Upload to GitHub Gists**:
-   - Go to [gist.github.com](https://gist.github.com/)
-   - Sign in with your GitHub account (or create one if needed)
-   - Paste the log content
-   - Optionally add a description (e.g., "SmartLists debug log - playlist refresh issue")
-   - Click "Create secret gist"
-   - Share the gist URL when reporting issues
+2. **Upload to Pastebin**:
+   - Go to [bin.dinsten.se](https://bin.dinsten.se/)
+   - Paste the log content (or attach the entire log file if needed)
+   - Share the paste URL when reporting issues
 
 3. **For very large logs**:
    - Focus on the time period when the issue occurred
