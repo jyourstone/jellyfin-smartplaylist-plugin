@@ -154,11 +154,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <summary>
         /// Calculates the playback status for a media item.
         /// </summary>
-        /// <param name="baseItem">The media item</param>
         /// <param name="user">The user</param>
         /// <param name="userData">User data for the item</param>
         /// <returns>"Played", "InProgress", or "Unplayed"</returns>
-        private static string CalculatePlaybackStatus(BaseItem baseItem, User user, UserItemData? userData)
+        private static string CalculatePlaybackStatus(User user, UserItemData? userData)
         {
             if (userData == null)
             {
@@ -207,7 +206,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             }
             else
             {
-                return CalculatePlaybackStatus(baseItem, user, userData);
+                return CalculatePlaybackStatus(user, userData);
             }
         }
 
@@ -240,7 +239,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     return libraryManager.GetItemList(new InternalItemsQuery
                     {
                         ParentId = series.Id,
-                        IncludeItemTypes = new[] { BaseItemKind.Episode },
+                        IncludeItemTypes = [BaseItemKind.Episode],
                         Recursive = true,
                         IsVirtualItem = false,
                         User = user // Pass user to ensure we only get episodes the user can see
