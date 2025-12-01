@@ -33,7 +33,7 @@ Before creating your first list, it's important to understand the differences be
 - **Server-wide**: Collections are visible to all users on the server (no individual ownership)
 - **No Sorting**: Collections do not support custom sorting
 - **No Max Playtime**: Collections cannot have a playtime limit
-- **User Reference**: While collections don't have an "owner" in the traditional sense, you must select a user whose context will be used when evaluating rules and filtering items. This user's library access permissions and user-specific data (like "Is Played", "Is Favorite", etc.) are used to determine which items are included in the collection
+- **User Reference**: While collections don't have an "owner" in the traditional sense, you must select a user whose context will be used when evaluating rules and filtering items. This user's library access permissions and user-specific data (like "Playback Status", "Is Favorite", etc.) are used to determine which items are included in the collection
 - **Automatic Image Generation**: Collections automatically generate cover images based on the media items they contain (see details below)
 - **Can Contain Collections**: Unlike playlists, collections can contain other collection objects (creating "meta-collections") when using the "Include collection only" option with the Collections field
 - **Use cases**: Organizing related content for browsing (e.g., "Action Movies", "Holiday Collection", "Director's Collection")
@@ -56,7 +56,7 @@ SmartLists automatically generates cover images for collections based on the med
 
 !!! note "User Selection for Collections"
     When creating a collection, the user you select is used as a **reference** for rule evaluation, not as an owner. The collection itself is server-wide and visible to everyone. This user's context is important for:
-    - Evaluating user-specific rules (Is Played, Is Favorite, Play Count, etc.)
+    - Evaluating user-specific rules (Playback Status, Is Favorite, Play Count, etc.)
     - Respecting library access permissions
     - Filtering items based on what that user can see and access
 
@@ -176,7 +176,7 @@ The Export/Import feature allows you to backup your smart list configurations or
 - **User Reassignment**: When importing lists from another Jellyfin instance, if the original list owner doesn't exist in the destination system, the list will be automatically reassigned to the admin user performing the import
 
 !!! note "User-Specific Rules"
-    Rules like "Is Played by [User]" or "Is Favorite for [User]" that reference non-existent users will need to be updated manually.
+    Rules like "Playback Status for [User]" or "Is Favorite for [User]" that reference non-existent users will need to be updated manually.
 
 ## Performance Settings
 

@@ -28,7 +28,7 @@ Here's a simple example to get you started:
 
 **Rules**:
 - Genre contains "Action"
-- Is Played = False
+- Playback Status = Unplayed
 
 **Sort Order**: Production Year (Descending)
 

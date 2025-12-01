@@ -9,7 +9,7 @@ Here are some more complex playlist and collection examples:
 - **Next Unwatched** = True AND **Tags** contain "Kids" (with parent series tags enabled)
 
 ## Foreign Language Practice
-- **Audio Languages** match `(?i)(ger|fra|spa)` AND **Is Played** = False
+- **Audio Languages** match `(?i)(ger|fra|spa)` AND **Playback Status** = Unplayed
 
 ## Tagged Series Marathon
 - **Tags** is in "Drama;Thriller" (with parent series tags enabled) AND **Runtime** < 50 minutes

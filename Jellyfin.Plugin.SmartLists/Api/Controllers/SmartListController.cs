@@ -337,6 +337,10 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 {
                     var playlistStore = GetPlaylistStore();
                     var playlists = await playlistStore.GetAllAsync();
+                    foreach (var playlist in playlists)
+                    {
+                        playlist.MigrateLegacyFields();
+                    }
                     allLists.AddRange(playlists);
                 }
                 
@@ -345,6 +349,10 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 {
                     var collectionStore = GetCollectionStore();
                     var collections = await collectionStore.GetAllAsync();
+                    foreach (var collection in collections)
+                    {
+                        collection.MigrateLegacyFields();
+                    }
                     allLists.AddRange(collections);
                 }
                 
@@ -378,6 +386,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var playlist = await playlistStore.GetByIdAsync(guidId);
                 if (playlist != null)
                 {
+                    playlist.MigrateLegacyFields();
                     return Ok(playlist);
                 }
 
@@ -386,6 +395,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var collection = await collectionStore.GetByIdAsync(guidId);
                 if (collection != null)
                 {
+                    collection.MigrateLegacyFields();
                     return Ok(collection);
                 }
 
@@ -1709,7 +1719,7 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                     new { Value = "CommunityRating", Label = "Community Rating" },
                     new { Value = "CriticRating", Label = "Critic Rating" },
                     new { Value = "IsFavorite", Label = "Is Favorite" },
-                    new { Value = "IsPlayed", Label = "Is Played" },
+                    new { Value = "PlaybackStatus", Label = "Playback Status" },
                     new { Value = "LastPlayedDate", Label = "Last Played" },
                     new { Value = "NextUnwatched", Label = "Next Unwatched" },
                     new { Value = "PlayCount", Label = "Play Count" },

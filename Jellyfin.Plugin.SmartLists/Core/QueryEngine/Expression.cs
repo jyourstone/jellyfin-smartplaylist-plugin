@@ -54,7 +54,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             return MemberName switch
             {
-                "IsPlayed" => "GetIsPlayedByUser",
+                "PlaybackStatus" => "GetPlaybackStatusByUser",
                 "PlayCount" => "GetPlayCountByUser",
                 "IsFavorite" => "GetIsFavoriteByUser",
                 "NextUnwatched" => "GetNextUnwatchedByUser",
@@ -67,7 +67,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             return memberName switch
             {
-                "IsPlayed" => true,
+                "PlaybackStatus" => true,
                 "PlayCount" => true,
                 "IsFavorite" => true,
                 "NextUnwatched" => true,

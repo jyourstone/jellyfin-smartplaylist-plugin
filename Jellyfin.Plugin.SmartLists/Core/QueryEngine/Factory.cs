@@ -152,15 +152,113 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
 
         /// <summary>
+        /// Calculates the playback status for a media item.
+        /// </summary>
+        /// <param name="baseItem">The media item</param>
+        /// <param name="user">The user</param>
+        /// <param name="userData">User data for the item</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculatePlaybackStatus(BaseItem baseItem, User user, UserItemData? userData)
+        {
+            if (userData == null)
+            {
+                return "Unplayed";
+            }
+
+            // Check Jellyfin's Played flag first (authoritative)
+            if (userData.Played)
+            {
+                return "Played";
+            }
+
+            // Check if partially watched
+            if (userData.PlaybackPositionTicks > 0)
+            {
+                return "InProgress";
+            }
+
+            return "Unplayed";
+        }
+
+        /// <summary>
+        /// Calculates playback status for a Series based on episode watch counts.
+        /// </summary>
+        /// <param name="series">The series item</param>
+        /// <param name="user">The user</param>
+        /// <param name="libraryManager">Library manager to query episodes</param>
+        /// <param name="userDataManager">User data manager</param>
+        /// <param name="cache">Cache for performance</param>
+        /// <param name="logger">Logger</param>
+        /// <returns>"Played", "InProgress", or "Unplayed"</returns>
+        private static string CalculateSeriesPlaybackStatus(
+            Series series,
+            User user,
+            ILibraryManager libraryManager,
+            IUserDataManager userDataManager,
+            RefreshQueueServiceRefreshCache cache,
+            ILogger? logger)
+        {
+            try
+            {
+                // Get all episodes in the series
+                var allEpisodes = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = series.Id,
+                    IncludeItemTypes = new[] { BaseItemKind.Episode },
+                    Recursive = true,
+                    IsVirtualItem = false
+                }).ToList();
+
+                // Exclude series with 0 episodes (invalid data)
+                if (allEpisodes.Count == 0)
+                {
+                    logger?.LogDebug("Series '{SeriesName}' has 0 episodes, excluding from results", series.Name);
+                    return "Unplayed"; // Will be filtered out by caller
+                }
+
+                int watchedCount = 0;
+                int totalCount = allEpisodes.Count;
+
+                foreach (var episode in allEpisodes)
+                {
+                    var episodeUserData = userDataManager.GetUserData(user, episode);
+                    if (episodeUserData != null && episode.IsPlayed(user, episodeUserData))
+                    {
+                        watchedCount++;
+                    }
+                }
+
+                // Determine status based on watched count
+                if (watchedCount == totalCount)
+                {
+                    return "Played";
+                }
+                else if (watchedCount >= 1)
+                {
+                    return "InProgress";
+                }
+                else
+                {
+                    return "Unplayed";
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error calculating playback status for series '{SeriesName}'", series.Name);
+                return "Unplayed";
+            }
+        }
+
+        /// <summary>
         /// Sets fallback values for user-specific data when userData is unavailable or invalid.
         /// </summary>
         /// <param name="operand">The operand to populate</param>
         /// <param name="userId">The user ID (as string)</param>
-        /// <param name="isPlayed">The IsPlayed value to use</param>
-        private static void SetUserDataFallbacks(Operand operand, string userId, bool isPlayed)
+        /// <param name="playbackStatus">The PlaybackStatus value to use</param>
+        private static void SetUserDataFallbacks(Operand operand, string userId, string playbackStatus)
         {
-            operand.IsPlayedByUser[userId] = isPlayed;
-            operand.PlayCountByUser[userId] = isPlayed ? 1 : 0;
+            operand.PlaybackStatusByUser[userId] = playbackStatus;
+            operand.PlayCountByUser[userId] = playbackStatus == "Played" ? 1 : 0;
             operand.IsFavoriteByUser[userId] = false;
             operand.LastPlayedDateByUser[userId] = -1; // Never played,
         }
@@ -372,11 +470,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         /// <param name="operand">The operand to populate</param>
         /// <param name="userId">The user ID (as string)</param>
-        /// <param name="isPlayed">The IsPlayed value</param>
+        /// <param name="playbackStatus">The PlaybackStatus value</param>
         /// <param name="userData">The userData object to extract from</param>
-        private static void PopulateUserData(Operand operand, string userId, bool isPlayed, object userData)
+        private static void PopulateUserData(Operand operand, string userId, string playbackStatus, object userData)
         {
-            operand.IsPlayedByUser[userId] = isPlayed;
+            operand.PlaybackStatusByUser[userId] = playbackStatus;
 
             // Use reflection to safely extract properties from userData
             var userDataType = userData.GetType();
@@ -1616,8 +1714,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                 }
             }
 
-            // Cache the IsPlayed result to avoid multiple expensive calls
-            var isPlayed = userData != null ? baseItem.IsPlayed(user, userData) : false;
+            // Calculate playback status based on item type
+            string playbackStatus;
+            if (baseItem is Series series && userDataManager != null)
+            {
+                playbackStatus = CalculateSeriesPlaybackStatus(series, user, libraryManager, userDataManager, cache, logger);
+            }
+            else
+            {
+                playbackStatus = CalculatePlaybackStatus(baseItem, user, userData);
+            }
 
             var operand = new Operand(baseItem.Name)
             {
@@ -1652,13 +1758,13 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     // Populate user-specific data for playlist user
                     // Normalize to "N" format (no dashes) to match UserPlaylists format
                     var normalizedUserId = user.Id.ToString("N");
-                    PopulateUserData(operand, normalizedUserId, isPlayed, userData!);
+                    PopulateUserData(operand, normalizedUserId, playbackStatus, userData!);
                 }
                 else if (userDataManager != null)
                 {
                     // Fallback when userData is null - treat as never played for playlist user
                     // Normalize to "N" format (no dashes) to match UserPlaylists format
-                    SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
+                    SetUserDataFallbacks(operand, user.Id.ToString("N"), playbackStatus);
                 }
                 else
                 {
@@ -1671,20 +1777,20 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                         {
                             // Use our helper method to populate user data consistently
                             // Normalize to "N" format (no dashes) to match UserPlaylists format
-                            PopulateUserData(operand, user.Id.ToString("N"), isPlayed, reflectedUserData);
+                            PopulateUserData(operand, user.Id.ToString("N"), playbackStatus, reflectedUserData);
                         }
                         else
                         {
                             // UserData is null - set fallback values for playlist user
                             // Normalize to "N" format (no dashes) to match UserPlaylists format
-                            SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
+                            SetUserDataFallbacks(operand, user.Id.ToString("N"), playbackStatus);
                         }
                     }
                     else
                     {
                         // UserData property not found - set fallback values for playlist user
                         // Normalize to "N" format (no dashes) to match UserPlaylists format
-                        SetUserDataFallbacks(operand, user.Id.ToString("N"), isPlayed);
+                        SetUserDataFallbacks(operand, user.Id.ToString("N"), playbackStatus);
                     }
                 }
             }
@@ -1719,7 +1825,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                     {
                                         targetUserData = cachedTargetUserData;
                                     }
-                                    else
+                                    else if (userDataManager != null)
                                     {
                                         targetUserData = userDataManager.GetUserData(targetUser, baseItem);
                                         // Cache the result
@@ -1728,18 +1834,25 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                                             cache.UserDataCache[targetUserDataCacheKey] = targetUserData;
                                         }
                                     }
-                                    var userIsPlayed = targetUserData != null ? baseItem.IsPlayed(targetUser, targetUserData) : false;
-                                    // Use normalized ID for all dictionary operations
-                                    operand.IsPlayedByUser[normalizedUserId] = userIsPlayed;
+                                    // Calculate playback status for additional user
+                                    string userPlaybackStatus;
+                                    if (baseItem is Series targetSeries && userDataManager != null)
+                                    {
+                                        userPlaybackStatus = CalculateSeriesPlaybackStatus(targetSeries, targetUser, libraryManager, userDataManager, cache, logger);
+                                    }
+                                    else
+                                    {
+                                        userPlaybackStatus = CalculatePlaybackStatus(baseItem, targetUser, targetUserData);
+                                    }
 
                                     if (targetUserData != null)
                                     {
-                                        PopulateUserData(operand, normalizedUserId, userIsPlayed, targetUserData);
+                                        PopulateUserData(operand, normalizedUserId, userPlaybackStatus, targetUserData);
                                     }
                                     else
                                     {
                                         // Fallback values when targetUserData is null
-                                        SetUserDataFallbacks(operand, normalizedUserId, userIsPlayed);
+                                        SetUserDataFallbacks(operand, normalizedUserId, userPlaybackStatus);
                                     }
                                 }
                                 else

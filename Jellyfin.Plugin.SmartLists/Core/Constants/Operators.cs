@@ -113,8 +113,12 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
                     => SimpleFieldOperators,
 
                 // Boolean fields
-                "IsPlayed" or "IsFavorite" or "NextUnwatched"
+                "IsFavorite" or "NextUnwatched"
                     => BooleanFieldOperators,
+
+                // PlaybackStatus field (string-based with specific values)
+                "PlaybackStatus"
+                    => new[] { "Equal", "NotEqual" },
 
                 // Numeric fields
                 "ProductionYear" or "CommunityRating" or "CriticRating" or "RuntimeMinutes" or "PlayCount" or "Framerate"
@@ -165,9 +169,11 @@ namespace Jellyfin.Plugin.SmartLists.Core.Constants
                 ["ItemType"] = SimpleFieldOperators,
 
                 // Boolean fields - true/false fields
-                ["IsPlayed"] = BooleanFieldOperators,
                 ["IsFavorite"] = BooleanFieldOperators,
                 ["NextUnwatched"] = BooleanFieldOperators,
+
+                // PlaybackStatus field - string field with specific values
+                ["PlaybackStatus"] = new[] { "Equal", "NotEqual" },
 
                 // Numeric fields - number-based fields
                 ["ProductionYear"] = NumericFieldOperators,

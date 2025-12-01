@@ -32,7 +32,23 @@ The web interface provides access to all available fields for creating list rule
 - **Community Rating** - User ratings (0-10)
 - **Critic Rating** - Professional critic ratings
 - **Is Favorite** - Whether the item is marked as a favorite
-- **Is Played** - Whether the item has been watched/listened to
+- **Playback Status** - The playback status of the item with three possible values:
+  - **Played** - Fully watched/listened to (marked as played in Jellyfin)
+  - **In Progress** - Partially watched/listened to (has playback position but not marked as played)
+  - **Unplayed** - Not started (no playback position)
+  
+  !!! note "Series Playback Status"
+      For TV series, the playback status is calculated based on episode watch counts:
+      - **Played**: All episodes in the series have been watched
+      - **In Progress**: At least one episode has been watched, but not all
+      - **Unplayed**: No episodes have been watched
+  
+  !!! tip "Migration from Is Played"
+      If you have existing playlists or collections using the old "Is Played" field, they will be automatically migrated to "Playback Status" when loaded:
+      - `Is Played = True` → `Playback Status = Played`
+      - `Is Played = False` → `Playback Status = Unplayed`
+      
+      The migration happens automatically and preserves your existing rules. You can then update them to use "In Progress" if desired.
 - **Last Played** - When the item was last played (user-specific)
 - **Next Unwatched** - Shows only the next unwatched episode in chronological order for TV series
 - **Play Count** - Number of times the item has been played
@@ -77,7 +93,7 @@ Some fields have additional optional settings that appear when you select them. 
 
 The following fields support an optional **user selector** that allows you to check playback data for a specific user:
 
-- **Is Played**
+- **Playback Status**
 - **Is Favorite**
 - **Play Count**
 - **Next Unwatched**
@@ -96,7 +112,7 @@ The following fields support an optional **user selector** that allows you to ch
 **Examples:**
 - **Multi-user playlist**: Create a playlist with users "Alice" and "Bob", add rule "Is Favorite = True" (no user selected). Result: Alice sees her favorites, Bob sees his favorites.
 - **Cross-user rule**: Create a playlist for "Bob", add rule "Is Favorite = True" with user "Alice" selected. Result: Bob's playlist shows Alice's favorites.
-- **Collection**: Create a collection with reference user "Alice", add rule "Is Played = False" (no user selected). Result: Shows unwatched items from Alice's perspective.
+- **Collection**: Create a collection with reference user "Alice", add rule "Playback Status = Unplayed" (no user selected). Result: Shows unwatched items from Alice's perspective.
 
 ### Next Unwatched Options
 
@@ -211,22 +227,22 @@ The **"is in"** and **"is not in"** operators are powerful tools that can help y
 ```
 Rule Group 1:
   - Genre contains "Action"
-  - Is Played = False
+  - Playback Status = Unplayed
 
 Rule Group 2:
   - Genre contains "Comedy"
-  - Is Played = False
+  - Playback Status = Unplayed
 
 Rule Group 3:
   - Genre contains "Drama"
-  - Is Played = False
+  - Playback Status = Unplayed
 ```
 
 **You can use this (single rule with "is in"):**
 ```
 Rule Group 1:
   - Genre is in "Action;Comedy;Drama"
-  - Is Played = False
+  - Playback Status = Unplayed
 ```
 
 Both approaches produce the same result, but the second is much simpler and easier to maintain! The "is in" operator checks if the field value contains any of the semicolon-separated items.
@@ -262,7 +278,7 @@ Understanding how rule groups work is key to creating effective lists. The plugi
 ```
 Rule Group 1:
   - Genre contains "Action"
-  - Is Played = False
+  - Playback Status = Unplayed
   - Production Year > 2010
 ```
 
@@ -281,11 +297,11 @@ All three conditions must be true!
 ```
 Rule Group 1:
   - Genre contains "Action"
-  - Is Played = False
+  - Playback Status = Unplayed
 
 Rule Group 2:
   - Genre contains "Comedy"
-  - Is Played = False
+  - Playback Status = Unplayed
 ```
 
 This matches items that are:

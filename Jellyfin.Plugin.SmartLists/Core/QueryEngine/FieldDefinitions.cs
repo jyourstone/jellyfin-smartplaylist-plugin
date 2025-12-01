@@ -115,7 +115,6 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         public static readonly HashSet<string> BooleanFields =
         [
-            "IsPlayed",
             "IsFavorite",
             "NextUnwatched"
         ];
@@ -158,7 +157,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// </summary>
         public static readonly HashSet<string> UserDataFields =
         [
-            "IsPlayed",
+            "PlaybackStatus",
             "IsFavorite",
             "PlayCount",
             "NextUnwatched",
@@ -297,6 +296,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             allFields.Add("MediaType");
             allFields.Add("SeriesName");
             allFields.Add("SimilarTo");
+            allFields.Add("PlaybackStatus");
 
             return [.. allFields];
         }
