@@ -945,8 +945,8 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                         await newCollectionStore.SaveAsync(collectionDto);
                         
                         // Only delete the old playlist after successful conversion
-                        var playlistService = GetPlaylistService();
-                        await playlistService.DeleteAsync(existingPlaylist);
+                        await DeleteAllPlaylistsAsync(existingPlaylist);
+                        
                         await playlistStore.DeleteAsync(guidId);
                         
                         // Enqueue refresh operation for the converted collection (after successful save)
@@ -1566,75 +1566,14 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
                 var playlist = await playlistStore.GetByIdAsync(guidId);
                 if (playlist != null)
                 {
-                    var playlistService = GetPlaylistService();
                     if (deleteJellyfinList)
                     {
-                        // Delete all Jellyfin playlists for all users
-                        if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
-                        {
-                            logger.LogDebug("Deleting {Count} Jellyfin playlists for multi-user playlist {PlaylistName}", playlist.UserPlaylists.Count, playlist.Name);
-                            foreach (var userMapping in playlist.UserPlaylists)
-                            {
-                                if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
-                                {
-                                    try
-                                    {
-                                        // Create a temporary DTO for deletion
-                                        var tempDto = new SmartPlaylistDto
-                                        {
-                                            Id = playlist.Id,
-                                            Name = playlist.Name,
-                                            UserId = userMapping.UserId,
-                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
-                                        };
-                                        await playlistService.DeleteAsync(tempDto);
-                                        logger.LogDebug("Deleted Jellyfin playlist {JellyfinPlaylistId} for user {UserId}", userMapping.JellyfinPlaylistId, userMapping.UserId);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        logger.LogWarning(ex, "Failed to delete Jellyfin playlist {JellyfinPlaylistId} for user {UserId}, continuing", userMapping.JellyfinPlaylistId, userMapping.UserId);
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // Fallback to single playlist deletion (backwards compatibility)
-                            await playlistService.DeleteAsync(playlist);
-                        }
+                        await DeleteAllPlaylistsAsync(playlist);
                         logger.LogInformation("Deleted smart playlist: {PlaylistName}", playlist.Name);
                     }
                     else
                     {
-                        // Remove smart suffix from all playlists
-                        if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
-                        {
-                            foreach (var userMapping in playlist.UserPlaylists)
-                            {
-                                if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
-                                {
-                                    try
-                                    {
-                                        var tempDto = new SmartPlaylistDto
-                                        {
-                                            Id = playlist.Id,
-                                            Name = playlist.Name,
-                                            UserId = userMapping.UserId,
-                                            JellyfinPlaylistId = userMapping.JellyfinPlaylistId
-                                        };
-                                        await playlistService.RemoveSmartSuffixAsync(tempDto);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        logger.LogWarning(ex, "Failed to remove smart suffix from Jellyfin playlist {JellyfinPlaylistId} for user {UserId}, continuing", userMapping.JellyfinPlaylistId, userMapping.UserId);
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            await playlistService.RemoveSmartSuffixAsync(playlist);
-                        }
+                        await RemoveSmartSuffixFromAllPlaylistsAsync(playlist);
                         logger.LogInformation("Deleted smart playlist configuration: {PlaylistName}", playlist.Name);
                     }
 
@@ -2086,12 +2025,18 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
 
                     try
                     {
-                        // Remove the Jellyfin playlist FIRST
-                        var playlistService = GetPlaylistService();
-                        await playlistService.DisableAsync(playlist);
+                        // Remove all Jellyfin playlists FIRST
+                        await DisableAllPlaylistsAsync(playlist);
 
-                        // Clear the Jellyfin playlist ID since the playlist no longer exists
+                        // Clear the Jellyfin playlist IDs since the playlists no longer exist
                         playlist.JellyfinPlaylistId = null;
+                        if (playlist.UserPlaylists != null)
+                        {
+                            foreach (var userMapping in playlist.UserPlaylists)
+                            {
+                                userMapping.JellyfinPlaylistId = null;
+                            }
+                        }
 
                         // Only save the configuration if the Jellyfin operation succeeds
                         await playlistStore.SaveAsync(playlist);
@@ -2978,6 +2923,99 @@ namespace Jellyfin.Plugin.SmartLists.Api.Controllers
             }
         }
 
+        /// <summary>
+        /// Deletes all Jellyfin playlists for all users in a smart playlist.
+        /// Handles both UserPlaylists array and legacy JellyfinPlaylistId field.
+        /// </summary>
+        private async Task DeleteAllPlaylistsAsync(SmartPlaylistDto playlist)
+        {
+            var playlistService = GetPlaylistService();
+            
+            // Delete all Jellyfin playlists for all users
+            if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+            {
+                logger.LogDebug("Deleting {Count} Jellyfin playlists for multi-user playlist {PlaylistName}", playlist.UserPlaylists.Count, playlist.Name);
+                foreach (var userMapping in playlist.UserPlaylists)
+                {
+                    if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
+                    {
+                        try
+                        {
+                            // Create a temporary DTO for deletion
+                            var tempDto = new SmartPlaylistDto
+                            {
+                                Id = playlist.Id,
+                                Name = playlist.Name,
+                                UserId = userMapping.UserId,
+                                JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                            };
+                            await playlistService.DeleteAsync(tempDto);
+                            logger.LogDebug("Deleted Jellyfin playlist {JellyfinPlaylistId} for user {UserId}", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to delete Jellyfin playlist {JellyfinPlaylistId} for user {UserId}, continuing", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Fallback to single playlist deletion (backwards compatibility)
+                await playlistService.DeleteAsync(playlist);
+            }
+        }
+
+        /// <summary>
+        /// Disables all Jellyfin playlists for all users in a smart playlist.
+        /// Note: Disabling a playlist deletes it from Jellyfin (same as DeleteAllPlaylistsAsync).
+        /// </summary>
+        private async Task DisableAllPlaylistsAsync(SmartPlaylistDto playlist)
+        {
+            // DisableAsync just calls DeleteAsync, so we can reuse the same logic
+            await DeleteAllPlaylistsAsync(playlist);
+        }
+
+        /// <summary>
+        /// Removes smart suffix from all Jellyfin playlists for all users in a smart playlist.
+        /// Handles both UserPlaylists array and legacy JellyfinPlaylistId field.
+        /// </summary>
+        private async Task RemoveSmartSuffixFromAllPlaylistsAsync(SmartPlaylistDto playlist)
+        {
+            var playlistService = GetPlaylistService();
+            
+            // Remove smart suffix from all Jellyfin playlists for all users
+            if (playlist.UserPlaylists != null && playlist.UserPlaylists.Count > 0)
+            {
+                logger.LogDebug("Removing smart suffix from {Count} Jellyfin playlists for multi-user playlist {PlaylistName}", playlist.UserPlaylists.Count, playlist.Name);
+                foreach (var userMapping in playlist.UserPlaylists)
+                {
+                    if (!string.IsNullOrEmpty(userMapping.JellyfinPlaylistId))
+                    {
+                        try
+                        {
+                            var tempDto = new SmartPlaylistDto
+                            {
+                                Id = playlist.Id,
+                                Name = playlist.Name,
+                                UserId = userMapping.UserId,
+                                JellyfinPlaylistId = userMapping.JellyfinPlaylistId
+                            };
+                            await playlistService.RemoveSmartSuffixAsync(tempDto);
+                            logger.LogDebug("Removed smart suffix from Jellyfin playlist {JellyfinPlaylistId} for user {UserId}", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to remove smart suffix from Jellyfin playlist {JellyfinPlaylistId} for user {UserId}, continuing", userMapping.JellyfinPlaylistId, userMapping.UserId);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                await playlistService.RemoveSmartSuffixAsync(playlist);
+            }
+        }
 
     }
 }
