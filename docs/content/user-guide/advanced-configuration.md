@@ -31,7 +31,6 @@ You can manually edit these JSON files if needed, but please be aware:
     - **Backup first**: Always backup your list files before editing
     - **Syntax errors**: Invalid JSON syntax will prevent the list from loading
     - **Data corruption**: Incorrect field values or types may cause unexpected behavior or errors
-    - **File locking**: Make sure Jellyfin is not actively using the file when editing (consider stopping the service temporarily)
 
 ### Best Practices
 

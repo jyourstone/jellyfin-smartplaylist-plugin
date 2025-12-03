@@ -25,7 +25,6 @@ Configure individual lists with their own refresh schedules:
 - **Per-list scheduling**: Each list can have its own schedule
 - **Schedule types**: Daily, Weekly, Monthly, Yearly, or Interval
 - **Flexible intervals**: 15 min, 30 min, 1 h, 2 h, 3 h, 4 h, 6 h, 8 h, 12 h, or 24 h
-- ~~**Backward compatible**: Existing lists continue using legacy Jellyfin scheduled tasks~~ (Deprecated)
 
 ### Schedule Options
 
@@ -42,7 +41,7 @@ Configure individual lists with their own refresh schedules:
 ## Legacy Scheduled Tasks
 
 !!! warning "Deprecated and Removed"
-    Legacy scheduled tasks have been deprecated and removed. The original Jellyfin scheduled tasks (Audio SmartLists and Media SmartLists) are no longer used. All lists now use the custom scheduling system described above, or rely on auto-refresh and manual refresh only.
+    Legacy scheduled tasks have been deprecated and removed. The original Jellyfin scheduled tasks (Audio Smart Playlist and Media Smart Playlist) are no longer used. All lists now use the custom scheduling system described above, or rely on auto-refresh and manual refresh only.
 
 ## Example Use Cases
 
@@ -90,7 +89,7 @@ Perfect for randomized lists:
 
 ### Auto-Refresh Settings
 
-- **`Never`**: Best performance, no automatic refreshes
+- **`Never`**: No automatic refreshes
 - **`On Library Changes`**: Good performance, refreshes only for library additions
 - **`On All Changes`**: Refreshes for additions AND updates (metadata, playback status, etc.)
 
