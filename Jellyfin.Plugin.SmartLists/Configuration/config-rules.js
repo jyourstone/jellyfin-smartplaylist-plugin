@@ -3,8 +3,8 @@
 
     // ===== CONSTANTS =====
     SmartLists.PLAYBACK_STATUS_OPTIONS = [
-        { Value: 'Played', Label: 'Played (Fully Watched)' },
-        { Value: 'InProgress', Label: 'In Progress (Partially Watched)' },
+        { Value: 'Played', Label: 'Played (Fully Played)' },
+        { Value: 'InProgress', Label: 'In Progress (Partially Played)' },
         { Value: 'Unplayed', Label: 'Unplayed (Not Started)' }
     ];
 

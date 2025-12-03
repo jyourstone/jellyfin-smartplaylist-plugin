@@ -5,10 +5,7 @@
 
 ## Multiple Sorting Levels
 
-You can add up to **3 sorting options** to create cascading sorts. Items are first sorted by the first option, then items with equal values are sorted by the second option, and so on.
-
-!!! note "Playlists Only"
-    Sorting is only available for playlists. Collections display items in their library order and do not support custom sorting.
+You can add up to **3 sorting options** for playlists to create cascading sorts. Items are first sorted by the first option, then items with equal values are sorted by the second option, and so on.
 
 ### Example Use Cases
 

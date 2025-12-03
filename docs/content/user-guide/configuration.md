@@ -118,12 +118,6 @@ Monitor refresh operations and view statistics:
 !!! note "Statistics Scope"
     Statistics and refresh history are tracked in-memory and reset when the Jellyfin server is restarted. Historical data is not persisted across server restarts.
 
-!!! tip "Auto-Refresh"
-    The status page automatically refreshes every 2 seconds when operations are active, and every 30 seconds when idle. You can also manually refresh using the "Refresh" button at the top of the page.
-
-!!! tip "Quick Access"
-    When you click "Refresh All Lists" in the Settings tab, you'll be automatically redirected to the Status page to monitor the progress of all refresh operations in real-time.
-
 ### 4. Settings
 
 Configure global settings for the plugin:

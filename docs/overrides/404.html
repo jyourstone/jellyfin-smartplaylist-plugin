@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="md-content" data-md-component="content">
+    <article class="md-content__inner md-typeset">
+        <div style="text-align: center; padding: 4rem 0;">
+            <h1 style="font-size: 8rem; margin: 0;">😢</h1>
+            <h2>404 - Page Not Found</h2>
+            <p>Sorry, the page you're looking for doesn't exist.</p>
+            <p>
+                <a href="{{ config.site_url | default(nav.homepage.url, true) | url }}"
+                    class="md-button md-button--primary">
+                    Go to Homepage
+                </a>
+            </p>
+        </div>
+    </article>
+</div>
+{% endblock %}

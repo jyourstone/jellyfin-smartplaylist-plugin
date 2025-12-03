@@ -12,7 +12,7 @@ Create smart, rule-based playlists and **collections** in Jellyfin.
 
 This plugin allows you to create dynamic playlists and collections based on a set of rules, which will automatically update as your library changes.
 
-**Requires Jellyfin version `10.11.0` and newer.**.
+**Requires Jellyfin version `10.11.0` and newer.**
 
 ## ✨ Features
 

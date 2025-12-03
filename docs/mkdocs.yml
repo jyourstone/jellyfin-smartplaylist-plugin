@@ -10,6 +10,7 @@ docs_dir: content
 
 theme:
   name: material
+  custom_dir: overrides
   palette:
     - scheme: slate
       primary: teal
@@ -36,6 +37,8 @@ nav:
     - Quick Start: getting-started/quick-start.md
   - User Guide:
     - Configuration: user-guide/configuration.md
+    - Media Types: user-guide/media-types.md
+    - User Selection: user-guide/user-selection.md
     - Fields and Operators: user-guide/fields-and-operators.md
     - Sorting and Limits: user-guide/sorting-and-limits.md
     - Auto-Refresh: user-guide/auto-refresh.md

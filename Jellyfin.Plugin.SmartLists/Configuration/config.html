@@ -38,7 +38,15 @@
                 <div id="create-tab" class="page-content hide" data-tab-content="create">
                     <form id="playlistForm" style="margin-top:2em;">
                         <div class="inputContainer" style="margin-bottom: 1em;">
-                            <label class="inputLabel" for="listType">List Type</label>
+                            <label class="inputLabel" for="listType" style="display: flex; align-items: center;">
+                                List Type
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/configuration/#playlists-vs-collections"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <select is="emby-select" id="listType" class="emby-select" required>
                                 <option value="Playlist">Playlist</option>
                                 <option value="Collection">Collection</option>
@@ -55,13 +63,22 @@
                         </div>
 
                         <div class="inputContainer">
-                            <label class="inputLabel">Media Types</label>
+                            <label class="inputLabel" style="display: flex; align-items: center;">
+                                Media Types
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/media-types/"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <div id="mediaTypesMultiSelect">
                                 <div class="multi-select-container">
                                     <div class="multi-select-display" id="mediaTypesMultiSelectDisplay">
                                         <span class="multi-select-placeholder">Select media types...</span>
                                     </div>
-                                    <div class="multi-select-dropdown" id="mediaTypesMultiSelectDropdown" style="display: none;">
+                                    <div class="multi-select-dropdown" id="mediaTypesMultiSelectDropdown"
+                                        style="display: none;">
                                         <div class="multi-select-options" id="mediaTypesMultiSelectOptions">
                                             <!-- Checkboxes populated dynamically -->
                                         </div>
@@ -75,7 +92,15 @@
                         </div>
 
                         <div class="inputContainer">
-                            <label class="inputLabel">Rules</label>
+                            <label class="inputLabel" style="display: flex; align-items: center;">
+                                Rules
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/fields-and-operators/"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <div id="rules-container"></div>
                             <div class="fieldDescription" style="margin-bottom: 1.5em; margin-top: -0.7em;">Build your
                                 rules using logical groups. Rules within a group are combined with AND, groups are
@@ -83,7 +108,15 @@
                         </div>
 
                         <div class="inputContainer playlist-only-field" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="inputLabel">Sort Options</label>
+                            <label class="inputLabel" style="display: flex; align-items: center;">
+                                Sort Options
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/sorting-and-limits/"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <div class="fieldDescription" style="margin-bottom: 0.5em;">Add up to 3 sorting options.
                                 Items are sorted by the first option, then by the second for items with equal values,
                                 and so on. Collections do not support custom sorting due to Jellyfin limitations.</div>
@@ -91,46 +124,76 @@
                         </div>
 
                         <div class="inputContainer" style="margin-bottom: 1em;">
-                            <label class="inputLabel" for="playlistUser"><span class="playlist-only-label">Playlist
-                                    User(s)</span><span class="collection-only-label">Collection User</span></label>
-                            
+                            <label class="inputLabel" for="playlistUser" style="display: flex; align-items: center;">
+                                <span class="playlist-only-label">Playlist User(s)</span>
+                                <span class="collection-only-label">Collection User</span>
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/user-selection/"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
+
                             <!-- Collection: Single Select (unchanged) -->
                             <select is="emby-select" id="playlistUser" class="emby-select collection-only-field">
                                 <option value="">Loading users...</option>
                             </select>
-                            
+
                             <!-- Playlist: Custom Multi-Select -->
                             <div id="playlistUserMultiSelect" class="playlist-only-field" style="display: none;">
                                 <div class="multi-select-container">
                                     <div class="multi-select-display" id="userMultiSelectDisplay">
                                         <span class="multi-select-placeholder">Select users...</span>
                                     </div>
-                                    <div class="multi-select-dropdown" id="userMultiSelectDropdown" style="display: none;">
+                                    <div class="multi-select-dropdown" id="userMultiSelectDropdown"
+                                        style="display: none;">
                                         <div class="multi-select-options" id="userMultiSelectOptions">
                                             <!-- Checkboxes populated dynamically -->
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="fieldDescription">
-                                <span class="playlist-only-description">Select one or more users for this playlist. When multiple users are selected, a separate playlist will be created for each user.</span>
+                                <span class="playlist-only-description">Select one or more users for this playlist. When
+                                    multiple users are selected, a separate playlist will be created for each
+                                    user.</span>
                                 <span class="collection-only-description">The user context for creating the collection
-                                    and rule evaluation (e.g., PlaybackStatus, IsFavorite). The collection itself is visible
+                                    and rule evaluation (e.g., PlaybackStatus, IsFavorite). The collection itself is
+                                    visible
                                     to all users.</span>
                             </div>
                         </div>
 
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="inputLabel" for="playlistMaxItems">Max Items</label>
+                            <label class="inputLabel" for="playlistMaxItems"
+                                style="display: flex; align-items: center;">
+                                Max Items
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/sorting-and-limits/#max-items"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <input type="number" id="playlistMaxItems" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Maximum number of items in this list. Set to 0 for no limit.
                             </div>
                         </div>
 
                         <div class="inputContainer playlist-only-field" style="margin-bottom: 1em; margin-top: 1em;">
-                            <label class="inputLabel" for="playlistMaxPlayTimeMinutes">Max Playtime (Minutes)</label>
+                            <label class="inputLabel" for="playlistMaxPlayTimeMinutes"
+                                style="display: flex; align-items: center;">
+                                Max Playtime (Minutes)
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/sorting-and-limits/#max-playtime"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <input type="number" id="playlistMaxPlayTimeMinutes" class="emby-input" min="0" step="1">
                             <div class="fieldDescription">Maximum playtime in minutes for this list. Set to 0 for no
                                 limit.</div>
@@ -170,7 +233,16 @@
                         </div>
 
                         <div class="selectContainer" style="margin-bottom: 1em;">
-                            <label class="selectLabel" for="autoRefreshMode">Auto-refresh on library changes:</label>
+                            <label class="selectLabel" for="autoRefreshMode"
+                                style="display: flex; align-items: center;">
+                                Auto-refresh on library changes:
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/auto-refresh/"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <select id="autoRefreshMode" is="emby-select" class="emby-select-withcolor emby-select">
                                 <!-- Auto-refresh options populated dynamically by JavaScript -->
                             </select>
@@ -179,7 +251,15 @@
                         </div>
 
                         <div class="inputContainer">
-                            <label class="inputLabel">Scheduled Refresh</label>
+                            <label class="inputLabel" style="display: flex; align-items: center;">
+                                Scheduled Refresh
+                                <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/auto-refresh/#custom-list-scheduling"
+                                    target="_blank" rel="noopener noreferrer" title="Documentation"
+                                    style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                    <span class="material-icons" aria-hidden="true"
+                                        style="font-size: 1.2em;">help_outline</span>
+                                </a>
+                            </label>
                             <div id="schedules-container"></div>
                             <div class="fieldDescription">Configure custom refresh schedule(s) for this list. You can
                                 add multiple schedules (e.g., run on Sundays AND on the 1st of each month).</div>
@@ -439,7 +519,15 @@
                             <div class="fieldDescription">Default interval for Interval schedules.</div>
                         </div>
 
-                        <h2 class="sectionTitle" style="margin-top: 2em;">Performance</h2>
+                        <h2 class="sectionTitle" style="margin-top: 2em; display: flex; align-items: center;">
+                            Performance
+                            <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/configuration/#performance-settings"
+                                target="_blank" rel="noopener noreferrer" title="Documentation"
+                                style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                <span class="material-icons" aria-hidden="true"
+                                    style="font-size: 1.2em;">help_outline</span>
+                            </a>
+                        </h2>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="processingBatchSize">Processing Batch Size</label>
@@ -452,7 +540,15 @@
                             </div>
                         </div>
 
-                        <h2 class="sectionTitle" style="margin-top: 2em;">List Naming</h2>
+                        <h2 class="sectionTitle" style="margin-top: 2em; display: flex; align-items: center;">
+                            List Naming
+                            <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/configuration/#custom-list-naming"
+                                target="_blank" rel="noopener noreferrer" title="Documentation"
+                                style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                <span class="material-icons" aria-hidden="true"
+                                    style="font-size: 1.2em;">help_outline</span>
+                            </a>
+                        </h2>
 
                         <div class="inputContainer" style="margin-bottom: 1em; margin-top: 1em;">
                             <label class="inputLabel" for="playlistNamePrefix">Prefix Text</label>
@@ -481,7 +577,15 @@
                         <div>After you have changed this setting, you need to refresh all lists for it to take effect.
                         </div>
 
-                        <h2 class="sectionTitle" style="margin-top: 2em;">Export/Import</h2>
+                        <h2 class="sectionTitle" style="margin-top: 2em; display: flex; align-items: center;">
+                            Export/Import
+                            <a href="https://jellyfin-smartlists-plugin.dinsten.se/user-guide/configuration/#export-import"
+                                target="_blank" rel="noopener noreferrer" title="Documentation"
+                                style="margin-left: 0.5em; text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+                                <span class="material-icons" aria-hidden="true"
+                                    style="font-size: 1.2em;">help_outline</span>
+                            </a>
+                        </h2>
 
                         <h3 class="sectionTitle" style="margin-top: 2em;">Export</h3>
 
