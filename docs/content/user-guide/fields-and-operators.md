@@ -37,19 +37,24 @@ The web interface provides access to all available fields for creating list rule
   - **In Progress** - Partially watched/listened to (has playback position but not marked as played)
   - **Unplayed** - Not started (no playback position)
   
-  !!! note "Series Playback Status"
-      For TV series, the playback status is calculated based on episode watch counts:
-      - **Played**: All episodes in the series have been watched
-      - **In Progress**: At least one episode has been watched, but not all
-      - **Unplayed**: No episodes have been watched
-  
-  !!! tip "Migration from Is Played"
-      If you have existing playlists or collections using the old "Is Played" field, they will be automatically migrated to "Playback Status" when loaded:
-      - `Is Played = True` → `Playback Status = Played`
-      - `Is Played = False` → `Playback Status = Unplayed`
-      
-      The migration happens automatically and preserves your existing rules. You can then update them to use "In Progress" if desired.
+    !!! note "Series Playback Status"
+        For TV series, the playback status is calculated based on episode watch counts:
+        
+        - **Played**: All episodes in the series have been watched
+        - **In Progress**: At least one episode has been watched, but not all
+        - **Unplayed**: No episodes have been watched
+
 - **Last Played** - When the item was last played (user-specific)
+  
+    !!! note "Series Last Played Date"
+        For TV series, the last played date is calculated based on the most recent episode watch date:
+        
+        - The series' last played date is set to the **most recent** `LastPlayedDate` among all episodes in the series
+        - This ensures that series appear correctly in filters like "Last Played newer than X days/hours"
+        - Only episodes from season 1 and above are considered (season 0 specials are excluded)
+        
+        **Example:** If you watched Episode 1 on January 1st and Episode 2 on January 5th, the series' last played date will be January 5th (the most recent episode).
+
 - **Next Unwatched** - Shows only the next unwatched episode in chronological order for TV series
 - **Play Count** - Number of times the item has been played
 - **Runtime (Minutes)** - Duration of the content in minutes

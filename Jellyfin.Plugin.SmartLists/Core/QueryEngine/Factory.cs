@@ -270,31 +270,8 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         {
             try
             {
-                // Get all episodes in the series using cache
-                // Use GetCachedSeriesEpisodes helper to avoid code duplication
-                // Pass IsVirtualItem = false to match the original query semantics
-                var episodes = GetCachedSeriesEpisodes(series.Id, user, libraryManager, cache, logger, isVirtualItem: false);
-
-                // Filter out season 0 (specials) episodes to match NextUnwatched behavior
-                var validEpisodes = new List<BaseItem>();
-                foreach (var episode in episodes)
-                {
-                    var episodeType = episode.GetType();
-                    var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
-                    var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
-
-                    if (parentIndexProperty != null && indexProperty != null)
-                    {
-                        var seasonNum = ExtractIntValue(parentIndexProperty.GetValue(episode));
-                        var episodeNum = ExtractIntValue(indexProperty.GetValue(episode));
-
-                        // Skip season 0 (specials) and only include episodes with valid season/episode numbers
-                        if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
-                        {
-                            validEpisodes.Add(episode);
-                        }
-                    }
-                }
+                // Get valid episodes (excluding season 0 specials)
+                var validEpisodes = GetValidSeriesEpisodes(series.Id, user, libraryManager, cache, logger);
 
                 // Exclude series with 0 valid episodes (invalid data or only season 0 specials)
                 if (validEpisodes.Count == 0)
@@ -340,6 +317,128 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             {
                 logger?.LogWarning(ex, "Error calculating playback status for series '{SeriesName}'", series.Name);
                 return "Unplayed";
+            }
+        }
+
+        /// <summary>
+        /// Gets valid episodes for a series, excluding season 0 specials and episodes without valid metadata.
+        /// </summary>
+        /// <param name="seriesId">The series ID</param>
+        /// <param name="user">The user</param>
+        /// <param name="libraryManager">Library manager to query episodes</param>
+        /// <param name="cache">Cache for performance</param>
+        /// <param name="logger">Logger</param>
+        /// <returns>List of valid episodes (season 1+, with valid episode numbers)</returns>
+        private static List<BaseItem> GetValidSeriesEpisodes(
+            Guid seriesId,
+            User user,
+            ILibraryManager libraryManager,
+            RefreshQueueServiceRefreshCache cache,
+            ILogger? logger)
+        {
+            // Get all episodes in the series using cache
+            var episodes = GetCachedSeriesEpisodes(seriesId, user, libraryManager, cache, logger, isVirtualItem: false);
+
+            var validEpisodes = new List<BaseItem>();
+            foreach (var episode in episodes)
+            {
+                var episodeType = episode.GetType();
+                var parentIndexProperty = _parentIndexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("ParentIndexNumber"));
+                var indexProperty = _indexPropertyCache.GetOrAdd(episodeType, type => type.GetProperty("IndexNumber"));
+
+                if (parentIndexProperty != null && indexProperty != null)
+                {
+                    var seasonNum = ExtractIntValue(parentIndexProperty.GetValue(episode));
+                    var episodeNum = ExtractIntValue(indexProperty.GetValue(episode));
+
+                    // Skip season 0 (specials) and only include episodes with valid season/episode numbers
+                    if (seasonNum.HasValue && episodeNum.HasValue && seasonNum.Value > 0)
+                    {
+                        validEpisodes.Add(episode);
+                    }
+                }
+            }
+
+            return validEpisodes;
+        }
+
+        /// <summary>
+        /// Calculates the most recent LastPlayedDate for a Series based on episode watch dates.
+        /// </summary>
+        /// <param name="series">The series item</param>
+        /// <param name="user">The user</param>
+        /// <param name="libraryManager">Library manager to query episodes</param>
+        /// <param name="userDataManager">User data manager</param>
+        /// <param name="cache">Cache for performance</param>
+        /// <param name="logger">Logger</param>
+        /// <returns>The most recent LastPlayedDate among all episodes, or null if no episodes have been played</returns>
+        private static DateTime? CalculateSeriesLastPlayedDate(
+            Series series,
+            User user,
+            ILibraryManager libraryManager,
+            IUserDataManager userDataManager,
+            RefreshQueueServiceRefreshCache cache,
+            ILogger? logger)
+        {
+            try
+            {
+                // Get valid episodes (excluding season 0 specials)
+                var validEpisodes = GetValidSeriesEpisodes(series.Id, user, libraryManager, cache, logger);
+
+                // If no valid episodes, return null
+                if (validEpisodes.Count == 0)
+                {
+                    logger?.LogDebug("Series '{SeriesName}' has 0 valid episodes (excluding season 0), returning null LastPlayedDate", series.Name);
+                    return null;
+                }
+
+                // Track the maximum (most recent) LastPlayedDate
+                DateTime? maxLastPlayedDate = null;
+
+                foreach (var episode in validEpisodes)
+                {
+                    // Use UserDataCache to avoid redundant DB lookups
+                    var cacheKey = (episode.Id, user.Id);
+                    if (!cache.UserDataCache.TryGetValue(cacheKey, out var episodeUserData))
+                    {
+                        episodeUserData = userDataManager.GetUserData(user, episode);
+                        // Cache the result if non-null
+                        if (episodeUserData != null)
+                        {
+                            cache.UserDataCache[cacheKey] = episodeUserData;
+                        }
+                    }
+
+                    if (episodeUserData != null)
+                    {
+                        // Extract LastPlayedDate using reflection (similar to PopulateUserData)
+                        var userDataType = episodeUserData.GetType();
+                        var lastPlayedDateProp = userDataType.GetProperty("LastPlayedDate");
+                        if (lastPlayedDateProp != null)
+                        {
+                            var lastPlayedDateValue = lastPlayedDateProp.GetValue(episodeUserData);
+                            // PropertyInfo.GetValue automatically unwraps Nullable<T>
+                            // If lastPlayedDateValue is non-null, it's already the underlying DateTime
+                            if (lastPlayedDateValue is DateTime dateTime && dateTime != DateTime.MinValue)
+                            {
+                                // Update max if this episode's date is more recent
+                                logger?.LogDebug("Episode '{EpisodeName}' LastPlayedDate: {Date}", episode.Name, dateTime);
+                                if (!maxLastPlayedDate.HasValue || dateTime > maxLastPlayedDate.Value)
+                                {
+                                    maxLastPlayedDate = dateTime;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                logger?.LogDebug("Series '{SeriesName}' calculated LastPlayedDate: {Date} (from {EpisodeCount} episodes)", series.Name, maxLastPlayedDate, validEpisodes.Count);
+                return maxLastPlayedDate;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Error calculating LastPlayedDate for series '{SeriesName}'", series.Name);
+                return null;
             }
         }
 
@@ -566,7 +665,15 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
         /// <param name="userId">The user ID (as string)</param>
         /// <param name="playbackStatus">The PlaybackStatus value</param>
         /// <param name="userData">The userData object to extract from</param>
-        private static void PopulateUserData(Operand operand, string userId, string playbackStatus, object userData)
+        /// <param name="baseItem">The base item (for Series LastPlayedDate calculation)</param>
+        /// <param name="user">The user (for Series LastPlayedDate calculation)</param>
+        /// <param name="libraryManager">Library manager (for Series LastPlayedDate calculation)</param>
+        /// <param name="userDataManager">User data manager (for Series LastPlayedDate calculation)</param>
+        /// <param name="cache">Cache for performance (for Series LastPlayedDate calculation)</param>
+        /// <param name="logger">Logger (for Series LastPlayedDate calculation)</param>
+        private static void PopulateUserData(Operand operand, string userId, string playbackStatus, object userData,
+            BaseItem baseItem, User user, ILibraryManager libraryManager, IUserDataManager? userDataManager,
+            RefreshQueueServiceRefreshCache cache, ILogger? logger)
         {
             operand.PlaybackStatusByUser[userId] = playbackStatus;
 
@@ -624,64 +731,45 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
             }
 
             // Extract LastPlayedDate - handle both nullable and non-nullable DateTime
-            var lastPlayedDateProp = userDataType.GetProperty("LastPlayedDate");
-            if (lastPlayedDateProp != null)
+            // For Series, calculate from episodes; for other types, use direct extraction
+            if (baseItem is Series series && userDataManager != null)
             {
-                var lastPlayedDateValue = lastPlayedDateProp.GetValue(userData);
-                if (lastPlayedDateValue != null)
+                // Calculate LastPlayedDate from episodes for Series
+                var seriesLastPlayedDate = CalculateSeriesLastPlayedDate(series, user, libraryManager, userDataManager, cache, logger);
+                if (seriesLastPlayedDate.HasValue)
                 {
-                    // Handle nullable DateTime
-                    if (lastPlayedDateValue is DateTime dateTime && dateTime != DateTime.MinValue)
-                    {
-                        operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(dateTime);
-                    }
-                    // Handle nullable DateTime (DateTime?)
-                    else if (lastPlayedDateValue.GetType().IsGenericType &&
-                             lastPlayedDateValue.GetType().GetGenericTypeDefinition() == typeof(Nullable<>) &&
-                             lastPlayedDateValue.GetType().GetGenericArguments()[0] == typeof(DateTime))
-                    {
-                        var nullableDateTimeProp = lastPlayedDateValue.GetType().GetProperty("HasValue");
-                        var valueProp = lastPlayedDateValue.GetType().GetProperty("Value");
-
-                        if (nullableDateTimeProp != null && valueProp != null)
-                        {
-                            var hasValueObj = nullableDateTimeProp.GetValue(lastPlayedDateValue);
-                            bool hasValue = hasValueObj is bool b && b;
-                            if (hasValue)
-                            {
-                                var dateValueObj = valueProp.GetValue(lastPlayedDateValue);
-                                if (dateValueObj is DateTime dateValue)
-                                {
-                                    operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(dateValue);
-                                }
-                                else
-                                {
-                                    operand.LastPlayedDateByUser[userId] = -1; // Never played - invalid date value,
-                                }
-                            }
-                            else
-                            {
-                                operand.LastPlayedDateByUser[userId] = -1; // Never played,
-                            }
-                        }
-                        else
-                        {
-                            operand.LastPlayedDateByUser[userId] = -1; // Never played,
-                        }
-                    }
-                    else
-                    {
-                        operand.LastPlayedDateByUser[userId] = -1; // Never played - unhandled type,
-                    }
+                    var unixTimestamp = SafeToUnixTimeSeconds(seriesLastPlayedDate.Value);
+                    logger?.LogDebug("Series '{SeriesName}' LastPlayedDate set to {Date} (Unix: {Unix})", series.Name, seriesLastPlayedDate.Value, unixTimestamp);
+                    operand.LastPlayedDateByUser[userId] = unixTimestamp;
                 }
                 else
                 {
-                    operand.LastPlayedDateByUser[userId] = -1; // Never played - null value,
+                    logger?.LogDebug("Series '{SeriesName}' has no LastPlayedDate (no episodes watched)", series.Name);
+                    operand.LastPlayedDateByUser[userId] = -1; // Never played - no episodes watched
                 }
             }
             else
             {
-                operand.LastPlayedDateByUser[userId] = -1; // Never played - property not found,
+                // Direct extraction for non-Series items
+                var lastPlayedDateProp = userDataType.GetProperty("LastPlayedDate");
+                if (lastPlayedDateProp != null)
+                {
+                    var lastPlayedDateValue = lastPlayedDateProp.GetValue(userData);
+                    // PropertyInfo.GetValue automatically unwraps Nullable<T>
+                    // If lastPlayedDateValue is non-null, it's already the underlying DateTime
+                    if (lastPlayedDateValue is DateTime dateTime && dateTime != DateTime.MinValue)
+                    {
+                        operand.LastPlayedDateByUser[userId] = SafeToUnixTimeSeconds(dateTime);
+                    }
+                    else
+                    {
+                        operand.LastPlayedDateByUser[userId] = -1; // Never played
+                    }
+                }
+                else
+                {
+                    operand.LastPlayedDateByUser[userId] = -1; // Never played - property not found
+                }
             }
         }
 
@@ -1869,7 +1957,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                     // Populate user-specific data for playlist user
                     // Normalize to "N" format (no dashes) to match UserPlaylists format
                     var normalizedUserId = user.Id.ToString("N");
-                    PopulateUserData(operand, normalizedUserId, playbackStatus, userData!);
+                    PopulateUserData(operand, normalizedUserId, playbackStatus, userData!, baseItem, user, libraryManager, userDataManager, cache, logger);
                 }
                 else if (userDataManager != null)
                 {
@@ -1893,7 +1981,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
                             
                             // Use our helper method to populate user data consistently
                             // Normalize to "N" format (no dashes) to match UserPlaylists format
-                            PopulateUserData(operand, user.Id.ToString("N"), recalculatedPlaybackStatus, reflectedUserData);
+                            PopulateUserData(operand, user.Id.ToString("N"), recalculatedPlaybackStatus, reflectedUserData, baseItem, user, libraryManager, userDataManager, cache, logger);
                         }
                         else
                         {
@@ -1962,7 +2050,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.QueryEngine
 
                                     if (targetUserData != null)
                                     {
-                                        PopulateUserData(operand, normalizedUserId, userPlaybackStatus, targetUserData);
+                                        PopulateUserData(operand, normalizedUserId, userPlaybackStatus, targetUserData, baseItem, targetUser, libraryManager, userDataManager, cache, logger);
                                     }
                                     else
                                     {
