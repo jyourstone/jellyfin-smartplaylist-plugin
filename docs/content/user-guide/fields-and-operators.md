@@ -33,9 +33,9 @@ The web interface provides access to all available fields for creating list rule
 - **Critic Rating** - Professional critic ratings
 - **Is Favorite** - Whether the item is marked as a favorite
 - **Playback Status** - The playback status of the item with three possible values:
-    - **Played** - Fully watched/listened to (marked as played in Jellyfin)
-    - **In Progress** - Partially watched/listened to (has playback position but not marked as played)
-    - **Unplayed** - Not started (no playback position)
+  - **Played** - Fully watched/listened to (marked as played in Jellyfin)
+  - **In Progress** - Partially watched/listened to (has playback position but not marked as played)
+  - **Unplayed** - Not started (no playback position)
   
     !!! note "Series Playback Status"
         For TV series, the playback status is calculated based on episode watch counts:
