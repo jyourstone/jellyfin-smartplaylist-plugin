@@ -5,6 +5,7 @@ using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Plugin.SmartLists.Core;
 using Jellyfin.Plugin.SmartLists.Services.Shared;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         protected override string GetSortValue(BaseItem item, User? user = null, IUserDataManager? userDataManager = null, ILogger? logger = null, RefreshQueueService.RefreshCache? refreshCache = null)
         {
             ArgumentNullException.ThrowIfNull(item);
+            
+            // For Audio items, SortName is often auto-generated as "0001 - Track Title" (track number - title).
+            // If the user selected "Name", they likely want alphabetical by Title.
+            // However, if the user MANUALLY set a SortName, we should respect it.
+            // We detect auto-generated SortName by pattern: digits, space, hyphen, space.
+            if (item is MediaBrowser.Controller.Entities.Audio.Audio && !string.IsNullOrEmpty(item.SortName) &&
+                Regex.IsMatch(item.SortName, @"^\d+\s+-\s+"))
+            {
+                return item.Name ?? "";
+            }
             
             // For Episodes, SortName is auto-generated as "001 - 0001 - Title", which forces chronological sort.
             // If the user selected "Name", they likely want alphabetical by Title.
@@ -45,6 +56,16 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         protected override string GetSortValue(BaseItem item, User? user = null, IUserDataManager? userDataManager = null, ILogger? logger = null, RefreshQueueService.RefreshCache? refreshCache = null)
         {
             ArgumentNullException.ThrowIfNull(item);
+            
+            // For Audio items, SortName is often auto-generated as "0001 - Track Title" (track number - title).
+            // If the user selected "Name", they likely want alphabetical by Title.
+            // However, if the user MANUALLY set a SortName, we should respect it.
+            // We detect auto-generated SortName by pattern: digits, space, hyphen, space.
+            if (item is MediaBrowser.Controller.Entities.Audio.Audio && !string.IsNullOrEmpty(item.SortName) &&
+                Regex.IsMatch(item.SortName, @"^\d+\s+-\s+"))
+            {
+                return item.Name ?? "";
+            }
             
             // For Episodes, SortName is auto-generated as "001 - 0001 - Title", which forces chronological sort.
             // If the user selected "Name", they likely want alphabetical by Title.
