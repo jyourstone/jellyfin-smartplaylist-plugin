@@ -12,13 +12,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SmartLists.Core.Orders
 {
-    public class NameOrder : PropertyOrder<string>
+    /// <summary>
+    /// Helper class for shared name sorting logic.
+    /// </summary>
+    internal static class NameSortHelper
     {
-        public override string Name => "Name Ascending";
-        protected override bool IsDescending => false;
-        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
-
-        protected override string GetSortValue(BaseItem item, User? user = null, IUserDataManager? userDataManager = null, ILogger? logger = null, RefreshQueueService.RefreshCache? refreshCache = null)
+        /// <summary>
+        /// Gets the sort value for name-based sorting, handling auto-generated SortName patterns.
+        /// </summary>
+        internal static string GetNameSortValue(BaseItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
             
@@ -26,7 +28,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             // If the user selected "Name", they likely want alphabetical by Title.
             // However, if the user MANUALLY set a SortName, we should respect it.
             // We detect auto-generated SortName by pattern: digits, space, hyphen, space.
-            if (item is MediaBrowser.Controller.Entities.Audio.Audio && !string.IsNullOrEmpty(item.SortName) &&
+            if (item is Audio && !string.IsNullOrEmpty(item.SortName) &&
                 Regex.IsMatch(item.SortName, @"^\d+\s+-\s+"))
             {
                 return item.Name ?? "";
@@ -47,6 +49,18 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
         }
     }
 
+    public class NameOrder : PropertyOrder<string>
+    {
+        public override string Name => "Name Ascending";
+        protected override bool IsDescending => false;
+        protected override IComparer<string> Comparer => OrderUtilities.SharedNaturalComparer;
+
+        protected override string GetSortValue(BaseItem item, User? user = null, IUserDataManager? userDataManager = null, ILogger? logger = null, RefreshQueueService.RefreshCache? refreshCache = null)
+        {
+            return NameSortHelper.GetNameSortValue(item);
+        }
+    }
+
     public class NameOrderDesc : PropertyOrder<string>
     {
         public override string Name => "Name Descending";
@@ -55,30 +69,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
 
         protected override string GetSortValue(BaseItem item, User? user = null, IUserDataManager? userDataManager = null, ILogger? logger = null, RefreshQueueService.RefreshCache? refreshCache = null)
         {
-            ArgumentNullException.ThrowIfNull(item);
-            
-            // For Audio items, SortName is often auto-generated as "0001 - Track Title" (track number - title).
-            // If the user selected "Name", they likely want alphabetical by Title.
-            // However, if the user MANUALLY set a SortName, we should respect it.
-            // We detect auto-generated SortName by pattern: digits, space, hyphen, space.
-            if (item is MediaBrowser.Controller.Entities.Audio.Audio && !string.IsNullOrEmpty(item.SortName) &&
-                Regex.IsMatch(item.SortName, @"^\d+\s+-\s+"))
-            {
-                return item.Name ?? "";
-            }
-            
-            // For Episodes, SortName is auto-generated as "001 - 0001 - Title", which forces chronological sort.
-            // If the user selected "Name", they likely want alphabetical by Title.
-            // However, if the user MANUALLY set a SortName (e.g. "A"), we should respect it.
-            // We detect auto-generated SortName by pattern: 3+ digits, hyphen, 4+ digits, hyphen.
-            if (item is Episode && !string.IsNullOrEmpty(item.SortName) &&
-                Regex.IsMatch(item.SortName, @"^\d{3,} - \d{4,} - "))
-            {
-                return item.Name ?? "";
-            }
-            
-            // Use SortName if set, otherwise fall back to Name
-            return !string.IsNullOrEmpty(item.SortName) ? item.SortName : (item.Name ?? "");
+            return NameSortHelper.GetNameSortValue(item);
         }
     }
 }
