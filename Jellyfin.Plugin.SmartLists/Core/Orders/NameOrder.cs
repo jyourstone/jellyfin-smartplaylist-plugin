@@ -17,6 +17,10 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
     /// </summary>
     internal static class NameSortHelper
     {
+        // Compiled regex patterns for performance - avoids regex compilation overhead on every sort operation
+        private static readonly Regex AudioAutoSortPattern = new(@"^\d+\s+-\s+", RegexOptions.Compiled);
+        private static readonly Regex EpisodeAutoSortPattern = new(@"^\d{3,} - \d{4,} - ", RegexOptions.Compiled);
+
         /// <summary>
         /// Gets the sort value for name-based sorting, handling auto-generated SortName patterns.
         /// </summary>
@@ -29,7 +33,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             // However, if the user MANUALLY set a SortName, we should respect it.
             // We detect auto-generated SortName by pattern: digits, space, hyphen, space.
             if (item is Audio && !string.IsNullOrEmpty(item.SortName) &&
-                Regex.IsMatch(item.SortName, @"^\d+\s+-\s+"))
+                AudioAutoSortPattern.IsMatch(item.SortName))
             {
                 return item.Name ?? "";
             }
@@ -39,7 +43,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
             // However, if the user MANUALLY set a SortName (e.g. "A"), we should respect it.
             // We detect auto-generated SortName by pattern: 3+ digits, hyphen, 4+ digits, hyphen.
             if (item is Episode && !string.IsNullOrEmpty(item.SortName) &&
-                Regex.IsMatch(item.SortName, @"^\d{3,} - \d{4,} - "))
+                EpisodeAutoSortPattern.IsMatch(item.SortName))
             {
                 return item.Name ?? "";
             }
