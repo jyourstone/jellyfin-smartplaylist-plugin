@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.SmartLists.Core.Orders
     {
         // Compiled regex patterns for performance - avoids regex compilation overhead on every sort operation
         private static readonly Regex AudioAutoSortPattern = new(@"^\d+\s+-\s+", RegexOptions.Compiled);
-        private static readonly Regex EpisodeAutoSortPattern = new(@"^\d{3,} - \d{4,} - ", RegexOptions.Compiled);
+        private static readonly Regex EpisodeAutoSortPattern = new(@"^\d{3,}\s+-\s+\d{4,}\s+-\s+", RegexOptions.Compiled);
 
         /// <summary>
         /// Gets the sort value for name-based sorting, handling auto-generated SortName patterns.
